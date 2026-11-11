@@ -6167,7 +6167,7 @@ static SCHEMA_UNUSED int64_t tabledemo_patrol_load_measure_ex(const uint8_t * wi
 {
     tabledemo_table_report_t report; tabledemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!tabledemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!tabledemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=report.refuse_reason!=SCHEMA_TABLEDEMO_TABLE_REFUSE_OK ? report.refuse_reason : SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_tabledemo_patrol_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }

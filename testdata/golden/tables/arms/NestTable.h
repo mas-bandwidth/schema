@@ -3155,7 +3155,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one

@@ -3294,14 +3294,21 @@ defmodule Bench.Table do
             do: {:value, %{__wire_node__: idx}},
             else: {:value, :wrong_type}
 
-        _ ->
-          # a malformed record was refused at the directory before any body
-          # was read (directory_report); a record whose type this reader
-          # cannot name at all counted unknown there and keeps its index, so
-          # the pointer naming it reads null, as the engine reads it (§3.1).
-          # A record of a type the reader names, under a pointer of another
-          # type, is the kind mismatch above.
+        :malformed ->
+          # the directory already refused a malformed record before any
+          # body was read (directory_report), so this is never taken
           :null
+
+        :unknown ->
+          # a node whose type id this reader cannot name keeps its index, is
+          # counted unknown once by directory_report, and every pointer naming
+          # it reads null (§3.1); a target of a type it CANNOT name is this
+          # bullet, not the wrong-type refusal
+          :null
+
+        _ ->
+          # any other directory entry names no value for this pointer
+          {:value, :wrong_type}
       end
     end
   end
@@ -4045,12 +4052,12 @@ defmodule Bench.Table do
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  # bytes left inside a keyed array's L after its count's triples are damage
-  # (§3, §4), as at an array and a map
-  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
-    if bin != <<>>, do: throw(:wire_damaged)
-    {:cont, acc, report}
-  end
+  # a keyed body ends at its last counted pair (docs/SPEC-TABLES.md §3, §4):
+  # bytes left inside its L after the counted pairs are damage
+  defp read_keyed_pairs(_f, <<>>, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+
+  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, _acc, _report),
+    do: {:cont, %{}, throw(:wire_damaged)}
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),

@@ -2142,6 +2142,9 @@ final class TableMessageShape {
   int min = 0;
   int max = 0;
   int elem = 0;
+  int base = 0;
+  int baseLo = 0;
+  int baseHi = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -2163,10 +2166,27 @@ final class TableMessageShape {
         at = n.$2;
         if (kind >= 18) {
           if (at + 16 > end) return null;
+          s.baseLo = sig[at] | (sig[at + 1] << 8) | (sig[at + 2] << 16) |
+              (sig[at + 3] << 24) | (sig[at + 4] << 32) |
+              (sig[at + 5] << 40) | (sig[at + 6] << 48) |
+              (sig[at + 7] << 56);
+          s.baseHi = sig[at + 8] | (sig[at + 9] << 8) | (sig[at + 10] << 16) |
+              (sig[at + 11] << 24) | (sig[at + 12] << 32) |
+              (sig[at + 13] << 40) | (sig[at + 14] << 48) |
+              (sig[at + 15] << 56);
+          s.base = s.baseLo;
           return (s, at + 16);
         }
         final b = tableMessageLeb(sig, at, end);
-        return b.$3 ? (s, b.$2) : null;
+        if (!b.$3) return null;
+        var base = b.$1;
+        if (kind >= 2 && kind <= 5) {
+          base = (base >>> 1) ^ -(base & 1);
+        }
+        s.base = base;
+        s.baseLo = base;
+        s.baseHi = base < 0 ? -1 : 0;
+        return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
         final bits = quantizedBits(sig, at, end);
@@ -2943,6 +2963,17 @@ bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth
   return tableMessageSkip(r, e.kind, shape, depth);
 }
 
+/// The widening ladder of §4 (ir.TableKindWidens): an integer kind into a
+/// wider one of the same signedness, and f32 into f64.
+bool tableMessageKindWidens(int from, int declared) {
+  if (declared == 11) return from == 10;
+  if (declared >= 2 && declared <= 5) return from >= 2 && from < declared;
+  if (declared == 18) return from >= 2 && from <= 5;
+  if (declared >= 6 && declared <= 9) return from >= 6 && from < declared;
+  if (declared == 19) return from >= 6 && from <= 9;
+  return false;
+}
+
 /// One body at [depth]. Fields of the body are skipped at this same depth.
 bool tableMessageSkipBody(TableMessageReader r, int depth) {
   if (depth > 128) return false;
@@ -3179,174 +3210,242 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
   initTableEntity(value);
   r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    if (r.vocabulary.announced) {
-      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
-      final named = r.vocabulary.entries[ref - 1].id;
-      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHasId(named)) { r.report.Damage(); return false; }
-      r.seenAdd(ref);
-    }
-    switch (ref) {
-      case 3:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case 2593226102015223570: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.entityId = v;
-          value.entityId += 0;
+          if (shape.packing == 1) { value.entityId += shape.base; }
         }
         if (value.entityId > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 4:
+      }
+      case -3797881157997612786: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(15);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posX = v;
-          value.posX += -16383;
-          value.posX = value.posX.toSigned(32);
+          if (shape.packing == 1) { value.posX += shape.base; }
+          if (shape.packing == 0) { value.posX = value.posX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posX < -16383 || value.posX > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 5:
+      }
+      case -3797880058485984575: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(15);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posY = v;
-          value.posY += -16383;
-          value.posY = value.posY.toSigned(32);
+          if (shape.packing == 1) { value.posY += shape.base; }
+          if (shape.packing == 0) { value.posY = value.posY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posY < -16383 || value.posY > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 6:
+      }
+      case -3797883357020869208: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(15);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posZ = v;
-          value.posZ += -16383;
-          value.posZ = value.posZ.toSigned(32);
+          if (shape.packing == 1) { value.posZ += shape.base; }
+          if (shape.packing == 0) { value.posZ = value.posZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posZ < -16383 || value.posZ > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 7:
+      }
+      case -5382489739573192984: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(9);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.yaw = v;
-          value.yaw += 0;
+          if (shape.packing == 1) { value.yaw += shape.base; }
         }
         if (value.yaw > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 8:
+      }
+      case 6028620492700434865: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(9);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.pitch = v;
-          value.pitch += 0;
+          if (shape.packing == 1) { value.pitch += shape.base; }
         }
         if (value.pitch > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 9:
+      }
+      case 7849183398884077159: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velX = v;
-          value.velX += -2048;
-          value.velX = value.velX.toSigned(32);
+          if (shape.packing == 1) { value.velX += shape.base; }
+          if (shape.packing == 0) { value.velX = value.velX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velX < -2048 || value.velX > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 10:
+      }
+      case 7849182299372448948: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velY = v;
-          value.velY += -2048;
-          value.velY = value.velY.toSigned(32);
+          if (shape.packing == 1) { value.velY += shape.base; }
+          if (shape.packing == 0) { value.velY = value.velY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velY < -2048 || value.velY > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 11:
+      }
+      case 7849185597907333581: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velZ = v;
-          value.velZ += -2048;
-          value.velZ = value.velZ.toSigned(32);
+          if (shape.packing == 1) { value.velZ += shape.base; }
+          if (shape.packing == 0) { value.velZ = value.velZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velZ < -2048 || value.velZ > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 12:
+      }
+      case 9181103189905877455: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(10);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.health = v;
-          value.health += 0;
-          value.health = value.health.toSigned(32);
+          if (shape.packing == 1) { value.health += shape.base; }
+          if (shape.packing == 0) { value.health = value.health.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.health < 0 || value.health > 1000) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 13:
+      }
+      case -6866282850657997311: {
+        if (entry.kind != 30 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final ref = r.bits.get(tableMessageRefBits);
+          final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if (ref == 0) { value.weapon = TableWeapon.none; } else {
-            switch (ref) {
-              case 53: value.weapon = TableWeapon.fists; break;
-              case 54: value.weapon = TableWeapon.pistol; break;
-              case 55: value.weapon = TableWeapon.shotgun; break;
-              case 56: value.weapon = TableWeapon.rifle; break;
-              case 57: value.weapon = TableWeapon.sniper; break;
-              case 58: value.weapon = TableWeapon.smg; break;
-              case 59: value.weapon = TableWeapon.rocket; break;
-              case 60: value.weapon = TableWeapon.grenade; break;
-              case 61: value.weapon = TableWeapon.plasma; break;
-              case 62: value.weapon = TableWeapon.railgun; break;
-              case 63: value.weapon = TableWeapon.flamer; break;
-              case 64: value.weapon = TableWeapon.mine; break;
-              case 65: value.weapon = TableWeapon.turret; break;
-              case 66: value.weapon = TableWeapon.drone; break;
-              case 67: value.weapon = TableWeapon.repair; break;
-              default:
-                if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {
-                  r.report.Damage();
-                  return false;
-                }
-                value.weapon = TableWeapon.none; r.report.unknown++;
-                break;
+            if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+            final named = r.vocabulary.entries[ref - 1];
+            if (tableMessageReservedId(named.id) || named.kind != 0) { r.report.Damage(); return false; }
+            switch (named.id) {
+              case -6372330821933150452: value.weapon = TableWeapon.fists; break;
+              case -6935561395390217098: value.weapon = TableWeapon.pistol; break;
+              case 1768712988339112597: value.weapon = TableWeapon.shotgun; break;
+              case 3185847833948484337: value.weapon = TableWeapon.rifle; break;
+              case 912176952613754358: value.weapon = TableWeapon.sniper; break;
+              case -7467029643251279282: value.weapon = TableWeapon.smg; break;
+              case 2494154474894420565: value.weapon = TableWeapon.rocket; break;
+              case 80074449652715421: value.weapon = TableWeapon.grenade; break;
+              case -8505234340531936929: value.weapon = TableWeapon.plasma; break;
+              case -8250835097599916951: value.weapon = TableWeapon.railgun; break;
+              case -2752528626751932394: value.weapon = TableWeapon.flamer; break;
+              case 350179810443481718: value.weapon = TableWeapon.mine; break;
+              case 3883575963473318423: value.weapon = TableWeapon.turret; break;
+              case 3226873318306908209: value.weapon = TableWeapon.drone; break;
+              case 2358437193313989428: value.weapon = TableWeapon.repair; break;
+              default: value.weapon = TableWeapon.none; r.report.unknown++; break;
             }
           }
         }
         break;
-      case 14:
+      }
+      case 9179190079975030720: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         break;
-      case 15:
+      }
+      case 1271228688681418151: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.moving = v;
         }
         break;
-      case 16:
+      }
+      case 8535675692938965450: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.firing = v;
         }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (tableMessageReservedId(named)) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3372,48 +3471,51 @@ bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
   initTableStat(value);
   r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    if (r.vocabulary.announced) {
-      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
-      final named = r.vocabulary.entries[ref - 1].id;
-      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHasId(named)) { r.report.Damage(); return false; }
-      r.seenAdd(ref);
-    }
-    switch (ref) {
-      case 51:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -9175110139929313435: {
+        if (entry.kind != 6 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(8);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.statId = v;
-          value.statId += 0;
+          if (shape.packing == 1) { value.statId += shape.base; }
         }
         if (value.statId > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 52:
+      }
+      case 5910805692604981441: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(10);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.delta = v;
-          value.delta += -512;
-          value.delta = value.delta.toSigned(32);
+          if (shape.packing == 1) { value.delta += shape.base; }
+          if (shape.packing == 0) { value.delta = value.delta.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.delta < -512 || value.delta > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (tableMessageReservedId(named)) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3447,65 +3549,79 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
   initTableHitEvent(value);
   r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    if (r.vocabulary.announced) {
-      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
-      final named = r.vocabulary.entries[ref - 1].id;
-      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHasId(named)) { r.report.Damage(); return false; }
-      r.seenAdd(ref);
-    }
-    switch (ref) {
-      case 17:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -5207116919359778736: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.targetId = v;
-          value.targetId += 0;
+          if (shape.packing == 1) { value.targetId += shape.base; }
         }
         if (value.targetId > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 18:
+      }
+      case 9179190079975030720: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.damage = v;
-          value.damage += 0;
-          value.damage = value.damage.toSigned(32);
+          if (shape.packing == 1) { value.damage += shape.base; }
+          if (shape.packing == 0) { value.damage = value.damage.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.damage < 0 || value.damage > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 19:
+      }
+      case 142922654710085925: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(3);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hitKind = v;
-          value.hitKind += 0;
-          value.hitKind = value.hitKind.toSigned(32);
+          if (shape.packing == 1) { value.hitKind += shape.base; }
+          if (shape.packing == 0) { value.hitKind = value.hitKind.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.hitKind < 0 || value.hitKind > 7) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 20:
+      }
+      case 1324453635955533101: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crit = v;
         }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (tableMessageReservedId(named)) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3531,48 +3647,51 @@ bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
   initTableChatEvent(value);
   r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    if (r.vocabulary.announced) {
-      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
-      final named = r.vocabulary.entries[ref - 1].id;
-      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHasId(named)) { r.report.Damage(); return false; }
-      r.seenAdd(ref);
-    }
-    switch (ref) {
-      case 1:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -6556890747741999708: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(2);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.channel = v;
-          value.channel += 0;
-          value.channel = value.channel.toSigned(32);
+          if (shape.packing == 1) { value.channel += shape.base; }
+          if (shape.packing == 0) { value.channel = value.channel.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.channel < 0 || value.channel > 3) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 2:
+      }
+      case -292263051557875678: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.speaker = v;
-          value.speaker += 0;
+          if (shape.packing == 1) { value.speaker += shape.base; }
         }
         if (value.speaker > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (tableMessageReservedId(named)) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3601,48 +3720,51 @@ bool tablePickupEventLoadMessageBody(
   initTablePickupEvent(value);
   r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    if (r.vocabulary.announced) {
-      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
-      final named = r.vocabulary.entries[ref - 1].id;
-      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHasId(named)) { r.report.Damage(); return false; }
-      r.seenAdd(ref);
-    }
-    switch (ref) {
-      case 49:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -7025667724851298986: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(10);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.itemId = v;
-          value.itemId += 0;
+          if (shape.packing == 1) { value.itemId += shape.base; }
         }
         if (value.itemId > 1023) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 50:
+      }
+      case -9145686598410475159: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(8);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.amount = v;
-          value.amount += 0;
-          value.amount = value.amount.toSigned(32);
+          if (shape.packing == 1) { value.amount += shape.base; }
+          if (shape.packing == 0) { value.amount = value.amount.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.amount < 0 || value.amount > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (tableMessageReservedId(named)) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3904,94 +4026,156 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
   initTableMixed(value);
   r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    if (r.vocabulary.announced) {
-      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
-      final named = r.vocabulary.entries[ref - 1].id;
-      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHasId(named)) { r.report.Damage(); return false; }
-      r.seenAdd(ref);
-    }
-    switch (ref) {
-      case 21:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case 7663561793681298941: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(16);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.protocolMagic = v;
+          if (shape.packing == 1) { value.protocolMagic += shape.base; }
         }
         break;
-      case 22:
+      }
+      case -6181000666011064152: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(16);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.sequence = v;
-          value.sequence += 0;
+          if (shape.packing == 1) { value.sequence += shape.base; }
         }
         if (value.sequence > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 23:
+      }
+      case 990229364654832702: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(16);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ackSequence = v;
-          value.ackSequence += 0;
-          value.ackSequence = value.ackSequence.toSigned(32);
+          if (shape.packing == 1) { value.ackSequence += shape.base; }
+          if (shape.packing == 0) { value.ackSequence = value.ackSequence.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.ackSequence < 0 || value.ackSequence > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 24:
+      }
+      case -7228825333587644925: {
+        if (entry.kind != 8 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(32);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ackBits = v;
-          value.ackBits += 0;
+          if (shape.packing == 1) { value.ackBits += shape.base; }
         }
         if (value.ackBits > 4294967295) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 25:
+      }
+      case -5199487799206016251: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(64);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.sessionId = v;
+          if (shape.packing == 1) { value.sessionId += shape.base; }
         }
         break;
-      case 26:
+      }
+      case 7889067272199050878: {
+        if (entry.kind != 8 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(32);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.clientId = v;
+          if (shape.packing == 1) { value.clientId += shape.base; }
         }
         break;
-      case 27:
+      }
+      case 8334276637232054488: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(63);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.nonce = v;
-          value.nonce += 1;
+          if (shape.packing == 1) { value.nonce += shape.base; }
         }
         if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000001 || (value.nonce ^ 0x8000000000000000) > 0xffffffffffffffff) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 28:
+      }
+      case 4534679873638431877: {
+        if (entry.kind != 5 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(41);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.worldTime = v;
-          value.worldTime += -1000000000000;
+          if (shape.packing == 1) { value.worldTime += shape.base; }
+          if (shape.packing == 0) { value.worldTime = value.worldTime.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.worldTime < -1000000000000 || value.worldTime > 1000000000000) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 29:
+      }
+      case 8916005070914257170: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(48);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.frameTick = v;
-          value.frameTick += 0;
+          if (shape.packing == 1) { value.frameTick += shape.base; }
         }
         if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 30:
+      }
+      case 4343163795393112518: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final index = r.bits.get(23);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4009,73 +4193,81 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.serverTime < 0.0 || value.serverTime > 65535.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 31:
+      }
+      case -7828083326636031446: {
+        if (entry.kind != 14 || shape.elem != 13) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          {
-            final v = r.bits.get(3) + 1;
+          var n = shape.min;
+          final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
+          if (countBits > 0) {
+            final raw = r.bits.get(countBits);
             if (r.bits.failed) { r.report.Damage(); return false; }
-            value.entitiesCount = v;
+            n = raw + shape.min;
           }
-            final kept = value.entitiesCount < 8 ? value.entitiesCount : 8;
-            if (kept != value.entitiesCount) { r.report.Refuse('count_over_bound'); return false; }
-            for (var i = 0; i < value.entitiesCount; i++) {
-              if (i < kept) {
-                {
-                  r.seenDepth++;
-                  final ok = tableEntityLoadMessageBody(r, value.entities[i]);
-                  r.seenDepth--;
-                  if (!ok) return false;
-                }
-              } else {
-                    final t = TableEntity();
-                  {
-                    r.seenDepth++;
-                    final ok = tableEntityLoadMessageBody(r, t);
-                    r.seenDepth--;
-                    if (!ok) return false;
-                  }
-              }
+          if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
+          if (n > 8) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i = 0; i < n; i++) {
+            {
+              r.seenDepth++;
+              final ok = tableEntityLoadMessageBody(r, value.entities[i]);
+              r.seenDepth--;
+              if (!ok) return false;
             }
-            value.entitiesCount = kept;
+          }
+          value.entitiesCount = n;
         }
         break;
-      case 32:
+      }
+      case -1268998401975805620: {
+        if (entry.kind != 14 || shape.elem != 13) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          {
-            final v = r.bits.get(7) + 0;
+          var n = shape.min;
+          final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
+          if (countBits > 0) {
+            final raw = r.bits.get(countBits);
             if (r.bits.failed) { r.report.Damage(); return false; }
-            value.statsCount = v;
+            n = raw + shape.min;
           }
-            final kept = value.statsCount < 80 ? value.statsCount : 80;
-            if (kept != value.statsCount) { r.report.Refuse('count_over_bound'); return false; }
-            for (var i = 0; i < value.statsCount; i++) {
-              if (i < kept) {
-                {
-                  r.seenDepth++;
-                  final ok = tableStatLoadMessageBody(r, value.stats[i]);
-                  r.seenDepth--;
-                  if (!ok) return false;
-                }
-              } else {
-                    final t = TableStat();
-                  {
-                    r.seenDepth++;
-                    final ok = tableStatLoadMessageBody(r, t);
-                    r.seenDepth--;
-                    if (!ok) return false;
-                  }
-              }
+          if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
+          if (n > 80) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i = 0; i < n; i++) {
+            {
+              r.seenDepth++;
+              final ok = tableStatLoadMessageBody(r, value.stats[i]);
+              r.seenDepth--;
+              if (!ok) return false;
             }
-            value.statsCount = kept;
+          }
+          value.statsCount = n;
         }
         break;
-      case 33:
+      }
+      case 3329809749115557776: {
+        if (entry.kind != 15 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final ref = r.bits.get(tableMessageRefBits);
+          final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if (ref == 0) { value.gameEvent.type = TableEventType.none; } else {
-            switch (ref) {
-              case 68:
+            if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+            final arm = r.vocabulary.entries[ref - 1];
+            if (tableMessageReservedId(arm.id) || arm.kind == 0) { r.report.Damage(); return false; }
+            final armShape = arm.shape;
+            if (armShape == null) { r.report.Damage(); return false; }
+            switch (arm.id) {
+              case 3707351006901076138: {
+                if (arm.kind != 13 || armShape.elem != 0) {
+                  if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+                  r.report.widened++;
+                }
                 value.gameEvent.type = TableEventType.hit;
                 {
                   r.seenDepth++;
@@ -4084,7 +4276,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
                   if (!ok) return false;
                 }
                 break;
-              case 69:
+      }
+              case -962770241226853237: {
+                if (arm.kind != 13 || armShape.elem != 0) {
+                  if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+                  r.report.widened++;
+                }
                 value.gameEvent.type = TableEventType.chat;
                 {
                   r.seenDepth++;
@@ -4093,7 +4290,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
                   if (!ok) return false;
                 }
                 break;
-              case 70:
+      }
+              case -6943525758045472923: {
+                if (arm.kind != 13 || armShape.elem != 0) {
+                  if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+                  r.report.widened++;
+                }
                 value.gameEvent.type = TableEventType.pickup;
                 {
                   r.seenDepth++;
@@ -4102,13 +4304,10 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
                   if (!ok) return false;
                 }
                 break;
+      }
               default:
-                if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {
-                  r.report.Damage();
-                  return false;
-                }
                 value.gameEvent.type = TableEventType.none; r.report.unknown++;
-                if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+                if (!tableMessageSkipEntry(r, arm)) {
                   r.report.Damage();
                   return false;
                 }
@@ -4117,19 +4316,41 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           }
         }
         break;
-      case 34:
-        if (!r.bits.align()) { r.report.Damage(); return false; }
-        for (var i = 0; i < 4; i++) {
-          {
-            final v = r.bits.get(8);
+      }
+      case 6294288958393922979: {
+        if (entry.kind != 14 || shape.elem != 6) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
+        {
+          var n = shape.min;
+          final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
+          if (countBits > 0) {
+            final raw = r.bits.get(countBits);
             if (r.bits.failed) { r.report.Damage(); return false; }
-            value.loadout[i] = v;
+            n = raw + shape.min;
+          }
+          if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
+          if (n > 4) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i = 0; i < n; i++) {
+            {
+              final bits = TableMessageShape.valueBits(shape.elem, shape.inner!);
+              final v = r.bits.get(bits);
+              if (r.bits.failed) { r.report.Damage(); return false; }
+              value.loadout[i] = v;
+              if (shape.inner!.packing == 1) { value.loadout[i] += shape.inner!.base; }
+            }
           }
         }
         break;
-      case 35:
+      }
+      case 1415871171432867950: {
+        if (entry.kind != 12 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final n = r.bits.get(4);
+          final n = r.bits.get(TableMessageShape.bitsRequired(shape.min, shape.max));
           if (r.bits.failed || !r.bits.align()) { r.report.Damage(); return false; }
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
@@ -4140,9 +4361,14 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.playerName.setRange(0, kept, r.bits.buffer, start);
         }
         break;
-      case 36:
+      }
+      case -3478843999652550171: {
+        if (entry.kind != 14 || shape.elem != 6) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final n = r.bits.get(5);
+          final n = r.bits.get(TableMessageShape.bitsRequired(shape.min, shape.max));
           if (r.bits.failed || !r.bits.align()) { r.report.Damage(); return false; }
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
@@ -4152,7 +4378,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.payload.setRange(0, kept, r.bits.buffer, start);
         }
         break;
-      case 37:
+      }
+      case -2616736631205226807: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final index = r.bits.get(8);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4170,7 +4401,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.aimX < -1.0 || value.aimX > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 38:
+      }
+      case -2616737730716855018: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final index = r.bits.get(8);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4188,7 +4424,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.aimY < -1.0 || value.aimY > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 39:
+      }
+      case -2616738830228483229: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final index = r.bits.get(8);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4206,7 +4447,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.aimZ < -1.0 || value.aimZ > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 40:
+      }
+      case -7138431908913683369: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final b = r.bits.get(32);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4216,8 +4462,19 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (r.bits.failed) { r.report.Damage(); return false; }
         break;
-      case 41:
-        {
+      }
+      case 6535842126802938884: {
+        if (entry.kind != 11 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 11))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
+        if (entry.kind == 10) {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
+          TableBitWriter._float32Words[0] = b;
+          value.drift = TableBitWriter._float32Cell[0];
+        } else {
           final b = r.bits.get(64);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
@@ -4225,23 +4482,42 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.drift = TableBitWriter._float64Cell[0];
         }
         break;
-      case 42:
+      }
+      case -6686572760759554282: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(64);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.wideKey = v;
+          if (shape.packing == 1) { value.wideKey += shape.base; }
         }
         break;
-      case 43:
+      }
+      case -3018575613315307966: {
+        if (entry.kind != 5 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(61);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.flux = v;
-          value.flux += -1000000000000000000;
+          if (shape.packing == 1) { value.flux += shape.base; }
+          if (shape.packing == 0) { value.flux = value.flux.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.flux < -1000000000000000000 || value.flux > 1000000000000000000) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 44:
+      }
+      case -4669986463835551831: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final index = r.bits.get(15);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4259,54 +4535,69 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.ping < 0.0 || value.ping > 250.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 45:
+      }
+      case 6200723483573899615: {
+        if (entry.kind != 8 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(24);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crcHint = v;
-          value.crcHint += 0;
+          if (shape.packing == 1) { value.crcHint += shape.base; }
         }
         if (value.crcHint > 16777215) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 46:
+      }
+      case -4574933642144545166: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          if (!(false)) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hasExtra = v;
         }
         break;
-      case 47:
+      }
+      case -204370544148493463: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(8);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.extra = v;
-          value.extra += 0;
-          value.extra = value.extra.toSigned(32);
+          if (shape.packing == 1) { value.extra += shape.base; }
+          if (shape.packing == 0) { value.extra = value.extra.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.extra < 0 || value.extra > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 48:
+      }
+      case 8651444298976115966: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(4);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.idleTicks = v;
-          value.idleTicks += 0;
-          value.idleTicks = value.idleTicks.toSigned(32);
+          if (shape.packing == 1) { value.idleTicks += shape.base; }
+          if (shape.packing == 0) { value.idleTicks = value.idleTicks.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.idleTicks < 0 || value.idleTicks > 15) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (tableMessageReservedId(named)) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
