@@ -3819,7 +3819,7 @@ tables-maps-sort-negative-control: bin/schema build/tables-generated/.stamp
 # compare against its pinned wire goes red while measure == save still holds.
 .PHONY: tables-maps-dead-entry-negative-control
 tables-maps-dead-entry-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,dead,'s@segment->dead\[ i / 32 \] |= 1u << ( i % 32 );@(void) i; // SABOTAGED@',internal/codegen/cpptable/maps.go,a dead entry riding on the wire left the map gate GREEN)
+	$(call map_negative_control,dead,'s@segment->dead\[i / 32\] |= 1u << ( i % 32 );@(void) i; // SABOTAGED@',internal/codegen/cpptable/maps.go,a dead entry riding on the wire left the map gate GREEN)
 
 # THE READER'S ASCENDING CHECK IS DROPPED. The SHUFFLED report row meets it,
 # and the row's damage verdict goes red: the strict read accepts it.
@@ -3860,7 +3860,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 		internal/codegen/cpptable/maps.go > build/map-clamp.gotext
 	@test "$$(grep -c SABOTAGED build/map-clamp.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in maps.go exactly once"; exit 1; }
-	@sed -e 's@len, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary@len, %d ); } // SABOTAGED: cut down, not refused@' \
+	@sed -e 's@len, %\[3\]d );\\n%\[1\]s    r.report->refused = true;\\n%\[1\]s    r.report->refuse_reason = out_of_range;\\n%\[1\]s} // at a code point boundary@len, %[3]d );\\n%[1]s} // SABOTAGED: cut down, not refused@' \
 		internal/codegen/cpptable/codecs.go > build/map-clamp-codecs.gotext
 	@test "$$(grep -c SABOTAGED build/map-clamp-codecs.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in codecs.go exactly once"; exit 1; }
