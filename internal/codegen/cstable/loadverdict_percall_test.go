@@ -10,6 +10,7 @@ package cstable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,9 +59,7 @@ func TestCSharpLoadVerdictPerCallNegativeControl(t *testing.T) {
 		t.Fatalf("unplanted tree: %v", err)
 	}
 	planted := make(map[string][]byte, len(files))
-	for name, data := range files {
-		planted[name] = data
-	}
+	maps.Copy(planted, files)
 	if err := csLoadVerdictPlantSharedReport(planted); err != nil {
 		t.Fatal(err)
 	}
