@@ -967,13 +967,18 @@ tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp 
 	@echo 'tables JS fixed slack negative control: writing the whole declared span reds the reference byte oracle'
 
 # THE UNION-ARM TEXT LANE'S OWN CONTROL: put the text flavour back where the
-# guard's value lives — the one line this defect was — and the gate must go red.
+# guard's value lives and the gate must go red.
 # A plan entry under a union arm carries the tag's OFFSET and the VALUE the tag
 # must hold; a text entry carries a flavour too, and the three are three facts.
 # Sharing a lane between the last two is invisible to every other gate in this
 # file, because the identity path reads a whole body as ONE copy and never
 # builds a text entry at all — so this control is what proves the pair is
 # watching.
+#
+# THE LANE IS WRITTEN IN TableFixedPush, from the guard chain: for a guarded
+# entry the chain's innermost link overwrites whatever arg the caller passed,
+# so the plant goes there (a text entry's guard value set to its flavour), not
+# at the text case's call site, where an arg no longer reaches the plan.
 #
 # THE GATE IT RUNS IS `tables-js-versioning`, not the byte driver: a text under a
 # union arm can only be watched across TWO GENERATIONS, and both of that pair's
@@ -984,7 +989,7 @@ tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp 
 .PHONY: tables-js-union-arm-text-negative-control
 tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
-	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
+	@sed 's|e\[b + TableFixedLaneArg\] = c\[inner + 1\];|e[b + TableFixedLaneArg] = op === TableFixedOpText ? meta : c[inner + 1]; // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
 	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not put the flavour in the guard's lane"; exit 1; }
