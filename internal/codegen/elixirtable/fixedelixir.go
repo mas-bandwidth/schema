@@ -833,7 +833,7 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	}
 }
 
-// readText is a string(N) or wstring(N): the length is held to this
+// readText is a string(N): the length is held to this
 // reader's bound, the used units are held to the CONTENT rule, and a payload
 // that is not the text its kind says it is REFUSES BY NAME (`text_ill_formed`,
 // §4.5 fix 11). bytes(N) does not come here.
