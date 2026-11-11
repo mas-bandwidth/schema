@@ -637,7 +637,7 @@ defmodule SchemaTestElixir do
 
     expect_raise(
       fn -> Example.Types.write_ship_create!(%{make_ship_create() | ship_type: 99}) end,
-      "enum headroom above the wire range must trip the writer contract"
+      "an enum value above the wire range must trip the writer contract"
     )
 
     # ---- flag_name / flag_names: per-bit names and the set renderer ----
@@ -663,7 +663,7 @@ defmodule SchemaTestElixir do
       "enum_name names a variant"
     )
 
-    check(Example.Wire.enum_name_weapon(15) == "???", "enum_name is headroom-safe")
+    check(Example.Wire.enum_name_weapon(16) == "???", "enum_name is out-of-range safe")
 
     # ============== THE BENCH CORPUS (BENCH-STANDARD.md §1.5) ==============
     # The same pinned instances test/bench/main.cpp authored into
