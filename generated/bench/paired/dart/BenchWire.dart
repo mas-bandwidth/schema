@@ -5616,6 +5616,9 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
 // every other number is a _JNum.
 dynamic _jsonDecodeExact(String text) {
   final p = _JParse(text);
+  // a leading U+FEFF is a byte-order mark (docs/SPEC-TABLES.md §16.2, §16.12):
+  // skipped once at the very start, and nowhere else.
+  if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) p.i = 1;
   p.ws();
   final v = p.value(0);
   p.ws();
