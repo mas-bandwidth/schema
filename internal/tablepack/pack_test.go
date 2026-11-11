@@ -236,6 +236,7 @@ func TestUnknownRootIsRefused(t *testing.T) {
 // the corpus asserts the standard's verdict here, and the harness gives the
 // uncarried verdict to the ports that have not taken it.
 func TestHostileValueCorpus(t *testing.T) {
+	t.Parallel()
 	const manifestPath = "../../testdata/conformance/tables/MANIFEST.txt"
 	manifest, err := os.ReadFile(manifestPath)
 	if err != nil {
