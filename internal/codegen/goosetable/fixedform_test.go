@@ -31,6 +31,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -384,6 +385,7 @@ func TestGooseFixedFormNegativeControl(t *testing.T) {
 // corpus: the record image is §3's table, not a second writer's opinion of
 // any one value.
 func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
+	slowtest.Gate(t, "the Goose toolchain")
 	t.Parallel()
 	var paths []string
 	for _, glob := range []string{"test/tables/*.schema", "tables/examples/*.schema"} {
