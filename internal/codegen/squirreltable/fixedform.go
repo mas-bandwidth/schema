@@ -106,6 +106,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 	emitFixedDeprecatedCheck(m, st)
 	emitFixedRead(m, st)
 	emitFixedWriteBody(m, st)
+	emitFixedCheckBody(m, st)
 	emitFixedDecodeBody(m, st)
 }
 
@@ -281,6 +282,16 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
+	// CHECK THE WHOLE BATCH BEFORE SEEKING OR WRITING THE CALLER'S BUFFER
+	// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1). FixedCheckBody
+	// reuses the body writer's guards against one private record buffer, so the
+	// checks and the stores cannot drift apart.
+	m.Printf("  local check = blob(_M.%sFixedRecord - 8);\n", st.Name)
+	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
+	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
+	m.Printf("    if (why == null) why = _M.%sFixedCheckBody(check, recs[k]);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
+	m.Printf("  }\n")
 	m.Printf("  local b = out;\n")
 	m.Printf("  b.seek(0);\n")
 	m.Printf("  b.writen(%d, 'b');\n", fixedFormByte)
@@ -417,6 +428,16 @@ func emitFixedWriteBody(m *Module, st *ir.Struct) {
 	// is invalid_value (docs/SPEC.md §5.1), the field named on FixedField
 	// (docs/SPEC-TABLES.md §3.3, §3.4)
 	m.Printf("  return null;\n")
+	m.Printf("};\n\n")
+}
+
+// emitFixedCheckBody runs the same guarded body writer used by FixedSave on a
+// private buffer. FixedSave reuses this buffer across the whole batch before it
+// seeks or writes the caller's output, so a refused record cannot leave a
+// prefix, header, layout or template in that output.
+func emitFixedCheckBody(m *Module, st *ir.Struct) {
+	m.Printf("_M.%sFixedCheckBody <- function(check, v) {\n", st.Name)
+	m.Printf("  return _M.%sFixedWriteBody(check, 0, v);\n", st.Name)
 	m.Printf("};\n\n")
 }
 

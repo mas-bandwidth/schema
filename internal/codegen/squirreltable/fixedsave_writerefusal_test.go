@@ -59,6 +59,14 @@ same = function(a, b) {
 };
 local nan = casti2f(0x7ff8000000000000);
 local inf = casti2f(0x7ff0000000000000);
+local sentinel = 0x5a;
+local fillSentinel = function(b) {
+  for (local i = 0; i < b.len(); i++) b[i] = sentinel;
+};
+local isSentinel = function(b) {
+  for (local i = 0; i < b.len(); i++) if (b[i] != sentinel) return false;
+  return true;
+};
 local rows = [
   // row 1: a ranged integer off its min/max
   ["r_over", false, function(r) { r.R = 99; }, null],
@@ -119,9 +127,10 @@ foreach (row in rows) {
     local r = T.Rec();
     row[2](r);
     local out = blob(1024);
+    fillSentinel(out);
     local n = T.RecFixedSave(out, [r]);
     if (n < 0) {
-      verdict = "refused";
+      verdict = isSentinel(out) ? "refused" : "changed";
     } else if (!row[1]) {
       verdict = "wrote";
     } else {
@@ -138,6 +147,15 @@ foreach (row in rows) {
   }
   print(row[0] + "=" + verdict + "\n");
 }
+// A valid first record followed by a refused record must not expose the
+// prefix, header or layout in the caller's buffer.
+local first = T.Rec(); first.R = 10;
+local second = T.Rec(); second.R = 99;
+local batchOut = blob(1024);
+fillSentinel(batchOut);
+local batchN = T.RecFixedSave(batchOut, [first, second]);
+local batchVerdict = batchN < 0 && isSentinel(batchOut) ? "refused" : "changed";
+print("batch_late=" + batchVerdict + "\n");
 `
 
 // TestSquirrelFixedSaveRefusesOffContract holds docs/SPEC.md §5.1 for the
@@ -238,10 +256,11 @@ func TestSquirrelFixedSaveRefusesOffContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		lines := strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "probe.nut", nil)), "\n"), "\n")
-		if len(lines) != strings.Count(fixedSaveRefusalProbe, "\n  [\"") {
-			t.Fatalf("the probe answered %d rows, want %d:\n%s", len(lines), strings.Count(fixedSaveRefusalProbe, "\n  [\""), strings.Join(lines, "\n"))
+		wantLines := strings.Count(fixedSaveRefusalProbe, "\n  [\"") + 1 // the late-invalid batch
+		if len(lines) != wantLines {
+			t.Fatalf("the probe answered %d rows, want %d:\n%s", len(lines), wantLines, strings.Join(lines, "\n"))
 		}
-		for _, line := range lines {
+		for _, line := range lines[:len(lines)-1] {
 			name, verdict, _ := strings.Cut(line, "=")
 			want := "refused"
 			if strings.Contains(fixedSaveRefusalProbe, "[\""+name+"\", true,") {
@@ -250,6 +269,9 @@ func TestSquirrelFixedSaveRefusesOffContract(t *testing.T) {
 			if verdict != want {
 				t.Errorf("%s: RecFixedSave answered %q, want %q", name, verdict, want)
 			}
+		}
+		if got := lines[len(lines)-1]; got != "batch_late=refused" {
+			t.Errorf("late invalid record changed the caller's buffer: got %q, want batch_late=refused", got)
 		}
 	})
 }
