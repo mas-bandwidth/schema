@@ -188,7 +188,7 @@ func TestGoT17P1(t *testing.T) {
 	RootReset(&co)
 	rc = TableReport{}
 	record := buf[len(buf)-RootFixedRecordBytes:]
-	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), &rc)
+	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), nil, &rc)
 	if !RootFixedBounds(&co) {
 		t.Fatalf("P1: the compiled record is out of bounds: %+v", co)
 	}

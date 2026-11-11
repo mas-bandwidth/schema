@@ -298,7 +298,7 @@ func TestP4(t *testing.T) {
 	AReset(&good)
 	var r TableReport
 	dst := tableFixedOverlay(unsafe.Pointer(&good), unsafe.Sizeof(good))
-	tableFixedRun(AFixedPlan.Entries, AFixedPlan.Count, body, dst, &r)
+	tableFixedRun(AFixedPlan.Entries, AFixedPlan.Count, body, dst, nil, &r)
 	right := good.Lead == 0xAABBCCDD && good.X == 111 && good.Y == 222 && good.Trail == 0x11223344
 	if !right {
 		t.Fatalf("P4: the RIGHT plan did not reproduce the record: %+v", good)
@@ -308,7 +308,7 @@ func TestP4(t *testing.T) {
 	AReset(&wrong)
 	var r2 TableReport
 	dst2 := tableFixedOverlay(unsafe.Pointer(&wrong), unsafe.Sizeof(wrong))
-	tableFixedRun(BFixedPlan.Entries, BFixedPlan.Count, body, dst2, &r2)
+	tableFixedRun(BFixedPlan.Entries, BFixedPlan.Count, body, dst2, nil, &r2)
 	bad := wrong.Lead == 0xAABBCCDD && wrong.X == 111 && wrong.Y == 222 && wrong.Trail == 0x11223344
 	if bad {
 		t.Fatalf("P4: the WRONG plan reproduced the record: %+v", wrong)

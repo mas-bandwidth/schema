@@ -1389,7 +1389,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE RUN SEES ONE RECORD (§5.2). Handed `at[8:]` it saw every byte to the
 	// END OF THE FILE, so an entry past the writer's record read the NEXT
 	// record's bytes instead of being caught.
-	g.pf("\t\tif why := tableFixedRunDefaults(entries, entryCount, at[8:recordBytes], dst, defBytes, report); why != \"\" {\n")
+	g.pf("\t\tif why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, defBytes, report); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {

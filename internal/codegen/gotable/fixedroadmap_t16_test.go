@@ -194,7 +194,7 @@ func TestT16OrdinalLanes(t *testing.T) {
 	RootReset(&co)
 	var rr TableReport
 	dst := tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co))
-	if why := tableFixedRun(plan, made, t16Body(), dst, &rr); why != "" { t.Fatalf("run: %s", why) }
+	if why := tableFixedRun(plan, made, t16Body(), dst, nil, &rr); why != "" { t.Fatalf("run: %s", why) }
 	if co.Many != Manyv299 { t.Fatalf("many landed %d, want the reader ordinal of writer variant 300 (Manyv299)", int(co.Many)) }
 	if co.Pick.Type != PickTypeA299 { t.Fatalf("pick tag landed %d, want the reader's arm a299", int(co.Pick.Type)) }
 	if co.Pick.A299.N != 777 { t.Fatalf("pick payload landed %d, want 777", co.Pick.A299.N) }
@@ -214,7 +214,7 @@ func TestT16OrdinalLanes(t *testing.T) {
 		RootReset(&fo)
 		var fr TableReport
 		fdst := tableFixedOverlay(unsafe.Pointer(&fo), unsafe.Sizeof(fo))
-		if why := tableFixedRun(plan, made, body, fdst, &fr); why != "out_of_range" { t.Fatalf("forged ordinal 301: run %q, want out_of_range", why) }
+		if why := tableFixedRun(plan, made, body, fdst, nil, &fr); why != "out_of_range" { t.Fatalf("forged ordinal 301: run %q, want out_of_range", why) }
 		if fo.Many != ManyNone { t.Fatalf("forged ordinal 301 landed %d", int(fo.Many)) }
 	}
 
@@ -227,17 +227,17 @@ func TestT16OrdinalLanes(t *testing.T) {
 	odst := make([]byte, 8)
 	var orr TableReport
 	binary.LittleEndian.PutUint64(osrc, 4294967297)
-	if why := tableFixedRun(oc.plan, 1, osrc, odst, &orr); why != "out_of_range" {
+	if why := tableFixedRun(oc.plan, 1, osrc, odst, nil, &orr); why != "out_of_range" {
 		t.Fatalf("the 8-byte ordinal 0x1_0000_0001 ran %q, want out_of_range: the temporary truncated", why)
 	}
 	binary.LittleEndian.PutUint64(osrc, 70000)
 	odst = make([]byte, 8)
-	if why := tableFixedRun(oc.plan, 1, osrc, odst, &orr); why != "out_of_range" {
+	if why := tableFixedRun(oc.plan, 1, osrc, odst, nil, &orr); why != "out_of_range" {
 		t.Fatalf("the 8-byte ordinal 70000 (past 65535) ran %q, want out_of_range", why)
 	}
 	binary.LittleEndian.PutUint64(osrc, 2)
 	odst = make([]byte, 8)
-	tableFixedRun(oc.plan, 1, osrc, odst, &orr)
+	tableFixedRun(oc.plan, 1, osrc, odst, nil, &orr)
 	if v := binary.LittleEndian.Uint64(odst); v != 2 {
 		t.Fatalf("the 8-byte ordinal 2 landed %d, want 2", v)
 	}
@@ -251,11 +251,11 @@ func TestT16OrdinalLanes(t *testing.T) {
 	entry := TableFixedEntry{Src: 16, Dst: 0, Size: 4, Guard: 0, Arg: 4294967297, ArgW: 8, Guard2: 8, Arg2: 4294967297, ArgW2: 8, Op: tableFixedCopy}
 	out := make([]byte, 4)
 	var lr TableReport
-	tableFixedRun([]TableFixedEntry{entry}, 1, src, out, &lr)
+	tableFixedRun([]TableFixedEntry{entry}, 1, src, out, nil, &lr)
 	if binary.LittleEndian.Uint32(out) != 0x07070707 { t.Fatalf("the full-width lanes did not fire together: %x", out) }
 	entry.Arg = 1
 	out = make([]byte, 4)
-	tableFixedRun([]TableFixedEntry{entry}, 1, src, out, &lr)
+	tableFixedRun([]TableFixedEntry{entry}, 1, src, out, nil, &lr)
 	if binary.LittleEndian.Uint32(out) != 0 { t.Fatalf("the truncated lane 1 fired on the full-width tag: %x", out) }
 
 	// A WRITER PAST THE LENGTH WORD IS REFUSED AT COMPILE (§5.8 row 14):

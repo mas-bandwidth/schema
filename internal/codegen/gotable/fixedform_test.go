@@ -87,8 +87,8 @@ fixed table Point {
 	if !strings.Contains(fixedLoad, "PointFixedResetImage") {
 		t.Error("the load does not prefill from the laid-once default image (§4.3)")
 	}
-	if !strings.Contains(fixedLoad, "tableFixedRunDefaults(") {
-		t.Error("FixedLoad does not walk the winning plan over the reset image")
+	if !strings.Contains(fixedLoad, "tableFixedRun(") {
+		t.Error("FixedLoad does not walk the winning plan")
 	}
 	if strings.Contains(body, "PointFixedClamp") {
 		t.Error("a type that declares nothing bounded must not emit a clamp pass")
@@ -1242,7 +1242,7 @@ func TestHostileByteSweep(t *testing.T) {
 		binary.LittleEndian.PutUint32(body[plan[small].Src:], 2147483647)
 		dst := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
 		var r TableReport
-		tableFixedRun(plan, int32(len(plan)), body, dst, &r)
+		tableFixedRun(plan, int32(len(plan)), body, dst, nil, &r)
 		if v.Small != 2147483647 {
 			t.Fatalf("CONTROL 2 FAILED: the loop alone landed small=%d, not the planted out-of-bound value", v.Small)
 		}
@@ -1408,7 +1408,7 @@ func TestOldArgLaneControl(t *testing.T) {
 	var got Reader
 	ReaderReset(&got)
 	record := buf[len(buf)-WriterFixedRecordBytes:]
-	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), nil, &r)
 	if got.Pick.Type != PickTypeB || string(got.Pick.B.S[:got.Pick.B.SLength]) != "hi" {
 		t.Fatalf("split itself is not in: arm %d %q %+v", got.Pick.Type, got.Pick.B.S[:got.Pick.B.SLength], r)
 	}
@@ -1433,7 +1433,7 @@ func TestOldArgLaneControl(t *testing.T) {
 	got = Reader{}
 	ReaderReset(&got)
 	r = TableReport{}
-	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), nil, &r)
 	landed := string(got.Pick.B.S[:got.Pick.B.SLength])
 	if landed == "hi" {
 		t.Fatal("NEGATIVE CONTROL FAILED: flavour in Arg, Meta unused still landed the string under union arm 2; the old lane stayed green")
@@ -1752,7 +1752,7 @@ func TestRecordBound(t *testing.T) {
 	body[9] = 'i'
 	var v Host
 	HostReset(&v)
-	tableFixedRun(bplan, bmade, body, tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &br)
+	tableFixedRun(bplan, bmade, body, tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), nil, &br)
 	if v.Keep != 4242 || v.LabelLength != 2 || v.Label[0] != 'h' || v.Label[1] != 'i' {
 		t.Fatalf("W10: the bound admits the last byte of the record: %+v", v)
 	}
@@ -2418,7 +2418,7 @@ func TestWrongPlanGoesRed(t *testing.T) {
     FxOldReset(&wrong)
     var rr TableReport
     tableFixedRun(FxOldFixedPlan.Entries, FxOldFixedPlan.Count, body[8:],
-        tableFixedOverlay(unsafe.Pointer(&wrong), unsafe.Sizeof(wrong)), &rr)
+        tableFixedOverlay(unsafe.Pointer(&wrong), unsafe.Sizeof(wrong)), nil, &rr)
     intact := wrong.Renamed == two.RenamedTo &&
         wrong.Nested.A == two.Nested.A && wrong.Nested.B == two.Nested.B
     if intact {
@@ -2599,7 +2599,7 @@ func TestBytesRow(t *testing.T) {
         var back Probe
         ProbeReset(&back)
         r := TableReport{}
-        tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&back), unsafe.Sizeof(back)), &r)
+        tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&back), unsafe.Sizeof(back)), nil, &r)
         right := back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF
         if pass == 0 {
             if !right { t.Fatalf("BYTES(N): the array row must land the buffer in the buffer and the length in the length: %+v", back) }
@@ -2740,7 +2740,7 @@ func TestDuplicateStaysZero(t *testing.T) {
 	var v Root
 	RootReset(&v)
 	record := buf[len(buf)-RootFixedRecordBytes:]
-	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &rr)
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), nil, &rr)
 	if rr.Refused() {
 		t.Fatalf("duplicate raised on the compiled fixed read: %d (the fixed form raises all §4 counters but duplicate)", rr.Refusal)
 	}
@@ -3029,7 +3029,7 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 	RootReset(&co)
 	rc = TableReport{}
 	record := buf[len(buf)-RootFixedRecordBytes:]
-	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), &rc)
+	tableFixedRun(cplan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&co), unsafe.Sizeof(co)), nil, &rc)
 	if !RootFixedBounds(&co) {
 		t.Fatalf("P1: the compiled record is out of bounds: %+v", co)
 	}

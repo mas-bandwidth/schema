@@ -160,7 +160,7 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	for _, h := range tableFixedHoles(compiled, count, uint32(len(TFixedResetImage))) {
 		copy(dst[h.Off:h.Off+h.Size], TFixedResetImage[h.Off:h.Off+h.Size])
 	}
-	if why := tableFixedRun(compiled, count, body, dst, &compiledReport); why != "" {
+	if why := tableFixedRun(compiled, count, body, dst, nil, &compiledReport); why != "" {
 		t.Fatalf("compiled plan run: %s", why)
 	}
 	assertDeprecatedDefaults(t, *lineage)

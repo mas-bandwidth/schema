@@ -509,17 +509,12 @@ func tableFixedCopyNative(d, s []byte, size, lane uint32) {
 	}
 }
 
-// tableFixedRun is the run without a reset image: a present-defaults entry
-// leaves the storage under an absent payload as the caller prefilled it.
-func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
-	return tableFixedRunDefaults(plan, count, src, dst, nil, report)
-}
-
-// tableFixedRunDefaults is THE ONE READ (docs/FIXED-FORM-ALGORITHM.md §4.4).
-// defaults is the record's reset image, laid over the same storage as dst: an
-// absent optional's payload lands from it, never from the record's bytes
-// (docs/SPEC-TABLES.md §4.4).
-func tableFixedRunDefaults(plan []TableFixedEntry, count int32, src, dst, defaults []byte, report *TableReport) string {
+// tableFixedRun is THE ONE READ (docs/FIXED-FORM-ALGORITHM.md §4.4). defaults
+// is the record's reset image, laid over the same storage as dst: an absent
+// optional's payload lands from it, never from the record's bytes
+// (docs/SPEC-TABLES.md §4.4). A nil image leaves that storage as the caller
+// prefilled it.
+func tableFixedRun(plan []TableFixedEntry, count int32, src, dst, defaults []byte, report *TableReport) string {
 	// REFUSE is total even for direct callers of the runner: the generated load
 	// performs this pre-scan too, but the compiled-plan tests and any future
 	// internal caller must not observe the old clamp-and-write path.
