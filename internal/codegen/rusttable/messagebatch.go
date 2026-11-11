@@ -1071,12 +1071,26 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 }
                 return r.skip(n * w);
             }
-            for _ in 0..n {
+            for i in 0..n {
                 if e.kind == 16 && !r.skip(v.ref_bits as u64) {
                     return false;
                 }
+                let at = r.offset;
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
+                }
+                // A WALKED ELEMENT THAT CONSUMED NO BITS — a nested array
+                // whose inner run is itself zero-width — is the same run in a
+                // shape the arithmetic above cannot see (§3.3). Every element
+                // after it consumes nothing too, so the rest of the run is
+                // stepped in one, and a remaining count the bits left could
+                // not back is damage. The walk is bounded by the batch's bits
+                // whatever the count says.
+                if r.offset == at {
+                    if n - i - 1 > (r.buffer.len() as u64) * 8 - r.offset {
+                        return false;
+                    }
+                    return true;
                 }
             }
             true
