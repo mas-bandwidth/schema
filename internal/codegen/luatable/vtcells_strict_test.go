@@ -18,10 +18,11 @@ package luatable
 //	enum-keyed-arrays an enum-keyed body with L 1, which carries no count
 //	maps              a map body with L 1, which carries no count
 //	variable-class    a node record no pointer reaches, a node table
-//	                  twice, and a node table an unknown field carries
-//	                  whose record's type ref is 0
+//	                  twice, a node table an unknown field carries whose
+//	                  record's type ref is 0, and a node record with bytes
+//	                  after its terminator inside its L
 //
-// The ten vectors are exactly luaWireCheckOnly: the walk reads them and
+// The eleven vectors are exactly luaWireCheckOnly: the walk reads them and
 // only the wire-alone check refuses them, so the negative control below
 // switches that check off in the generated load.lua (the real artifact)
 // and requires every vector of every cell to read again, and no other
@@ -43,7 +44,7 @@ var luaVTFramingCells = []struct {
 	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference"}},
 	{"maps", []string{"map_L1_inert"}},
 	{"unbounded-arrays", []string{"array_L0_inert", "array_L1_inert"}},
-	{"variable-class", []string{"node_index_null", "node_table_twice", "node_unknown_to_fixed_reader"}},
+	{"variable-class", []string{"node_index_null", "node_table_twice", "node_unknown_to_fixed_reader", "node_record_bytes_after_terminator"}},
 }
 
 // luaVTFramingPins answers the manifest verdict of every vector the five

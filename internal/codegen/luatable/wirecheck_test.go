@@ -6,9 +6,10 @@ package luatable
 // to the wire's own rules, the bytes its walk skips or reads last-wins
 // included. The framing surface's vectors (docs/LAYERS/1-framing.md) are the
 // rows: each verdict in the manifest was derived from the law, never from a
-// leg, and the strict load must answer it. Ten of them (a repeated field id,
-// an array, keyed or map body with L 0 or 1, unknown field bodies, an
-// unreached node record, a node table twice) are refused by the check alone:
+// leg, and the strict load must answer it. Eleven of them (a repeated field
+// id, an array, keyed or map body with L 0 or 1, unknown field bodies, an
+// unreached node record, a node table twice, bytes after a node record's
+// terminator inside its L) are refused by the check alone:
 // with the check switched off the walk reads them, which is the negative
 // control.
 
@@ -44,6 +45,7 @@ var luaWireCheckOnly = []string{
 	"array_L0_inert", "array_L1_inert", "frame_repeat_last_wins",
 	"frame_unknown_id_length", "frame_unknown_id_reference", "keyed_L1_inert",
 	"map_L1_inert", "node_index_null", "node_table_twice", "node_unknown_to_fixed_reader",
+	"node_record_bytes_after_terminator",
 }
 
 type luaFramingRow struct {
