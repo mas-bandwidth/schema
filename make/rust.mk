@@ -933,10 +933,10 @@ tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp bu
 	cd test/rust-agree && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
 	./test/rust-agree/target/debug/rust-agree
 
-tables-rust-accessor-negative-control: bin/schema
+tables-rust-accessor-negative-control: bin/schema build/cook-fuzz/.stamp
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control accessor
 
-tables-rust-slot-negative-control: bin/schema
+tables-rust-slot-negative-control: bin/schema build/cook-fuzz/.stamp
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control slot
 
 test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
