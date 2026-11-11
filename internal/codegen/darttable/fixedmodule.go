@@ -93,6 +93,9 @@ type fixedModule struct {
 	imports  map[string]map[string]bool
 	gen      fixedGen
 	body     strings.Builder
+	// msgLoops is how many array loops enclose the message-form code being
+	// emitted inside one body function (msgLoopVar)
+	msgLoops int
 }
 
 func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase string,

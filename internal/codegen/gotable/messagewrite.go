@@ -80,10 +80,24 @@ func messageElement(f *ir.Field) *ir.Field {
 	return &e
 }
 func (g *tableGen) emitMessageKeyedCount(f *ir.Field, expr, ind string) {
-	g.pf("%spairs:=uint64(0);for i:=range %s {\n", ind, expr)
+	iv := g.msgLoopVar()
+	g.pf("%spairs:=uint64(0);for %s:=range %s {\n", ind, iv, expr)
 	e := messageElement(f)
-	cond := g.emitMessageRides(e, expr+"[i]", ind+"\t")
+	g.msgLoops++
+	cond := g.emitMessageRides(e, expr+"["+iv+"]", ind+"\t")
+	g.msgLoops--
 	g.pf("%sif %s {pairs++}\n%s}\n", ind, cond, ind)
+}
+
+// msgLoopVar names the loop variable at the current depth of a message body:
+// `i` at the top, then i1, i2, ... A union element's array arm is written
+// INLINE inside the element's loop, and its member is reached through the
+// element's index, so an inner loop never takes the same name.
+func (g *tableGen) msgLoopVar() string {
+	if g.msgLoops == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.msgLoops)
 }
 func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	g.emitStorageCheck(f, expr, ind)
@@ -108,13 +122,16 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		if f.KeyEnum != "" {
 			loopcount = fmt.Sprint(f.ArrayBound)
 		}
-		g.pf("%sfor i := range int(%s) {\n", ind, loopcount)
+		iv := g.msgLoopVar()
+		g.pf("%sfor %s := range int(%s) {\n", ind, iv, loopcount)
+		g.msgLoops++
 		e := messageElement(f)
 		if f.KeyEnum != "" {
-			cond := g.emitMessageRides(e, expr+"[i]", ind+"\t")
-			g.pf("%sif !(%s){continue};id,named:=%s(i+1).TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)\n", ind, cond, f.KeyEnum)
+			cond := g.emitMessageRides(e, expr+"["+iv+"]", ind+"\t")
+			g.pf("%sif !(%s){continue};id,named:=%s(%s+1).TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)\n", ind, cond, f.KeyEnum, iv)
 		}
-		g.emitMessageValue(e, ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}, expr+"[i]", ind+"\t")
+		g.emitMessageValue(e, ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}, expr+"["+iv+"]", ind+"\t")
+		g.msgLoops--
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		// THE WRITE-SIDE TEXT RULE REACHES THE MESSAGE FORM TOO (docs/SPEC.md

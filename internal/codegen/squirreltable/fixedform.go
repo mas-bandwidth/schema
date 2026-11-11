@@ -437,7 +437,7 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 		// slack, so the declared bound IS the loop.
 		count := fmt.Sprintf("%d", f.KeyEnumRef.Max)
 		m.Printf("%sfor (local i = 0; i < %s; i++) {\n", ind, count)
-		fixedEmitWriteElement(m, f, at, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		fixedEmitWriteElement(m, f, at, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)), 1)
 		m.Printf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
@@ -455,13 +455,24 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 			base += fixedCountBytes
 		}
 		m.Printf("%sfor (local i = 0; i < %s; i++) {\n", ind, count)
-		fixedEmitWriteElement(m, f, base, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)))
+		fixedEmitWriteElement(m, f, base, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)), 1)
 		m.Printf("%s}\n", ind)
 	case fixedIsText(f):
-		fixedEmitWriteText(m, f, fmt.Sprint(at), expr, ind)
+		fixedEmitWriteText(m, f, fmt.Sprint(at), expr, ind, 0)
 	default:
-		fixedEmitWriteElement(m, f, at, expr, ind, "0")
+		fixedEmitWriteElement(m, f, at, expr, ind, "0", 0)
 	}
+}
+
+// fixedLoopVar names the loop variable at a nesting depth inside one body: `i`
+// at the top, then i1, i2, ... A union element's array or text arm is walked
+// INLINE inside the element's loop, and its offset and member are written in
+// the element's index, so an inner loop must never take the same name.
+func fixedLoopVar(depth int) string {
+	if depth == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", depth)
 }
 
 // fixedIsText is a lone string(N) or bytes(N): a length and its
@@ -472,36 +483,40 @@ func fixedIsText(f *ir.Field) bool {
 
 // fixedEmitWriteText stores a text field at `at + off`: the int32 used length,
 // then that many bytes, the slack left at the template's zeros
-// (docs/SPEC-TABLES.md §3.4, §7.2).
-func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
+// (docs/SPEC-TABLES.md §3.4, §7.2). depth is the number of loops around it.
+func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string, depth int) {
+	iv := fixedLoopVar(depth)
 	m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"length_over_bound\";\n", ind, expr, expr, f.Type.Size)
 	if f.Type.Kind == ir.TString {
 		m.Printf("%sif (_rt_fixed.textIllFormed(%s, 0, %s.len())) return \"text_ill_formed\";\n", ind, expr, expr)
 	}
 	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
-	m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %s + %d + i] = %s[i] & 0xff;\n", ind, expr, off, fixedCountBytes, expr)
+	m.Printf("%sfor (local %s = 0; %s < %s.len(); %s++) b[at + %s + %d + %s] = %s[%s] & 0xff;\n", ind, iv, iv, expr, iv, off, fixedCountBytes, iv, expr, iv)
 }
 
 // fixedEmitDecodeText reads a text field at `at + off` back into expr: a
 // length past the PLAN's bound refuses length_over_bound, and ill-formed text
 // refuses text_ill_formed — UTF-8 for a string (docs/SPEC-TABLES.md §3.4,
 // docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11).
-func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
+func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string, depth int) {
+	iv := fixedLoopVar(depth)
 	m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 	m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
 	switch f.Type.Kind {
 	case ir.TString:
 		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
 		m.Printf("%slocal s = \"\";\n", ind)
-		m.Printf("%sfor (local i = 0; i < n; i++) s += b[at + %s + %d + i].tochar();\n", ind, off, fixedCountBytes)
+		m.Printf("%sfor (local %s = 0; %s < n; %s++) s += b[at + %s + %d + %s].tochar();\n", ind, iv, iv, iv, off, fixedCountBytes, iv)
 		m.Printf("%s%s = s;\n", ind, expr)
 	default:
 		m.Printf("%s%s = blob(n);\n", ind, expr)
-		m.Printf("%sfor (local i = 0; i < n; i++) %s[i] = b[at + %s + %d + i];\n", ind, expr, off, fixedCountBytes)
+		m.Printf("%sfor (local %s = 0; %s < n; %s++) %s[%s] = b[at + %s + %d + %s];\n", ind, iv, iv, iv, expr, iv, off, fixedCountBytes, iv)
 	}
 }
 
-func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string) {
+// fixedEmitWriteElement stores one element; depth is the number of loops
+// around it in this body, so an arm's own loop takes fixedLoopVar(depth).
+func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string, depth int) {
 	off := fmt.Sprintf("%d", at)
 	if dyn != "0" {
 		off = fmt.Sprintf("%d + %s", at, dyn)
@@ -524,10 +539,11 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
 				armExpr := expr + "." + ir.GoExportName(v.Name)
 				armInd := ind + "  "
+				iv := fixedLoopVar(depth)
 				switch {
 				case v.F.KeyEnum != "":
-					m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.KeyEnumRef.Max)
-					fixedEmitWriteElement(m, v.F, at+tag, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))))
+					m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", armInd, iv, iv, v.F.KeyEnumRef.Max, iv)
+					fixedEmitWriteElement(m, v.F, at+tag, armExpr+"["+iv+"]", armInd+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(fixedElementBytes(v.F))), depth+1)
 					m.Printf("%s}\n", armInd)
 				case v.F.Array == ir.ArrayFixed || v.F.Array == ir.ArrayCounted:
 					base := at + tag
@@ -536,16 +552,16 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
 						m.Printf("%s_rt_fixed.puti32(b, at + %s + %d, c);\n", armInd, off, tag)
 						base += fixedCountBytes
-						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
+						m.Printf("%sfor (local %s = 0; %s < c; %s++) {\n", armInd, iv, iv, iv)
 					} else {
-						m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.ArrayBound)
+						m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", armInd, iv, iv, v.F.ArrayBound, iv)
 					}
-					fixedEmitWriteElement(m, v.F, base, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))))
+					fixedEmitWriteElement(m, v.F, base, armExpr+"["+iv+"]", armInd+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(fixedElementBytes(v.F))), depth+1)
 					m.Printf("%s}\n", armInd)
 				case fixedIsText(v.F):
-					fixedEmitWriteText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd)
+					fixedEmitWriteText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd, depth)
 				default:
-					fixedEmitWriteElement(m, v.F, at+tag, armExpr, armInd, dyn)
+					fixedEmitWriteElement(m, v.F, at+tag, armExpr, armInd, dyn, depth)
 				}
 				m.Printf("%s}\n", ind)
 			}
@@ -637,7 +653,7 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 	switch {
 	case f.KeyEnum != "":
 		m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
-		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
+		fixedEmitDecodeElement(m, f, at, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true, 1)
 		m.Printf("%s  }\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		base := at
@@ -655,17 +671,17 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			m.Printf("%s  while (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 			m.Printf("%s  for (local i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
 		}
-		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
+		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true, 1)
 		m.Printf("%s  }\n", ind)
 	case fixedIsText(f):
-		fixedEmitDecodeText(m, f, fmt.Sprint(at), expr, ind+"  ")
+		fixedEmitDecodeText(m, f, fmt.Sprint(at), expr, ind+"  ", 0)
 	default:
-		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0", false)
+		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0", false, 0)
 	}
 	m.Printf("%s}\n", ind)
 }
 
-func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string, element bool) {
+func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn string, element bool, depth int) {
 	off := fmt.Sprintf("%d", at)
 	if dyn != "0" {
 		off = fmt.Sprintf("%d + %s", at, dyn)
@@ -691,10 +707,11 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
 				armExpr := expr + "." + ir.GoExportName(v.Name)
 				armInd := ind + "  "
+				iv := fixedLoopVar(depth)
 				switch {
 				case v.F.KeyEnum != "":
-					m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.KeyEnumRef.Max)
-					fixedEmitDecodeElement(m, v.F, at+tag, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))), true)
+					m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", armInd, iv, iv, v.F.KeyEnumRef.Max, iv)
+					fixedEmitDecodeElement(m, v.F, at+tag, armExpr+"["+iv+"]", armInd+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(fixedElementBytes(v.F))), true, depth+1)
 					m.Printf("%s}\n", armInd)
 				case v.F.Array == ir.ArrayFixed || v.F.Array == ir.ArrayCounted:
 					base := at + tag
@@ -703,17 +720,17 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
 						m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", armInd, armExpr, armExpr, armExpr, armExpr, elemZero(v.F))
 						base += fixedCountBytes
-						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
+						m.Printf("%sfor (local %s = 0; %s < c; %s++) {\n", armInd, iv, iv, iv)
 					} else {
 						m.Printf("%swhile (%s.len() < %d) %s.append(%s);\n", armInd, armExpr, v.F.ArrayBound, armExpr, elemZero(v.F))
-						m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.ArrayBound)
+						m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", armInd, iv, iv, v.F.ArrayBound, iv)
 					}
-					fixedEmitDecodeElement(m, v.F, base, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))), true)
+					fixedEmitDecodeElement(m, v.F, base, armExpr+"["+iv+"]", armInd+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(fixedElementBytes(v.F))), true, depth+1)
 					m.Printf("%s}\n", armInd)
 				case fixedIsText(v.F):
-					fixedEmitDecodeText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd)
+					fixedEmitDecodeText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd, depth)
 				default:
-					fixedEmitDecodeElement(m, v.F, at+tag, armExpr, armInd, dyn, false)
+					fixedEmitDecodeElement(m, v.F, at+tag, armExpr, armInd, dyn, false, depth)
 				}
 				m.Printf("%s}\n", ind)
 			}

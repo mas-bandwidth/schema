@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -430,7 +431,8 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		if isStructRef(f.Type) && !f.Type.Pointer {
 			return "true"
 		}
-		lhs := mem + "[i]"
+		iv := g.msgLoopVar()
+		lhs := mem + "[" + iv + "]"
 		def := fixedElementZero(f)
 		if isUnionRef(f.Type) {
 			lhs += ".type"
@@ -438,7 +440,7 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		}
 		v := ir.GoExportName(f.Name) + "AllDefault"
 		g.pf("%slet %s = true;\n", ind, v)
-		g.pf("%sfor (let i = 0; i < %d; i++) { if (%s) { %s = false; break; } }\n", ind, f.ArrayBound, messageDiffers(f, lhs, def), v)
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { if (%s) { %s = false; break; } }\n", ind, iv, iv, f.ArrayBound, iv, messageDiffers(f, lhs, def), v)
 		return "!" + v
 	}
 	if isUnionRef(f.Type) {
@@ -461,11 +463,25 @@ func messageDiffers(f *ir.Field, lhs, def string) string {
 func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) {
 	e := messageElementField(f)
 	v := ir.GoExportName(f.Name) + "Pairs"
+	iv := g.msgLoopVar()
 	g.pf("%slet %s = 0;\n", ind, v)
-	g.pf("%sfor (let i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
-	cond := g.messageRides(e, mem+"[i]", ind+"  ")
+	g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.KeyEnumRef.Max, iv)
+	g.msgLoops++
+	cond := g.messageRides(e, mem+"["+iv+"]", ind+"  ")
+	g.msgLoops--
 	g.pf("%s  if (%s) { %s++; }\n", ind, cond, v)
 	g.pf("%s}\n", ind)
+}
+
+// msgLoopVar names the loop variable at the current depth of a message body:
+// `i` at the top, then i1, i2, ... A union element's array or text arm is
+// walked INLINE inside the element's loop, and its member is reached through
+// the element's index, so an inner loop never takes the same name.
+func (g *fixedModule) msgLoopVar() string {
+	if g.msgLoops == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.msgLoops)
 }
 
 func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
@@ -533,18 +549,21 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	}
 	e := messageElementField(f)
 	elemEntry := ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, loopExpr)
+	iv := g.msgLoopVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, loopExpr, iv)
+	g.msgLoops++
 	if keyed {
-		cond := g.messageRides(e, mem+"[i]", ind+"  ")
+		cond := g.messageRides(e, mem+"["+iv+"]", ind+"  ")
 		g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
-		g.pf("%s  switch (i) {\n", ind)
+		g.pf("%s  switch (%s) {\n", ind, iv)
 		for i := range f.KeyEnumRef.Variants {
 			slot := messageNameSlot(g.unit, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
 			g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i, slot)
 		}
 		g.pf("%s  }\n", ind)
 	}
-	g.emitMessageWriteElement(e, elemEntry, mem+"[i]", ind+"  ")
+	g.emitMessageWriteElement(e, elemEntry, mem+"["+iv+"]", ind+"  ")
+	g.msgLoops--
 	g.pf("%s}\n", ind)
 }
 
@@ -669,7 +688,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  let kept = rawLen;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
+		g.pf("%s  for (let %[3]s = 0; %[3]s < kept; %[3]s++) { %[2]s[%[3]s] = r.Bits.Buffer[start + %[3]s]; }\n", ind, mem, g.msgLoopVar())
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
@@ -678,10 +697,10 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  let kept = Number(n);\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
+		g.pf("%s  for (let %[3]s = 0; %[3]s < kept; %[3]s++) { %[2]s[%[3]s] = r.Bits.Buffer[start + %[3]s]; }\n", ind, mem, g.msgLoopVar())
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
-		g.emitMessageReadArray(f, mem, ind)
+		g.emitMessageReadArray(f, mem, ind, strings.TrimSuffix(shape, ".Shape"))
 	case isStructRef(f.Type):
 		g.pf("%sif (!%sLoadMessageBody(r, %s)) { return false; }\n", ind, f.Type.Name, mem)
 	case isUnionRef(f.Type):
@@ -693,7 +712,10 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 	}
 }
 
-func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
+// emitMessageReadArray reads one array at the shape its OWNER announced:
+// `entry` for a field, `arm` for a union arm, so an array arm of a union held
+// in an array counts and walks at its own shape, never the outer array's.
+func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, owner string) {
 	bad := "r.Report.Damaged = true; return false"
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
@@ -702,47 +724,53 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
 		bound = f.Type.Size
 		companion = mem + "Length"
 	}
-	g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { %s; }\n", ind, bad)
+	g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, "+owner+".Shape); if (!ok) { %s; }\n", ind, bad)
 	if f.KeyEnum == "" {
-		g.pf("%s  if (entry.Element.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, bad)
+		g.pf("%s  if ("+owner+".Element.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, bad)
 	}
 	g.pf("%s  let keep = Number(n);\n", ind)
 	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
 	e := messageElementField(f)
+	// THE ELEMENT LOOP'S INDEX AND A KEYED ELEMENT'S KEY are named by depth:
+	// a union element's array arm is read inline inside this loop's body
+	iv := g.msgLoopVar()
+	key := "key" + strings.TrimPrefix(iv, "i")
+	g.msgLoops++
+	defer func() { g.msgLoops-- }()
 	if f.KeyEnum != "" {
 		g.pf("%s  const seenKeys = [];\n", ind)
-		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
+		g.pf("%s  for (let %[2]s = 0n; %[2]s < n; %[2]s++) {\n", ind, iv)
 		g.pf("%s    const [kref, kok] = r.Bits.Get(r.RefBits); if (!kok) { %s; }\n", ind, bad)
 		g.pf("%s    const ken = tableMessageEntry(r.Vocabulary, kref);\n", ind)
 		g.pf("%s    if (ken === null || ken.Shape.Kind !== 0 || ken.Id >= 0xfffffffffffffffdn || seenKeys.includes(ken.Id)) { %s; }\n", ind, bad)
 		g.pf("%s    seenKeys.push(ken.Id);\n", ind)
-		g.pf("%s    let key = 0;\n", ind)
+		g.pf("%s    let %[2]s = 0;\n", ind, key)
 		g.pf("%s    switch (ken.Id) {\n", ind)
 		ke := f.KeyEnumRef
 		for i := range ke.Variants {
-			g.pf("%s      case 0x%016xn: key = %d; break;\n", ind, ir.TableWireId(ke.VariantWireName(i)), i+1)
+			g.pf("%s      case 0x%016xn: %s = %d; break;\n", ind, ir.TableWireId(ke.VariantWireName(i)), key, i+1)
 		}
 		g.pf("%s      default: r.Report.Unknown++;\n%s    }\n", ind, ind)
-		g.pf("%s    if (key === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { %s; } }\n", ind, bad)
+		g.pf("%s    if (%[3]s === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: "+owner+".Element }, 0)) { %[2]s; } }\n", ind, bad, key)
 		g.pf("%s    else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[key - 1]", ind+"      ", "entry.Element")
+		g.emitMessageReadElement(e, mem+"["+key+" - 1]", ind+"      ", owner+".Element")
 		g.pf("%s    }\n", ind)
 		g.pf("%s  }\n", ind)
 		if counted {
 			g.pf("%s  %s = 0;\n", ind, companion)
 		}
 	} else {
-		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
-		g.pf("%s    const p = i < BigInt(keep) ? %s[Number(i)] : null;\n", ind, mem)
+		g.pf("%s  for (let %[2]s = 0n; %[2]s < n; %[2]s++) {\n", ind, iv)
+		g.pf("%s    const p = %[3]s < BigInt(keep) ? %[2]s[Number(%[3]s)] : null;\n", ind, mem, iv)
 		g.pf("%s    if (p === null) {\n", ind)
-		g.pf("%s      if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {\n", ind)
-		g.pf("%s        if (!r.Bits.Skip(Number(n - i) * Math.max(0, entry.Element.Bits))) { %s; }\n", ind, bad)
+		g.pf("%s      if ("+owner+".Element.Bits >= 0 || "+owner+".Element.Kind === 0 || "+owner+".Element.Kind === 32) {\n", ind)
+		g.pf("%s        if (!r.Bits.Skip(Number(n - %[3]s) * Math.max(0, "+owner+".Element.Bits))) { %[2]s; }\n", ind, bad, iv)
 		g.pf("%s        break;\n", ind)
 		g.pf("%s      }\n", ind)
 		g.pf("%s      const before = r.Bits.Offset;\n", ind)
-		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { %s; }\n", ind, bad)
+		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: "+owner+".Element }, 0) || r.Bits.Offset === before) { %s; }\n", ind, bad)
 		g.pf("%s    } else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[Number(i)]", ind+"      ", "entry.Element")
+		g.emitMessageReadElement(e, mem+"[Number("+iv+")]", ind+"      ", owner+".Element")
 		g.pf("%s    }\n", ind)
 		g.pf("%s  }\n", ind)
 		if counted {
