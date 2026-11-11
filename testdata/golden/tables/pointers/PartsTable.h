@@ -7865,7 +7865,7 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
 inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
@@ -7881,7 +7881,7 @@ inline int64_t StampMeasure( const Stamp & value )
 
 GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -8176,7 +8176,7 @@ inline bool StampLoad( Stamp & value, const uint8_t * buffer, int64_t bytes, Tab
 inline int64_t StampMeasureMessageBody( int64_t at, const Stamp & value )
 {
     int64_t bits = 0;
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -8199,7 +8199,7 @@ inline int64_t StampMeasureMessageBody( int64_t at, const Stamp & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
 {
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
@@ -9267,7 +9267,7 @@ inline int64_t StampFixedLoad( Stamp * values, int64_t capacity, const uint8_t *
 inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -9276,7 +9276,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 
 GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag

@@ -10647,7 +10647,7 @@ inline int64_t DepthMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( body_one > 1 ) { bytes += TableLebBytes( ref_one ) + 1 + TableLebBytes( (uint64_t) ( body_one ) ) + ( body_one ); } // one
         else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
@@ -10738,7 +10738,7 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         }
         else { ids.truncate( mark_one ); }
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
@@ -14273,7 +14273,7 @@ inline int64_t DepthMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_one > 1 ) { bytes += TableLebBytes( ref_one ) + 1 + TableLebBytes( (uint64_t) ( body_one ) ) + ( body_one ); } // one
         else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
@@ -14365,7 +14365,7 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         }
         else { ids.truncate( mark_one ); }
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );

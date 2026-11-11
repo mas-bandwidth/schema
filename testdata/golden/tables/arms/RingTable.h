@@ -9917,7 +9917,7 @@ inline int64_t RackMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
@@ -9975,7 +9975,7 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
@@ -10016,7 +10016,7 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         {
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
                             int64_t arm_payload_itemsu = 0;
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
@@ -10029,7 +10029,7 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             }
                             w.header( arm_ref_itemsu, 14 );
                             w.putleb( (uint64_t) arm_payload_itemsu ); // many
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             w.put8( 17 );
                             w.putleb( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) );
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
@@ -10416,7 +10416,7 @@ inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -10434,7 +10434,7 @@ inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
@@ -10471,7 +10471,7 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     (void) ctx;
     (void) numbering;
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -10489,7 +10489,7 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
@@ -10530,7 +10530,7 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     {
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
                         int64_t arm_payloadu = 0;
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
@@ -10543,7 +10543,7 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         }
                         w.header( arm_refu, 14 );
                         w.putleb( (uint64_t) arm_payloadu ); // many
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         w.put8( 17 );
                         w.putleb( (uint64_t) ( value.entries[elem_i].many.value_count ) );
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
@@ -15888,7 +15888,7 @@ inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
@@ -15947,7 +15947,7 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
@@ -15988,7 +15988,7 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         {
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
                             int64_t arm_payload_itemsu = 0;
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
@@ -16001,7 +16001,7 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             }
                             w.header( arm_ref_itemsu, 14 );
                             w.putleb( (uint64_t) arm_payload_itemsu ); // many
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
+                            schema_assert( cursor_items[elem_i_items].many.value_count >= 0 && cursor_items[elem_i_items].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                             w.put8( 17 );
                             w.putleb( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) );
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
@@ -16397,7 +16397,7 @@ inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -16415,7 +16415,7 @@ inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
@@ -16453,7 +16453,7 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     (void) ctx;
     (void) numbering;
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -16471,7 +16471,7 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
@@ -16512,7 +16512,7 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     {
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
                         int64_t arm_payloadu = 0;
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
@@ -16525,7 +16525,7 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         }
                         w.header( arm_refu, 14 );
                         w.putleb( (uint64_t) arm_payloadu ); // many
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
+                        schema_assert( value.entries[elem_i].many.value_count >= 0 && value.entries[elem_i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         w.put8( 17 );
                         w.putleb( (uint64_t) ( value.entries[elem_i].many.value_count ) );
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )

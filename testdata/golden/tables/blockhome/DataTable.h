@@ -7126,7 +7126,7 @@ inline bool FiringGroupLoadMessages( FiringGroup * values, int64_t * count, cons
 inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return -1; } // storage invariant
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.firing_groups_count > 0 )
     {
         const uint64_t ref_firing_groups = ids.ref_at( 4, 0x260b8ca6b0c3db7full );
@@ -7140,7 +7140,7 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
         }
         bytes += TableLebBytes( ref_firing_groups ) + 1 + TableLebBytes( (uint64_t) ( body_firing_groups ) ) + ( body_firing_groups ); // firing_groups
     }
-    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.missile_groups_count > 0 )
     {
         const uint64_t ref_missile_groups = ids.ref_at( 7, 0x3c99105aa087f6bcull );
@@ -7170,7 +7170,7 @@ inline int64_t GunnerSettingsMeasure( const GunnerSettings & value )
 
 BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & ids, const GunnerSettings & value )
 {
-    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // storage invariant
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.firing_groups_count > 0 )
     {
         const uint64_t ref_firing_groups = ids.ref_at( 4, 0x260b8ca6b0c3db7full );
@@ -7201,7 +7201,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
             }
         }
     }
-    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.missile_groups_count > 0 )
     {
         const uint64_t ref_missile_groups = ids.ref_at( 7, 0x3c99105aa087f6bcull );
@@ -7662,7 +7662,7 @@ inline bool GunnerSettingsLoad( GunnerSettings & value, const uint8_t * buffer, 
 inline int64_t GunnerSettingsMeasureMessageBody( int64_t at, const GunnerSettings & value )
 {
     int64_t bits = 0;
-    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return -1; } // storage invariant
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.firing_groups_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -7674,7 +7674,7 @@ inline int64_t GunnerSettingsMeasureMessageBody( int64_t at, const GunnerSetting
             bits += elem;
         }
     }
-    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.missile_groups_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -7707,7 +7707,7 @@ inline int64_t GunnerSettingsMeasureMessageBody( int64_t at, const GunnerSetting
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool GunnerSettingsSaveMessageBody( TableBitWriter & w, const GunnerSettings & value )
 {
-    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // storage invariant
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.firing_groups_count > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
@@ -7717,7 +7717,7 @@ inline bool GunnerSettingsSaveMessageBody( TableBitWriter & w, const GunnerSetti
             if ( !FiringGroupSaveMessageBody( w, value.firing_groups[i] ) ) { return false; }
         }
     }
-    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.missile_groups_count > 0 )
     {
         w.put( 11, kTableMessageRefBitsHere );

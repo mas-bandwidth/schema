@@ -10051,7 +10051,7 @@ inline int64_t DocsPagesEntryMeasureBody( const Ctx & ctx, const TableNumbering 
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const TableBlob * blob_value = TableBlobAt( ctx, value.value ); // *string
@@ -10074,7 +10074,7 @@ inline bool DocsPagesEntrySaveBodyFields( const Ctx & ctx, const TableNumbering 
 {
     (void) ctx;
     (void) numbering;
-    if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -12041,7 +12041,7 @@ inline int64_t DocsPagesEntryMeasureBodyRetain( const Ctx & ctx, const TableNumb
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const TableBlob * blob_value = TableBlobAt( ctx, value.value ); // *string
@@ -12065,7 +12065,7 @@ inline bool DocsPagesEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNumb
 {
     (void) ctx;
     (void) numbering;
-    if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key

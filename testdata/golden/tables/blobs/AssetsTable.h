@@ -13,6 +13,22 @@
 #include <stddef.h> // offsetof, for the reflection descriptors
 #include <string> // the hand-editable text form's document (§16.9.3)
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 // schema_allocate / schema_release — what "no allocator handed in" means for
 // this program. schema_allocate hands back ZEROED bytes and NULL on failure:
 // an arena segment is copied whole, padding included, so anything left
@@ -7742,7 +7758,7 @@ inline int64_t AssetMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 12, 0xef9c96d721673243ull ) ) + 1 + 4; } // kind
     {
@@ -7793,7 +7809,7 @@ inline bool AssetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -8086,7 +8102,7 @@ inline int64_t CatalogMeasureBody( const Ctx & ctx, const TableNumbering & numbe
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const Asset * pointee_head = AssetAt( ctx, value.head ); // *Asset
@@ -8149,7 +8165,7 @@ inline bool CatalogSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -10672,7 +10688,7 @@ inline int64_t AssetMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 12, 0xef9c96d721673243ull ) ) + 1 + 4; } // kind
     {
@@ -10724,7 +10740,7 @@ inline bool AssetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11023,7 +11039,7 @@ inline int64_t CatalogMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const Asset * pointee_head = AssetAt( ctx, value.head ); // *Asset
@@ -11087,7 +11103,7 @@ inline bool CatalogSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name

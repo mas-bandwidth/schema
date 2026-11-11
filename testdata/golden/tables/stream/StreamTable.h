@@ -7865,7 +7865,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
 inline int64_t HeaderMeasureBody( TableIds & ids, const Header & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
@@ -7880,7 +7880,7 @@ inline int64_t HeaderMeasure( const Header & value )
 
 STREAMDEMO_TABLE_INLINE bool HeaderSaveBody( TableWriter & w, TableIds & ids, const Header & value )
 {
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -8107,7 +8107,7 @@ inline bool HeaderLoad( Header & value, const uint8_t * buffer, int64_t bytes, T
 inline int64_t HeaderMeasureMessageBody( int64_t at, const Header & value )
 {
     int64_t bits = 0;
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -8125,7 +8125,7 @@ inline int64_t HeaderMeasureMessageBody( int64_t at, const Header & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool HeaderSaveMessageBody( TableBitWriter & w, const Header & value )
 {
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.put( 1, kTableMessageRefBitsHere );
@@ -8325,7 +8325,7 @@ inline int64_t ChunkMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.data_length < 0 || value.data_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.data_length >= 0 && value.data_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
@@ -8345,7 +8345,7 @@ inline int64_t ChunkMeasureBody( const Ctx & ctx, const TableNumbering & numberi
             bytes += TableLebBytes( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ) + 1 + TableLebBytes( index_next );
         }
     }
-    if ( value.links_count < 0 || value.links_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.links_count >= 0 && value.links_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.links_count > 0 )
     {
         const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
@@ -8370,7 +8370,7 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     (void) ctx;
     (void) numbering;
-    if ( value.data_length < 0 || value.data_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.data_length >= 0 && value.data_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
@@ -8390,7 +8390,7 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( index_next );
         }
     }
-    if ( value.links_count < 0 || value.links_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.links_count >= 0 && value.links_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.links_count > 0 )
     {
         const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
@@ -8737,7 +8737,7 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.parts_count < 0 || value.parts_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
@@ -8853,7 +8853,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             default: return false; // write validates the tag before it rides
         }
     }
-    if ( value.parts_count < 0 || value.parts_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
@@ -12042,7 +12042,7 @@ inline const Feed * FeedReadStrict( const uint8_t * wire_file, int64_t wire_file
 inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -12050,7 +12050,7 @@ inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & val
 
 STREAMDEMO_TABLE_INLINE bool HeaderSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Header & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12171,7 +12171,7 @@ inline int64_t ChunkMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.data_length < 0 || value.data_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.data_length >= 0 && value.data_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
@@ -12191,7 +12191,7 @@ inline int64_t ChunkMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
             bytes += TableLebBytes( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ) + 1 + TableLebBytes( index_next );
         }
     }
-    if ( value.links_count < 0 || value.links_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.links_count >= 0 && value.links_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.links_count > 0 )
     {
         const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
@@ -12217,7 +12217,7 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     (void) ctx;
     (void) numbering;
-    if ( value.data_length < 0 || value.data_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.data_length >= 0 && value.data_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
@@ -12237,7 +12237,7 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( index_next );
         }
     }
-    if ( value.links_count < 0 || value.links_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.links_count >= 0 && value.links_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.links_count > 0 )
     {
         const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
@@ -12590,7 +12590,7 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.parts_count < 0 || value.parts_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
@@ -12707,7 +12707,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             default: return false; // write validates the tag before it rides
         }
     }
-    if ( value.parts_count < 0 || value.parts_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );

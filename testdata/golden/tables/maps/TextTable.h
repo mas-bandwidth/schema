@@ -10183,23 +10183,23 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
 inline int64_t TextNamesEntryMeasureBody( TableIds & ids, const TextNamesEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
-    if ( value.value_length < 0 || value.value_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( value.value_length ) ) + ( value.value_length ); } // value
     return bytes;
 }
 
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & ids, const TextNamesEntry & value )
 {
-    if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
-    if ( value.value_length < 0 || value.value_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 12 ); // value
@@ -10356,7 +10356,7 @@ inline int64_t TextBlobsEntryMeasureBody( TableIds & ids, const TextBlobsEntry &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
-    if ( value.value_length < 0 || value.value_length > 10 ) { return -1; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 10 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 )
     {
         const int64_t body_value = 1 + TableLebBytes( (uint64_t) value.value_length ) + value.value_length;
@@ -10372,7 +10372,7 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntrySaveBody( TableWriter & w, TableIds & id
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 4 ); // key
         w.put32( uint32_t( value.key ) );
     }
-    if ( value.value_length < 0 || value.value_length > 10 ) { return false; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 10 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 )
     {
         const int64_t body_value = 1 + TableLebBytes( (uint64_t) value.value_length ) + value.value_length;
@@ -12429,9 +12429,9 @@ inline const Text * TextReadStrict( const uint8_t * wire_file, int64_t wire_file
 inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
-    if ( value.value_length < 0 || value.value_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( value.value_length ) ) + ( value.value_length ); } // value
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -12439,14 +12439,14 @@ inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
-    if ( value.value_length < 0 || value.value_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 12 ); // value
@@ -12609,7 +12609,7 @@ inline int64_t TextBlobsEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
-    if ( value.value_length < 0 || value.value_length > 10 ) { return -1; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 10 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 )
     {
         const int64_t body_value = 1 + TableLebBytes( (uint64_t) value.value_length ) + value.value_length;
@@ -12626,7 +12626,7 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntrySaveBodyRetain( TableWriter & w, TableRe
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 4 ); // key
         w.put32( uint32_t( value.key ) );
     }
-    if ( value.value_length < 0 || value.value_length > 10 ) { return false; } // storage invariant
+    schema_assert( value.value_length >= 0 && value.value_length <= 10 ); // storage invariant, debug only (§5.1)
     if ( value.value_length > 0 )
     {
         const int64_t body_value = 1 + TableLebBytes( (uint64_t) value.value_length ) + value.value_length;

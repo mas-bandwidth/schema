@@ -6051,7 +6051,7 @@ MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value );
 inline int64_t UserMeasureBody( TableIds & ids, const User & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
@@ -6066,7 +6066,7 @@ inline int64_t UserMeasure( const User & value )
 
 MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, const User & value )
 {
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 43, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -6293,7 +6293,7 @@ inline bool UserLoad( User & value, const uint8_t * buffer, int64_t bytes, Table
 inline int64_t UserMeasureMessageBody( int64_t at, const User & value )
 {
     int64_t bits = 0;
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -6311,7 +6311,7 @@ inline int64_t UserMeasureMessageBody( int64_t at, const User & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool UserSaveMessageBody( TableBitWriter & w, const User & value )
 {
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.put( 27, kTableMessageRefBitsHere );
@@ -6508,7 +6508,7 @@ inline bool UserLoadMessages( User * values, int64_t * count, const TableVocabul
 inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
     return bytes;
@@ -6524,7 +6524,7 @@ inline int64_t ScriptMeasure( const Script & value )
 
 MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, const Script & value )
 {
-    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -6795,7 +6795,7 @@ inline bool ScriptLoad( Script & value, const uint8_t * buffer, int64_t bytes, T
 inline int64_t ScriptMeasureMessageBody( int64_t at, const Script & value )
 {
     int64_t bits = 0;
-    if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -6818,7 +6818,7 @@ inline int64_t ScriptMeasureMessageBody( int64_t at, const Script & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool ScriptSaveMessageBody( TableBitWriter & w, const Script & value )
 {
-    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
@@ -7617,7 +7617,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
         if ( body_at > 1 ) { bytes += TableLebBytes( ref_at ) + 1 + TableLebBytes( (uint64_t) ( body_at ) ) + ( body_at ); } // at
         else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.text_length < 0 || value.text_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.text_length ) ) + ( value.text_length ); } // text
     if ( value.origin.type != OriginType::None ) // None elides — the absence of the field is the None
     {
@@ -7661,7 +7661,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return -1; } // storage invariant
+                schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -7669,7 +7669,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.origins_count < 0 || value.origins_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.origins_count > 0 )
     {
         const uint64_t ref_origins = ids.ref_at( 13, 0x4437d86681113b74ull );
@@ -7719,7 +7719,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                        if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return -1; } // storage invariant
+                        schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -7732,7 +7732,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
     }
     if ( value.modes_present ) // ?Mode: presence decides, not content
     {
-        if ( value.modes_count < 0 || value.modes_count > 2 ) { return -1; } // storage invariant
+        schema_assert( value.modes_count >= 0 && value.modes_count <= 2 ); // storage invariant, debug only (§5.1)
         const uint64_t ref_modes = ids.ref_at( 31, 0x9de526933e6e3ef3ull );
         int64_t body_modes = 0;
         body_modes += 1 + TableLebBytes( (uint64_t) ( value.modes_count ) ); // the element kind byte and the count
@@ -7770,7 +7770,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
         }
         else { ids.truncate( mark_at ); }
     }
-    if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.text_length > 0 )
     {
         w.header( ids.ref_at( 56, 0xfa04f4ef1995407eull ), 12 ); // text
@@ -7824,18 +7824,18 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
             {
                 const uint64_t arm_ref = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
                 int64_t arm_payload = 0;
-                if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 w.header( arm_ref, 12 );
                 w.putleb( (uint64_t) arm_payload ); // note
-                if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                 w.raw( value.origin.note.value, value.origin.note.value_length );
                 break;
             }
             default: return false; // write validates the tag before it rides
         }
     }
-    if ( value.origins_count < 0 || value.origins_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.origins_count > 0 )
     {
         const uint64_t ref_origins = ids.ref_at( 13, 0x4437d86681113b74ull );
@@ -7885,7 +7885,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                        if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return -1; } // storage invariant
+                        schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -7947,11 +7947,11 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     {
                         const uint64_t arm_refu = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
                         int64_t arm_payloadu = 0;
-                        if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
+                        schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         w.header( arm_refu, 12 );
                         w.putleb( (uint64_t) arm_payloadu ); // note
-                        if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
+                        schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                         w.raw( value.origins[elem_i].note.value, value.origins[elem_i].note.value_length );
                         break;
                     }
@@ -7962,7 +7962,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     }
     if ( value.modes_present ) // ?Mode
     {
-        if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; } // storage invariant
+        schema_assert( value.modes_count >= 0 && value.modes_count <= 2 ); // storage invariant, debug only (§5.1)
         const uint64_t ref_modes = ids.ref_at( 31, 0x9de526933e6e3ef3ull );
         int64_t body_modes = 0;
         body_modes += 1 + TableLebBytes( (uint64_t) ( value.modes_count ) ); // the element kind byte and the count
@@ -8742,7 +8742,7 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
             bits += CursorMeasureMessageBody( at + bits, value.at );
         }
     }
-    if ( value.text_length < 0 || value.text_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.text_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -8784,7 +8784,7 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
             case OriginType::Note:
             {
                 bits += kTableMessageRefBitsHere;
-                if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return -1; } // storage invariant
+                schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                 bits += 5;
                 bits += TableAlignBits( at + bits );
                 bits += (int64_t) value.origin.note.value_length * 8;
@@ -8793,7 +8793,7 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
             default: return -1; // a tag no arm names has no wire identity
         }
     }
-    if ( value.origins_count < 0 || value.origins_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.origins_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -8837,7 +8837,7 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
                     case OriginType::Note:
                     {
                         bits += kTableMessageRefBitsHere;
-                        if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return -1; } // storage invariant
+                        schema_assert( value.origins[i].note.value_length >= 0 && value.origins[i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                         bits += 5;
                         bits += TableAlignBits( at + bits );
                         bits += (int64_t) value.origins[i].note.value_length * 8;
@@ -8877,7 +8877,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             if ( !CursorSaveMessageBody( w, value.at ) ) { return false; }
         }
     }
-    if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.text_length > 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
@@ -8911,7 +8911,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             case OriginType::Note:
             {
                 w.put( 38, kTableMessageRefBitsHere );
-                if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                 w.put( (uint64_t) value.origin.note.value_length, 5 );
                 w.align(); // a string or a bytes ALIGNS before its bytes
                 w.putbytes( (const uint8_t *) value.origin.note.value, value.origin.note.value_length );
@@ -8920,7 +8920,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             default: return false; // a tag no arm names has no wire identity
         }
     }
-    if ( value.origins_count < 0 || value.origins_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.origins_count > 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
@@ -8956,7 +8956,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
                     case OriginType::Note:
                     {
                         w.put( 38, kTableMessageRefBitsHere );
-                        if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // storage invariant
+                        schema_assert( value.origins[i].note.value_length >= 0 && value.origins[i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                         w.put( (uint64_t) value.origins[i].note.value_length, 5 );
                         w.align(); // a string or a bytes ALIGNS before its bytes
                         w.putbytes( (const uint8_t *) value.origins[i].note.value, value.origins[i].note.value_length );
@@ -10144,7 +10144,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 27, 0x9077d4a4e1726e29ull );
-                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return -1; } // storage invariant
+                schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.body.marks.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.body.marks.value_count ) * 2;
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
@@ -10154,7 +10154,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 45, 0xc573b39bc29148caull );
-                if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return -1; } // storage invariant
+                schema_assert( value.body.blob.value_length >= 0 && value.body.blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) value.body.blob.value_length ) + value.body.blob.value_length; // element kind 6, N, then the bytes
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -10239,12 +10239,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             {
                 const uint64_t arm_ref = ids.ref_at( 27, 0x9077d4a4e1726e29ull );
                 int64_t arm_payload = 0;
-                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
+                schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.body.marks.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.body.marks.value_count ) * 2;
                 w.header( arm_ref, 14 );
                 w.putleb( (uint64_t) arm_payload ); // marks
-                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
+                schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                 w.put8( 7 );
                 w.putleb( (uint64_t) ( value.body.marks.value_count ) );
                 for ( int32_t elem_ie = 0; elem_ie < value.body.marks.value_count; elem_ie++ )
@@ -10257,11 +10257,11 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
             {
                 const uint64_t arm_ref = ids.ref_at( 45, 0xc573b39bc29148caull );
                 int64_t arm_payload = 0;
-                if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( value.body.blob.value_length >= 0 && value.body.blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) value.body.blob.value_length ) + value.body.blob.value_length; // element kind 6, N, then the bytes
                 w.header( arm_ref, 14 );
                 w.putleb( (uint64_t) arm_payload ); // blob
-                if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( value.body.blob.value_length >= 0 && value.body.blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                 w.put8( 6 );
                 w.putleb( (uint64_t) value.body.blob.value_length ); // bytes ride as an array of u8 (§2.5)
                 w.raw( value.body.blob.value, value.body.blob.value_length );
@@ -10868,7 +10868,7 @@ inline int64_t EditMeasureMessageBody( int64_t at, const Edit & value )
             case EditBodyType::Marks:
             {
                 bits += kTableMessageRefBitsHere;
-                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return -1; } // storage invariant
+                schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                 bits += 2;
                 bits += (int64_t) ( value.body.marks.value_count ) * 16;
                 break;
@@ -10876,7 +10876,7 @@ inline int64_t EditMeasureMessageBody( int64_t at, const Edit & value )
             case EditBodyType::Blob:
             {
                 bits += kTableMessageRefBitsHere;
-                if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return -1; } // storage invariant
+                schema_assert( value.body.blob.value_length >= 0 && value.body.blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                 bits += 3;
                 bits += TableAlignBits( at + bits );
                 bits += (int64_t) value.body.blob.value_length * 8;
@@ -10933,7 +10933,7 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
             case EditBodyType::Marks:
             {
                 w.put( 33, kTableMessageRefBitsHere );
-                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
+                schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                 w.put( (uint64_t) ( value.body.marks.value_count ) - 0, 2 );
                 for ( int32_t i_2 = 0; i_2 < value.body.marks.value_count; i_2++ )
                 {
@@ -10944,7 +10944,7 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
             case EditBodyType::Blob:
             {
                 w.put( 34, kTableMessageRefBitsHere );
-                if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
+                schema_assert( value.body.blob.value_length >= 0 && value.body.blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                 w.put( (uint64_t) value.body.blob.value_length, 3 );
                 w.align(); // a string or a bytes ALIGNS before its bytes
                 w.putbytes( (const uint8_t *) value.body.blob.value, value.body.blob.value_length );
@@ -11491,7 +11491,7 @@ inline bool EditLoadMessages( Edit * values, int64_t * count, const TableVocabul
 inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.mode != Mode::Read )
     {
@@ -11522,7 +11522,7 @@ inline int64_t OpenDocumentMeasure( const OpenDocument & value )
 
 MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & ids, const OpenDocument & value )
 {
-    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -11831,7 +11831,7 @@ inline bool OpenDocumentLoad( OpenDocument & value, const uint8_t * buffer, int6
 inline int64_t OpenDocumentMeasureMessageBody( int64_t at, const OpenDocument & value )
 {
     int64_t bits = 0;
-    if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11864,7 +11864,7 @@ inline int64_t OpenDocumentMeasureMessageBody( int64_t at, const OpenDocument & 
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool OpenDocumentSaveMessageBody( TableBitWriter & w, const OpenDocument & value )
 {
-    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
@@ -12137,7 +12137,7 @@ inline bool OpenDocumentLoadMessages( OpenDocument * values, int64_t * count, co
 inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.force != false ) { bytes += TableLebBytes( ids.ref_at( 50, 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
     return bytes;
@@ -12153,7 +12153,7 @@ inline int64_t SaveDocumentMeasure( const SaveDocument & value )
 
 MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & ids, const SaveDocument & value )
 {
-    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -12412,7 +12412,7 @@ inline bool SaveDocumentLoad( SaveDocument & value, const uint8_t * buffer, int6
 inline int64_t SaveDocumentMeasureMessageBody( int64_t at, const SaveDocument & value )
 {
     int64_t bits = 0;
-    if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -12435,7 +12435,7 @@ inline int64_t SaveDocumentMeasureMessageBody( int64_t at, const SaveDocument & 
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool SaveDocumentSaveMessageBody( TableBitWriter & w, const SaveDocument & value )
 {
-    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
@@ -12661,9 +12661,9 @@ inline bool SaveDocumentLoadMessages( SaveDocument * values, int64_t * count, co
 inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.reason_length < 0 || value.reason_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 18, 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
-    if ( value.edits_count < 0 || value.edits_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.edits_count > 0 )
     {
         const uint64_t ref_edits = ids.ref_at( 28, 0x9478d06b697549e6ull );
@@ -12729,7 +12729,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref_at( 27, 0x9077d4a4e1726e29ull );
-                            if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return -1; } // storage invariant
+                            schema_assert( value.pending[elem_i].marks.value_count >= 0 && value.pending[elem_i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -12739,7 +12739,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref_at( 45, 0xc573b39bc29148caull );
-                            if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return -1; } // storage invariant
+                            schema_assert( value.pending[elem_i].blob.value_length >= 0 && value.pending[elem_i].blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
@@ -12797,14 +12797,14 @@ inline int64_t TransactionMeasure( const Transaction & value )
 
 MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & ids, const Transaction & value )
 {
-    if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.reason_length > 0 )
     {
         w.header( ids.ref_at( 18, 0x65e8d7f3474f2639ull ), 12 ); // reason
         w.putleb( (uint64_t) value.reason_length );
         w.raw( value.reason, value.reason_length );
     }
-    if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.edits_count > 0 )
     {
         const uint64_t ref_edits = ids.ref_at( 28, 0x9478d06b697549e6ull );
@@ -12887,7 +12887,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref_at( 27, 0x9077d4a4e1726e29ull );
-                            if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return -1; } // storage invariant
+                            schema_assert( value.pending[elem_i].marks.value_count >= 0 && value.pending[elem_i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -12897,7 +12897,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref_at( 45, 0xc573b39bc29148caull );
-                            if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return -1; } // storage invariant
+                            schema_assert( value.pending[elem_i].blob.value_length >= 0 && value.pending[elem_i].blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
@@ -12971,12 +12971,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         {
                             const uint64_t arm_refu = ids.ref_at( 27, 0x9077d4a4e1726e29ull );
                             int64_t arm_payloadu = 0;
-                            if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return false; } // storage invariant
+                            schema_assert( value.pending[elem_i].marks.value_count >= 0 && value.pending[elem_i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
                             w.header( arm_refu, 14 );
                             w.putleb( (uint64_t) arm_payloadu ); // marks
-                            if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return false; } // storage invariant
+                            schema_assert( value.pending[elem_i].marks.value_count >= 0 && value.pending[elem_i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                             w.put8( 7 );
                             w.putleb( (uint64_t) ( value.pending[elem_i].marks.value_count ) );
                             for ( int32_t elem_iue = 0; elem_iue < value.pending[elem_i].marks.value_count; elem_iue++ )
@@ -12989,11 +12989,11 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         {
                             const uint64_t arm_refu = ids.ref_at( 45, 0xc573b39bc29148caull );
                             int64_t arm_payloadu = 0;
-                            if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return false; } // storage invariant
+                            schema_assert( value.pending[elem_i].blob.value_length >= 0 && value.pending[elem_i].blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
                             w.header( arm_refu, 14 );
                             w.putleb( (uint64_t) arm_payloadu ); // blob
-                            if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return false; } // storage invariant
+                            schema_assert( value.pending[elem_i].blob.value_length >= 0 && value.pending[elem_i].blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                             w.put8( 6 );
                             w.putleb( (uint64_t) value.pending[elem_i].blob.value_length ); // bytes ride as an array of u8 (§2.5)
                             w.raw( value.pending[elem_i].blob.value, value.pending[elem_i].blob.value_length );
@@ -13887,7 +13887,7 @@ inline bool TransactionLoad( Transaction & value, const uint8_t * buffer, int64_
 inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & value )
 {
     int64_t bits = 0;
-    if ( value.reason_length < 0 || value.reason_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.reason_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13895,7 +13895,7 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.reason_length * 8;
     }
-    if ( value.edits_count < 0 || value.edits_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.edits_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13952,7 +13952,7 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
                         case EditBodyType::Marks:
                         {
                             bits += kTableMessageRefBitsHere;
-                            if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return -1; } // storage invariant
+                            schema_assert( value.pending[i].marks.value_count >= 0 && value.pending[i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                             bits += 2;
                             bits += (int64_t) ( value.pending[i].marks.value_count ) * 16;
                             break;
@@ -13960,7 +13960,7 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
                         case EditBodyType::Blob:
                         {
                             bits += kTableMessageRefBitsHere;
-                            if ( value.pending[i].blob.value_length < 0 || value.pending[i].blob.value_length > 4 ) { return -1; } // storage invariant
+                            schema_assert( value.pending[i].blob.value_length >= 0 && value.pending[i].blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                             bits += 3;
                             bits += TableAlignBits( at + bits );
                             bits += (int64_t) value.pending[i].blob.value_length * 8;
@@ -14004,7 +14004,7 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & value )
 {
-    if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.reason_length > 0 )
     {
         w.put( 22, kTableMessageRefBitsHere );
@@ -14012,7 +14012,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.reason, value.reason_length );
     }
-    if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.edits_count > 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
@@ -14059,7 +14059,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
                         case EditBodyType::Marks:
                         {
                             w.put( 33, kTableMessageRefBitsHere );
-                            if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return false; } // storage invariant
+                            schema_assert( value.pending[i].marks.value_count >= 0 && value.pending[i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
                             w.put( (uint64_t) ( value.pending[i].marks.value_count ) - 0, 2 );
                             for ( int32_t i_3 = 0; i_3 < value.pending[i].marks.value_count; i_3++ )
                             {
@@ -14070,7 +14070,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
                         case EditBodyType::Blob:
                         {
                             w.put( 34, kTableMessageRefBitsHere );
-                            if ( value.pending[i].blob.value_length < 0 || value.pending[i].blob.value_length > 4 ) { return false; } // storage invariant
+                            schema_assert( value.pending[i].blob.value_length >= 0 && value.pending[i].blob.value_length <= 4 ); // storage invariant, debug only (§5.1)
                             w.put( (uint64_t) value.pending[i].blob.value_length, 3 );
                             w.align(); // a string or a bytes ALIGNS before its bytes
                             w.putbytes( (const uint8_t *) value.pending[i].blob.value, value.pending[i].blob.value_length );
@@ -15003,7 +15003,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                         {
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
+                            schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -15025,7 +15025,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.history_count < 0 || value.history_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.history_count > 0 )
     {
         const uint64_t ref_history = ids.ref_at( 9, 0x33428945bbd5f2ffull );
@@ -15150,7 +15150,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                                 {
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
+                                    schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -15177,7 +15177,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
     }
     if ( value.trace_present ) // ?Script: presence decides, not content
     {
-        if ( value.trace_count < 0 || value.trace_count > 3 ) { return -1; } // storage invariant
+        schema_assert( value.trace_count >= 0 && value.trace_count <= 3 ); // storage invariant, debug only (§5.1)
         const uint64_t ref_trace = ids.ref_at( 48, 0xdec59ea6c4eb9aeeull );
         int64_t body_trace = 0;
         body_trace += 1 + TableLebBytes( (uint64_t) ( value.trace_count ) ); // the element kind byte and the count
@@ -15353,7 +15353,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         {
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
+                            schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -15410,11 +15410,11 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         {
                             const uint64_t arm_refa = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
                             int64_t arm_payloada = 0;
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             w.header( arm_refa, 12 );
                             w.putleb( (uint64_t) arm_payloada ); // note
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
                         }
@@ -15436,7 +15436,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             default: return false; // write validates the tag before it rides
         }
     }
-    if ( value.history_count < 0 || value.history_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.history_count > 0 )
     {
         const uint64_t ref_history = ids.ref_at( 9, 0x33428945bbd5f2ffull );
@@ -15561,7 +15561,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 {
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
+                                    schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -15723,7 +15723,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 {
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
+                                    schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -15780,11 +15780,11 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 {
                                     const uint64_t arm_refua = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
                                     int64_t arm_payloadua = 0;
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     w.header( arm_refua, 12 );
                                     w.putleb( (uint64_t) arm_payloadua ); // note
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     w.raw( value.history[elem_i].origin.note.value, value.history[elem_i].origin.note.value_length );
                                     break;
                                 }
@@ -15810,7 +15810,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.trace_present ) // ?Script
     {
-        if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; } // storage invariant
+        schema_assert( value.trace_count >= 0 && value.trace_count <= 3 ); // storage invariant, debug only (§5.1)
         const uint64_t ref_trace = ids.ref_at( 48, 0xdec59ea6c4eb9aeeull );
         int64_t body_trace = 0;
         // trace: the sizing loop's per-element lengths, kept for the write loop
@@ -17236,7 +17236,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
                         case OriginType::Note:
                         {
                             bits += kTableMessageRefBitsHere;
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
+                            schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                             bits += 5;
                             bits += TableAlignBits( at + bits );
                             bits += (int64_t) value.body.origin.note.value_length * 8;
@@ -17255,7 +17255,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
             default: return -1; // a tag no arm names has no wire identity
         }
     }
-    if ( value.history_count < 0 || value.history_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.history_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -17362,7 +17362,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
                                 case OriginType::Note:
                                 {
                                     bits += kTableMessageRefBitsHere;
-                                    if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return -1; } // storage invariant
+                                    schema_assert( value.history[i].origin.note.value_length >= 0 && value.history[i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     bits += 5;
                                     bits += TableAlignBits( at + bits );
                                     bits += (int64_t) value.history[i].origin.note.value_length * 8;
@@ -17494,7 +17494,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                         case OriginType::Note:
                         {
                             w.put( 38, kTableMessageRefBitsHere );
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                             w.put( (uint64_t) value.body.origin.note.value_length, 5 );
                             w.align(); // a string or a bytes ALIGNS before its bytes
                             w.putbytes( (const uint8_t *) value.body.origin.note.value, value.body.origin.note.value_length );
@@ -17513,7 +17513,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
             default: return false; // a tag no arm names has no wire identity
         }
     }
-    if ( value.history_count < 0 || value.history_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.history_count > 0 )
     {
         w.put( 19, kTableMessageRefBitsHere );
@@ -17599,7 +17599,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                                 case OriginType::Note:
                                 {
                                     w.put( 38, kTableMessageRefBitsHere );
-                                    if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    schema_assert( value.history[i].origin.note.value_length >= 0 && value.history[i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
                                     w.put( (uint64_t) value.history[i].origin.note.value_length, 5 );
                                     w.align(); // a string or a bytes ALIGNS before its bytes
                                     w.putbytes( (const uint8_t *) value.history[i].origin.note.value, value.history[i].origin.note.value_length );

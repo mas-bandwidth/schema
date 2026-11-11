@@ -9803,7 +9803,7 @@ inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     return bytes;
 }
@@ -9823,7 +9823,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner
@@ -10118,7 +10118,7 @@ inline int64_t TeamConfigMeasureMessageBody( int64_t at, const TeamConfig & valu
         bits += kTableMessageRefBitsHere;
         bits += 7;
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -10141,7 +10141,7 @@ inline bool TeamConfigSaveMessageBody( TableBitWriter & w, const TeamConfig & va
         w.put( 92, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.spawn_count ), 7 );
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         w.put( 93, kTableMessageRefBitsHere );
@@ -16853,7 +16853,7 @@ inline int64_t TeamConfigMeasureBodyRetain( TableRetainIds & ids, const TeamConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -16866,7 +16866,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner

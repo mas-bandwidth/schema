@@ -11201,7 +11201,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
     if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
     if ( value.server_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 18, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
-    if ( value.entities_count < 0 || value.entities_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
@@ -11215,7 +11215,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         }
         bytes += TableLebBytes( ref_entities ) + 1 + TableLebBytes( (uint64_t) ( body_entities ) ) + ( body_entities ); // entities
     }
-    if ( value.stats_count < 0 || value.stats_count > 80 ) { return -1; } // storage invariant
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
     if ( value.stats_count > 0 )
     {
         const uint64_t ref_stats = ids.ref_at( 74, 0xee639cad45b1994cull );
@@ -11286,9 +11286,9 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
             bytes += TableLebBytes( ref_loadout ) + 1 + TableLebBytes( (uint64_t) ( body_loadout ) ) + ( body_loadout ); // loadout
         }
     }
-    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return -1; } // storage invariant
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
-    if ( value.payload_length < 0 || value.payload_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
@@ -11369,7 +11369,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         w.header( ids.ref_at( 18, 0x3c460475f9be69c6ull ), 22 ); // server_time
         w.put32( uint32_t( value.server_time ) );
     }
-    if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
@@ -11400,7 +11400,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             }
         }
     }
-    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // storage invariant
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
     if ( value.stats_count > 0 )
     {
         const uint64_t ref_stats = ids.ref_at( 74, 0xee639cad45b1994cull );
@@ -11500,14 +11500,14 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             }
         }
     }
-    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.player_name_length > 0 )
     {
         w.header( ids.ref_at( 7, 0x13a62f542cf8e86eull ), 12 ); // player_name
         w.putleb( (uint64_t) value.player_name_length );
         w.raw( value.player_name, value.player_name_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
@@ -13231,7 +13231,7 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
         bits += kTableMessageRefBitsHere;
         bits += 24;
     }
-    if ( value.entities_count < 0 || value.entities_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13243,7 +13243,7 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
             bits += elem;
         }
     }
-    if ( value.stats_count < 0 || value.stats_count > 80 ) { return -1; } // storage invariant
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
     if ( value.stats_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13303,7 +13303,7 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
             bits += (int64_t) ( 4 ) * 8;
         }
     }
-    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return -1; } // storage invariant
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.player_name_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13311,7 +13311,7 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.player_name_length * 8;
     }
-    if ( value.payload_length < 0 || value.payload_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13439,7 +13439,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
         w.put( 9, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.server_time ), 24 );
     }
-    if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
@@ -13449,7 +13449,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
             if ( !MixedEntitySaveMessageBody( w, value.entities[i] ) ) { return false; }
         }
     }
-    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // storage invariant
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
     if ( value.stats_count > 0 )
     {
         w.put( 11, kTableMessageRefBitsHere );
@@ -13498,7 +13498,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
             }
         }
     }
-    if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.player_name_length > 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
@@ -13506,7 +13506,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.player_name, value.player_name_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         w.put( 15, kTableMessageRefBitsHere );

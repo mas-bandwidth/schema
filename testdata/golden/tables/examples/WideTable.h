@@ -9339,15 +9339,15 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
 inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -9369,14 +9369,14 @@ inline int64_t WideBlobMeasure( const WideBlob & value )
 
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, const WideBlob & value )
 {
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
@@ -9386,7 +9386,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
         w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -9803,7 +9803,7 @@ inline bool WideBlobLoad( WideBlob & value, const uint8_t * buffer, int64_t byte
 inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
 {
     int64_t bits = 0;
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -9811,7 +9811,7 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.label_length * 8;
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -9819,7 +9819,7 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.payload_length * 8;
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -9836,7 +9836,7 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value )
 {
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.put( 101, kTableMessageRefBitsHere );
@@ -9844,7 +9844,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         w.put( 102, kTableMessageRefBitsHere );
@@ -9852,7 +9852,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.payload, value.payload_length );
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         w.put( 103, kTableMessageRefBitsHere );
@@ -10245,15 +10245,15 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
 inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -10268,14 +10268,14 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
 
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
@@ -10285,7 +10285,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
         w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
