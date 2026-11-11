@@ -333,6 +333,17 @@
         "ruled 2026-11-10: a pointer naming a record of a declared type that is not its target type is damage"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "skipped-value-is-validated",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a value a reader skips is held to what a read of it would hold, and damage inside it refuses the read, in every form"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that strict wins, applied by the coordinator",
+      "supersedes": [
+        "the §16.3 reading that a string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — passes the read when it decodes to U+0000 because it \"stores nothing and is not this event\""
+      ]
     }
   ]
 }

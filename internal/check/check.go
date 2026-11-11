@@ -2197,6 +2197,10 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (docs/SPEC-TABLES.md §16.4)")
 				continue
 			}
+			if strings.ContainsRune(lit.Value, '\x00') {
+				c.errf(a.Pos, "json key %q holds U+0000 — a field key cannot contain a zero that the text reader refuses (docs/SPEC-TABLES.md §16.4)", lit.Value)
+				continue
+			}
 			out.JsonKey = lit.Value
 		}
 	}
