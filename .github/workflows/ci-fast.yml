@@ -842,8 +842,15 @@ jobs:
   # is cut into rows by make target, each a job of its own:
   #   conformance-a / -b  — the four conformance controls, two each
   #   wire-fuzz           — tables-lobster-wire-fuzz
-  #   packages            — test-lobster-packages, the two packages' suites
-  #                         under SCHEMA_REQUIRE_CORPUS=1 (make/lobster.mk)
+  #   packages-type-fixed — the type surface and the four corpus-reading
+  #                         fixed-form tests (make/lobster.mk)
+  #   packages-forgery    — the two forgery fuzz tests
+  #   packages-rest-a     — the remaining table tests named TestLobster[A-I]
+  #   packages-rest-b     — every remaining table test
+  #                         The four package parts together run every test
+  #                         test-lobster-packages runs, exactly once, under
+  #                         SCHEMA_REQUIRE_CORPUS=1; only the fixed-form part
+  #                         builds the byte oracle.
   #   gates               — EVERY OTHER prerequisite of test-lobster, read
   #                         from make itself at run time, so a prerequisite
   #                         added to test-lobster lands here with no edit
@@ -868,7 +875,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, wire-fuzz, packages, gates ]
+        part: [ conformance-a, conformance-b, wire-fuzz, packages-type-fixed, packages-forgery, packages-rest-a, packages-rest-b, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -913,7 +920,10 @@ jobs:
             conformance-a) make toolchain-lobster $a ;;
             conformance-b) make toolchain-lobster $b ;;
             wire-fuzz)     make toolchain-lobster $w ;;
-            packages)      make $p ;;
+            packages-type-fixed) make test-lobster-packages-type test-lobster-packages-fixed ;;
+            packages-forgery)    make test-lobster-packages-forgery ;;
+            packages-rest-a)     make test-lobster-packages-rest-a ;;
+            packages-rest-b)     make test-lobster-packages-rest-b ;;
             gates)
               # test-lobster's prerequisites as make reads them, less the
               # rows above and the nightly pair

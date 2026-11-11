@@ -68,6 +68,26 @@ test-lobster-packages: toolchain-lobster build/fixedform-corpus/.stamp
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
+# The same two packages' suites as shards, so ci-fast can run each in a row
+# that fits its two-minute cap. Together they run every test
+# test-lobster-packages runs, exactly once: the type surface and the four
+# corpus-reading fixed-form tests, the two forgery fuzz tests, the remaining
+# table tests under TestLobster[A-I], and those outside that range (plus any
+# test not named TestLobster*). Only the corpus-reading shard builds the
+# oracle; the others read committed inputs. test-lobster-packages itself is
+# unchanged and still runs the whole set for make test and ci-full.
+.PHONY: test-lobster-packages-type test-lobster-packages-fixed test-lobster-packages-forgery test-lobster-packages-rest-a test-lobster-packages-rest-b
+test-lobster-packages-type: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobster/...
+test-lobster-packages-fixed: toolchain-lobster build/fixedform-corpus/.stamp
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$'
+test-lobster-packages-forgery: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^(TestLobsterForgeryFuzz|TestLobsterForgeryFuzzNegativeControl)$$'
+test-lobster-packages-rest-a: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[A-I]' -skip '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$'
+test-lobster-packages-rest-b: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -skip '^TestLobster[A-I]|^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$'
+
 # build/conformance-lobster is the manifest's units generated for lobster, one
 # directory per unit.
 # port joins the builtins (compiler/target_lobster.go). A unit the target
