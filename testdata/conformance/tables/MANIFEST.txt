@@ -768,8 +768,8 @@ json-hostile str-zero-byte-bounded-nested  tabledemo  RootConfig  testdata/confo
 # tabledemo's RootConfig has no string-keyed map.
 json-hostile str-zero-escape-value         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value refused
 json-hostile str-zero-escape-map-key       mapdemo    Text        testdata/conformance/tables/json-hostile/str-zero-escape-map-key refused
-# A duplicate KEY in a map is last-wins and counted (§2.8): listdemo's Army
-# root carries a roster map, so this row exercises the readMap duplicate counter.
+# A repeated map key in the text form is refused (§2.8): "A repeated key
+# refuses the read `malformed`, the object rule (§16.2) applied inside the map."
 json-hostile list-map-dup-key              listdemo   Army        testdata/conformance/tables/json-hostile/list-map-dup-key   refused
 json-hostile str-zero-escape-unknown-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key read
 json-hostile union-table-arm-unknown       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown read
