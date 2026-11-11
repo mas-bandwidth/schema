@@ -922,9 +922,15 @@ defmodule Bench.TableMessage do
 
   defp encode_array(vocab, shape, elem, value, acc) do
     count = length(value)
-    acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
-    acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
-    encode_elements(vocab, elem, value, acc3)
+    min = Map.get(shape, :min, 0)
+
+    if count < min or count > shape.max do
+      :error
+    else
+      acc2 = put_bits(acc, count - min, bit_length(shape.max - min))
+      acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
+      encode_elements(vocab, elem, value, acc3)
+    end
   end
 
   defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
