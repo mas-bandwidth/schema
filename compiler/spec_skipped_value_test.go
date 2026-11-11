@@ -26,15 +26,16 @@ func TestSpecSkippedValueIsValidated(t *testing.T) {
 		flat := func(s string) string { return strings.Join(strings.Fields(s), " ") }
 		text := flat(section)
 		for _, want := range []string{
-			"A string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — is held to the grammar and text rules a placed value is held to",
+			"A string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — stores nothing and is not this event, but it is held to the grammar and text rules a placed value is held to",
 			"one that decodes to `U+0000` refuses the read as a placed one does",
 		} {
 			if !strings.Contains(text, want) {
 				t.Errorf("§16.3 no longer states %q", want)
 			}
 		}
-		if strings.Contains(text, "stores nothing and is not this event") {
-			t.Error("§16.3 still states the stale sentence \"stores nothing and is not this event\"")
+		const stale = "stores nothing and is not this event, and a `\\u0001` escape"
+		if strings.Contains(text, stale) {
+			t.Errorf("§16.3 still states the stale sentence %q", stale)
 		}
 	})
 

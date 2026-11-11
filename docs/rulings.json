@@ -268,7 +268,7 @@
       ],
       "source": "the owner's standing rule of 2026-11-10 that strict wins, applied by the coordinator",
       "supersedes": [
-        "the §16.3 sentence \"a string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — stores nothing and is not this event\""
+        "the §16.3 reading that a string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — passes the read when it decodes to U+0000 because it \"stores nothing and is not this event\""
       ]
     }
   ]

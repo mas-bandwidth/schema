@@ -16115,8 +16115,9 @@ text is authoring input and a wire is untrusted input: it is the form's answer t
 name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
-of an unknown key, an object key, whether it names a field or none — is held
-to the grammar and text rules a placed value is held to, and one that decodes
+of an unknown key, an object key, whether it names a field or none —
+stores nothing and is not this event, but it is held to the grammar and text
+rules a placed value is held to, and one that decodes
 to `U+0000` refuses the read as a placed one does; a `\u0001` escape, or any
 escape but `\u0000`, is not affected. A map key past its bound (over a string key's bound, or too long to be any
 integer) refuses the read, and a zero in any map key refuses it
