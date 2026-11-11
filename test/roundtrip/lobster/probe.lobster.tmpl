@@ -36,7 +36,8 @@ def fixed_probe(root:string, name:string, eng:string):
     if eng != "":
         var verdict = "refused:the unit generated no fixed form for this root"
 [[range .Roots]][[if eq .Class "fixed"]]        if root == "[[.Name]]":
-            let rows = [[[$.Package]].New[[.Name]]()]
+            let row = [[$.Package]].New[[.Name]]()
+            let rows = [ row ]
             let plan:[schema_rt.TableFixedEntry] = []
             let r = schema_rt.TableReport {}
             if [[$.Package]].[[.Name]]FixedLoad(rows, eng, plan, r) != 1:
