@@ -10202,8 +10202,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   report empty. A nil report is allowed and refuses the same way. **On a
   refusal nothing the read produced is defined, and each call leaves its
   output in one stated state**: the value read and the value `FromJson` reset
-  the value to its declared defaults, `FixedLoad` resets every value it had
-  written, `LoadMessages` answers a count of `0` and resets every value it had
+  the value to its declared defaults, `FixedLoad` leaves every value as it was,
+  `LoadMessages` answers a count of `0` and resets every value it had
   written, the region read hands back no root, and a builder read leaves a
   builder whose root the caller does not use and shuts down. **There is no
   `*Tolerant` entry point**: `LoadTolerant`, `LoadBuilderTolerant`,
