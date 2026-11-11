@@ -462,8 +462,10 @@ int main( void )
     hex( pb, pn, "PLAIN" );
     hex( lb, ln, "LEDGER" );
 
+    memset( out, 0, sizeof( out ) );
     count = 1;
     if ( !ledger_load_messages( out, &count, &vocab, lb, ln, &r ) || count != 1 || out[0].n != 1000 || out[0].count != 7 ) { return 1; }
+    memset( pout, 0, sizeof( pout ) );
     count = 1;
     if ( !plain_load_messages( pout, &count, &vocab, pb, pn, &r ) || count != 1 || pout[0].n != 1000 || pout[0].count != 7 ) { return 1; }
 

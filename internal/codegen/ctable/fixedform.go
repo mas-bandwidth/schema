@@ -610,14 +610,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   UNGUARDED ENTRIES\n")
 	g.pf("   FIRST, then the arms: the entries that are nearly all of a plan never\n")
 	g.pf("   test a guard at all. */\n")
-	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
-	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
-	// width (see fixedCopySegments). A split that changes the entry count or
-	// the guarded split would also change the plan's published order, and the
-	// reference's coalesced order is what a little-endian build executes, so
+	// THE PLAN IS BUILT COALESCED, THEN SPLIT WHERE A COPY ENTRY SPANS LEAVES
+	// OF DIFFERENT WIDTHS, so a big-endian copy knows its element width (see
+	// fixedCopySegments). A split that changes the entry count or the guarded
+	// split would also change the plan's published order. That
+	// order is load-bearing where a TEXT entry rides under a union's guard: its
+	// ordinal lane and its flavour lane must stay the two facts the reference
+	// publishes (docs/SPEC-TABLES.md §3.4, the UT1/UT2 pair). For those plans
 	// both forms are emitted behind the host-order test: the little-endian
-	// branch keeps the coalesced plan's rows, and the big-endian branch (or a
-	// host compiling the forced control) gets the per-width segments.
+	// branch keeps the coalesced order, and the big-endian branch (or a host
+	// compiling the forced control) gets the per-width segments. A plan with no
+	// guarded text entry has no such lane to preserve, so it keeps the split
+	// segments on both hosts.
 	intervals := fixedSrcIntervals(entries)
 	type emitEntry struct {
 		e    ir.TableFixedLeaf
@@ -679,7 +683,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		}
 		g.pf("};\n")
 	}
-	if len(emitPlan) != len(plan) || emitGuarded != guarded {
+	guardedText := false
+	for _, e := range plan {
+		if e.Op == ir.TableFixedOpText && (e.Guard != ir.TableFixedNoGuard || e.Guard2 != ir.TableFixedNoGuard) {
+			guardedText = true
+			break
+		}
+	}
+	if guardedText && (len(emitPlan) != len(plan) || emitGuarded != guarded) {
 		g.pf("#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) || ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) )\n")
 		plain := make([]emitEntry, len(plan))
 		for i, e := range plan {
