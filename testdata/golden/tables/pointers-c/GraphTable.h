@@ -7306,7 +7306,11 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
                             case 0x9deeefd89ca8a81dull: slot = 1; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !graphdemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         graphdemo_layer_load_body( &elem, &value->banks[slot] );
                         if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; graphdemo_layer_reset(&value->banks[slot]); }
                     }
@@ -10132,7 +10136,12 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body_retain( graphdemo_table_reade
                             r->report->retain_lost += retention.retain != NULL;
                             break;
                         }
-                        if ( slot < 0 ) { continue;
+                        if ( slot < 0 )
+                        {
+                            if ( !graphdemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                            }
+                            continue;
                         }
                         retention=graphdemo_table_retain_index(retention,(uint32_t)(slot));
                         graphdemo_layer_load_body_retain( &elem, &value->banks[slot] , retention);

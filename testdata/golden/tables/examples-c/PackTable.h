@@ -7208,7 +7208,11 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                             case 0x7d573c625719c1a5ull: slot = 2; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         tabledemo_ship_entry_load_body( &elem, &value->ships[slot] );
                         if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; tabledemo_ship_entry_reset(&value->ships[slot]); }
                     }
@@ -7244,7 +7248,11 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                             case 0x58c7b5d87587287cull: slot = 2; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         switch ( elem_kind )
                         {
                             case 2:
@@ -10768,7 +10776,12 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                             r->report->retain_lost += retention.retain != NULL;
                             break;
                         }
-                        if ( slot < 0 ) { continue;
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                            }
+                            continue;
                         }
                         retention=tabledemo_table_retain_index(retention,(uint32_t)(slot));
                         tabledemo_ship_entry_load_body_retain( &elem, &value->ships[slot] , retention);
@@ -10831,7 +10844,12 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                             r->report->retain_lost += retention.retain != NULL;
                             break;
                         }
-                        if ( slot < 0 ) { continue;
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                            }
+                            continue;
                         }
                         switch ( elem_kind )
                         {
