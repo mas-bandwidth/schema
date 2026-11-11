@@ -2390,9 +2390,11 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.ackSequence !== "number" || !Number.isInteger(value.ackSequence)) { return false; }
   if (value.ackSequence < 0 || value.ackSequence > 65535) { return false; }
   if (typeof value.ackBits !== "number" || !Number.isInteger(value.ackBits)) { return false; }
+  if (value.ackBits < 0 || value.ackBits > 4294967295) { return false; }
   if (typeof value.sessionId !== "bigint") { return false; }
   if (typeof value.clientId !== "number" || !Number.isInteger(value.clientId)) { return false; }
   if (typeof value.nonce !== "bigint") { return false; }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) { return false; }
   if (typeof value.worldTime !== "bigint") { return false; }
   if (value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) { return false; }
   if (typeof value.frameTick !== "bigint") { return false; }
@@ -2437,9 +2439,11 @@ export function BenchMixedFixedCheckBody(value) {
   }
   if (!(value.playerName instanceof Uint8Array)) { return false; }
   if (typeof value.playerNameLength !== "number" || !Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15) { return false; }
+  if (value.playerName.length < value.playerNameLength) { return false; }
   if (!TableFixedTextOk(TableFixedTextUtf8, new DataView(value.playerName.buffer, value.playerName.byteOffset, value.playerName.byteLength), 0, value.playerNameLength)) { return false; }
   if (!(value.payload instanceof Uint8Array)) { return false; }
   if (typeof value.payloadLength !== "number" || !Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { return false; }
+  if (value.payload.length < value.payloadLength) { return false; }
   if (typeof value.aimX !== "number" || !Number.isFinite(Math.fround(value.aimX))) { return false; }
   if (value.aimX < -1 || value.aimX > 1) { return false; }
   if (typeof value.aimY !== "number" || !Number.isFinite(Math.fround(value.aimY))) { return false; }
@@ -2452,7 +2456,7 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.flux !== "bigint") { return false; }
   if (value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) { return false; }
   if (typeof value.ping !== "number" || !Number.isInteger(value.ping)) { return false; }
-  if (value.ping > 64000) { return false; }
+  if (value.ping < 0 || value.ping > 64000) { return false; }
   if (typeof value.crcHint !== "number" || !Number.isInteger(value.crcHint)) { return false; }
   if (value.crcHint < 0 || value.crcHint > 16777215) { return false; }
   if (typeof value.extra !== "number" || !Number.isInteger(value.extra)) { return false; }

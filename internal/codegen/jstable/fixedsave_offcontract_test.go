@@ -71,7 +71,11 @@ union Pick
 fixed table Row
 {
     value int32 = 1 | min = 1, max = 100
+    full int32 | min = -2147483648, max = 2147483647
+    full64 int64 | min = -9223372036854775808, max = 9223372036854775807
     mask bits(5)
+    mask32 bits(32)
+    mask64 bits(64)
     kind Kind
     pick Pick
     items [..4]int32 | min = -5, max = 5
@@ -142,6 +146,18 @@ refuses("value above its maximum", (v) => { v.value = 101; });
 refuses("non-integer in an integer field", (v) => { v.value = 1.5; });
 refuses("bits value wider than its width", (v) => { v.mask = 32; });
 
+// a declared range that reaches the storage width's own ends is still a range:
+// a value one past either end is off contract even though no loaded value
+// could fail the bound.
+refuses("full-width value above its maximum", (v) => { v.full = 2147483648; });
+refuses("full-width value below its minimum", (v) => { v.full = -2147483649; });
+refuses("full-width 64-bit value above its maximum", (v) => { v.full64 = 9223372036854775808n; });
+refuses("full-width 64-bit value below its minimum", (v) => { v.full64 = -9223372036854775809n; });
+refuses("bits(32) value at 2^N", (v) => { v.mask32 = 4294967296; });
+refuses("bits(32) negative", (v) => { v.mask32 = -1; });
+refuses("bits(64) value at 2^N", (v) => { v.mask64 = 18446744073709551616n; });
+refuses("bits(64) negative", (v) => { v.mask64 = -1n; });
+
 // row 5: an enum ordinal past the last variant.
 refuses("enum ordinal past the last variant", (v) => { v.kind = 4; });
 
@@ -153,11 +169,22 @@ refuses("count past Max", (v) => { v.itemsCount = 5; });
 refuses("negative count", (v) => { v.itemsCount = -1; });
 refuses("non-array where an array belongs", (v) => { v.items = 7; });
 
-// row 4: a text or byte buffer length past N or negative.
+// row 4: a text or byte buffer length past N or negative, and a buffer whose
+// own storage is shorter than the used length it names.
 refuses("string length past N", (v) => { v.nameLength = 9; });
 refuses("negative string length", (v) => { v.nameLength = -1; });
+refuses("string buffer shorter than its length", (v) => {
+  const short = new Uint8Array(3);
+  short.set([0x61, 0x62, 0x63]);
+  v.name = short;
+  v.nameLength = 5;
+});
 refuses("bytes length past N", (v) => { v.dataLength = 9; });
 refuses("negative bytes length", (v) => { v.dataLength = -1; });
+refuses("bytes buffer shorter than its length", (v) => {
+  v.data = new Uint8Array(3);
+  v.dataLength = 5;
+});
 
 // row 8: ill-formed text — a lone surrogate's bytes and a zero byte.
 refuses("lone surrogate in text", (v) => { v.name.set([0xed, 0xa0, 0x80]); v.nameLength = 3; });
@@ -178,6 +205,21 @@ roundTrips("ranged maximum, bits maximum, enum top", (v) => {
   v.kind = 3;
 }, (v) => {
   if (v.value !== 100 || v.mask !== 31 || v.kind !== 3) fail("the scalar boundaries did not load");
+});
+roundTrips("full-width maxima and bits tops", (v) => {
+  v.full = 2147483647;
+  v.full64 = 9223372036854775807n;
+  v.mask32 = 4294967295;
+  v.mask64 = 18446744073709551615n;
+}, (v) => {
+  if (v.full !== 2147483647 || v.full64 !== 9223372036854775807n) fail("the full-width maxima did not load");
+  if (v.mask32 !== 4294967295 || v.mask64 !== 18446744073709551615n) fail("the bits tops did not load");
+});
+roundTrips("full-width minima", (v) => {
+  v.full = -2147483648;
+  v.full64 = -9223372036854775808n;
+}, (v) => {
+  if (v.full !== -2147483648 || v.full64 !== -9223372036854775808n) fail("the full-width minima did not load");
 });
 roundTrips("union top arm and its text", (v) => {
   v.pick.type = 2;

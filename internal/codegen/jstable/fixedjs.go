@@ -461,14 +461,17 @@ func (g *fixedGen) emitCheckValueText(f *ir.Field, expr, ind string) {
 		ind, expr, expr, expr, expr)
 }
 
-// emitCheckValueBytes refuses a used length outside 0..N, and a value that is
-// not the Uint8Array the module copies from. It answers whether the caller can
-// then read the used units (a text has one more content rule to hold).
+// emitCheckValueBytes refuses a used length outside 0..N, a value that is not
+// the Uint8Array the module copies from, and a Uint8Array whose own storage is
+// shorter than the used length it names: the writer may only read the units
+// the buffer actually holds. It answers whether the caller can then read the
+// used units (a text has one more content rule to hold).
 func (g *fixedGen) emitCheckValueBytes(f *ir.Field, expr, ind string) bool {
 	g.pf("%sif (!(%s instanceof Uint8Array)) { return false; }\n", ind, expr)
 	length := expr + "Length"
 	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
 		ind, length, length, length, length, f.Type.Size)
+	g.pf("%sif (%s.length < %s) { return false; }\n", ind, expr, length)
 	return true
 }
 
@@ -537,22 +540,18 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	} else {
 		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
 	}
+	// THE WRITER CHECKS BOTH DECLARED ENDS, never the reader's elision: a
+	// bound sitting on the storage width's own limit is still a bound the
+	// caller can cross, because the caller's value was never loaded through
+	// that width. Writing it would wrap the value the declaration refuses.
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
 		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
-		low, high := fixedClampEnds(f)
-		switch {
-		case low && high:
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
-		case low:
-			g.pf("%sif (%s < %s) { return false; }\n", ind, expr, lo)
-		case high:
-			g.pf("%sif (%s > %s) { return false; }\n", ind, expr, hi)
-		}
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
 	}
-	w := fixedStorageBytes(f.Type)
-	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
-		// a narrowed bits slot is unsigned: an N-bit value is 0..2^N-1, so a
-		// negative Number is no more admissible than one past the top.
+	if f.Type.Kind == ir.TBits {
+		// a bits slot is unsigned at EVERY width: an N-bit value is 0..2^N-1,
+		// so a negative value is no more admissible than one past the top, and
+		// a width that fills its storage is no exception.
 		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		g.pf("%sif (%s < %s || %s > %s) { return false; }\n",
 			ind, expr, jsIntLit(big.NewInt(0), asBig), expr, jsIntLit(maxv, asBig))
