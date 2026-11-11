@@ -816,6 +816,21 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 			value = int64(u)
 		}
 	}
+	if f.Type.Kind == ir.TInt && !f.HasIntRange && f.Type.Width > 0 && f.Type.Width < 64 {
+		// A FIELD THAT DECLARES NO RANGE IS STILL HELD TO ITS KIND'S DOMAIN
+		// (docs/SPEC-TABLES.md §3.3): an int8 holds -128 through 127, a uint8
+		// 0 through 255, and a value outside it refuses rather than landing
+		// masked in the cell.
+		if signed {
+			lo := -(int64(1) << uint(f.Type.Width-1))
+			hi := int64(1)<<uint(f.Type.Width-1) - 1
+			if value < lo || value > hi {
+				d.refuse(ReasonOutOfRange)
+			}
+		} else if uint64(value) > uint64(1)<<uint(f.Type.Width)-1 {
+			d.refuse(ReasonOutOfRange)
+		}
+	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<uint(f.Type.Width) - 1
 		if uint64(value) > max {
