@@ -7028,6 +7028,31 @@ caller's array of values is the whole of its storage.
   field. **So a hostile peer announcing a build version it does not have gains
   nothing.** The worst a lie achieves is a wrong build version beside a real
   vocabulary in a log.
+- **THE ANNOUNCEMENT GRAMMAR IS CLOSED** (docs/rulings.json
+  `message-announcement-closed`): **an announcement is refused unless a schema
+  the compiler accepts could announce it.** The conditions are ONE closed list,
+  and an announcement that breaks any of them is malformed and refused whole,
+  with no vocabulary set:
+  - an entry's KIND, and an array's or keyed array's element kind, is one of
+    §3's closed set;
+  - a SHAPE is nested at most 128 levels, and an array or keyed shape whose
+    element is itself an array or keyed shape is refused, because the compiler
+    refuses every field that would announce one: an array of arrays is not
+    supported in v1 (the parser refuses the second bracket), the checker
+    refuses an array of `bytes(N)`, which is itself a kind `14` array, and an
+    enum-keyed array whose value is an array or a map, and a map's element is
+    its entry table (kind `13`) whatever its value is;
+  - an array's `min` is at most its `max`;
+  - a packed `bits` and a `max` sit inside what the kind holds;
+  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
+    announced kind: a width the kind holds is not enough, because under a base
+    near the kind's edge a lawful-looking width names values the kind cannot
+    hold.
+
+  Two rules on the body complete it. An array element that consumes no bits is
+  refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS
+  REFUSES THE READ, above). And an integer that lands outside the READER's own
+  kind refuses `out_of_range` and is never masked or wrapped.
 - **A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked before it is
   used.** A `bits` above 128, a `max` above what the kind can hold, an array
   whose `min` exceeds its `max`, an element kind outside the closed set, a
