@@ -109,10 +109,20 @@ func (m *pyModule) emitStruct(d *ir.Struct) {
 	for _, f := range d.Fields {
 		slots = append(slots, f.Name)
 	}
-	m.line("    __slots__ = (%s)", quotedList(slots))
+	m.line("    __slots__ = %s", quotedTuple(slots))
 	m.line("")
 	m.line("    def __init__(self) -> None:")
+	prevGuard := ""
 	for _, f := range d.Fields {
+		if f.Guard != prevGuard {
+			if f.Guard != "" {
+				m.line("        # %s — wire branch; storage holds both sides (SPEC §5)", f.Guard)
+			}
+			prevGuard = f.Guard
+		}
+		if f.Doc != "" {
+			m.printf("%s", docComment(f.Doc, "        ", "#"))
+		}
 		value := m.defaultExpr(f)
 		if f.Array != ir.ArrayNone {
 			value = m.arrayDefault(f)
@@ -154,11 +164,14 @@ func (m *pyModule) emitUnion(d *ir.Union) {
 	for _, v := range arms {
 		slots = append(slots, v.Name)
 	}
-	m.line("    __slots__ = (%s)", quotedList(slots))
+	m.line("    __slots__ = %s", quotedTuple(slots))
 	m.line("")
 	m.line("    def __init__(self) -> None:")
 	m.line("        self.type = 0")
 	for _, v := range arms {
+		if v.Doc != "" {
+			m.printf("%s", docComment(v.Doc, "        ", "#"))
+		}
 		m.line("        self.%s = %s", v.Name, m.unionArmDefault(v))
 	}
 	m.line("")
@@ -221,12 +234,18 @@ func isScalarZero(s string) bool {
 	return s == "0" || s == "False" || s == "0.0" || s == "\"\"" || s == "b\"\""
 }
 
-func quotedList(names []string) string {
+func quotedTuple(names []string) string {
+	if len(names) == 0 {
+		return "()"
+	}
 	parts := make([]string, len(names))
 	for i, n := range names {
 		parts[i] = strconv.Quote(n)
 	}
-	return strings.Join(parts, ", ")
+	if len(parts) == 1 {
+		return "(" + parts[0] + ",)"
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
 }
 
 func (m *pyModule) emitEquality(name string, fields []*ir.Field) {
@@ -295,7 +314,7 @@ func (m *pyModule) emitUnionEquality(d *ir.Union, arms []ir.UnionVariant) {
 		if i > 0 {
 			cond = "elif"
 		}
-		m.line("        %s self.type == %d:", cond, i+1)
+		m.line("        %s self.type == %d:", cond, tagOf(d, v))
 		m.line("            return %s", m.equalExpr("self."+v.Name, "other."+v.Name, v.F))
 	}
 	m.line("        return True")

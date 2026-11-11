@@ -16,27 +16,27 @@ func init() {
 				c.line("%s = 0", target)
 				return
 			}
-			local := c.local()
-			c.m.needSerialize("Ref")
-			c.line("%s = Ref(0)", local)
-			c.line("if not stream.serialize_bits(%s, %d):", local, ref.WireBits)
+			ri := c.ref("_s_ri", "0")
+			op := c.streamOp("serialize_bits")
+			c.line("if not %s(%s, %d):", op, ri, ref.WireBits)
 			c.line("    return False")
-			c.line("%s = %s.value", target, local)
+			c.line("%s = %s.value", target, ri)
 		},
 		write: func(c *emitCtx, f *ir.Field, expr string) {
 			ref := f.Type.Ref.(*ir.Flags)
 			if ref.WireBits == 0 {
 				return
 			}
-			c.m.needSerialize("Ref")
-			c.line("stream.serialize_bits(Ref(%s), %d)", expr, ref.WireBits)
+			ri := c.ref("_s_ri", "0")
+			op := c.streamOp("serialize_bits")
+			c.line("%s.value = %s", ri, expr)
+			c.line("%s(%s, %d)", op, ri, ref.WireBits)
 		},
 		validate: func(c *emitCtx, f *ir.Field, expr, path string) {
 			ref := f.Type.Ref.(*ir.Flags)
-			c.m.needSchema("validate_int")
 			max := new(big.Int).Lsh(big.NewInt(1), uint(ref.WireBits))
 			max.Sub(max, big.NewInt(1))
-			c.line("validate_int(%s, %s, 0, %s)", expr, fieldPath(path, f.Name), intLiteral(max))
+			emitIntValidate(c, expr, fieldPath(path, f.Name), "0", intLiteral(max))
 		},
 		zero: func(c *emitCtx, f *ir.Field, target string) {
 			c.line("%s = 0", target)

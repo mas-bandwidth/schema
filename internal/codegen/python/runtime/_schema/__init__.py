@@ -74,11 +74,18 @@ def wire_input(data: object) -> bytes:
     raise TypeError(f"a read takes bytes, bytearray or a 'B' memoryview, got {type(data).__name__}")
 
 
-def float32_bits_eq(a: float, b: float) -> bool:
+def float32_bits_eq(a: object, b: object) -> bool:
     """Equality by the float32 bits, so -0.0 and 0.0 differ."""
-    return struct.pack("<f", a) == struct.pack("<f", b)
+    if type(a) is not float or type(b) is not float:
+        return a == b
+    try:
+        return struct.pack("<f", a) == struct.pack("<f", b)
+    except OverflowError:
+        return struct.pack("<d", a) == struct.pack("<d", b)
 
 
-def float64_bits_eq(a: float, b: float) -> bool:
+def float64_bits_eq(a: object, b: object) -> bool:
     """Equality by the float64 bits, so -0.0 and 0.0 differ."""
+    if type(a) is not float or type(b) is not float:
+        return a == b
     return struct.pack("<d", a) == struct.pack("<d", b)

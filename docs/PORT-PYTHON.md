@@ -433,7 +433,8 @@ departs from the P4 row above; the rules of this page are unchanged.
   table, and a variant may not be named `Count` or `NAMES`.
 - **A union's tag attribute is `type`.** The value mapping's `type` is the
   attribute; a union arm may not be named `type`, `read`, `write`, `load`,
-  `save` or `descriptor`, the members the generated class defines.
+  `save` or `descriptor`, the members the generated class defines, or export
+  `None_`, `Max` or `NAMES` on `<Union>Type`.
 - **The golden harness reads single-root pins.** A C++-pinned packet golden
   that is one value with one root type is read and written back; the
   multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
@@ -444,21 +445,24 @@ departs from the P4 row above; the rules of this page are unchanged.
 ## THE PACKET CORE BENCH
 
 D1 names two code shapes for the hot path: straight-line generated code with
-locals bound, and a descriptor walk. The core keeps the straight-line shape,
-because it measured faster on both sides of the wire. The instrument is the
-`BenchInts` fixture (ten ranged `int32` fields, 110 wire bits), read from
-`testdata/wire/bench_ints.bin` and written back, 200,000 iterations after a
-1,000-iteration warmup, over three sittings:
+locals bound, and a descriptor walk. Each method binds its reusable `Ref`
+holders, `stream.serialize_*` callables and `type`/`int`/`bool` checks into
+method locals once at entry, and validates scalar types and integer bounds
+inline before constructing an error path. The core keeps the straight-line
+shape, because it measured faster on both sides of the wire under both pinned
+interpreters. The instrument is the `BenchInts` fixture (ten ranged `int32`
+fields, 110 wire bits), read from `testdata/wire/bench_ints.bin` and written
+back, 200,000 iterations after a 1,000-iteration warmup, over five interleaved
+sittings per interpreter:
 
-| shape | read | write |
-|---|---|---|
-| straight-line generated code (kept) | 5.08–5.50 µs/op | 4.74–5.46 µs/op |
-| descriptor walk (prototype loop) | 5.41–5.64 µs/op | 5.20–5.55 µs/op |
+| interpreter | shape | read | write |
+|---|---|---|---|
+| CPython 3.11.18 (floor) | straight-line generated code (kept) | 7.33–7.48 µs/op | 6.80–7.03 µs/op |
+| CPython 3.11.18 (floor) | descriptor walk (prototype loop) | 7.80–8.10 µs/op | 7.51–7.81 µs/op |
+| CPython 3.15.2 (current) | straight-line generated code (kept) | 7.68–8.00 µs/op | 7.02–7.11 µs/op |
+| CPython 3.15.2 (current) | descriptor walk (prototype loop) | 8.28–8.61 µs/op | 7.56–7.95 µs/op |
 
-The straight-line reader is 2–8% faster and the writer 0–4% faster in every
-sitting, so the generator emits it and no descriptor walk ships. These are
-**provisional** numbers: the pinned interpreters could not be built offline in
-this environment, so the sitting used the host's CPython 3.14.4 (the floor is
-3.11). The same probe re-measured on the two pins is owed before the numbers
-are treated as the leg's bench record; the shape choice is not expected to
-move, because both sittings point the same way.
+The straight-line reader is 3–8% faster and the writer 7–11% faster across
+every sitting on both pins, because attribute load and store on `__slots__`
+avoid `getattr`/`setattr` and loop dispatch, so the generator emits it and no
+descriptor walk ships.

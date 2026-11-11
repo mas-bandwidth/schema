@@ -37,7 +37,7 @@ func (m *pyModule) addSibling(base string) string {
 	if alias, ok := m.sibling[base]; ok {
 		return alias
 	}
-	alias := HelperPrefix + base
+	alias := HelperPrefix + "mod_" + base
 	m.sibling[base] = alias
 	return alias
 }

@@ -22,18 +22,21 @@ func init() {
 				c.line("%s = 0", target)
 				return
 			}
-			local := c.local()
-			c.m.needSerialize("Ref")
-			c.line("%s = Ref(0)", local)
-			c.line("if not stream.serialize_bits(%s, %d):", local, w)
+			ri := c.ref("_s_ri", "0")
+			op := c.streamOp("serialize_bits")
+			c.line("if not %s(%s, %d):", op, ri, w)
 			c.line("    return False")
 			if f.Type.Signed {
 				threshold := new(big.Int).Lsh(big.NewInt(1), uint(w-1))
 				modulus := new(big.Int).Lsh(big.NewInt(1), uint(w))
-				c.line("if %s.value >= %s:", local, intLiteral(threshold))
-				c.line("    %s.value -= %s", local, intLiteral(modulus))
+				v := c.local()
+				c.line("%s = %s.value", v, ri)
+				c.line("if %s >= %s:", v, intLiteral(threshold))
+				c.line("    %s -= %s", v, intLiteral(modulus))
+				c.line("%s = %s", target, v)
+				return
 			}
-			c.line("%s = %s.value", target, local)
+			c.line("%s = %s.value", target, ri)
 		},
 		write: func(c *emitCtx, f *ir.Field, expr string) {
 			if f.HasIntRange {
@@ -44,15 +47,20 @@ func init() {
 			if w == 0 {
 				return
 			}
-			c.m.needSerialize("Ref")
-			mask := new(big.Int).Lsh(big.NewInt(1), uint(w))
-			mask.Sub(mask, big.NewInt(1))
-			c.line("stream.serialize_bits(Ref(%s & %s), %d)", expr, intLiteral(mask), w)
+			ri := c.ref("_s_ri", "0")
+			op := c.streamOp("serialize_bits")
+			if f.Type.Signed {
+				mask := new(big.Int).Lsh(big.NewInt(1), uint(w))
+				mask.Sub(mask, big.NewInt(1))
+				c.line("%s.value = %s & %s", ri, expr, intLiteral(mask))
+			} else {
+				c.line("%s.value = %s", ri, expr)
+			}
+			c.line("%s(%s, %d)", op, ri, w)
 		},
 		validate: func(c *emitCtx, f *ir.Field, expr, path string) {
-			c.m.needSchema("validate_int")
 			min, max := intBounds(f)
-			c.line("validate_int(%s, %s, %s, %s)", expr, fieldPath(path, f.Name), intLiteral(min), intLiteral(max))
+			emitIntValidate(c, expr, fieldPath(path, f.Name), intLiteral(min), intLiteral(max))
 		},
 		zero: func(c *emitCtx, f *ir.Field, target string) {
 			c.line("%s = 0", target)

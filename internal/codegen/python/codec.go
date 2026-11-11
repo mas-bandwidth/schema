@@ -3,6 +3,8 @@ package python
 import (
 	"fmt"
 	"math/big"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -25,11 +27,34 @@ var kindEmitters = map[string]*kindEmitter{}
 func registerKind(k *kindEmitter) { kindEmitters[k.name] = k }
 
 // emitCtx is one generated method's body while an emitter appends to it.
+// Method-level bindings (bound stream operations, reusable Ref holders, type
+// checks) are collected in binds and emitted once at the top of the method
+// (docs/PORT-PYTHON.md, D1: straight-line generated code with locals bound).
 type emitCtx struct {
 	m      *pyModule
 	b      *strings.Builder
 	indent string
+	binds  map[string]string
 	locals int
+}
+
+func newEmitCtx(m *pyModule, indent string) *emitCtx {
+	return &emitCtx{
+		m:      m,
+		b:      new(strings.Builder),
+		indent: indent,
+		binds:  map[string]string{},
+	}
+}
+
+func (c *emitCtx) sub(indent string) *emitCtx {
+	return &emitCtx{
+		m:      c.m,
+		b:      new(strings.Builder),
+		indent: indent,
+		binds:  c.binds,
+		locals: c.locals,
+	}
 }
 
 func (c *emitCtx) line(format string, args ...any) {
@@ -39,6 +64,37 @@ func (c *emitCtx) line(format string, args ...any) {
 func (c *emitCtx) local() string {
 	c.locals++
 	return fmt.Sprintf("_s_v%d", c.locals)
+}
+
+func (c *emitCtx) bind(name, expr string) string {
+	c.binds[name] = expr
+	return name
+}
+
+func (c *emitCtx) ref(name, zero string) string {
+	c.m.needSerialize("Ref")
+	return c.bind(name, "Ref("+zero+")")
+}
+
+func (c *emitCtx) streamOp(op string) string {
+	return c.bind("_s_"+op, "stream."+op)
+}
+
+func (c *emitCtx) finish() string {
+	if len(c.binds) == 0 {
+		return c.b.String()
+	}
+	keys := make([]string, 0, len(c.binds))
+	for k := range c.binds {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&out, "%s%s = %s\n", c.indent, k, c.binds[k])
+	}
+	out.WriteString(c.b.String())
+	return out.String()
 }
 
 // fieldKind is the registry key of a field, or "" when no emitter carries it.
@@ -181,7 +237,7 @@ func (m *pyModule) emitCodecStruct(d *ir.Struct) {
 	m.needSchema("Refused")
 	m.needSchema("wire_input")
 	m.needSerialize("ReadStream")
-	m.needSerialize("Ref")
+	m.needSerialize("WriteMisuse")
 	m.needSerialize("WriteStream")
 	m.need("Self")
 
@@ -198,7 +254,10 @@ func (m *pyModule) emitCodecStruct(d *ir.Struct) {
 	m.line("    def write(self) -> bytes:")
 	m.line("        self._s_validate(%q)", d.Name)
 	m.line("        stream = WriteStream(%d)", wireCapacity(m, d.Name))
-	m.line("        self._s_write(stream)")
+	m.line("        try:")
+	m.line("            self._s_write(stream)")
+	m.line("        except WriteMisuse as _s_exc:")
+	m.line("            raise InvalidValue(%q, str(_s_exc)) from _s_exc", d.Name)
 	m.line("        stream.flush()")
 	m.line("        return stream.data()")
 	m.line("")
@@ -210,54 +269,52 @@ func (m *pyModule) emitCodecStruct(d *ir.Struct) {
 }
 
 func (m *pyModule) emitReadStruct(d *ir.Struct) {
-	var b strings.Builder
-	c := &emitCtx{m: m, b: &b, indent: "        "}
+	c := newEmitCtx(m, "        ")
 	m.readItems(c, d.Items)
+	body := c.finish()
 	m.line("    def _s_read(self, stream: ReadStream) -> bool:")
-	if len(d.Items) == 0 {
-		m.line("        return True")
-	} else {
-		m.printf("%s", b.String())
-		m.line("        return True")
+	if body != "" {
+		m.printf("%s", body)
 	}
+	m.line("        return True")
 	m.line("")
 }
 
 func (m *pyModule) emitWriteStruct(d *ir.Struct) {
-	var b strings.Builder
-	c := &emitCtx{m: m, b: &b, indent: "        "}
+	c := newEmitCtx(m, "        ")
 	m.writeItems(c, d.Items)
+	body := c.finish()
 	m.line("    def _s_write(self, stream: WriteStream) -> None:")
-	if len(d.Items) == 0 {
+	if body == "" {
 		m.line("        pass")
 	} else {
-		m.printf("%s", b.String())
+		m.printf("%s", body)
 	}
 	m.line("")
 }
 
 func (m *pyModule) emitValidateStruct(d *ir.Struct) {
-	var b strings.Builder
-	c := &emitCtx{m: m, b: &b, indent: "        "}
+	c := newEmitCtx(m, "        ")
 	m.validateItems(c, d.Items)
+	body := c.finish()
 	m.line("    def _s_validate(self, path: str) -> None:")
-	if len(d.Items) == 0 {
+	if body == "" {
 		m.line("        pass")
 	} else {
-		m.printf("%s", b.String())
+		m.printf("%s", body)
 	}
 	m.line("")
 }
 
 func (m *pyModule) emitZeroStruct(d *ir.Struct) {
-	var b strings.Builder
-	c := &emitCtx{m: m, b: &b, indent: "        "}
+	c := newEmitCtx(m, "        ")
 	m.zeroItems(c, d.Items)
+	body := c.finish()
 	m.line("    def _s_zero(self) -> None:")
-	if len(d.Items) == 0 {
+	if body == "" {
 		m.line("        pass")
 	} else {
-		m.printf("%s", b.String())
+		m.printf("%s", body)
 	}
 	m.line("")
 }
@@ -267,7 +324,7 @@ func (m *pyModule) emitCodecUnion(d *ir.Union) {
 	m.needSchema("Refused")
 	m.needSchema("wire_input")
 	m.needSerialize("ReadStream")
-	m.needSerialize("Ref")
+	m.needSerialize("WriteMisuse")
 	m.needSerialize("WriteStream")
 	m.need("Self")
 
@@ -284,7 +341,10 @@ func (m *pyModule) emitCodecUnion(d *ir.Union) {
 	m.line("    def write(self) -> bytes:")
 	m.line("        self._s_validate(%q)", d.Name)
 	m.line("        stream = WriteStream(%d)", wireCapacity(m, d.Name))
-	m.line("        self._s_write(stream)")
+	m.line("        try:")
+	m.line("            self._s_write(stream)")
+	m.line("        except WriteMisuse as _s_exc:")
+	m.line("            raise InvalidValue(%q, str(_s_exc)) from _s_exc", d.Name)
 	m.line("        stream.flush()")
 	m.line("        return stream.data()")
 	m.line("")
@@ -302,18 +362,27 @@ func (m *pyModule) emitReadUnion(d *ir.Union) {
 		m.line("")
 		return
 	}
-	m.readTag(d, "        ", "self.type")
+	c := newEmitCtx(m, "        ")
+	emitRangeRead(c, 0, d.Max, "self.type")
 	for i, v := range d.Variants {
-		m.line("        if self.type == %d:", i+1)
+		cond := "if"
+		if i > 0 {
+			cond = "elif"
+		}
+		c.line("%s self.type == %d:", cond, i+1)
 		if v.Void() {
-			m.line("            return True")
+			c.line("    return True")
 			continue
 		}
-		m.line("            self.%s = %s", v.Name, m.unionArmDefault(v))
-		m.line("            return self.%s._s_read(stream)", v.Name)
+		c.line("    self.%s = %s", v.Name, m.unionArmDefault(v))
+		sub := c.sub("            ")
+		emitKindRead(sub, v.F, "self."+v.Name)
+		c.locals = sub.locals
+		c.b.WriteString(sub.b.String())
+		c.line("    return True")
 	}
-	m.line("        return True")
-	m.line("")
+	c.line("return True")
+	m.printf("%s\n", c.finish())
 }
 
 func (m *pyModule) emitWriteUnion(d *ir.Union) {
@@ -323,73 +392,73 @@ func (m *pyModule) emitWriteUnion(d *ir.Union) {
 		m.line("")
 		return
 	}
-	m.writeTag(d, "        ", "self.type")
+	c := newEmitCtx(m, "        ")
+	emitRangeWrite(c, "self.type", 0, d.Max)
+	first := true
 	for i, v := range d.Variants {
 		if v.Void() {
 			continue
 		}
-		m.line("        if self.type == %d:", i+1)
-		c := &emitCtx{m: m, b: new(strings.Builder), indent: "            "}
-		emitKindWrite(c, v.F, "self."+v.Name)
-		m.printf("%s", c.b.String())
+		sub := c.sub("            ")
+		emitKindWrite(sub, v.F, "self."+v.Name)
+		c.locals = sub.locals
+		if sub.b.Len() == 0 {
+			continue
+		}
+		cond := "if"
+		if !first {
+			cond = "elif"
+		}
+		first = false
+		c.line("%s self.type == %d:", cond, i+1)
+		c.b.WriteString(sub.b.String())
+	}
+	body := c.finish()
+	if body == "" {
+		m.line("        pass")
+	} else {
+		m.printf("%s", body)
 	}
 	m.line("")
 }
 
 func (m *pyModule) emitValidateUnion(d *ir.Union) {
 	m.line("    def _s_validate(self, path: str) -> None:")
-	m.validateTag(d, "        ", "self.type")
+	c := newEmitCtx(m, "        ")
+	emitIntValidate(c, "self.type", "path + \".type\"", "0", strconv.FormatInt(d.Max, 10))
+	first := true
 	for i, v := range d.Variants {
 		if v.Void() {
 			continue
 		}
-		m.line("        if self.type == %d:", i+1)
-		c := &emitCtx{m: m, b: new(strings.Builder), indent: "            "}
-		emitKindValidate(c, v.F, "self."+v.Name, "path")
-		if c.b.Len() > 0 {
-			m.printf("%s", c.b.String())
-		} else {
-			m.line("            pass")
+		sub := c.sub("            ")
+		emitKindValidate(sub, v.F, "self."+v.Name, "path")
+		c.locals = sub.locals
+		if sub.b.Len() == 0 {
+			continue
 		}
+		cond := "if"
+		if !first {
+			cond = "elif"
+		}
+		first = false
+		c.line("%s self.type == %d:", cond, i+1)
+		c.b.WriteString(sub.b.String())
 	}
-	m.line("")
+	m.printf("%s\n", c.finish())
 }
 
 func (m *pyModule) emitZeroUnion(d *ir.Union) {
 	m.line("    def _s_zero(self) -> None:")
-	m.line("        self.type = 0")
+	c := newEmitCtx(m, "        ")
+	c.line("self.type = 0")
 	for _, v := range unionArms(d) {
 		if fieldKind(v.F) == "" {
 			continue
 		}
-		c := &emitCtx{m: m, b: new(strings.Builder), indent: "        "}
 		emitKindZero(c, v.F, "self."+v.Name)
-		m.printf("%s", c.b.String())
 	}
-	m.line("")
-}
-
-func (m *pyModule) readTag(d *ir.Union, indent, target string) {
-	c := &emitCtx{m: m, b: new(strings.Builder), indent: indent}
-	emitRangeRead(c, 0, d.Max, target)
-	m.printf("%s", c.b.String())
-}
-
-func (m *pyModule) writeTag(d *ir.Union, indent, expr string) {
-	c := &emitCtx{m: m, b: new(strings.Builder), indent: indent}
-	if d.Max > 0 {
-		emitRangeWrite(c, expr, 0, d.Max)
-	}
-	m.printf("%s", c.b.String())
-}
-
-func (m *pyModule) validateTag(d *ir.Union, indent, expr string) {
-	c := &emitCtx{m: m, b: new(strings.Builder), indent: indent}
-	m.needSchema("validate_int")
-	if d.Max > 0 {
-		c.line("validate_int(%s, path + \".type\", 0, %d)", expr, d.Max)
-	}
-	m.printf("%s", c.b.String())
+	m.printf("%s\n", c.finish())
 }
 
 func (m *pyModule) readItems(c *emitCtx, items []ir.Item) {
@@ -402,18 +471,29 @@ func (m *pyModule) readItems(c *emitCtx, items []ir.Item) {
 			if item.Neg {
 				cond = "not " + cond
 			}
+			thenSub := c.sub(c.indent + "    ")
+			m.readItems(thenSub, item.Then)
+			m.zeroItems(thenSub, item.Else)
+			c.locals = thenSub.locals
+
+			elseSub := c.sub(c.indent + "    ")
+			m.readItems(elseSub, item.Else)
+			m.zeroItems(elseSub, item.Then)
+			c.locals = elseSub.locals
+
+			if thenSub.b.Len() == 0 && elseSub.b.Len() == 0 {
+				continue
+			}
 			c.line("if %s:", cond)
-			inner := *c
-			inner.indent += "    "
-			m.readItems(&inner, item.Then)
-			c.locals = inner.locals
-			m.zeroItems(&inner, item.Else)
-			c.line("else:")
-			other := *c
-			other.indent += "    "
-			m.readItems(&other, item.Else)
-			c.locals = other.locals
-			m.zeroItems(&other, item.Then)
+			if thenSub.b.Len() == 0 {
+				c.line("    pass")
+			} else {
+				c.b.WriteString(thenSub.b.String())
+			}
+			if elseSub.b.Len() > 0 {
+				c.line("else:")
+				c.b.WriteString(elseSub.b.String())
+			}
 		}
 	}
 }
@@ -428,17 +508,27 @@ func (m *pyModule) writeItems(c *emitCtx, items []ir.Item) {
 			if item.Neg {
 				cond = "not " + cond
 			}
-			c.line("if %s:", cond)
-			inner := *c
-			inner.indent += "    "
-			m.writeItems(&inner, item.Then)
-			c.locals = inner.locals
+			thenSub := c.sub(c.indent + "    ")
+			m.writeItems(thenSub, item.Then)
+			c.locals = thenSub.locals
+
+			elseSub := c.sub(c.indent + "    ")
 			if item.Else != nil {
+				m.writeItems(elseSub, item.Else)
+				c.locals = elseSub.locals
+			}
+			if thenSub.b.Len() == 0 && elseSub.b.Len() == 0 {
+				continue
+			}
+			c.line("if %s:", cond)
+			if thenSub.b.Len() == 0 {
+				c.line("    pass")
+			} else {
+				c.b.WriteString(thenSub.b.String())
+			}
+			if elseSub.b.Len() > 0 {
 				c.line("else:")
-				other := *c
-				other.indent += "    "
-				m.writeItems(&other, item.Else)
-				c.locals = other.locals
+				c.b.WriteString(elseSub.b.String())
 			}
 		}
 	}
@@ -454,17 +544,27 @@ func (m *pyModule) validateItems(c *emitCtx, items []ir.Item) {
 			if item.Neg {
 				cond = "not " + cond
 			}
-			c.line("if %s:", cond)
-			inner := *c
-			inner.indent += "    "
-			m.validateItems(&inner, item.Then)
-			c.locals = inner.locals
+			thenSub := c.sub(c.indent + "    ")
+			m.validateItems(thenSub, item.Then)
+			c.locals = thenSub.locals
+
+			elseSub := c.sub(c.indent + "    ")
 			if item.Else != nil {
+				m.validateItems(elseSub, item.Else)
+				c.locals = elseSub.locals
+			}
+			if thenSub.b.Len() == 0 && elseSub.b.Len() == 0 {
+				continue
+			}
+			c.line("if %s:", cond)
+			if thenSub.b.Len() == 0 {
+				c.line("    pass")
+			} else {
+				c.b.WriteString(thenSub.b.String())
+			}
+			if elseSub.b.Len() > 0 {
 				c.line("else:")
-				other := *c
-				other.indent += "    "
-				m.validateItems(&other, item.Else)
-				c.locals = other.locals
+				c.b.WriteString(elseSub.b.String())
 			}
 		}
 	}
@@ -540,12 +640,11 @@ func emitRangeReadBig(c *emitCtx, min, max *big.Int, target string) {
 		c.line("%s = %s", target, intLiteral(min))
 		return
 	}
-	local := c.local()
-	c.m.needSerialize("Ref")
-	c.line("%s = Ref(0)", local)
-	c.line("if not stream.%s(%s, %s, %s):", rangeFn(min, max), local, intLiteral(min), intLiteral(max))
+	ri := c.ref("_s_ri", "0")
+	op := c.streamOp(rangeFn(min, max))
+	c.line("if not %s(%s, %s, %s):", op, ri, intLiteral(min), intLiteral(max))
 	c.line("    return False")
-	c.line("%s = %s.value", target, local)
+	c.line("%s = %s.value", target, ri)
 }
 
 func emitRangeWrite(c *emitCtx, expr string, min, max int64) {
@@ -556,8 +655,20 @@ func emitRangeWriteBig(c *emitCtx, expr string, min, max *big.Int) {
 	if min.Cmp(max) == 0 {
 		return
 	}
-	c.m.needSerialize("Ref")
-	c.line("stream.%s(Ref(%s), %s, %s)", rangeFn(min, max), expr, intLiteral(min), intLiteral(max))
+	ri := c.ref("_s_ri", "0")
+	op := c.streamOp(rangeFn(min, max))
+	c.line("%s.value = %s", ri, expr)
+	c.line("%s(%s, %s, %s)", op, ri, intLiteral(min), intLiteral(max))
+}
+
+func emitIntValidate(c *emitCtx, expr, pathExpr, min, max string) {
+	c.m.needSchema("validate_int")
+	tp := c.bind("_s_type", "type")
+	it := c.bind("_s_int", "int")
+	v := c.local()
+	c.line("%s = %s", v, expr)
+	c.line("if %s(%s) is not %s or %s < %s or %s > %s:", tp, v, it, v, min, v, max)
+	c.line("    validate_int(%s, %s, %s, %s)", v, pathExpr, min, max)
 }
 
 func rangeFn(min, max *big.Int) string {

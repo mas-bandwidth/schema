@@ -288,20 +288,22 @@ func packetPins() []packetPin {
 // packetProbe is the Python side of the gate: read the pin, write it back
 // byte-identical, refuse a trailing byte and a short read, and refuse the
 // wrong Python type and an out-of-range integer on write.
-func packetProbe(u *ir.Unit, root, base, intField, boolField string, intMax *big.Int) string {
+func packetProbe(u *ir.Unit, root, base, intField, boolField string, intMin, intMax *big.Int) string {
 	intChecks := ""
 	if intField != "" {
-		out := new(big.Int).Add(intMax, big.NewInt(1))
+		above := new(big.Int).Add(intMax, big.NewInt(1))
+		below := new(big.Int).Sub(intMin, big.NewInt(1))
 		intChecks += fmt.Sprintf(`
-v = %s()
-v.%s = %s
-try:
-    v.write()
-except InvalidValue:
-    pass
-else:
-    print("FAILED: an out-of-range int was written")
-    sys.exit(1)
+for bad in (%s, %s):
+    v = %s()
+    v.%s = bad
+    try:
+        v.write()
+    except InvalidValue:
+        pass
+    else:
+        print("FAILED: an out-of-range int was written")
+        sys.exit(1)
 v = %s()
 v.%s = True
 try:
@@ -311,7 +313,7 @@ except InvalidValue:
 else:
     print("FAILED: a bool where an int is declared was written")
     sys.exit(1)
-`, root, intField, out.String(), root, intField)
+`, above.String(), below.String(), root, intField, root, intField)
 	}
 	boolChecks := ""
 	if boolField != "" {
@@ -355,13 +357,14 @@ except Refused:
 else:
     print("FAILED: a trailing byte was accepted")
     sys.exit(1)
-try:
-    %s.read(data[:-1])
-except Refused:
-    pass
-else:
-    print("FAILED: a short read was accepted")
-    sys.exit(1)
+if len(data) > 0:
+    try:
+        %s.read(data[:-1])
+    except Refused:
+        pass
+    else:
+        print("FAILED: a short read was accepted")
+        sys.exit(1)
 fresh = %s()
 if repr(fresh) == "":
     print("FAILED: empty repr")
@@ -378,21 +381,21 @@ print("ok")
 `, u.Package, base, root, u.Package, root, root, root, root, root, root, intChecks, boolChecks)
 }
 
-func topLevelFields(u *ir.Unit, root string) (intField, boolField string, intMax *big.Int) {
+func topLevelFields(u *ir.Unit, root string) (intField, boolField string, intMin, intMax *big.Int) {
 	st, ok := u.Structs[root]
 	if !ok {
-		return "", "", nil
+		return "", "", nil, nil
 	}
 	for _, f := range st.Fields {
 		switch {
 		case intField == "" && f.Type.Kind == ir.TInt:
 			intField = f.Name
-			_, intMax = intBounds(f)
+			intMin, intMax = intBounds(f)
 		case boolField == "" && f.Type.Kind == ir.TBool:
 			boolField = f.Name
 		}
 	}
-	return intField, boolField, intMax
+	return intField, boolField, intMin, intMax
 }
 
 // TestPythonPacketCore reads every single-root C++-pinned packet golden whose
@@ -467,8 +470,8 @@ func TestPythonPacketCore(t *testing.T) {
 				t.Fatalf("generate %s: %v", pin.root, err)
 			}
 			base := pruned.DeclFile[pin.root]
-			intField, boolField, intMax := topLevelFields(pruned, pin.root)
-			probe := packetProbe(pruned, pin.root, base, intField, boolField, intMax)
+			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
+			probe := packetProbe(pruned, pin.root, base, intField, boolField, intMin, intMax)
 			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
 			if err != nil {
 				t.Fatal(err)
@@ -523,7 +526,7 @@ func TestPythonPacketCoreNegativeControl(t *testing.T) {
 	if !strings.Contains(text, "self.health = ") {
 		t.Fatalf("the generated ShipCreate reader has no health assignment:\n%s", text)
 	}
-	marker := "self.health = _s_v"
+	marker := "self.health = _s_ri.value"
 	at := strings.Index(text, marker)
 	if at < 0 {
 		t.Fatalf("the generated ShipCreate reader has no health assignment:\n%s", text)
@@ -534,7 +537,7 @@ func TestPythonPacketCoreNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe := packetProbe(pruned, "ShipCreate", base, "health", "has_flags", big.NewInt(1000))
+	probe := packetProbe(pruned, "ShipCreate", base, "health", "has_flags", big.NewInt(0), big.NewInt(1000))
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	out, _, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{
@@ -656,6 +659,12 @@ print("ok")
 			}
 		})
 	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	out, err := pyrun.Analyze(t, dir, u.Package)
+	if err != nil || !strings.Contains(out, "Success: no issues found") {
+		t.Fatalf("class surface mypy --strict: %v\n%s", err, out)
+	}
 }
 
 func repoRoot(t *testing.T) string {
@@ -669,10 +678,10 @@ func repoRoot(t *testing.T) string {
 
 var _ = slices.Contains[[]string, string]
 
-// TestPythonBranchReadLocalsAreUnique: the read of an if/else binds each
-// temporary once, across both arms and past the branch. Python has function
-// scope, so a local reused for a Ref[bool] in one arm and a Ref[int] after the
-// branch is one variable to mypy with two types.
+// TestPythonBranchReadLocalsAreUnique: a method binds its typed Ref[bool] and
+// Ref[int] holders once at entry, and every numbered temporary (_s_v1, ...) is
+// bound once across both arms of an if/else and past the branch so mypy sees a
+// single type per local.
 func TestPythonBranchReadLocalsAreUnique(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()
@@ -683,13 +692,14 @@ type Branchy
     active bool
     if active
     {
-        yes bool
+        yes bool = true
+        yes_i int8 = 5
     }
     else
     {
-        no int16
+        no int16 = 77
     }
-    tail int8
+    tail int8 = -3
 }
 `
 	if err := os.WriteFile(filepath.Join(src, "Branch.schema"), []byte(schema), 0o644); err != nil {
@@ -701,23 +711,368 @@ type Branchy
 		t.Fatal(err)
 	}
 	text := string(files[u.Package+"/Branch.py"])
-	at := strings.Index(text, "    def _s_read(")
-	if at < 0 {
-		t.Fatalf("the generated type has no reader:\n%s", text)
-	}
-	body := text[at:]
-	if next := strings.Index(body[1:], "\n    def "); next >= 0 {
-		body = body[:next+1]
-	}
-	uses := regexp.MustCompile(`_s_v\d+ = Ref\(`).FindAllString(body, -1)
-	if len(uses) < 4 {
-		t.Fatalf("the reader binds %d temporaries, want at least four:\n%s", len(uses), body)
-	}
-	seen := map[string]bool{}
-	for _, use := range uses {
-		if seen[use] {
-			t.Errorf("the reader binds %s twice, so two paths would type one Python local differently:\n%s", use, body)
+	for _, method := range []string{"    def _s_read(", "    def _s_validate("} {
+		at := strings.Index(text, method)
+		if at < 0 {
+			t.Fatalf("the generated type lacks %s:\n%s", strings.TrimSpace(method), text)
 		}
-		seen[use] = true
+		body := text[at:]
+		if next := strings.Index(body[1:], "\n    def "); next >= 0 {
+			body = body[:next+1]
+		}
+		if strings.Count(body, "_s_rb = Ref(False)") > 1 || strings.Count(body, "_s_ri = Ref(0)") > 1 {
+			t.Errorf("%s rebinds a Ref holder:\n%s", strings.TrimSpace(method), body)
+		}
+		assigns := regexp.MustCompile(`(?m)^\s+(_s_v\d+) = `).FindAllStringSubmatch(body, -1)
+		if len(assigns) < 3 {
+			t.Fatalf("%s binds %d numbered temporaries, want at least three:\n%s", strings.TrimSpace(method), len(assigns), body)
+		}
+		seen := map[string]bool{}
+		for _, m := range assigns {
+			if seen[m[1]] {
+				t.Errorf("%s binds %s twice across branches:\n%s", strings.TrimSpace(method), m[1], body)
+			}
+			seen[m[1]] = true
+		}
+	}
+	probe := pyrun.ImportPrelude + `
+import sys
+from branch import Branchy
+
+a = Branchy()
+a.active = True
+a.yes = False
+a.yes_i = -12
+a.no = 999
+a.tail = 42
+ra = Branchy.read(a.write())
+if not ra.active or ra.yes is not False or ra.yes_i != -12 or ra.no != 0 or ra.tail != 42:
+    print("FAILED: active=True branch round-trip or SPEC §5 untaken zero:", repr(ra))
+    sys.exit(1)
+
+b = Branchy()
+b.active = False
+b.no = -321
+b.tail = -8
+rb = Branchy.read(b.write())
+if rb.active or rb.yes is not False or rb.yes_i != 0 or rb.no != -321 or rb.tail != -8:
+    print("FAILED: active=False branch round-trip or SPEC §5 untaken zero:", repr(rb))
+    sys.exit(1)
+print("ok")
+`
+	for _, run := range []struct {
+		name string
+		fn   func(testing.TB, string, string, map[string][]byte) []byte
+	}{{"current", pyrun.Run}, {"floor", pyrun.RunFloor}} {
+		t.Run(run.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			got := strings.TrimSpace(string(run.fn(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})))
+			if got != "ok" {
+				t.Fatalf("branch round-trip under %s:\n%s", run.name, got)
+			}
+		})
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	out, err := pyrun.Analyze(t, dir, u.Package)
+	if err != nil || !strings.Contains(out, "Success: no issues found") {
+		t.Fatalf("mypy --strict on Branch: %v\n%s", err, out)
+	}
+}
+
+// TestPythonPacketCoreEdgeCases exercises one-field and zero-field slots,
+// empty and void-interleaved unions, zero-bit fields inside branches,
+// module/declaration name sharing, sibling-import naming in list
+// comprehensions, deterministic multi-file package init, and full-width
+// integer boundaries.
+func TestPythonPacketCoreEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	// Union arm whose exported tag name collides with <Union>Type.NAMES.
+	badUnion := &ir.Unit{
+		Package: "edge",
+		Files: []*ir.File{{
+			Base: "Edge",
+			Decls: []ir.Decl{
+				&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "NAMES"}}},
+			},
+		}},
+	}
+	if err := CheckNames(badUnion); err == nil || !strings.Contains(err.Error(), "EventType") {
+		t.Fatalf("expected CheckNames refusal on EventType.NAMES collision, got %v", err)
+	}
+
+	src := t.TempDir()
+	filesSrc := map[string]string{
+		"i.schema": `package edge
+
+type Item
+{
+    v int32 = 9
+}
+`,
+		"Chat.schema": `package edge
+
+enum EmptyEnum {}
+
+flags OneFlag { Bit }
+
+type Empty {}
+
+type OneField
+{
+    only int32 = 17
+}
+
+union EmptyUnion {}
+
+union MixedUnion
+{
+    ping
+    first OneField
+    pong
+    second OneField
+}
+
+type DegenerateBranch
+{
+    on bool
+    if on
+    {
+        pinned int32 = 5 | min = 5, max = 5
+        ee EmptyEnum
+        em Empty
+    }
+    of OneFlag = { Bit }
+    tail uint8 = 3
+}
+
+type IntEdges
+{
+    i8   int8
+    u8   uint8
+    i16  int16
+    u16  uint16
+    i32  int32
+    u32  uint32
+    i64  int64
+    u64  uint64
+}
+
+type Chat
+{
+    item Item
+    one OneField
+    empty Empty
+    eu EmptyUnion
+    mu MixedUnion
+    deg DegenerateBranch
+    edges IntEdges
+}
+`,
+	}
+	for name, content := range filesSrc {
+		if err := os.WriteFile(filepath.Join(src, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u := loadPythonUnit(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	// Reversing u.Files must emit byte-identical output, __init__.py included.
+	rev := *u
+	rev.Files = slices.Clone(u.Files)
+	slices.Reverse(rev.Files)
+	filesRev, err := Generate(&rev)
+	if err != nil {
+		t.Fatalf("Generate reversed: %v", err)
+	}
+	for rel, data := range files {
+		if string(filesRev[rel]) != string(data) {
+			t.Fatalf("%s differs when u.Files order reverses", rel)
+		}
+	}
+
+	// Surface emission with fixed-array comprehension referencing sibling i.schema.
+	arrSrc := t.TempDir()
+	if err := os.WriteFile(filepath.Join(arrSrc, "i.schema"), []byte(filesSrc["i.schema"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(arrSrc, "Holder.schema"), []byte("package edge\n\ntype Holder\n{\n    items [2]Item\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	arrUnit := loadPythonUnit(t, arrSrc)
+	arrMod := emitModuleMode(arrUnit, arrUnit.Files[0], true) + emitModuleMode(arrUnit, arrUnit.Files[1], true)
+	if !strings.Contains(arrMod, "_s_mod_i.Item()") {
+		t.Fatalf("expected _s_mod_i alias in array comprehension:\n%s", arrMod)
+	}
+
+	probe := pyrun.ImportPrelude + fmt.Sprintf(`
+import sys
+import edge
+from edge import (
+    Chat,
+    DegenerateBranch,
+    Empty,
+    EmptyUnion,
+    IntEdges,
+    InvalidValue,
+    Item,
+    MixedUnion,
+    MixedUnionType,
+    OneField,
+    PROTOCOL_ID,
+)
+
+if PROTOCOL_ID != 0x%016x:
+    print("FAILED: PROTOCOL_ID mismatch")
+    sys.exit(1)
+
+# 1-field and 0-field __slots__ enforcement
+o = OneField()
+if o.only != 17 or OneField.read(o.write()) != o:
+    print("FAILED: OneField round-trip")
+    sys.exit(1)
+try:
+    o.extra = 1  # type: ignore[attr-defined]
+except AttributeError:
+    pass
+else:
+    print("FAILED: OneField __slots__ did not reject undeclared attribute")
+    sys.exit(1)
+
+e = Empty()
+if Empty.read(e.write()) != e or repr(e) != "Empty()":
+    print("FAILED: Empty round-trip or repr")
+    sys.exit(1)
+
+# EmptyUnion read, write, and invalid tag refusal
+eu = EmptyUnion()
+if EmptyUnion.read(eu.write()) != eu:
+    print("FAILED: EmptyUnion round-trip")
+    sys.exit(1)
+for bad_tag in (1, -1, True):
+    eu_bad = EmptyUnion()
+    eu_bad.type = bad_tag  # type: ignore[assignment]
+    try:
+        eu_bad.write()
+    except InvalidValue:
+        pass
+    else:
+        print("FAILED: EmptyUnion accepted invalid tag", repr(bad_tag))
+        sys.exit(1)
+
+# Void-interleaved union equality and wire round-trip
+u1 = MixedUnion()
+u1.type = MixedUnionType.First
+u1.first.only = 10
+u2 = MixedUnion()
+u2.type = MixedUnionType.First
+u2.first.only = 20
+if u1 == u2:
+    print("FAILED: MixedUnion equality ignored payload difference after void arm")
+    sys.exit(1)
+u2.first.only = 10
+if not (u1 == u2) or MixedUnion.read(u1.write()) != u1:
+    print("FAILED: MixedUnion First round-trip")
+    sys.exit(1)
+
+u_void = MixedUnion()
+u_void.type = MixedUnionType.Pong
+if MixedUnion.read(u_void.write()) != u_void:
+    print("FAILED: MixedUnion Pong void-arm round-trip")
+    sys.exit(1)
+
+# Degenerate zero-bit branch round-trip and validation
+d_on = DegenerateBranch()
+d_on.on = True
+d_on.tail = 99
+d_on_rt = DegenerateBranch.read(d_on.write())
+if not d_on_rt.on or d_on_rt.pinned != 5 or d_on_rt.tail != 99:
+    print("FAILED: DegenerateBranch on=True round-trip:", repr(d_on_rt))
+    sys.exit(1)
+d_on.pinned = 6
+try:
+    d_on.write()
+except InvalidValue:
+    pass
+else:
+    print("FAILED: DegenerateBranch accepted out-of-range constant-range field")
+    sys.exit(1)
+
+d_off = DegenerateBranch()
+d_off.on = False
+d_off.tail = 44
+d_off_rt = DegenerateBranch.read(d_off.write())
+if d_off_rt.on or d_off_rt.pinned != 0 or d_off_rt.tail != 44:
+    print("FAILED: DegenerateBranch on=False SPEC §5 zeroing:", repr(d_off_rt))
+    sys.exit(1)
+
+# Full-width integer min and max round-trips
+lo = IntEdges()
+lo.i8 = -128
+lo.u8 = 0
+lo.i16 = -32768
+lo.u16 = 0
+lo.i32 = -(1 << 31)
+lo.u32 = 0
+lo.i64 = -(1 << 63)
+lo.u64 = 0
+if IntEdges.read(lo.write()) != lo:
+    print("FAILED: IntEdges min boundary round-trip")
+    sys.exit(1)
+
+hi = IntEdges()
+hi.i8 = 127
+hi.u8 = 255
+hi.i16 = 32767
+hi.u16 = 65535
+hi.i32 = (1 << 31) - 1
+hi.u32 = (1 << 32) - 1
+hi.i64 = (1 << 63) - 1
+hi.u64 = (1 << 64) - 1
+if IntEdges.read(hi.write()) != hi:
+    print("FAILED: IntEdges max boundary round-trip")
+    sys.exit(1)
+
+# Composite Chat round-trip
+c = Chat()
+c.item.v = -42
+c.one.only = 1234
+c.mu.type = MixedUnionType.Second
+c.mu.second.only = -99
+c.deg.on = True
+c.edges = hi
+if Chat.read(c.write()) != c:
+    print("FAILED: Chat composite round-trip")
+    sys.exit(1)
+
+print("ok")
+`, u.ProtocolId)
+
+	for _, run := range []struct {
+		name string
+		fn   func(testing.TB, string, string, map[string][]byte) []byte
+	}{{"current", pyrun.Run}, {"floor", pyrun.RunFloor}} {
+		t.Run(run.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			got := strings.TrimSpace(string(run.fn(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})))
+			if got != "ok" {
+				t.Fatalf("edge cases under %s:\n%s", run.name, got)
+			}
+		})
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	out, err := pyrun.Analyze(t, dir, u.Package)
+	if err != nil || !strings.Contains(out, "Success: no issues found") {
+		t.Fatalf("edge cases mypy --strict: %v\n%s", err, out)
 	}
 }
