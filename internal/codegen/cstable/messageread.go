@@ -210,7 +210,7 @@ const tableMessageReadSource = `
             above = !baseNegative && stored < bits;
             if (kind < 18)
             {
-                ulong raw = (ulong)stored;
+                ulong raw = unchecked((ulong)stored);
                 negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
                 stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
             }
@@ -232,8 +232,8 @@ const tableMessageReadSource = `
         if (keep)
         {
             if (f.SetWide != null) { f.SetWide(value, index, stored); }
-            else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)stored; }
-            else { f.SetRaw(value, index, (ulong)stored); }
+            else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = unchecked((byte)stored); }
+            else { f.SetRaw(value, index, unchecked((ulong)stored)); }
         }
         return true;
     }
@@ -247,7 +247,7 @@ const tableMessageReadSource = `
     }
     public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
     {
-        count = 0; report.NonFiniteFloat = null;
+        count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
         {
             if (bytes.Length < 6 || !IntegrityRead(ref bytes)) { return IntegrityDamage(report); }

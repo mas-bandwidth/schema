@@ -431,7 +431,7 @@ function _M.WriteLudicrousState(stream, v)
   if not _M.WriteFixedProbe(stream, v.Probe) then return false end
   if not _M.WriteWideProbe(stream, v.Wide) then return false end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.KeysCount) ~= "number" or v.KeysCount < 0 or v.KeysCount > 4 then return false end
+  if math.type(v.KeysCount) ~= "integer" or v.KeysCount < 0 or v.KeysCount > 4 then return false end
   if not stream:serializeBits({ value = v.KeysCount }, 3) then return false end -- the count
   for _i = 1, v.KeysCount do
     if not stream:serializeUint128({ value = v.Keys[_i] }) then return false end -- uint128 raw (SPEC §4.3)

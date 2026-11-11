@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71 — the Luau type surface (docs/PORT-LUAU.md)
+-- package example — protocol id 0xf35accd0582cdd84 — the Luau type surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 
@@ -25,13 +25,25 @@ _M.Weapon = table.freeze({
 	Laser = 1,
 	Missile = 2,
 	Railgun = 3,
+	Flak = 4,
+	Beam = 5,
+	Plasma = 6,
+	Torpedo = 7,
+	Mine = 8,
+	Drone = 9,
+	Swarm = 10,
+	Pulse = 11,
+	Lance = 12,
+	Comet = 13,
+	Quake = 14,
+	Arc = 15,
 	Max = 15, -- the exported extent, the enum's only number (SPEC §4.2)
 })
 
 -- EnumNameWeapon: debug/log/tooling name for any Weapon wire value; the names
 -- table is the function's own upvalue, built once.
 _M.EnumNameWeapon = (function()
-	local names = table.freeze({ [0] = "None", [1] = "Laser", [2] = "Missile", [3] = "Railgun" })
+	local names = table.freeze({ [0] = "None", [1] = "Laser", [2] = "Missile", [3] = "Railgun", [4] = "Flak", [5] = "Beam", [6] = "Plasma", [7] = "Torpedo", [8] = "Mine", [9] = "Drone", [10] = "Swarm", [11] = "Pulse", [12] = "Lance", [13] = "Comet", [14] = "Quake", [15] = "Arc" })
 	return function(value: number): string
 		return names[value] or "???"
 	end
