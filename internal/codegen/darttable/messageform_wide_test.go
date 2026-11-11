@@ -360,7 +360,7 @@ void main() {
 			// halves cross low first, and a ranged base comes off and goes
 			// back on at full width, the borrow and the carry crossing halves
 			"w.put(lo, 64);", "w.put(hi, 64);", "w.put(hi, 38);", "w.put(lo, 10);",
-			"final bits = shape.bits;",
+			"final bits = TableMessageShape.valueBits(entry.kind, shape);",
 			"final lowBits = bits < 64 ? bits : 64;",
 			"var lo = r.bits.get(lowBits);",
 			"hi = hi - 0xc000000000000000 - borrow;",
