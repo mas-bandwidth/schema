@@ -468,7 +468,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	for _, want := range []string{
 		"id: conformance-c-cache",
 		"if: matrix.lang == 'c'",
-		"key: conformance-c-driver-",
+		"key: conformance-c-driver-v2-",
 		"'test/c-tables/**'",
 		"touch build/tables-generated-c/collections.stamp",
 		"touch build/tables-generated-c/.stamp",

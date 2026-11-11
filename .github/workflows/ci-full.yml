@@ -1779,6 +1779,11 @@ jobs:
       # that order: a stamp newer than a generated unit remakes that unit
       # through its empty stamp prerequisite and recompiles its object even
       # when the object itself was touched.
+      #
+      # The -v2 names the layout that carries the objects. A cache key is
+      # immutable once saved, so without the new name a cache from the earlier
+      # path list (no objects) could be restored into this step and keep
+      # recompiling every unit no matter how the hit step touches it.
       - id: conformance-c-cache
         if: matrix.lang == 'c'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1787,7 +1792,7 @@ jobs:
             build/tables-generated-c
             build/conformance-c-objs
             build/conformance-c
-          key: conformance-c-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'test/c-tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
+          key: conformance-c-driver-v2-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'test/c-tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
 
       - name: stand cached C driver inputs newer than this checkout
         if: matrix.lang == 'c' && steps.conformance-c-cache.outputs.cache-hit == 'true'
