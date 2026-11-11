@@ -4700,7 +4700,7 @@ namespace Blockdemo
             }
             public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
             {
-                count = 0; report.NonFiniteFloat = null;
+                count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
                 {
                     if (bytes.Length < 6 || !IntegrityRead(ref bytes)) { return IntegrityDamage(report); }
