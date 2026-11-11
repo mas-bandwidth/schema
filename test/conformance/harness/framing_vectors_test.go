@@ -186,6 +186,25 @@ func sceneNodeTypeBody(ref byte) []byte {
 	return cat(b(1, 17, 2), nodeTable(1, sceneNodeTypeRecord(ref)), b(0))
 }
 
+// The graphdemo Scene id table the held graph vectors share: 1 head, 2 tree,
+// 3 alias, 4 the reserved node-table id, 5 ListNode's type id, 6 value,
+// 7 next, 8 TreeNode's type id, 9 left, 10 right, 11 mystery and 12 mystery2
+// (ids Scene does not declare), 13 graphUnknown (a type id no graphdemo table
+// hashes to), 14 string and 15 bytes (the reserved blob type ids), 16 mystery3,
+// 17 armystery (an arm Scene does not declare), and 18 key (a key reference in
+// a slot key position).
+var sceneGraphIds = []string{
+	"head", "tree", "alias", "node-table", "type:ListNode", "value",
+	"next", "type:TreeNode", "left", "right", "mystery", "mystery2",
+	"graphUnknown", "string", "bytes", "mystery3", "armystery", "key",
+}
+
+// graphNodeRecord is one node record of type ref typ: the type reference, its
+// length, and the body given (§3.1).
+func graphNodeRecord(typ byte, body []byte) []byte {
+	return cat(b(typ), leb(uint64(len(body))), body)
+}
+
 // diamondLevels is the diamond chain's depth: 2^40 root-to-leaf paths over 82
 // nodes, so a check that re-enters a shared node never finishes.
 const diamondLevels = 40
@@ -543,6 +562,62 @@ var framingVectors = []framingVector{
 	{name: "depth_union_tables_65", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(65), held: true},
 	{name: "depth_keyed_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(129), held: true},
 	{name: "depth_tables_5000", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(5000), held: true},
+
+	// ---------------------------------------------------------------- G. the graph through unknown pointers
+	// THE GRAPH IS EVERY KIND 17 PAYLOAD (§6.5), in every field and record,
+	// declared by this reader or not. These vectors reach it through pointers
+	// Scene does not declare, so a reader that walks only its own pointer
+	// fields sees none of them. Each is held out of the manifest until every
+	// leg carries the walk.
+	//
+	// REFUSED: an unknown type's own kind-17 field names itself, and two such
+	// records name each other, so a walk from the root meets an OPEN node.
+	{name: "graph_unknown_type_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, cat(b(7, 17, 2), b(0)))), b(0))},
+	{name: "graph_unknown_type_pair", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(2,
+			graphNodeRecord(13, cat(b(7, 17, 3), b(0))),
+			graphNodeRecord(13, cat(b(7, 17, 2), b(0)))), b(0))},
+	// REFUSED: a ListNode's UNKNOWN kind-17 field names the same ListNode.
+	{name: "graph_listnode_unknown_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(1, 17, 2), nodeTable(1, graphNodeRecord(5, cat(b(11, 17, 2), b(0)))), b(0))},
+	// REFUSED: an unknown kind-17 root field names index 1, the root, whose
+	// descent is open for the whole walk.
+	{name: "graph_unknown_to_root", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 1), b(0))},
+	// REFUSED: one bytes blob record named from two unknown kind-17 root
+	// fields (blob_shared), and the same record named twice from one unknown
+	// array of element kind 17.
+	{name: "graph_blob_two_unknown_fields", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), b(12, 17, 2), nodeTable(1, graphNodeRecord(15, b('A'))), b(0))},
+	{name: "graph_blob_two_unknown_elements", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 14, 4, 17, 2, 2, 2), nodeTable(1, graphNodeRecord(15, b('A'))), b(0))},
+	// REFUSED: a string blob record's bytes are well-formed UTF-8 with no zero
+	// byte wherever it is reached from; graphdemo declares no *string, so only
+	// an unknown kind-17 root field names these.
+	{name: "graph_string_blob_ill_formed", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(14, b(0xFF))), b(0))},
+	{name: "graph_string_blob_zero_byte", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(14, b(0))), b(0))},
+	// REFUSED: a record of an undeclared type, and a string blob record, that
+	// no pointer reaches.
+	{name: "graph_unknown_type_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_string_blob_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(nodeTable(1, graphNodeRecord(14, b('o', 'k'))), b(0))},
+	//
+	// READ: a record of a type this reader cannot name reads null and counts
+	// unknown, reached from an unknown kind-17 root field, from inside an
+	// unknown nested table, from the kind-17 arm of an unknown union, and from
+	// a kind-17 slot of an unknown enum-keyed body.
+	{name: "graph_reach_unknown_field", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_reach_unknown_nested", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 13, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 }
 
 // counting is n distinct raw entries, 1..n: a reader checks distinctness and
