@@ -6521,6 +6521,14 @@ difference from the variable form is that the reader now SKIPS it by the announc
 shape rather than by a length on the wire, and the result is the same: the field
 is stepped over exactly and one event counts. **The skip walk is bounded at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
 
+**A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS REFUSES THE READ.** When a
+skipped entry walks an array's elements one by one, an element that consumes no bits
+refuses the read (recommended name `wire_damaged`), as the reference's
+`TableMessageSkip` holds. The walk is bounded by the bits that remain and never
+by a count alone: a count range of `[K,K]` costs no bits at all, so a bound on
+the count's bits is not enough. A fixed-width element is stepped over by its
+width and is not walked, as on the file form.
+
 **A FIELD WHOSE ANNOUNCED KIND IS NOT THE ONE THIS READER DECLARES IS §4's
 ORDINARY kind mismatch, AND IT REFUSES AT `AnnounceRead`**, for every entry this
 reader names, up front: the announcement is refused, no vocabulary is set, and
