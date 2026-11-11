@@ -45,7 +45,7 @@ func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
 		if st == nil || st.MapEntryOf != "" || st.TextElem || token.IsExported(st.Name) {
 			continue
 		}
-		roots[st.Name+"_"] = true
+		roots[st.Name] = true
 	}
 	entries := map[string]bool{}
 	fset := token.NewFileSet()
