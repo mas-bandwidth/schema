@@ -185,6 +185,20 @@ fixed table Host {
 import ("testing")
 
 
+func hostForm1Save(value *Host, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !HostSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func hostForm1(value *Host, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -223,7 +237,7 @@ func good() Host {
 }
 
 func saves(v Host) (fixed, variable int64) {
-	return HostFixedSave([]Host{v}, make([]byte, HostFixedMeasure(1))), HostSave(&v, make([]byte, 4096))
+	return HostFixedSave([]Host{v}, make([]byte, HostFixedMeasure(1))), hostForm1Save(&v, make([]byte, 4096))
 }
 
 func TestFixedWriterRefuses(t *testing.T) {
@@ -242,7 +256,7 @@ func TestFixedWriterRefuses(t *testing.T) {
 			t.Fatalf("lawful %q did not reload clean: %d %+v %+v", name, n, got[0], r)
 		}
 		vb := make([]byte, 4096)
-		vn := HostSave(&v, vb)
+		vn := hostForm1Save(&v, vb)
 		var vgot Host
 		var vr TableReport
 		if vn <= 0 || !hostForm1(&vgot, vb[:vn], &vr) || vr != (TableReport{}) || string(vgot.Name[:vgot.NameLength]) != name {

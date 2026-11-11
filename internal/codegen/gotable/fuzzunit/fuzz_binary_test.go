@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 type target struct {
@@ -24,6 +25,15 @@ type target struct {
 	save        func(any, []byte) int64
 	jsonMeasure func(any) int64
 	jsonDump    func(any, []byte) int64
+	// noFileForm is a fixed root past form 3's bounds (docs/SPEC-TABLES.md
+	// §3.4): its save refuses every value and its load reads no file.
+	noFileForm bool
+}
+
+// withoutFileForm marks a target whose root has no file form.
+func withoutFileForm(t target) target {
+	t.noFileForm = true
+	return t
 }
 
 // keyedOf adapts a `<T>Load(value, data, report)` entry point.
@@ -148,17 +158,47 @@ var targets = []target{
 		tabledemo.BuffMeasure, tabledemo.BuffSave, tabledemo.BuffToJSONMeasure, tabledemo.BuffToJSON),
 	keyedOf("Debuff", tabledemo.DebuffReset, tabledemo.DebuffLoad, tabledemo.DebuffReadStrict,
 		tabledemo.DebuffMeasure, tabledemo.DebuffSave, tabledemo.DebuffToJSONMeasure, tabledemo.DebuffToJSON),
-	keyedOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoad, tabledemo.WideBlobReadStrict,
-		tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
+	withoutFileForm(keyedOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoad, tabledemo.WideBlobReadStrict,
+		tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON)),
 }
 
 // TestTargetsLoadTheirSeeds requires every target's load to accept the
 // writer's image of a value away from its defaults, so the fuzz targets reach
 // each entry point's decode rather than a refusal of the harness's own
 // arguments (a region load given no region refuses before it reads the wire).
+// A fixed root with no file form (docs/SPEC-TABLES.md §3.4) is the exception
+// the declaration names: its save refuses the value and its load refuses a
+// form-1 file, and the mark that says so is the IR's, never this list's.
 func TestTargetsLoadTheirSeeds(t *testing.T) {
 	t.Parallel()
+	u := goSaveLoadUnit(t)
+	noFileForm := func(name string) bool {
+		st := u.Tables[name]
+		return st != nil && st.FixedDeclared && !ir.TableFixedEmitted(u, st)
+	}
+	for _, target := range textTargets {
+		if noFile := noFileForm(target.name); noFile != target.noFileForm {
+			t.Errorf("%s: the text target says no file form is %v, the declaration says %v", target.name, target.noFileForm, noFile)
+		}
+	}
 	for _, target := range targets {
+		if noFile := noFileForm(target.name); noFile != target.noFileForm {
+			t.Errorf("%s: the target says no file form is %v, the declaration says %v", target.name, target.noFileForm, noFile)
+			continue
+		}
+		if target.noFileForm {
+			v := awayFromDefaults(target.value())
+			if size := target.measure(v); size != -1 {
+				t.Errorf("%s: a root with no file form measures %d bytes, want -1", target.name, size)
+			}
+			if n := target.save(v, make([]byte, 1<<20)); n != -1 {
+				t.Errorf("%s: a root with no file form saved %d bytes, want a refusal", target.name, n)
+			}
+			if _, ok := target.load([]byte{1}); ok {
+				t.Errorf("%s: a root with no file form read a form-1 file", target.name)
+			}
+			continue
+		}
 		image, err := writerImage(target, awayFromDefaults(target.value()))
 		if err != nil {
 			t.Fatalf("%s: %v", target.name, err)
@@ -259,6 +299,12 @@ func seedTargets(f *testing.F) {
 	f.Add([]byte{})
 	for i, target := range targets {
 		selector := byte(i)
+		if target.noFileForm {
+			// no writer image exists (§3.4): seed the form-1 byte its load
+			// refuses
+			f.Add([]byte{selector, 1})
+			continue
+		}
 		for _, seed := range []struct {
 			label string
 			value any
