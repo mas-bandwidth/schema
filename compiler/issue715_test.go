@@ -13,6 +13,7 @@ import (
 // Issue #715: Table JSON Base64 reader wipes declared defaults on malformed input
 // and accepts mid-string / invalid '=' padding.
 func TestIssue715Base64ReaderDefaults(t *testing.T) {
+	t.Parallel()
 	src := `package p
 fixed table Ship
 {

@@ -16,6 +16,7 @@ import (
 )
 
 func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir blob ownership counts final slots after repeated field replacement")
 	u := loadUnit(t, "../../../tables/blobs/Assets.schema")
 	m := tabletext.NewModel(u)
@@ -131,6 +132,7 @@ end
 }
 
 func TestBlobOwnershipUsesLiveGuardsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir blob writer ownership follows final nested guards")
 	u := unitFrom(t, `package blobguards
  table Catalog {

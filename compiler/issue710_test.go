@@ -112,6 +112,7 @@ func issue710Wire(body []byte, ids ...uint64) []byte {
 }
 
 func TestIssue710TableRecovery(t *testing.T) {
+	t.Parallel()
 	src := `package p
  table Text { label string(32) = "untitled"; past int32 }
  table Element { value int32 = 7 }
@@ -243,6 +244,7 @@ func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 // allocation is reused for both scans, freed before the next language runs,
 // and omitted by go test -short. No packet or consumer process is involved.
 func TestIssue710PacketStringBounds(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("INT32_MAX string helper boundary requires a 2 GiB allocation")
 	}
@@ -328,6 +330,7 @@ int main(void) {
 }
 
 func TestIssue710ListRefusal(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, "package p\ntable Lists { items []int32\n past int32 }\ntable Nested { child Lists\n past int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n past int32 }\n")
 	m := tabletext.NewModel(u)
 	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("past"), ir.TableWireId("child"), ir.TableWireId(u.Enums["Key"].VariantWireName(0))}
