@@ -173,6 +173,18 @@
       "source": "relayed by Rowan from the live session. Every leg refuses a value its declaration does not admit: a debug-only assert where the language's own idiom is one (C, C++, C#, Rust, Java, Dart), and a refusal in every build where it is not (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose). Under strict-only there is no clamp to fall back on: a value outside its declaration refuses on both sides, and a compressed or ranged float off its range is refused by the writer (docs/plans/strict-only.md, decision 8). docs/SPEC.md §5.1 carries the per-leg table and the four conformance surfaces write-refusal, write-refusal-fixed, write-refusal-message and write-refusal-json hold it. This ruling makes nothing not-applicable."
     },
     {
+      "id": "reads-refuse-non-canonical",
+      "date": "2026-11-10",
+      "quotes": [
+        "strict. refuse non-canonical."
+      ],
+      "source": "relayed by the coordinator from the live session, the owner answering whether the variable and message readers accept a non-canonical spelling of a good value: no. A read of the VARIABLE form (form 1) or the MESSAGE form (form 2) refuses a file or batch that decodes to a good value but that no conforming writer of a lawful lineage version would produce: fields out of the writer's order, a field stored at its declared default, an explicit null pointer, an id-table entry that is unused or out of first-use order, an empty node table or one out of its place, a union written with arm reference 0, and a message body that omits a field its own announcement declares. Absent fields, unknown fields from a newer writer and widened fields stay lawful and read as today. The JSON form is unchanged: a JSON read still accepts any field order.",
+      "supersedes": [
+        "the 2026-10-22 decision that reads accept any field order, for the variable and message forms (SPEC-TABLES §3 \"Field ORDER within a body is not part of the contract\")",
+        "SPEC-TABLES §3 \"FIRST-USE ORDER IS A WRITER'S RULE\" and the sentence after it: a table in another order is now refused, not re-encoded"
+      ]
+    },
+    {
       "id": "packet-floats-finite",
       "date": "2026-10-22",
       "quotes": [

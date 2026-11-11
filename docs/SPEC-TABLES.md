@@ -4726,11 +4726,12 @@ place is the ordinary `unknown`. **A wire whose variant reference is moved to
 an entry naming a DIFFERENT declared variant, or to reference `0` (`None`), is
 a valid spelling of a different value**: no reader can tell it from a writer
 that wrote that value, and only a table that declares `integrity` (§2.14)
-refuses it. **FIRST-USE ORDER IS A WRITER'S RULE (§3, below):** a reader
-resolves the entries it is given by entry, and the next save writes them in
-first-use order, so a table in another order re-encodes to different bytes with
-the same values. That difference is not a decode event, and neither it nor a
-same-length swap to another valid value is a reader defect.
+refuses it. **FIRST-USE ORDER IS THE READER'S RULE TOO (§3, below):** a reader
+resolves the entries it is given by entry, and refuses a table whose entries
+are not in first-use order — an entry no reference names, or one out of its
+place — rather than re-encoding it on the next save. A table in another order
+is a file no conforming writer of a lawful lineage produces, so the read
+refuses it (§4).
 
 **Every length, count and index is the same unsigned LEB128.** `L` is a byte
 length, `N` an element count, a node index names a record of the numbering
@@ -5028,7 +5029,10 @@ one document rather than two.
     even a kind byte. It rides in TWO places: a `None` element of an array of
     unions (above), and the payload of a NESTED-UNION arm whose inner union
     is `None`, which is `L = 1` and that one zero byte. An empty union FIELD
-    elides instead (below), and a reader accepts the id wherever it appears.
+    elides instead (below), and a reader REFUSES a union written with arm
+    reference `0` at a field — a `None` field that should have elided — while
+    it accepts the id where those two positions are the only lawful spelling
+    of `None` (§4).
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
   set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
@@ -5060,7 +5064,10 @@ little-endian u64, and the body ends where the first entry begins.
   first, then the node table's records in index order (§3.1), each body's
   fields in the order they were written. **They are DISTINCT**: an id already
   in the table is referenced again and never appended twice, and a table that
-  carries one id twice is malformed (below).
+  carries one id twice is malformed (below). **A reader refuses a table whose
+  entries are not in first-use order**: an id-table entry that is unused, or
+  out of first-use order, is a spelling no conforming writer produces, and the
+  read refuses it rather than re-encoding it (§4).
 - **The table is why the wire pays for 64-bit identity once.** A file that
   names forty distinct ids across ten thousand fields carries forty ids, and
   every field header spends one byte on the reference where an inline id
@@ -5180,16 +5187,15 @@ twenty unnameable entries counts nothing at all if no body references them.
   refuses a longer element or key `length_over_bound` (§2.8). An element or key `L` past its
   body is `wire_damaged`, a count past what its bytes can hold is
   `wire_damaged`, and neither allocates from the claim.
-- **Field ORDER within a body is not part of the contract.** This
-  implementation writes fields in declaration order, and a reader must not
-  rely on it: every field is found by its id, so any order decodes the same
-  value. A body carrying an id more than once is damage (§4): no writer emits
-  it. An encoder written from this section is therefore free
-  to order fields as it likes, and byte-identical output against this
-  implementation requires matching its declaration order as well as its
-  framing. **First-use order in the id table follows from the write order**,
-  so an encoder that reorders fields writes a different table and the same
-  values.
+- **Field ORDER within a body is part of the WRITE contract, and a reader
+  enforces it.** This implementation writes fields in declaration order, and a
+  reader refuses a body whose fields arrive in any other order: every field is
+  found by its id, but a body out of declaration order is a spelling no
+  conforming writer of a lawful lineage produces, so the read refuses it (§4)
+  rather than decoding it. A body carrying an id more than once is damage
+  (§4): no writer emits it. **First-use order in the id table follows from the
+  write order**, so a writer that reorders fields writes a different table, and
+  a reader refuses that table too (§3, §4).
 - **Writers elide what readers default**: a field holding its default, an
   empty string or array, an all-default FIXED array, an empty union and an
   all-default nested table are not written at all (fixed arrays of tables
@@ -5199,6 +5205,12 @@ twenty unnameable entries counts nothing at all if no body references them.
   and save agree byte for byte (§7). **An elided field costs nothing in the
   id table either**, because an id no body references is never written.
   Elision makes the DECLARED DEFAULT part of the wire contract: see §4.
+  **The rule runs both ways: a field STORED at its declared default is refused
+  on read**, because a conforming writer elides it — a default change is
+  refused by the lineage check (docs/VERSIONING.md), so every lawful writer's
+  default for a field the reader names is the reader's own, and that is what
+  makes the case decidable. A field riding at its default is a spelling no
+  lawful writer produces, and the read refuses it (§4).
   **A field under a FALSE GUARD is elided too**, whatever its storage holds:
   an `if` branch that does not run writes none of its fields, so a guarded
   group rides only when its guard is true. That is what makes a guard an
@@ -5479,6 +5491,13 @@ the payload opens with the count and then carries the records:
   a record whose length runs past the field, or bytes left over inside the
   field make the whole table **malformed**, which is damage: the whole load
   refuses `wire_damaged` (§4). A reader never salvages part of a numbering.
+- **A reader refuses an empty node table, or one out of its place.** A root
+  that reaches no node writes no node-table field at all, and a root that
+  numbers nodes writes the field LAST in the root body (§22.1), so a
+  node-table field carrying a node count of `0`, or one that is not the root
+  body's last field, is a spelling no conforming writer produces — the read
+  refuses it (§4) rather than decoding it. A node-table id in a nested body
+  is the reserved-id rule below: malformed.
 
   **So resolution cannot be inline**, and that is a consequence worth
   stating rather than leaving to be discovered: the node table is written
@@ -5502,8 +5521,10 @@ the payload opens with the count and then carries the records:
   damage rather than a foreign name: the whole load refuses `wire_damaged` and nothing is
   kept (§4), in a file and in a message batch alike.
 - This implementation writes the node-table field LAST in the root body,
-  after the root's own declared fields. Field order is not part of the contract (§3), so a reader finds it by
-  id. **The MESSAGE FORM is the one place order is fixed**, and it fixes it the
+  after the root's own declared fields. A reader enforces that place: a
+  node-table field that is not the root body's last is refused (§3), and a
+  reader finds the field by its id. **The MESSAGE FORM is the one place order
+  is fixed**, and it fixes it the
   other way: a bitpacked pointer index is `bits_required(0, node count)` bits
   wide, so the node table is the FIRST field of a form-`2` root body and the
   count is known before an index is (§3.3).
@@ -5597,7 +5618,11 @@ the payload opens with the count and then carries the records:
   thing an absence could mean. §3's presence rule is unchanged — a
   non-null pointer ALWAYS rides, even when its node's body is entirely
   default, because otherwise null and "points at an empty node" would be
-  one value on the wire.
+  one value on the wire. **A reader refuses an explicit null pointer at a
+  field**: a pointer field written with index `0` is a spelling no conforming
+  writer produces — null elides — so the read refuses it (§4) rather than
+  reading null. The two lawful index-`0` spellings stay: a null slot of an
+  array of pointers (below), and a `| required` null pointer (§22.2).
 - **`*T` and a by-value `T` are no longer one framing.** §3's
   three-spellings family becomes two: `T` and `?T` share kind `13`, and
   `*T` is kind `17`. An edit between a pointer and either of the others,
@@ -5841,9 +5866,10 @@ element carries:
   at all (§3) and a slot must say which variant it keys, so a body carrying one
   is damaged rather than merely foreign. It is damage: the whole load refuses
   `wire_damaged` and nothing is kept (§4).
-- **Slots are written in ascending variant ordinal**, and a reader must
-  not rely on it — the field-order rule (§3) one level down. Every slot is
-  found by its key, so any order decodes the same value; byte-identical
+- **Slots are written in ascending variant ordinal**, and a reader enforces
+  it — the field-order rule (§3) one level down. Every slot is
+  found by its key, but a body whose slots arrive out of ascending ordinal is
+  a spelling no conforming writer produces, so the read refuses it (§4); byte-identical
   output against this implementation requires matching the ascending order
   as well as the framing.
 - **Each element is a triple**: the `key reference`, then `L`, then `L`
@@ -6514,6 +6540,14 @@ adds no counter and moves none. **The only report-side addition is a REASON on
 the refusal verdict**, which the form byte already introduced, and the
 `non_finite_float: <Table>.<field>` name §3.3 has every read refuse with for a
 plain float's NaN or infinity.
+
+**THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
+batch that decodes to a good value but that no conforming writer of a lawful
+lineage version would produce is refused: fields out of the writer's order; a
+field stored at its declared default; a union written with arm reference `0`;
+and a message body that omits a field its own announcement declares. Absent
+fields, unknown fields from a newer writer and widened fields stay lawful and
+read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -8626,6 +8660,21 @@ diagnostic name, which is not normative and is never compared:
   form, which is what lets fifteen targets owe each other one verdict on one
   payload. The maintainer, 2026-10-31: "failing to read something means the whole
   read is undefined".
+- **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
+  to a value but that no conforming writer of a lawful lineage version would
+  produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
+  docs/rulings.json reads-refuse-non-canonical). The seven shapes, on the
+  variable and message forms: fields out of the writer's order; a field stored
+  at its declared default (a default change is refused by the lineage check,
+  docs/VERSIONING.md, so every lawful writer's default for a field the reader
+  names is the reader's own, which is what makes the case decidable); an
+  explicit null pointer; an id-table entry that is unused, or out of first-use
+  order; an empty node table, or one out of its place; a union written with arm
+  reference `0`; and a message body that omits a field its own announcement
+  declares. Absent fields, unknown fields from a newer writer and widened
+  fields stay lawful and read as today. The JSON form is not changed here: a
+  JSON read accepts any field order (§16.2), and this rule is the binary
+  forms' alone.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
   FROM TWO SLOTS — `blob_shared`** (§2.5). Neither is a value a writer emits.
 - **A COUNT PAST THE STORAGE CAP — `count_over_extent_cap`** (§2.9).
@@ -19922,11 +19971,11 @@ that data the same way"* / *"and each implementation MUST write out the exact
 same bytes, so there needs to be some specification for how iteration is done
 on write, and in what order etc. that is cross language."*
 
-The reader-side sections leave a writer free where the reader cannot tell the
-difference: field order inside a body is not part of the READ contract (§3),
-and an id table in any order resolves. That freedom is the reader's
-tolerance, and it is not a writer's licence. **A CONFORMING WRITER HAS NO
-FREEDOM AT ALL**: every degree of freedom the reader tolerates is pinned below
+The reader-side sections now hold a writer to one order rather than leave it
+free: field order inside a body and the id table's first-use order are part of
+the READ contract (§3), and a body or a table out of them is refused, not
+re-encoded. **A CONFORMING WRITER HAS NO
+FREEDOM AT ALL**: every spelling a reader refuses is pinned below
 to one answer, so a value has one canonical byte string per form, and two
 implementations that follow this section produce it byte for byte. Each step
 names the section that owns the rule, what the Go reference
@@ -19979,8 +20028,8 @@ an array element's, a map entry's, a union arm's table, and a node record's.
 Declaration order is the order the fields appear in the WRITING build's
 declaration, a field inside an `if` group at the place the group declares it.
 It is the order the reference has always written in (§3, "Field ORDER"), and
-the C++ writer writes in it too. A reader accepts any order (§3); a writer
-writes this one.
+the C++ writer writes in it too. A reader refuses any other order (§3); a
+writer writes this one.
 
 **EACH FIELD IS WRITTEN OR ELIDED BY ONE TABLE, AND THE TABLE IS COMPLETE.** A
 written field is its header (the id reference, then the kind byte, §3) and its
@@ -20253,7 +20302,7 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 | surface | what each leg reads | what it writes | held to |
 |---|---|---|---|
 | `wire` | every instance's canonical wire | `Save` of the value | the instance's own wire, byte for byte |
-| `rewrite` | every input that READS and is not canonical: each evolution (`report`) row and each framing row that reads, and the hand-built spellings of this section (fields out of declaration order, an id table out of first-use order, a field written twice) | `Save` of the value the read leaves | the canonical bytes the oracle writes for that value, `testdata/conformance/tables/rewrite/<case>.bin` |
+| `rewrite` | every input that READS and is not canonical: each evolution (`report`) row and each framing row that reads | `Save` of the value the read leaves | the canonical bytes the oracle writes for that value, `testdata/conformance/tables/rewrite/<case>.bin` |
 | `message` | every message-form batch | `SaveMessages` | the batch, byte for byte |
 | `retain-save` | every retention row | `SaveRetain` | the pinned save |
 | `cook-write` | every instance's wire | `Cook`, both byte orders | `schema cook`'s bytes |
@@ -20263,7 +20312,10 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
 save by every writer, so its instances answer the named refusal on `wire` and
 it has no canonical bytes (and under the strict read it is refused on read as
-well). **Form `3`'s bytes are not a harness surface**: they are held per leg
+well). **The hand-built non-canonical spellings of this section — fields out
+of declaration order, an id table out of first-use order — are not rewrite
+rows either**: a read now refuses them (§4), not rewrites them, so they answer
+the refusal on `wire` and have no canonical bytes. **Form `3`'s bytes are not a harness surface**: they are held per leg
 against the C++ reference's byte oracle, `make tables-fixedform-corpus`
 (test/tables/fixedform_dump.cpp, with the values each file holds in its
 manifest), by each leg's `tables-<lang>-fixedform` gate and the conformance
