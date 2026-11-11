@@ -119,7 +119,7 @@ func TestIssue710TableRecovery(t *testing.T) {
  table Rows { items [..2]Element; past int32 }
  table Mapping { items map[uint32]Element; past int32 }
  enum Key { First, Second }
- table Keyed { items [Key]Element; past int32 }
+ table KeyedList { items [Key]Element; past int32 }
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))
@@ -140,8 +140,8 @@ func TestIssue710TableRecovery(t *testing.T) {
 			`RowsBuilder b; TableReport r; if (RowsLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 2;`},
 		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId),
 			`MappingBuilder b; TableReport r; if (MappingLoadBuilder(b,wire,sizeof(wire),&r) || !r.damaged || r.refuse_reason != wire_damaged) return 3;`},
-		{"keyed", "Keyed", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("Keyed", 0), fieldID("Keyed", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))),
-			`KeyedBuilder b; TableReport r; if (KeyedLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 4;`},
+		{"keyed", "KeyedList", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("KeyedList", 0), fieldID("KeyedList", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))),
+			`KeyedListBuilder b; TableReport r; if (KeyedListLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 4;`},
 	}
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})

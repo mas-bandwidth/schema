@@ -25,7 +25,7 @@ union Hit
     damage int32
 }
 
-fixed table Keyed
+fixed table KeyedSlots
 {
     slots [Slot]int32
     hit   Hit
@@ -56,7 +56,7 @@ func TestWireArrayHeadersFollowTheOracleRust(t *testing.T) {
 	// that calls a count past the body's own L damage before the element kind
 	// is judged
 	keyedGone := "Some(_) if *off > sub => { report.damaged = true; }"
-	keyed := rustFn(src, "keyed_load_body")
+	keyed := rustFn(src, "keyed_slots_load_body")
 	mapped := rustFn(src, "mapped_load_body")
 	// an arm's array header reads inside the arm's L
 	armWant := "match leb_read(wire, off).filter(|_| *off <= aend) {"

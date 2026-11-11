@@ -63,7 +63,7 @@ func TestCppCookExtentCanonicalAlignment(t *testing.T) {
 	for _, tc := range []struct{ name, source, text string }{
 		{"root", "table Root { tiny []uint8\nwides []uint128 }", "{\"tiny\":[1],\"wides\":[1267650600228229401496703205383]}"},
 		{"nested", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Bucket }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[7]}]}"},
-		{"schema-type-named-Cook", "table Cook { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Cook }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[7]}]}"},
+		{"schema-type-named-Dish", "table Dish { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Dish }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[7]}]}"},
 		{"pointer-node", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { next *Bucket }", "{\"next\":{\"tiny\":[1],\"wides\":[7]}}"},
 		{"map-entry", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets map[uint8]Bucket }", "{\"buckets\":{\"2\":{\"tiny\":[1],\"wides\":[7]}}}"},
 	} {

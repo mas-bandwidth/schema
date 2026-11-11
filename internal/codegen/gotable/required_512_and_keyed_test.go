@@ -19,7 +19,7 @@ enum Key { A, B }
 table Kid {
 	x int32
 }
-table Keyed {
+table KeyedSlots {
 	values [Key]int32 | required
 }
 table Parent {
@@ -56,30 +56,30 @@ import (
 	"testing"
 )
 func TestKeyedZeroWireAndStrictRefusal(t *testing.T) {
-	var v Keyed
-	n := KeyedMeasure(&v)
+	var v KeyedSlots
+	n := KeyedSlotsMeasure(&v)
 	if n <= 0 {
-		t.Fatalf("KeyedMeasure at zero = %d, want > 0", n)
+		t.Fatalf("KeyedSlotsMeasure at zero = %d, want > 0", n)
 	}
 	buf := make([]byte, n)
-	if got := KeyedSave(&v, buf); got != n {
-		t.Fatalf("KeyedSave = %d, want %d", got, n)
+	if got := KeyedSlotsSave(&v, buf); got != n {
+		t.Fatalf("KeyedSlotsSave = %d, want %d", got, n)
 	}
 	const wantHex = "01011002040000fb674d1acf7b27210100000000000000"
 	if gotHex := hex.EncodeToString(buf); gotHex != wantHex {
-		t.Fatalf("KeyedSave at zero = %s, want %s", gotHex, wantHex)
+		t.Fatalf("KeyedSlotsSave at zero = %s, want %s", gotHex, wantHex)
 	}
-	got, err := KeyedReadStrict(buf)
+	got, err := KeyedSlotsReadStrict(buf)
 	if err != nil || got == nil || *got != v {
-		t.Fatalf("KeyedReadStrict round-trip: got=%+v err=%v", got, err)
+		t.Fatalf("KeyedSlotsReadStrict round-trip: got=%+v err=%v", got, err)
 	}
 	empty, _ := hex.DecodeString("01000000000000000000")
-	if _, err := KeyedReadStrict(empty); err == nil {
-		t.Fatal("KeyedReadStrict accepted empty wire missing required values")
+	if _, err := KeyedSlotsReadStrict(empty); err == nil {
+		t.Fatal("KeyedSlotsReadStrict accepted empty wire missing required values")
 	} else {
 		var m TableMissingRequired
 		if !errors.As(err, &m) || m.Fields != "values" {
-			t.Fatalf("KeyedReadStrict empty wire err = %v (%T), want missing_required: values", err, err)
+			t.Fatalf("KeyedSlotsReadStrict empty wire err = %v (%T), want missing_required: values", err, err)
 		}
 	}
 

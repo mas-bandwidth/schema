@@ -115,7 +115,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			name: "enum-keyed array is carried on form 1",
 			def: `package test
 				enum Slot { alpha, beta, gamma }
-				table Keyed {
+				table KeyedSlots {
 					id string(64)
 					slots [Slot]int32
 				}
