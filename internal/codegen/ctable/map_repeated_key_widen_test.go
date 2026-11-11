@@ -1,6 +1,8 @@
 // Repeated map entry keys on the wire: the strict read refuses the whole load
-// (docs/SPEC-TABLES.md §2.8, §3, §4). A changed key kind is kind_mismatch;
-// a repeated key is wire_damaged. There is no last-wins and no partial map.
+// (docs/SPEC-TABLES.md §2.8, §3, §4). A changed key kind refuses
+// `kind_mismatch`; a repeated key refuses `wire_damaged`. Both are
+// refuse_reason values, not report counters. There is no last-wins and no
+// partial map.
 package ctable
 
 import (
