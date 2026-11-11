@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
@@ -758,6 +759,140 @@ func messageBatchScalar(refBits int, slot uint64, value uint64, width int) []byt
 		put(0, 1)
 	}
 	return out
+}
+
+func TestSquirrelMessageIntegerHeldToReaderKind(t *testing.T) {
+	t.Parallel()
+	if _, err := sqrun.RepoRoot(); err != nil {
+		t.Fatal(err)
+	}
+	schema := `package intdomain
+fixed table Probe
+{
+    smallSigned int8
+    smallUnsigned uint8
+    wide int32
+    optional ?int32
+}
+`
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "IntegerDomain.schema")
+	writeFile(t, schemaPath, []byte(schema))
+	paths, err := compiler.GatherPaths([]string{schemaPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatalf("load schema: %v", err)
+	}
+	for name, b := range squirrelMessageFiles(t, u, nil) {
+		if !strings.Contains(name, "/") {
+			writeFile(t, filepath.Join(dir, name), b)
+		}
+	}
+	fields := map[string]*ir.Field{}
+	for _, f := range u.Tables["Probe"].Fields {
+		fields[f.Name] = f
+	}
+	cases := []struct {
+		name, field string
+		base        int64
+		raw         uint64
+		bits        int
+	}{
+		{"signed", "smallSigned", 100, 255, 8},
+		{"unsigned", "smallUnsigned", 250, 255, 8},
+		{"wide", "wide", 1<<31 - 1, 1<<32 - 1, 32},
+		{"optional", "optional", 1<<31 - 1, 1<<32 - 1, 32},
+	}
+	inputs := map[string][]byte{}
+	var script strings.Builder
+	fmt.Fprintf(&script, `local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);`, squirreltable.ModuleName(u))
+	for _, tc := range cases {
+		f := fields[tc.field]
+		if f == nil {
+			t.Fatalf("field %s missing", tc.field)
+		}
+		entries := tablewire.MessageVocabulary(u)
+		var slot uint64
+		for i, e := range entries {
+			if e.Id == ir.TableFieldWireId(f) {
+				slot = uint64(i + 1)
+				entries[i] = ir.TableVocabularyEntry{Id: e.Id, Kind: e.Kind, Shape: ir.TableMessageShape{Packing: ir.TableMessageRanged, Bits: int64(tc.bits), Base: big.NewInt(tc.base)}}
+			}
+		}
+		if slot == 0 {
+			t.Fatalf("field %s missing from vocabulary", tc.field)
+		}
+		inputs[tc.name+"_ann"] = announcementWithEntries(u, entries)
+		inputs[tc.name+"_batch"] = messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, tc.raw, tc.bits)
+		fmt.Fprintf(&script, `local v_%s={};local ar_%s={};if(!T.AnnounceRead(v_%s,I["%s_ann"],ar_%s)){print("%s:announce_fail\\n");}else{local out_%s=[T.Probe()];local rr_%s={};local n_%s=T.ProbeLoadMessages(out_%s,v_%s,I["%s_batch"],rr_%s);if(n_%s==-1&&rr_%s.refused&&rr_%s.reason=="out_of_range")print("%s:refused\\n");else print("%s:accepted:"+n_%s+":"+rr_%s.reason+"\\n");}`, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
+	}
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script.String()))
+	out := string(sqrun.Run(t, dir, "main.nut", inputs))
+	for _, tc := range cases {
+		if !strings.Contains(out, tc.name+":refused") {
+			t.Errorf("%s value outside reader kind was accepted: %s", tc.name, out)
+		}
+	}
+	// Reader kind limits remain inclusive at both ends for each primitive.
+	ends := []struct {
+		name, field, member string
+		raw                 uint64
+		bits                int
+		want                string
+	}{
+		{"i8_min", "smallSigned", "SmallSigned", 1 << 7, 8, "-128"},
+		{"i8_max", "smallSigned", "SmallSigned", 1<<7 - 1, 8, "127"},
+		{"u8_min", "smallUnsigned", "SmallUnsigned", 0, 8, "0"},
+		{"u8_max", "smallUnsigned", "SmallUnsigned", 255, 8, "255"},
+		{"i32_min", "wide", "Wide", 1 << 31, 32, "-2147483648"},
+		{"i32_max", "wide", "Wide", 1<<31 - 1, 32, "2147483647"},
+	}
+	entries := tablewire.MessageVocabulary(u)
+	refBits := ir.TableMessageRefBits(len(entries))
+	var endScript strings.Builder
+	fmt.Fprintf(&endScript, `local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);`, squirreltable.ModuleName(u))
+	for _, tc := range ends {
+		var slot uint64
+		for i, e := range entries {
+			if e.Id == ir.TableFieldWireId(fields[tc.field]) {
+				slot = uint64(i + 1)
+			}
+		}
+		if slot == 0 {
+			t.Fatalf("field %s missing from vocabulary", tc.field)
+		}
+		inputs[tc.name+"_ann"] = announcementWithEntries(u, entries)
+		inputs[tc.name+"_batch"] = messageBatchScalar(refBits, slot, tc.raw, tc.bits)
+		fmt.Fprintf(&endScript, `local v_%s={};local ar_%s={};T.AnnounceRead(v_%s,I["%s_ann"],ar_%s);local out_%s=[T.Probe()];local rr_%s={};local n_%s=T.ProbeLoadMessages(out_%s,v_%s,I["%s_batch"],rr_%s);if(n_%s==1&&out_%s[0].%s==%s&&!rr_%s.refused)print("%s:ok\\n");else print("%s:fail\\n");`,
+			tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.member, tc.want, tc.name, tc.name, tc.name)
+	}
+	var wideSlot uint64
+	for i, e := range entries {
+		if e.Id == ir.TableFieldWireId(fields["wide"]) {
+			wideSlot = uint64(i + 1)
+			entries[i] = ir.TableVocabularyEntry{Id: e.Id, Kind: ir.TableKindI8, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
+		}
+	}
+	if wideSlot == 0 {
+		t.Fatal("wide field missing from vocabulary")
+	}
+	inputs["widen_ann"] = announcementWithEntries(u, entries)
+	inputs["widen_batch"] = messageBatchScalar(refBits, wideSlot, 0xfe, 8)
+	endScript.WriteString(`local v={};local ar={};T.AnnounceRead(v,I["widen_ann"],ar);local out=[T.Probe()];local rr={};local n=T.ProbeLoadMessages(out,v,I["widen_batch"],rr);if(n==1&&out[0].Wide==-2&&rr.widened==1&&!rr.refused)print("widen:ok\\n");else print("widen:fail\\n");`)
+	writeFile(t, filepath.Join(dir, "main-endpoints.nut"), []byte(endScript.String()))
+	endOut := string(sqrun.Run(t, dir, "main-endpoints.nut", inputs))
+	for _, tc := range ends {
+		if !strings.Contains(endOut, tc.name+":ok") {
+			t.Errorf("%s boundary value was refused: %s", tc.name, endOut)
+		}
+	}
+	if !strings.Contains(endOut, "widen:ok") {
+		t.Errorf("lawful widening failed: %s", endOut)
+	}
+
 }
 
 func TestSquirrelMessageWidenFloat32ToFloat64(t *testing.T) {
