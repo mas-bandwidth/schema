@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -141,7 +142,8 @@ func TestGoPreservesLowercaseTableEntryPoints(t *testing.T) {
 	u := unitFrom(t, `package probe
 table Element { value int32 }
 table lower {
-    values []int32
+    items []int32
+    object_id []int32
     roster map[uint8]Element
 }
 `)
@@ -150,12 +152,32 @@ table lower {
 	assertCompiles(t, u, surfaces, `package probe
 import "testing"
 func TestLowercaseEntryPoints(t *testing.T) {
-    _ = testing.Short()
-    if lowerReset == nil || lowerTableType == nil || lowerMeasure == nil || lowerSave == nil || lowerLoad == nil { t.Fatal("table entry point missing") }
-    if lowerValuesAdd == nil || lowerValuesErase == nil || lowerValuesEach == nil { t.Fatal("list entry point missing") }
-    if lowerRosterInsert == nil || lowerRosterFind == nil || lowerRosterErase == nil || lowerRosterEach == nil || lowerRosterIndexMeasure == nil || lowerRosterIndex == nil || lowerRosterIndexFind == nil { t.Fatal("map entry point missing") }
-    if lowerLoadTextForm == nil || lowerSaveTextForm == nil || lowerEditTextForm == nil { t.Fatal("textform entry point missing") }
-    if lowerOpen == nil || lowerAt == nil { t.Fatal("cook entry point missing") }
+    _ = lowerReset
+    _ = lowerTableType
+    _ = lowerMeasure
+    _ = lowerSave
+    _ = lowerLoad
+    _ = lowerItemsAdd
+    _ = lowerItemsErase
+    _ = lowerItemsEach
+    _ = lowerObjectIDAdd
+    _ = lowerObjectIDErase
+    _ = lowerObjectIDEach
+    _ = lowerRosterInsert
+    _ = lowerRosterFind
+    _ = lowerRosterErase
+    _ = lowerRosterEach
+    _ = lowerRosterIndexMeasure
+    _ = lowerRosterIndex
+    _ = lowerRosterIndexFind
+    _ = lowerLoadTextForm
+    _ = lowerSaveTextForm
+    _ = lowerEditTextForm
+    _ = lowerOpen
+    _ = lowerAt
+    _ = lowerBlockOpen
+    _ = lowerBlockBegin
+    _ = lowerBlockBytes
 }
 `)
 }
@@ -171,7 +193,7 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			body := "table Element { value int32 }\ntable %s {\nitems []int32\nroster map[uint8]Element\n}\n"
+			body := "table Element { value int32 }\ntable %s | forms = \"wire,json,cook,block\" {\nitems []int32\nobject_id []int32\nroster map[uint8]Element\n}\n"
 			upper := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.upperSchemaRoot, 1))
 			private := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.privateSchemaRoot, 1))
 			surfaces := DefaultSurfaces()
@@ -184,60 +206,25 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("generate private-root unit: %v", err)
 			}
-			upperPresent := map[string]bool{}
-			for _, src := range want {
-				file, err := parser.ParseFile(token.NewFileSet(), "generated.go", src, 0)
-				if err != nil {
-					t.Fatalf("parse uppercase-root output: %v", err)
-				}
-				for _, decl := range file.Decls {
-					if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
-						upperPresent["func:"+fn.Name.Name] = true
-					}
-				}
+			rootPairs := [][2]string{{tc.upperGoRoot, tc.privateGoRoot}}
+			upperTable := upper.Tables[tc.upperSchemaRoot]
+			privateTable := private.Tables[tc.privateSchemaRoot]
+			if upperTable == nil || privateTable == nil || len(upperTable.Fields) != len(privateTable.Fields) {
+				t.Fatal("paired schemas have different table fields")
 			}
-			privatePresent := map[string]bool{}
-			for _, src := range got {
-				file, err := parser.ParseFile(token.NewFileSet(), "generated.go", src, 0)
-				if err != nil {
-					t.Fatalf("parse private-root output: %v", err)
-				}
-				for _, decl := range file.Decls {
-					switch decl := decl.(type) {
-					case *ast.FuncDecl:
-						if decl.Recv == nil {
-							privatePresent["func:"+decl.Name.Name] = true
-						}
-					case *ast.GenDecl:
-						for _, spec := range decl.Specs {
-							switch spec := spec.(type) {
-							case *ast.TypeSpec:
-								privatePresent["type:"+spec.Name.Name] = true
-							case *ast.ValueSpec:
-								for _, name := range spec.Names {
-									privatePresent["value:"+name.Name] = true
-								}
-							}
-						}
-					}
-				}
+			for i, field := range upperTable.Fields {
+				upperFieldRoot := goname.Initialisms(tc.upperGoRoot + ir.GoExportName(field.Name))
+				privateFieldRoot := goname.Initialisms(tc.privateGoRoot + ir.GoExportName(privateTable.Fields[i].Name))
+				rootPairs = append(rootPairs, [2]string{upperFieldRoot, privateFieldRoot})
 			}
-			apiSuffixes := []string{
-				"Reset", "TableType", "Measure", "Save", "Load", "Open", "At",
-				"LoadTextForm", "SaveTextForm", "EditTextForm",
-				"ItemsAdd", "ItemsErase", "ItemsEach",
-				"RosterInsert", "RosterFind", "RosterErase", "RosterEach",
-				"RosterIndexMeasure", "RosterIndex", "RosterIndexFind",
-			}
+			upperSynthetic := syntheticTableRoots(upper)
+			privateSynthetic := syntheticTableRoots(private)
+			upperDeclarations := rootedTopLevelDeclarations(t, want, rootPairs, upperSynthetic)
+			privateDeclarations := rootedTopLevelDeclarations(t, got, [][2]string{{tc.privateGoRoot, tc.privateGoRoot}}, privateSynthetic)
 			var missing []string
-			for _, suffix := range apiSuffixes {
-				from := tc.upperGoRoot + suffix
-				to := tc.privateGoRoot + suffix
-				if !upperPresent["func:"+from] {
-					missing = append(missing, "uppercase fixture missing "+from)
-				}
-				if !privatePresent["func:"+to] {
-					missing = append(missing, to)
+			for key, name := range upperDeclarations {
+				if !privateDeclarations[key] {
+					missing = append(missing, name)
 				}
 			}
 			sort.Strings(missing)
@@ -246,4 +233,96 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 			}
 		})
 	}
+	t.Run("fixed lowercase root", func(t *testing.T) {
+		t.Parallel()
+		upper := unitFrom(t, "package probe\nfixed table FixedLower { value int32 }\n")
+		private := unitFrom(t, "package probe\nfixed table fixedlower { value int32 }\n")
+		want, err := Generate(upper)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := Generate(private)
+		if err != nil {
+			t.Fatal(err)
+		}
+		upperDeclarations := rootedTopLevelDeclarations(t, want, [][2]string{{"FixedLower", "fixedlower"}}, syntheticTableRoots(upper))
+		privateDeclarations := rootedTopLevelDeclarations(t, got, [][2]string{{"fixedlower", "fixedlower"}}, syntheticTableRoots(private))
+		var missing []string
+		for key, name := range upperDeclarations {
+			if !privateDeclarations[key] {
+				missing = append(missing, name)
+			}
+		}
+		sort.Strings(missing)
+		if len(missing) != 0 {
+			t.Fatalf("fixed table private spelling dropped declarations: %s", strings.Join(missing, ", "))
+		}
+	})
+}
+
+func syntheticTableRoots(u *ir.Unit) []string {
+	var roots []string
+	for _, st := range goEscapeTables(u).Tables {
+		if st.MapEntryOf != "" || st.TextElem {
+			roots = append(roots, goname.Initialisms(st.Name))
+		}
+	}
+	return roots
+}
+
+func rootedTopLevelDeclarations(t *testing.T, files map[string][]byte, roots [][2]string, synthetic []string) map[string]string {
+	t.Helper()
+	declarations := map[string]string{}
+	for _, src := range files {
+		file, err := parser.ParseFile(token.NewFileSet(), "generated.go", src, 0)
+		if err != nil {
+			t.Fatalf("parse generated output: %v", err)
+		}
+		add := func(kind, name string) {
+			for _, root := range synthetic {
+				if strings.HasPrefix(name, root) {
+					return
+				}
+			}
+			for _, pair := range roots {
+				from, to := pair[0], pair[1]
+				if !strings.HasPrefix(name, from) {
+					continue
+				}
+				if kind == "const" && strings.HasSuffix(name, "LoadRetainBuilder") || kind == "func" && strings.HasSuffix(name, "MeasureBodyRetain") {
+					// retain.go emits a refusal-reason constant and a recursive
+					// retained-child measurement worker; neither is a table API.
+					return
+				}
+				target := to + strings.TrimPrefix(name, from)
+				key := kind + ":" + target
+				declarations[key] = target
+				return
+			}
+		}
+		for _, decl := range file.Decls {
+			switch decl := decl.(type) {
+			case *ast.FuncDecl:
+				if decl.Recv == nil {
+					add("func", decl.Name.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range decl.Specs {
+					switch spec := spec.(type) {
+					case *ast.TypeSpec:
+						add("type", spec.Name.Name)
+					case *ast.ValueSpec:
+						kind := "var"
+						if decl.Tok == token.CONST {
+							kind = "const"
+						}
+						for _, name := range spec.Names {
+							add(kind, name.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+	return declarations
 }
