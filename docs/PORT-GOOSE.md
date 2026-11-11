@@ -17,10 +17,12 @@ This page fixes the design. The skeleton it describes is in the tree:
 `compiler/carries_goose.go`, `internal/codegen/goose` (the type surface),
 `internal/codegen/goosetable` (the table surface),
 `internal/codegen/goose/gooserun` (the test helper), `make/goose.mk`,
-`test/conformance/goose/driver` and `bench/tables/goose/leg`. The skeleton
-has no codec: the type and table surfaces are values, constructors and
-descriptors, and every wire, form and text surface is a later card (THE CARD
-MAP).
+`test/conformance/goose/driver` and `bench/tables/goose/leg`. The tree now
+carries the codecs the later sections describe: the type wire's read and
+write over the vendored serialize runtime, and the table wire's strict load,
+save and retain-unknown, its fixed, message, block, cook and JSON text forms,
+and its descriptors, unit registry and type view. What is still owed is named
+by the register and THE CARD MAP.
 
 **The pin.** Goose v2026.2 (tag v2026.2, commit 7ad96d6d47f9), `make dist-goose`: the release `goose-v2026.2-linux-x64.tar.gz`, sha256
 `f9f0b448800b27b9d86fcd8341a08e8cda790ff86cd500c90e287fa1a616197c`, checked
@@ -226,23 +228,16 @@ even — and no write refuses a double for having more precision (the
 coordinator's ruling from the Lua design read, 2026-10-17, held for every
 port).
 
-**Bits.** Goose has NO float-to-bits cast. Two routes were measured on the
-pin, both under `goose run` (TinyCC) and `goose build -O2` (gcc 13.3):
-
-1. a C sidecar — a `<root>.build` naming `c_sources = ["…c"];` and two
-   `extern fn`s whose C is a `memcpy` each way. It moves f32 and f64 bits
-   BOTH ways, and preserves a signalling NaN's payload (`0x7f800001` round
-   trips);
-2. `bytes_of` over a one-element `f32[1]` array: a read-only view of the
-   bits, so it gives float-to-bits only; bits-to-float has no pure-Goose
-   route.
-
-The port uses ONE route, the one serialize-goose's DESIGN.md fixes, vendored
-by schema-goose-serialize-vendor into `internal/codegen/goose/runtime/` — by
-the measurements above, the C sidecar, the only route that runs both
-directions. A float32 read from the wire never goes through a conversion
-(SPEC §4.3, PORTING M21): its bits move into the `f32` through the route, so
-a signalling NaN and its payload survive a round trip.
+**Bits.** Goose has NO float-to-bits cast. The port uses the pure-Goose route
+in both runtimes (`internal/codegen/goose/runtime/serialize_float.goose` and
+the table runtime's `fixed.goose`): float-to-bits is `bytes_of` over a
+one-element `f32[1]`/`f64[1]` array — a read-only view of the pattern — and
+bits-to-float is a verified one-element image through `from_bytes`, which
+moves the bytes and never converts them. No C sidecar is involved. A float32
+read from the wire never goes through a conversion (SPEC §4.3, PORTING M21):
+the wire's bits reach the `f32` through the route, and a non-finite pattern is
+refused on its raw bits before it can land. `make packet-finite-goose` pins
+the finite vectors, `-0` and the subnormals included, bit exact through it.
 
 ## THE RUNTIME LAYOUT
 
