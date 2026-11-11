@@ -475,7 +475,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var seen = 0;
   var nodeSeen = false;
   while (vAt < vEnd) {
-    if (seen >= vocabulary.maxEntries) {
+    if (seen >= vocabulary.maxEntries || seen >= vocabulary.entries.length) {
       return report.Refuse('vocabulary_too_large');
     }
     final start = vAt;
