@@ -4484,8 +4484,8 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "java/hostile-corpus" :type :task :title "the Java port runs the shared hostile-input corpus" :state :done
-   :evidence ("make/schema-java-runs-hostile-corpus.mk: schema-java-runs-hostile-corpus (161 cases: 142 pass, 19 carried as FIX-CARD in test/java-hostile/known-findings.tsv)" "schema-java-runs-hostile-corpus-negative-control (make/negative-controls.json java-tables-more)" "internal/ci/schema_java_runs_hostile_corpus_test.go: TestSchemaJavaRunsHostileCorpusWiring" ".github/workflows/schema-java-runs-hostile-corpus.yml")
-   :note "Every manifest case runs through the generated Java reader (test/java-hostile/Runner.java). The vocabulary's maxEntries bound was fixed on the way (TestMessageFormAnnounceJava 2.3). The 19 FIX-CARDs are the text form's repeated-key and rejected-value rules (SPEC-TABLES §16.2), wrong-shape presence, the §16.3 UTF-8 and zero refusals (carried-by=go,c), the wire's count_refusal name, and non_finite_float (tables-finite/java).")
+   :evidence ("make/schema-java-runs-hostile-corpus.mk: schema-java-runs-hostile-corpus (192 cases: 192 pass, none carried in test/java-hostile/known-findings.tsv)" "schema-java-runs-hostile-corpus-negative-control (make/negative-controls.json java-tables-more)" "internal/ci/schema_java_runs_hostile_corpus_test.go: TestSchemaJavaRunsHostileCorpusWiring" ".github/workflows/schema-java-runs-hostile-corpus.yml")
+   :note "Every manifest case runs through the generated Java reader (test/java-hostile/Runner.java). The vocabulary's maxEntries bound was fixed on the way (TestMessageFormAnnounceJava 2.3). All 192 cases pass, and no case is carried in test/java-hostile/known-findings.tsv.")
   (:id "hostile-input/java" :type :work-set :children ("java/P3" "java/P4" "java/hostile-corpus"))
   (:id "js/P3" :type :task :title "hostile bytes, sweep + sanitizer" :state :unknown :evidence nil
    :audit-item "P3" :reported-state "weak" :reported-source
