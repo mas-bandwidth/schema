@@ -234,11 +234,13 @@ func widenBothWays(t *testing.T, src string, want widenHelper, absent []string) 
 }
 
 func TestCppTableWidenSignedFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenSignedSrc, widenSignedHelper,
 		[]string{"TableReadUnsignedAt", "TableWidenF32", "TableKindWidth"})
 }
 
 func TestCppTableWidenUnsignedFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenUnsignedSrc, widenUnsignedHelper,
 		[]string{"TableReadSignedAt", "TableWidenF32", "TableKindWidth"})
 }
@@ -248,6 +250,7 @@ func TestCppTableWidenUnsignedFollowsTheCensus(t *testing.T) {
 // the ordinary conversion, carries no TableWidenF32 and none of the other
 // three, and compiles and runs.
 func TestCppTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
+	t.Parallel()
 	with, files := deadCppHeader(t, widenF32Src)
 	for _, sym := range []string{"TableWidenF32", "TableReadSignedAt", "TableReadUnsignedAt", "TableKindWidth"} {
 		if strings.Contains(with, sym) {
@@ -270,6 +273,7 @@ func TestCppTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 // rides with it, because that is what the arm's payload decodes through — so
 // it is not named absent here.
 func TestCppTableWidenArmWidthFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenArmSrc, widenWidthArm,
 		[]string{"TableReadUnsignedAt", "TableWidenF32"})
 }
@@ -277,6 +281,7 @@ func TestCppTableWidenArmWidthFollowsTheCensus(t *testing.T) {
 // A LIST is the other half, and it is reached with nothing in the unit
 // widening at all.
 func TestCppTableWidenListWidthFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenListSrc, widenWidthList,
 		[]string{"TableReadSignedAt", "TableReadUnsignedAt", "TableWidenF32"})
 }
@@ -285,6 +290,7 @@ func TestCppTableWidenListWidthFollowsTheCensus(t *testing.T) {
 // sits at the bottom of its ladder carries none of the four names, and still
 // compiles and runs. It is the claim the five cases above each lean on.
 func TestCppTableWidenRuntimeAbsentFromALadderlessUnit(t *testing.T) {
+	t.Parallel()
 	header, files := deadCppHeader(t, widenNoneSrc)
 	for _, sym := range []string{
 		"TableKindWidth", "TableReadSignedAt", "TableReadUnsignedAt", "TableWidenF32",

@@ -248,6 +248,7 @@ int main()
 // emitter wrote, over elided nested tables, an enum-keyed array at every
 // elision shape, and an array long enough to move a reference's LEB128 width.
 func TestCppTableRefOrdinalBytes(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
