@@ -509,8 +509,8 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 	for _, want := range []string{
 		"defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}",
 		"for i <- 0..(n - 1)//1, into:",
-		"defp zero_width_run(_vocab, shape, n, r, acc, v)",
-		"shape.max == 0xFFFFFFFF and n > bits_left(r)",
+		"defp zero_width_run(_vocab, _shape, n, r, acc, v)",
+		"if n > bits_left(r) do",
 		"min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min",
 		"defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}",
 		"defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}",
@@ -642,7 +642,7 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
 
 func sabotageDeclaredCapacityCap(t *testing.T, module []byte) []byte {
 	t.Helper()
-	const have = `    if shape.max == 0xFFFFFFFF and n > bits_left(r) do`
+	const have = `    if n > bits_left(r) do`
 	const restored = `    if n > _vocab.max_bytes do`
 	return replaceModuleOnce(t, module, have, restored, "declared capacity element cap")
 }
@@ -854,67 +854,92 @@ const boundsValueFns = boundsElixirHelpers + `
   end
 
   defp fixed_nine_last_field do
+    nine = List.duplicate(:name, 9)
+
+    # A fixed zero-width array with no following payload: the body is the
+    # reference bit, the elements and the terminator, so fewer bits remain than
+    # the announced count. The run is damage, not a list.
     words = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>)
     vocab = read!(words)
 
-    # One announced array entry, ref_bits 1. A fixed zero-width count is a
-    # schema constant: the batch is <<2, 0, 1>> and the body is the reference
-    # bit, the nine zero-width elements, the terminator bit and the pad. There
-    # is no following payload or padding to back the count, and it must still
-    # round-trip exactly.
-    case M.save_messages(vocab, [[{1, List.duplicate(:name, 9)}]]) do
+    case M.save_messages(vocab, [[{1, nine}]]) do
       {:ok, <<2, 0, 1>>} ->
         case M.load_messages(vocab, <<2, 0, 1>>) do
-          {:ok, [[{1, nine}]]} ->
-            if nine == List.duplicate(:name, 9) do
-              :ok
-            else
-              check(false, "fixed nine last field #{inspect_small({:ok, [[{1, nine}]]})}")
-            end
-
-          other -> check(false, "fixed nine last field #{inspect_small(other)}")
+          {:malformed, 0, []} -> :ok
+          other -> check(false, "fixed nine unbacked run #{inspect_small(other)}")
         end
 
       other ->
         check(false, "fixed nine save #{inspect_small(other)}")
     end
 
+    # The same run followed by a field whose bits back it loads exactly.
+    backed = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+    backed_vocab = read!(backed)
+
+    case M.save_messages(backed_vocab, [[{1, nine}, {2, 7}]]) do
+      {:ok, batch} ->
+        case M.load_messages(backed_vocab, batch) do
+          {:ok, [[{1, ^nine}, {2, 7}]]} -> :ok
+          other -> check(false, "fixed nine backed run #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "fixed nine backed save #{inspect_small(other)}")
+    end
+
     # A bounded variable zero-width array (min = 0, max = 9) as the last field
-    # of a batch writes 1 ref bit + 4 count bits + 1 terminator bit + 2 pad
-    # bits = <<2, 0, 19>> (only 3 bits remain after the count is read), and
-    # must also round-trip all 9 elements without depending on trailing bits.
+    # writes 1 ref bit + 4 count bits + 1 terminator bit + 2 pad bits =
+    # <<2, 0, 19>>: only 3 bits remain after the count, fewer than the nine
+    # announced elements, so the run is damage.
     bounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(9) <> <<0>>))
 
-    case M.save_messages(bounded, [[{1, List.duplicate(:name, 9)}]]) do
+    case M.save_messages(bounded, [[{1, nine}]]) do
       {:ok, <<2, 0, 19>>} ->
         case M.load_messages(bounded, <<2, 0, 19>>) do
-          {:ok, [[{1, nine}]]} ->
-            if nine == List.duplicate(:name, 9) do
-              :ok
-            else
-              check(false, "bounded nine last field #{inspect_small({:ok, [[{1, nine}]]})}")
-            end
-
-          other -> check(false, "bounded nine last field #{inspect_small(other)}")
+          {:malformed, 0, []} -> :ok
+          other -> check(false, "bounded nine unbacked run #{inspect_small(other)}")
         end
 
       other ->
         check(false, "bounded nine save #{inspect_small(other)}")
     end
+
+    # Followed by a field whose bits back it, the same bounded run loads.
+    bounded_backed =
+      entry(0x1000, <<14>> <> leb(0) <> leb(9) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+
+    bounded_vocab = read!(bounded_backed)
+
+    case M.save_messages(bounded_vocab, [[{1, nine}, {2, 7}]]) do
+      {:ok, batch} ->
+        case M.load_messages(bounded_vocab, batch) do
+          {:ok, [[{1, ^nine}, {2, 7}]]} -> :ok
+          other -> check(false, "bounded nine backed run #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "bounded nine backed save #{inspect_small(other)}")
+    end
   end
 
   defp declared_capacity_above_budget do
-    # vocab.max_bytes bounds the announcement's bytes, not an array's declared
-    # element count. A fixed zero-width array of 70_000 elements is above the
-    # 65_536-byte default and is still legitimate required capacity.
+    # vocab.max_bytes bounds the announcement's bytes, not an array's element
+    # count: a run above the 65_536-byte default is materialized when the bits
+    # the batch still holds back it.
     n = 70_000
-    words = entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>)
+    names = List.duplicate(:name, n)
+    text = :binary.copy(<<65>>, n)
+
+    words =
+      entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>) <> entry(0x1001, <<12>> <> leb(n))
+
     vocab = read!(words)
 
-    case M.save_messages(vocab, [[{1, List.duplicate(:name, n)}]]) do
+    case M.save_messages(vocab, [[{1, names}, {2, text}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
-          {:ok, [[{1, got}]]} when length(got) == n -> :ok
+          {:ok, [[{1, got}, {2, ^text}]]} when length(got) == n -> :ok
           other -> check(false, "declared zero-width capacity shrank #{inspect_small(other)}")
         end
 
@@ -924,12 +949,16 @@ const boundsValueFns = boundsElixirHelpers + `
 
     # The same capacity is legitimate when the count is a bounded variable,
     # not only when min equals max.
-    bounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(n) <> <<0>>))
+    bounded =
+      read!(
+        entry(0x1000, <<14>> <> leb(0) <> leb(n) <> <<0>>) <>
+          entry(0x1001, <<12>> <> leb(n))
+      )
 
-    case M.save_messages(bounded, [[{1, List.duplicate(:name, n)}]]) do
+    case M.save_messages(bounded, [[{1, names}, {2, text}]]) do
       {:ok, batch} ->
         case M.load_messages(bounded, batch) do
-          {:ok, [[{1, got}]]} when length(got) == n -> :ok
+          {:ok, [[{1, got}, {2, ^text}]]} when length(got) == n -> :ok
           other -> check(false, "bounded zero-width capacity shrank #{inspect_small(other)}")
         end
 
@@ -937,6 +966,7 @@ const boundsValueFns = boundsElixirHelpers + `
         check(false, "bounded zero-width capacity save #{inspect_small(other)}")
     end
   end
+
 `
 
 const boundsDescendingFn = boundsElixirHelpers + `
@@ -1004,13 +1034,18 @@ const boundsCountFn = boundsElixirHelpers + `
 const boundsDeclaredFn = boundsElixirHelpers + `
   defp declared_capacity_control do
     n = 70_000
-    words = entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>)
+    names = List.duplicate(:name, n)
+    text = :binary.copy(<<65>>, n)
+
+    words =
+      entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>) <> entry(0x1001, <<12>> <> leb(n))
+
     vocab = read!(words)
 
-    case M.save_messages(vocab, [[{1, List.duplicate(:name, n)}]]) do
+    case M.save_messages(vocab, [[{1, names}, {2, text}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
-          {:ok, [[{1, got}]]} when length(got) == n ->
+          {:ok, [[{1, got}, {2, ^text}]]} when length(got) == n ->
             IO.puts(:stderr, "control did not restore the declared capacity cap: #{inspect_small({:ok, batch})}")
 
           _ ->
@@ -1023,4 +1058,5 @@ const boundsDeclaredFn = boundsElixirHelpers + `
 
     System.halt(1)
   end
+
 `
