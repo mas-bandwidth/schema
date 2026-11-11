@@ -270,6 +270,31 @@ local messageTextOk = function(b, at, n) {
   }
   return true;
 };
+// A WRITE REFUSES A VALUE ITS DECLARATION DOES NOT ADMIT (docs/SPEC.md §5.1;
+// Squirrel has no assert, so in every build): invalid_value: <Owner>.<field>,
+// never a mask, a clamp or a substitute, and nothing raised
+local refuseValue = function(w) {
+  local where = (w.owner == null ? "" : w.owner + ".") + (w.field == null ? "" : w.field);
+  w.reason = "invalid_value: " + where; w.bad = true;
+};
+local isNumber = function(x) { local t = typeof x; return t == "integer" || t == "float"; };
+local isRecord = function(x) { local t = typeof x; return t == "instance" || t == "table"; };
+// an integer within its declared range (a uint64 compares unsigned) and
+// within the width its storage carries (bits(N)'s N, else its kind's bytes)
+local intAdmits = function(fd, x) {
+  if (typeof x != "integer") return false;
+  if (fd.width > 8) return true;
+  if (fd.lo != null && fd.hi != null) {
+    if (fd.kind == 9) {
+      local MIN = 0x8000000000000000;
+      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) return false;
+    } else if (x < fd.lo || x > fd.hi) return false;
+  }
+  local n = fd.bits > 0 ? fd.bits : fd.width * 8;
+  if (n >= 64) return true;
+  if (fd.signed) return x >= -(1 << (n - 1)) && x < (1 << (n - 1));
+  return x >= 0 && x < (1 << n);
+};
 local reservedId = function(id) {
   return id == 0xfffffffffffffffd || id == 0xfffffffffffffffe || id == 0xffffffffffffffff;
 };
@@ -346,18 +371,22 @@ local numberBits = function(fd) {
 local defaultValue = function(fd, value, owner) {
   if (("optional" in fd) && fd.optional) return !owner[fd.member + "Present"];
   if (fd.shape == "str") return value == fd.def;
+  // a value of the wrong type is never a default: the write refuses it
   if (fd.shape == "bytes") {
+    if (typeof value != "blob" && typeof value != "string") return false;
     if (value.len() != fd.def.len()) return false;
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.def[i]) return false;
     return true;
   }
   if (fd.shape == "arr") {
+    if (typeof value != "array") return false;
     if ((("list" in fd) && fd.list) || (("counted" in fd) && fd.counted)) return value.len() == 0;
     if (fd.elem.shape == "tab" || fd.elem.shape == "union") return false;
     // a float element compares its BITS (docs/SPEC-TABLES.md §3.3): a -0
     // element under a +0 default rides the array
     if (fd.elem.shape == "float") {
       foreach (x in value) {
+        if (!isNumber(x)) return false;
         if (fd.elem.f32) { if (messageNarrowF32(x.tofloat()) != messageNarrowF32(fd.elem.def.tofloat())) return false; }
         else if (castf2i(x.tofloat()) != castf2i(fd.elem.def.tofloat())) return false;
       }
@@ -366,12 +395,13 @@ local defaultValue = function(fd, value, owner) {
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.elem.def) return false;
     return true;
   }
-  if (fd.shape == "union") return value.Type == 0;
+  if (fd.shape == "union") return isRecord(value) && ("Type" in value) && value.Type == 0;
   if (fd.shape == "ptr" || fd.shape == "sblob" || fd.shape == "bblob") return value == null;
   if (fd.shape == "tab") return false;
   // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
   // default rides, and a float32 compares at float32
   if (fd.shape == "float") {
+    if (!isNumber(value)) return false;
     // a COMPRESSED float compares by value at float32, as the engine's
     // cellIsDefault does: its -0 is +0 (§3.3), so it elides as +0 does
     if (fd.f32 && fd.fmin != null) return f32(value) == f32(fd.def);
@@ -390,10 +420,16 @@ local readBatch;
 
 local writeScalar = function(T, w, fd, value) {
   local kind = fd.kind, bits = numberBits(fd);
-  if (kind == 1) { put(w, value ? 1 : 0, 1); return; }
+  if (kind == 1) {
+    if (typeof value != "bool") { refuseValue(w); return; }
+    put(w, value ? 1 : 0, 1); return;
+  }
   if (fd.shape == "enum") {
-    local ref = 0;
-    if (value != null) foreach (p in fd.variants) {
+    // null and None are no variant (reference 0); any other name is a
+    // variant's or refused
+    if (value != null && typeof value != "string") { refuseValue(w); return; }
+    local ref = 0, named = value == null || value == "None";
+    if (!named) foreach (p in fd.variants) {
       if (p[0] == value) {
         if (p.len() > 2 && p[2]) {
           // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
@@ -402,20 +438,25 @@ local writeScalar = function(T, w, fd, value) {
           w.reason = "invalid_value: " + where + " names the deprecated variant " + value;
           w.bad = true; return;
         }
-        ref = findSlot(T, p[1]);
+        ref = findSlot(T, p[1]); named = true;
         break;
       }
     }
+    if (!named) { refuseValue(w); return; }
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
     // A NaN OR AN INFINITY IS REFUSED BEFORE THE QUANTIZER RUNS, never
     // oor (docs/SPEC-TABLES.md §3.3), and a float32 must stay finite at
     // float32: the write refuses, non_finite_float: <Owner>.<field>
+    if (!isNumber(value)) { refuseValue(w); return; }
     value = value.tofloat();
     local finite = fd.f32 ? (messageNarrowF32(value) & 0x7f800000) != 0x7f800000
                           : (castf2i(value) & 0x7ff0000000000000) != 0x7ff0000000000000;
     if (!finite) { w.reason = "non_finite_float: " + fd.nf; w.bad = true; return; }
+    // a finite value off a compressed or ranged float's declared range is
+    // refused before the quantizer runs (docs/SPEC-TABLES.md §3.3)
+    if (fd.fmin != null && (value < fd.fmin || value > fd.fmax)) { refuseValue(w); return; }
     if (fd.f32 && fd.qcount > 0) {
       // ir.TableMessageQuantize, BIT FOR BIT: every operation rounds to
       // float32 as Go's explicit conversions do; a float32 add, subtract,
@@ -431,6 +472,7 @@ local writeScalar = function(T, w, fd, value) {
     else put(w, castf2i(value), 64);
     return;
   }
+  if (fd.shape == "int" && !intAdmits(fd, value)) { refuseValue(w); return; }
   local raw = value;
   if (fd.shape == "int" && fd.lo != null) raw = value - fd.lo;
   put(w, raw, bits);
@@ -489,17 +531,27 @@ local readScalar = function(r, T, v, fd, shape) {
 writePayload = function(T, w, fd, value, depth) {
   if (depth > 128) { w.bad = true; return; }
   if (fd.shape == "str") {
-    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
-    for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
+    // TEXT IS WELL-FORMED UTF-8 WITH NO ZERO BYTE (§5.1 row 8), the rule
+    // the reader holds it to
+    if (typeof value != "string") { refuseValue(w); return; }
+    local n = value.len(); if (n > fd.bound) { w.bad = true; return; }
+    local octets = array(n); for (local i = 0; i < n; i++) octets[i] = value[i] & 0xff;
+    if (!messageTextOk(octets, 0, n)) { refuseValue(w); return; }
+    put(w, n, bitCount(fd.bound)); alignWrite(w);
+    for (local i = 0; i < n; i++) put(w, octets[i], 8); return;
   }
   if (fd.shape == "bytes") {
+    if (typeof value != "blob" && typeof value != "string") { refuseValue(w); return; }
     local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
     for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
   }
   if (fd.shape == "tab") { writeBody(T, w, T.Descriptors[fd.table], value, depth + 1); return; }
   if (fd.shape == "union") {
+    // a tag is 0 (no arm) or an arm's
+    if (!isRecord(value) || !("Type" in value) || typeof value.Type != "integer") { refuseValue(w); return; }
     local ud = T[fd.table + "Descriptor"], arm = null;
     foreach (a in ud.arms) if (a.tag == value.Type) arm = a;
+    if (arm == null && value.Type != 0) { refuseValue(w); return; }
     if (arm == null) { put(w, 0, T.TableMessageRefBitsHere); return; }
     local ref = findSlot(T, arm.id); put(w, ref, T.TableMessageRefBitsHere);
     if (arm.payload != null) writePayload(T, w, arm.payload, value[arm.member], depth + 1);
@@ -507,6 +559,7 @@ writePayload = function(T, w, fd, value, depth) {
   }
   if (fd.shape == "arr") {
     // §3.3: kind 14 bytes count/alignment/raw octets; kind 16 count then key/element pairs.
+    if (typeof value != "array") { refuseValue(w); return; }
     local n = value.len();
     if (n < fd.min || n > fd.bound) { w.bad = true; return; }
     local keyed = (fd.keyvariants != null), present = 0;
@@ -614,6 +667,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
 
 writeBody = function(T, w, d, value, depth) {
   if(depth>128){w.bad=true;return;}
+  if(!isRecord(value)){refuseValue(w);return;}
   w.owner = d.name;
   foreach(fd in d.fields){
     if(!(fd.member in value))continue;
@@ -667,9 +721,13 @@ local writeBatch = function(T, root, values, out, measuring, report) {
   if(values.len()>256)return refuse(report,"batch_too_large");
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
-  local w=newWriter(out,measuring);put(w,2,8);put(w,values.len()-1,8);
-
-  foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.bodyDamaged<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
+  // EVERY VALUE IS JUDGED BEFORE THE FIRST BIT IS PUT (docs/SPEC.md §5.1): a
+  // save walks the batch as its measure does first, so a refusal writes nothing
+  local w=null;
+  foreach(m in (measuring?[true]:[true,false])){
+    w=newWriter(m?null:out,m);put(w,2,8);put(w,values.len()-1,8);
+    foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.bodyDamaged<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
+  }
   local pad=(-w.bits)&7;put(w,0,pad);
   if(w.bad){if(report!=null){report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}
   return (w.bits+7)/8;
