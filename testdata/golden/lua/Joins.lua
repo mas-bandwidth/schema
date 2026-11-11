@@ -664,7 +664,7 @@ function _M.WriteArmArray(stream, v)
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
     -- the count guards the loop (SPEC §6.3)
-    if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+    if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
     if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
     for _i = 1, v.ItemsCount do
       if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
@@ -721,7 +721,7 @@ function _M.WriteArrUneven(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteUneven(stream, v.Items[_i]) then return false end
@@ -736,7 +736,7 @@ function _M.WriteRegainAfterAlign(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
