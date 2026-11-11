@@ -1731,7 +1731,7 @@ tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
 	$(MAKE) tables-dart-wire-fuzz SEED=$(SEED) N=$(DART_FUZZ_SMOKE_N)
 
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
-	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
+	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartBuilderRefusalAndRetentionVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
 	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
@@ -1758,8 +1758,8 @@ tables-dart-discard:
 tables-dart-discard-negative-control:
 	@rm -rf $(DART_DISCARD_NC) && mkdir -p $(DART_DISCARD_NC)
 	@set -e; for c in \
-		'wireform.go|\tif (r.report.malformed) return %s();|\tif (false) return %s(); // NEGATIVE CONTROL: the discard is gone|fixed: WireLoad handed back' \
-		'retainwire.go|\tif (r.report.malformed) {|\tif (false) { // NEGATIVE CONTROL: the retain discard is gone|retain: WireLoadRetain handed back' \
+		'wireform.go|\tif (r.report.refused) return %s();|\tif (false) return %s(); // NEGATIVE CONTROL: the discard is gone|variable: WireLoad handed back' \
+		'retainwire.go|\tif (r.report.refused) {|\tif (false) { // NEGATIVE CONTROL: the retain discard is gone|retain: WireLoadRetain handed back' \
 		'messageform_batch.go|  if (!tableMessageBatchClose(r)) {\n|  if (!tableMessageBatchClose(r) && false) { // NEGATIVE CONTROL: the batch discard is gone\n|messages: LoadMessages'; do \
 		file=$${c%%|*}; rest=$${c#*|}; from=$${rest%%|*}; rest=$${rest#*|}; to=$${rest%%|*}; want=$${rest#*|}; \
 		d=$(DART_DISCARD_NC)/$${file%.go}; mkdir -p $$d; \
@@ -1781,7 +1781,7 @@ test-dart: tables-dart-discard tables-dart-discard-negative-control
 # Keep the JSON byte boundary strict before invoking generated String readers.
 .PHONY: conformance-dart-text-boundary conformance-negative-control-dart-text-boundary
 conformance-dart-text-boundary: build/conformance-harness build/conformance-dart
-	go test -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
+	sh test/slowgate/proof conformance-dart-text-boundary 'TestDartTextBoundaryBOMOracle' -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
 	sh test/conformance/dart/negative-control-text-boundary positive "$(DART)"
 
 conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary

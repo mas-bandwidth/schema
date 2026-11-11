@@ -151,7 +151,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readVec2Bits(Vec2 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -161,7 +164,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -262,7 +265,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanF64Bits(SpanF64 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -272,7 +278,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -358,7 +364,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanU64Bits(SpanU64 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -368,7 +377,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -451,7 +460,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanI64Bits(SpanI64 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -461,7 +473,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -544,7 +556,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanOneBits(SpanOne value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -554,7 +569,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 1; i0++) {
@@ -639,7 +654,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanChunkBits(SpanChunk value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -648,7 +666,7 @@ public final class Degenerate {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 4; i0++) {
@@ -741,7 +759,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanTailBits(SpanTail value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -751,7 +772,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 160 > numBits) {
+        if ((long) bitsRead + 160 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -861,7 +882,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanTwiceBits(SpanTwice value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -871,7 +895,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 256 > numBits) {
+        if ((long) bitsRead + 256 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -975,7 +999,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioBits(Trio value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -984,7 +1011,7 @@ public final class Degenerate {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffffL;
@@ -1059,11 +1086,14 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioSoleBits(TrioSole value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         int bitsRead = bitOffset;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         bitsRead = readTrioBits(value.inner, data, bitsRead, numBits);
@@ -1133,11 +1163,14 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readVec3SoleBits(Vec3Sole value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         int bitsRead = bitOffset;
-        if (bitsRead + 192 > numBits) {
+        if ((long) bitsRead + 192 > numBits) {
             return -1;
         }
         bitsRead = Types.readVec3Bits(value.v, data, bitsRead, numBits);
@@ -1215,7 +1248,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioFirstBits(TrioFirst value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1224,7 +1260,7 @@ public final class Degenerate {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 80 > numBits) {
+        if ((long) bitsRead + 80 > numBits) {
             return -1;
         }
         bitsRead = readTrioBits(value.inner, data, bitsRead, numBits);
@@ -1341,7 +1377,10 @@ public final class Degenerate {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioStraddleBits(
             TrioStraddle value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1351,7 +1390,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 408 > numBits) {
+        if ((long) bitsRead + 408 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;

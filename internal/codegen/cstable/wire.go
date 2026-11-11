@@ -874,7 +874,7 @@ public static partial class TableWire
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
         if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
-        if (f.TextTotal>0 && !TextFits(value,f)) { return false; }
+        if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
         {
@@ -985,7 +985,8 @@ public static partial class TableWire
         if (f.TextList && f.Kind == 12)
         {
             object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0]; int count = Count(child, text);
-            if (framed) { w.Var((ulong)count); } w.Raw(text.GetBuffer(child).AsSpan(0,count)); return;
+            if (framed) { w.Var((ulong)count); }
+            w.Raw(text.GetBuffer(child).AsSpan(0, count)); return;
         }
         if (f.Kind == 13)
         {
@@ -1310,7 +1311,7 @@ public static partial class TableWire
         {
             Reader text = r; if (framed && !r.Slice(out text)) { return Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
-            return ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
+            return ReadText(text.Buffer, f.GetChild(value, index), f.Table.Fields[0], report);
         }
         if (kind == 17)
         {
@@ -1475,7 +1476,7 @@ public static partial class TableWire
         if (!TextValid(text)) { return Damage(report); }
         int keep = text.Length;
         if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-        if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
+        if (value != null) { if (f.Unbounded) { f.EnsureCount(value, keep); } text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
         return true;
     }
     internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
@@ -1545,10 +1546,11 @@ public static partial class TableWire
                 {
                     if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } f.EnsureCount(value, i + 1); }
                     if (!ReadElement(ref array, value, f, i, elementKind, report, true)) { break; }
-                    if(f.TextTotal>0){
-                        object child=f.GetChild(value,i);TableFieldInfo text=f.Table.Fields[0];
-                        int length=text.Optional&&!text.GetPresent(child)?0:Count(child,text);
-                        if(!TextTotalKeep(f,length,ref textSpent,report)){ResetElement(value,f,i);break;}
+                    if (f.TextTotal > 0)
+                    {
+                        object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
+                        int length = text.Optional && !text.GetPresent(child) ? 0 : Count(child, text);
+                        if (!TextTotalKeep(f, length, ref textSpent, report)) { ResetElement(value, f, i); break; }
                     }
                     decoded++;
                 }
