@@ -259,6 +259,17 @@
         "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "fixed-absent-payload-refuses-non-zero",
+      "date": "2026-11-11",
+      "quotes": [
+        "in a fixed record, bytes under an absent optional that are not zero make the read REFUSED, in every leg. A conforming writer writes zeros there, so non-zero is input no conforming writer produced."
+      ],
+      "source": "relayed by the coordinator from the live session. What a reader lands for an absent optional once the bytes are known to be zero stays the declared defaults of docs/SPEC-TABLES.md §2.3 and §4, the same value the variable form reads. This ruling makes nothing not-applicable.",
+      "supersedes": [
+        "the `?T` row of docs/SPEC-TABLES.md §3.4's fixed-form table, \"IGNORED on read, never a refusal\", for the payload under a present flag of 0"
+      ]
     }
   ]
 }

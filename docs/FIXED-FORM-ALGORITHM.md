@@ -952,6 +952,7 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
        if LE(8, at) != h:                               REFUSE no_layout
        per LIVE datum the plan names (LIVE, below):
          a bool or present byte other than 0 or 1:      REFUSE wire_damaged
+         a present byte of 0 over a non-zero payload:   REFUSE wire_damaged
          ill-formed used text:                          REFUSE text_ill_formed
          a count or length past the plan's bound:      REFUSE count_over_bound / length_over_bound
          a NaN or an infinity:                          REFUSE non_finite_float
@@ -1015,6 +1016,7 @@ nothing could reach.
 | a length past the plan's cap (§4.5) | `length_over_bound` | the name |
 | ill-formed text in the USED units | `text_ill_formed` (§4.5, fix 11) | the name |
 | a bool or a present byte other than `0` or `1` | `wire_damaged` (§4.5) | the name |
+| a non-zero byte in the payload under a present byte of `0` (SPEC-TABLES §3.4, docs/rulings.json `fixed-absent-payload-refuses-non-zero`) | `wire_damaged` | the name |
 | a ranged scalar, a `bits(N)`, an ordinal or a tag outside the WRITER's range or set (§4.5, §4.6) | `out_of_range` | the name, naming the field |
 
 **REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal up to

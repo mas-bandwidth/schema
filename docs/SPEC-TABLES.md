@@ -7984,7 +7984,7 @@ VALUE.**
   | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
   | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
   | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm, IGNORED on read, never a refusal |
-  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, IGNORED on read, never a refusal |
+  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`; on read EVERY BYTE of it must be zero under a `0` flag, a non-zero byte there REFUSES the read, and a payload of zeros lands as the payload's DECLARED DEFAULTS (§2.3), never as the wire's zeros |
   | `[Enum]T` | `slots * C(T)` — **every slot is written**, in the key enum's declared order, and no key rides |
   | `const`, `reserved`, `align` | refused in a table body already (§11) |
 
@@ -7997,7 +7997,8 @@ so the used extent is always stated before the bytes are reached.
   under an absent optional's present flag. It costs the writer nothing: the
   template is zero everywhere a value lands, so the zeros are already there
   (below).
-- **UNSPECIFIED ON READ, AND NOT A REFUSAL.** A reader validates the USED UNITS
+- **UNSPECIFIED ON READ, AND NOT A REFUSAL, except under an absent optional
+  (the next rule).** A reader validates the USED UNITS
   ONLY and never looks at the slack, so a peer that leaves garbage there is a
   peer this reader reads correctly. **NON-ZERO SLACK IS NOT DAMAGE, NOT A
   REFUSAL, AND MOVES NO COUNTER — A DELIBERATE EXCEPTION to "refuse what no
@@ -8005,6 +8006,17 @@ so the used extent is always stated before the bytes are reached.
   readers can disagree about it. Making it one would mean reading every byte
   of a bound to check bytes that carry no meaning, which is the cost this form
   exists to avoid, and it would refuse records that are perfectly readable.
+- **AN ABSENT OPTIONAL'S PAYLOAD IS THE ONE SLACK A READER CHECKS**
+  (docs/rulings.json `fixed-absent-payload-refuses-non-zero`). Under a present
+  flag of `0`, every byte of the payload's `C(T)` must be zero, the slack
+  inside it included, and a non-zero byte REFUSES the whole read in every leg
+  (`wire_damaged` is the recommended reason). A conforming writer writes zeros
+  there, so a non-zero byte is input no conforming writer produced. The check
+  runs only where the flag itself is read: a present flag inside an unselected
+  arm or past a count is slack, so its payload is not checked either. Once the
+  bytes are known to be zero, the reader lands the payload's DECLARED DEFAULTS
+  (§2.3), never the wire's zeros, so the fixed and variable forms of one
+  absent value read the same.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
   `N`. A
@@ -14838,7 +14850,8 @@ names and every reason-identity rule.
 **What it keeps on purpose, as an exception.** Non-zero slack in a fixed record
 is unread and not refused (§3.4): no writer leaves it and no reader looks at
 it, so it cannot make two readers disagree, and refusing it would cost a read
-of every byte of every bound.
+of every byte of every bound. The payload under an absent optional's `0` flag
+is outside that exception: a non-zero byte there refuses (§3.4).
 
 **What it overturns.** The tolerant read and its named entry points
 (`...Tolerant`, §6.5); the owner read policy of 2026-10-17 ("reads forgiving
