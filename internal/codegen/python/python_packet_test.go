@@ -460,7 +460,6 @@ func TestPythonPacketCore(t *testing.T) {
 	}
 	sort.Slice(carried, func(i, j int) bool { return carried[i].name < carried[j].name })
 	for _, pin := range carried {
-		pin := pin
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
 			u := load(pin.paths)
