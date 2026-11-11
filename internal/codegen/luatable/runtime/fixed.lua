@@ -434,15 +434,7 @@ local function layout_tree(layout)
     if i > count then return nil end
     local at = 4 + (i - 1) * 17
     local kind = layout:byte(at + 9)
-    if
-      not (
-        (kind >= 1 and kind <= 16)
-        or (kind >= 18 and kind <= 30)
-        or kind == 32
-        or kind == 35
-        or kind == 36
-      )
-    then
+    if not ((kind >= 1 and kind <= 16) or (kind >= 18 and kind <= 30) or kind == 32 or kind == 35 or kind == 36) then
       return nil
     end
     local size = string.unpack("<I4", layout, at + 10)
