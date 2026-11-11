@@ -35,6 +35,7 @@ union Choice
 {
     number int32 | min = 0, max = 10
     text string(4)
+    idle
 }
 
 fixed table Doc
@@ -70,14 +71,16 @@ function bytesEq(a, b) {
 
 function refused(what, bad, second) {
   const values = second ? [lawful(), bad] : [bad];
+  const measureReport = {};
   let size;
   try {
-    size = DocMeasureMessages(values, {});
+    size = DocMeasureMessages(values, measureReport);
   } catch (e) {
     fail(what + (second ? " (second body)" : "") + ": MeasureMessages threw " + e);
     return;
   }
   if (size !== -1) { fail(what + (second ? " (second body)" : "") + ": MeasureMessages answered " + size + ", want -1"); }
+  if (!measureReport.Verdict) { fail(what + (second ? " (second body)" : "") + ": MeasureMessages left Verdict unset"); }
   const report = {};
   let n;
   try {
@@ -144,7 +147,7 @@ for (const kind of [3, 4]) {
   both("kind=" + kind, d);
 }
 // row 6: a union tag outside its arm set
-for (const tag of [3, 4]) {
+for (const tag of [4, 5]) {
   const d = lawful(); d.choice.type = tag;
   both("choice.type=" + tag, d);
 }
@@ -216,6 +219,14 @@ roundTrip("the union text arm at its bound", (() => {
   if (back.choice.type !== 2 || back.choice.textLength !== 4 || !bytesEq(back.choice.text.subarray(0, 4), Uint8Array.from([0x61, 0x62, 0x63, 0x64]))) {
     fail("round trip moved the union text arm");
   }
+});
+
+roundTrip("the payload-free union arm", (() => {
+  const d = lawful();
+  d.choice.type = 3;
+  return d;
+})(), (back) => {
+  if (back.choice.type !== 3) { fail("round trip moved the payload-free union arm: type=" + back.choice.type); }
 });
 
 if (failures !== 0) { process.exit(1); }

@@ -517,11 +517,10 @@ func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
 		g.pf("%sswitch (%s.type) {\n", ind, expr)
 		g.pf("%s  case 0: break;\n", ind)
 		for i, v := range r.Variants {
-			if v.Void() {
-				continue
-			}
 			g.pf("%s  case %d:\n", ind, i+1)
-			g.emitMessageCheckPayload(v.F, expr, ind+"    ")
+			if !v.Void() {
+				g.emitMessageCheckPayload(v.F, expr, ind+"    ")
+			}
 			g.pf("%s    break;\n", ind)
 		}
 		g.pf("%s  default: return false;\n%s}\n", ind, ind)
