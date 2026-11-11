@@ -11192,7 +11192,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_body_pack_(struct tabledemo
     tabledemo_table_cook_put(at+0+36,(uint32_t)value->display_name_length,4,order);
     { uint32_t bits; memcpy(&bits,&value->health,4); if(!tabledemo_table_bits_finite32(bits)) { return 0; } tabledemo_table_cook_put(at+40,bits,4,order); }
     { uint32_t bits; memcpy(&bits,&value->mass,4); if(!tabledemo_table_bits_finite32(bits)) { return 0; } tabledemo_table_cook_put(at+44,bits,4,order); }
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<4;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->hardpoints_count && cook_i1<4;cook_i1++) {
         tabledemo_table_cook_put(at+48+cook_i1*4,(uint64_t)value->hardpoints[cook_i1],4,order);
     } }
     tabledemo_table_cook_put(at+48+16,(uint32_t)value->hardpoints_count,4,order);
@@ -11245,7 +11245,7 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_body_pack_(struct tabledem
     { int32_t cook_i2; for(cook_i2=0;cook_i2<3;cook_i2++) {
         tabledemo_table_cook_put(at+400+cook_i2*4,(uint64_t)value->thresholds[cook_i2],4,order);
     } }
-    { int32_t cook_i3; for(cook_i3=0;cook_i3<3;cook_i3++) {
+    { int32_t cook_i3; for(cook_i3=0;cook_i3<value->reserves_count && cook_i3<3;cook_i3++) {
         if(!schema_tabledemo_ship_entry_body_pack_(n,at+412+cook_i3*108,&value->reserves[cook_i3],order)) { return 0; }
     } }
     tabledemo_table_cook_put(at+412+324,(uint32_t)value->reserves_count,4,order);

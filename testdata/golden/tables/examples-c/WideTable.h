@@ -6181,7 +6181,7 @@ static SCHEMA_UNUSED int schema_tabledemo_wide_blob_body_pack_(struct tabledemo_
     tabledemo_table_cook_put(at+0+70004,(uint32_t)value->label_length,4,order);
     tabledemo_table_cook_bytes(at+70008,value->payload,value->payload_length,70000);
     tabledemo_table_cook_put(at+70008+70000,(uint32_t)value->payload_length,4,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<70000;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->samples_count && cook_i1<70000;cook_i1++) {
         tabledemo_table_cook_put(at+140012+cook_i1*2,(uint64_t)value->samples[cook_i1],2,order);
     } }
     tabledemo_table_cook_put(at+140012+140000,(uint32_t)value->samples_count,4,order);

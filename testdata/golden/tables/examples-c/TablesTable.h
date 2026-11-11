@@ -15241,7 +15241,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_(struct table
     const tabledemo_loadout_config_t * value=(const tabledemo_loadout_config_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     tabledemo_table_cook_put(at+0,(uint64_t)value->grade,1,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<4;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->grades_count && cook_i1<4;cook_i1++) {
         tabledemo_table_cook_put(at+1+cook_i1*1,(uint64_t)value->grades[cook_i1],1,order);
     } }
     tabledemo_table_cook_put(at+1+7,(uint32_t)value->grades_count,4,order);
@@ -15253,7 +15253,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_(struct table
     { int32_t cook_i3; for(cook_i3=0;cook_i3<2;cook_i3++) {
         if(!schema_tabledemo_weapon_config_body_pack_(n,at+52+cook_i3*28,&value->backups[cook_i3],order)) { return 0; }
     } }
-    { int32_t cook_i4; for(cook_i4=0;cook_i4<8;cook_i4++) {
+    { int32_t cook_i4; for(cook_i4=0;cook_i4<value->attachments_count && cook_i4<8;cook_i4++) {
         if(!schema_tabledemo_attachment_body_pack_(n,at+108+cook_i4*8,&value->attachments[cook_i4],order)) { return 0; }
     } }
     tabledemo_table_cook_put(at+108+64,(uint32_t)value->attachments_count,4,order);
@@ -15308,11 +15308,11 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_body_pack_(struct tabledem
     (void)n; (void)at; (void)value; (void)order;
     tabledemo_table_cook_bytes(at+0,value->version_note,value->version_note_length,17);
     tabledemo_table_cook_put(at+0+20,(uint32_t)value->version_note_length,4,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<8;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->weapons_count && cook_i1<8;cook_i1++) {
         if(!schema_tabledemo_weapon_config_body_pack_(n,at+24+cook_i1*28,&value->weapons[cook_i1],order)) { return 0; }
     } }
     tabledemo_table_cook_put(at+24+224,(uint32_t)value->weapons_count,4,order);
-    { int32_t cook_i2; for(cook_i2=0;cook_i2<4;cook_i2++) {
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<value->profiles_count && cook_i2<4;cook_i2++) {
         if(!schema_tabledemo_profile_config_body_pack_(n,at+256+cook_i2*304,&value->profiles[cook_i2],order)) { return 0; }
     } }
     tabledemo_table_cook_put(at+256+1216,(uint32_t)value->profiles_count,4,order);
