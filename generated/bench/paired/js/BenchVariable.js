@@ -1381,12 +1381,12 @@ function TableVariableLoad(c, bytes, report, retain) {
   const carried = report.damaged;
   report.damaged = false;
   const open = TableVariableOpen(bytes, report);
-  // A REFUSED form byte hands a non-variable root back at its declared
-  // defaults (§3); DAMAGE hands back nothing (§4).
+  // A REFUSED form byte and DAMAGE each hand back nothing for every root
+  // (docs/SPEC-TABLES.md §3, §4, §6.5): the verdict is the whole contract, so
+  // a read the report calls refused never yields an object.
   if (open === null) {
-    const damaged = report.damaged;
-    report.damaged = carried || damaged;
-    return c.variable || damaged ? null : c.make();
+    report.damaged = carried || report.damaged;
+    return null;
   }
   const table = open.table;
   const v = c.make();
