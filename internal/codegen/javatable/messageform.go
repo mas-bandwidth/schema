@@ -11,6 +11,7 @@ package javatable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -1666,6 +1667,7 @@ func messageGuardExprs(st *ir.Struct, owner string) map[string]string {
 func (g *messageGen) emitSaveBody(st *ir.Struct, valType string) {
 	g.pf("    public static boolean saveMessageBody(TableMessage.Writer w, %s v) {\n", valType)
 	g.pf("        if (v == null) { return false; }\n")
+	g.pf("        assert checkWrite(v);\n")
 	guards := messageGuardExprs(st, "v")
 	for _, f := range st.Fields {
 		g.emitSaveField(f, "v", guards[f.Name], 8)
@@ -1673,6 +1675,160 @@ func (g *messageGen) emitSaveBody(st *ir.Struct, valType string) {
 	g.pf("        w.put(0L, %d);\n", g.refBits)
 	g.pf("        return !w.overflow;\n")
 	g.pf("    }\n\n")
+	g.emitCheckWrite(st, valType)
+}
+
+// emitCheckWrite is saveMessageBody's contract walk, called once through
+// `assert` — the packet codec's own predicate-extraction form, shared with the
+// fixed form. THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer
+// trusts, which is what makes a save one body walk and a bit stream. Rows 1,
+// 2 and 8 are here; rows 3-7 answer through the body's own refusals, which
+// run in every build.
+func (g *messageGen) emitCheckWrite(st *ir.Struct, valType string) {
+	var lines []string
+	for _, f := range st.Fields {
+		g.messageCheckField(f, "v."+javaName(f.Name), 8, &lines)
+	}
+	g.pf("    // checkWrite is saveMessageBody's contract walk, called once through `assert`.\n")
+	g.pf("    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.\n")
+	g.pf("    private static boolean checkWrite(%s v) {\n", valType)
+	g.pf("        assert v != null;\n")
+	for _, line := range lines {
+		g.pf("%s", line)
+	}
+	g.pf("        return true;\n    }\n\n")
+}
+
+// messageCheckField checks one field's payload when it rides: an absent
+// optional's storage never reaches the wire, and neither does an unselected
+// union arm's.
+func (g *messageGen) messageCheckField(f *ir.Field, expr string, indent int, lines *[]string) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		*lines = append(*lines, ind+"if ("+expr+"Present) {\n")
+		g.messageCheckValue(f, expr, indent+4, lines)
+		*lines = append(*lines, ind+"}\n")
+		return
+	}
+	g.messageCheckValue(f, expr, indent, lines)
+}
+
+// messageCheckValue checks one value expression of f's type. A nested table's
+// body asserts its own predicate when it is saved, so this walk stops there.
+func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lines *[]string) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.KeyEnum = ""
+		elem.KeyEnumRef = nil
+		elem.Type.Optional = false
+		elem.Required = false
+		idx := g.nextTemp("i")
+		*lines = append(*lines, fmt.Sprintf("%sfor (int %s = 0; %s < %s.length; %s++) {\n", ind, idx, idx, expr, idx))
+		g.messageCheckValue(&elem, expr+"["+idx+"]", indent+4, lines)
+		*lines = append(*lines, ind+"}\n")
+
+	case f.Array != ir.ArrayNone:
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.KeyEnum = ""
+		elem.KeyEnumRef = nil
+		elem.Type.Optional = false
+		elem.Required = false
+		idx := g.nextTemp("i")
+		bound := expr + ".length"
+		if f.Array == ir.ArrayCounted {
+			bound = "Math.min(" + expr + "Count, " + expr + ".length)"
+		}
+		*lines = append(*lines, fmt.Sprintf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, idx, idx, bound, idx))
+		g.messageCheckValue(&elem, expr+"["+idx+"]", indent+4, lines)
+		*lines = append(*lines, ind+"}\n")
+
+	case isStructType(f.Type):
+		// the field's own saveMessageBody asserts its own checkWrite.
+
+	case isUnionType(f.Type):
+		un := f.Type.Ref.(*ir.Union)
+		*lines = append(*lines, ind+"switch ("+expr+".type) {\n")
+		for i, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			arm := expr + "." + javaName(v.F.Name)
+			*lines = append(*lines, fmt.Sprintf("%s    case %d:\n", ind, i+1))
+			g.messageCheckField(v.F, arm, indent+8, lines)
+			*lines = append(*lines, ind+"        break;\n")
+		}
+		*lines = append(*lines, ind+"}\n")
+
+	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone && f.KeyEnum == "":
+		// ROW 8: the bytes the reader refuses are the bytes the writer must
+		// not produce. The length guard keeps a past-N length in the storage
+		// refusal the body already makes rather than reading past the buffer.
+		*lines = append(*lines, fmt.Sprintf("%sassert %sLength < 0 || %sLength > %d || TableMessage.utf8Valid(%s, 0, %sLength);\n",
+			ind, expr, expr, f.Type.Size, expr, expr))
+
+	default:
+		for _, cond := range messageScalarBounds(f, expr) {
+			*lines = append(*lines, ind+"assert "+cond+";\n")
+		}
+	}
+}
+
+// messageScalarBounds holds rows 1 and 2: a ranged integer or fixed-point raw
+// value off its declared ends, and a bits(N) value wider than N. The ranges are
+// the same raw-scale ranges the reader clamps against (ir.TableRawRange).
+func messageScalarBounds(f *ir.Field, expr string) []string {
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+	default:
+		return nil
+	}
+	var conds []string
+	if f.HasIntRange {
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			conds = append(conds, messageScalarRange(f, expr, lo, hi)...)
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		maxv := uint64(1)<<uint(f.Type.Width) - 1
+		conds = append(conds, fmt.Sprintf("%s >= 0 && %s <= %dL", expr, expr, maxv))
+	}
+	return conds
+}
+
+func messageScalarRange(f *ir.Field, expr string, lo, hi *big.Int) []string {
+	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
+	typ := fixedScalarType(f.Type)
+	if typ == "Int128" || typ == "UInt128" {
+		loLo, loHi := fixed128Halves(lo)
+		hiLo, hiHi := fixed128Halves(hi)
+		cmp := "TableMessage.compareUnsigned128"
+		if signed {
+			cmp = "TableMessage.compareSigned128"
+		}
+		return []string{
+			fmt.Sprintf("%s(%s.lo, %s.hi, %sL, %sL) >= 0", cmp, expr, expr, fixedHexLong(loLo), fixedHexLong(loHi)),
+			fmt.Sprintf("%s(%s.lo, %s.hi, %sL, %sL) <= 0", cmp, expr, expr, fixedHexLong(hiLo), fixedHexLong(hiHi)),
+		}
+	}
+	if signed {
+		return []string{
+			fmt.Sprintf("%s >= %sL", expr, fixedHexLong(uint64(lo.Int64()))),
+			fmt.Sprintf("%s <= %sL", expr, fixedHexLong(uint64(hi.Int64()))),
+		}
+	}
+	width := ir.TableFixedStorageBytes(f.Type)
+	mask := ^uint64(0)
+	if width < 8 {
+		mask = (uint64(1) << (8 * uint(width))) - 1
+	}
+	return []string{
+		fmt.Sprintf("Long.compareUnsigned((%s) & %sL, %sL) >= 0", expr, fixedHexLong(mask), fixedHexLong(lo.Uint64())),
+		fmt.Sprintf("Long.compareUnsigned((%s) & %sL, %sL) <= 0", expr, fixedHexLong(mask), fixedHexLong(hi.Uint64())),
+	}
 }
 
 func (g *messageGen) emitSaveField(f *ir.Field, owner, guard string, indent int) {

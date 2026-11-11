@@ -19,6 +19,7 @@ public final class MixedStatMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.statId != 0) {
                 w.put(51L, 7);
@@ -33,6 +34,16 @@ public final class MixedStatMessage {
         }
         w.put(0L, 7);
         return !w.overflow;
+    }
+
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedStatFixed.Value v) {
+        assert v != null;
+        assert v.statId >= 0 && v.statId <= 255L;
+        assert v.delta >= 0xfffffffffffffe00L;
+        assert v.delta <= 0x1ffL;
+        return true;
     }
 
     public static boolean loadMessageBody(TableMessage.Reader r, MixedStatFixed.Value v) {

@@ -19,6 +19,7 @@ public final class MixedPickupEventMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.itemId != 0) {
                 w.put(49L, 7);
@@ -33,6 +34,16 @@ public final class MixedPickupEventMessage {
         }
         w.put(0L, 7);
         return !w.overflow;
+    }
+
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedPickupEventFixed.Value v) {
+        assert v != null;
+        assert v.itemId >= 0 && v.itemId <= 1023L;
+        assert v.amount >= 0L;
+        assert v.amount <= 0xffL;
+        return true;
     }
 
     public static boolean loadMessageBody(TableMessage.Reader r, MixedPickupEventFixed.Value v) {

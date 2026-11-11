@@ -31,6 +31,7 @@ public final class MixedEntityMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.entityId != 0) {
                 w.put(31L, 7);
@@ -168,6 +169,30 @@ public final class MixedEntityMessage {
         }
         w.put(0L, 7);
         return !w.overflow;
+    }
+
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedEntityFixed.Value v) {
+        assert v != null;
+        assert v.entityId >= 0 && v.entityId <= 4095L;
+        assert v.posX >= 0xffffffffffffc001L;
+        assert v.posX <= 0x3fffL;
+        assert v.posY >= 0xffffffffffffc001L;
+        assert v.posY <= 0x3fffL;
+        assert v.posZ >= 0xffffffffffffc001L;
+        assert v.posZ <= 0x3fffL;
+        assert v.yaw >= 0 && v.yaw <= 511L;
+        assert v.pitch >= 0 && v.pitch <= 511L;
+        assert v.velX >= 0xfffffffffffff800L;
+        assert v.velX <= 0x7ffL;
+        assert v.velY >= 0xfffffffffffff800L;
+        assert v.velY <= 0x7ffL;
+        assert v.velZ >= 0xfffffffffffff800L;
+        assert v.velZ <= 0x7ffL;
+        assert v.health >= 0L;
+        assert v.health <= 0x3e8L;
+        return true;
     }
 
     public static boolean loadMessageBody(TableMessage.Reader r, MixedEntityFixed.Value v) {
