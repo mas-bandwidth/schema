@@ -674,7 +674,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		for i, name := range fl.Variants {
 			g.pf("\t\t\tcase %s: bits |= %d;\n", strconv.Quote(name), uint64(1)<<i)
 		}
-		g.pf("\t\t\tdefault: r.unknown++;\n")
+		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
 		g.pf("\t}\n")
 		g.pf("\treturn bits;\n")
