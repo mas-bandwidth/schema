@@ -298,7 +298,9 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, _ := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	probe := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	probe.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	output, _ := probe.CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if rest, ok := strings.CutPrefix(line, "FAIL: "); ok {
@@ -414,7 +416,9 @@ int main( void )
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	probe := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	probe.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	output, err := probe.CombinedOutput()
 	return string(output), err
 }
 
@@ -841,7 +845,9 @@ int main( void )
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	probe := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	probe.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	if output, err := probe.CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, output)
 	}
 }
