@@ -211,6 +211,14 @@
         "AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink"
       ],
       "source": "recorded in docs/CONTRIBUTING.md; the maintainer's ruling that AGENTS.md stands alone."
+    },
+    {
+      "id": "fixed-form-edges",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a fixed-form file holds at least one record; a record body of 65536 bytes is lawful and 65537 is not; the lock refuses two lineage entries with one hash"
+      ],
+      "source": "the owner's standing rule that strict wins, applied by the coordinator."
     }
   ]
 }
