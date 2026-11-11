@@ -57,7 +57,7 @@ a type name where it is used.
 | `float32` | `float` holding the float32 value exactly (f32 ⊂ f64) | the default rounded as Go's `float32(v)`, written as the shortest positional literal that reads back to that double (Lobster has no exponent literal) |
 | `float32 \| min, max, resolution` | `float` — the attributes describe the wire | as `float32` |
 | `float64` | `float` | `0.0`, or the default; ±inf as `(1.0 / 0.0)`, a NaN through `schema_rt.f64frombits` |
-| an enum `E` | a Lobster `enum E` with `ENone = 0` and `E<Variant> = 1..` (the Go spelling); `ECount`, `EMax` and `EnumNameE(v)` beside it; a `\| max` headroom value is `E(v)` | the default variant, else `ENone` |
+| an enum `E` | a Lobster `enum E` with `ENone = 0` and `E<Variant> = 1..` (the Go spelling); `ECount`, `EMax` and `EnumNameE(v)` beside it; its wire range is `[0, variant count]` | the default variant, else `ENone` |
 | a `flags` set `F` | `int` (uint64 storage in every target, SPEC §4.2); masks `F<Variant>`, `FCount`, `FlagNameF(bit)` | `0`, or the default mask |
 | a type `T` | the class `T` | `NewT()` |
 | a union `U` (§4.8) | a class `U` with `Type:UType` (an enum `UTypeNone`, arms from 1, `UTypeCount`, `UTypeMax`, `EnumNameUType`) and one slot per payload arm | `Type = UTypeNone`, every payload arm pre-allocated; a payload-free arm has no slot |

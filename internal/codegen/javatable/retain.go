@@ -660,7 +660,7 @@ public final class TableRetain {
             if (k == id) {
                 return true;
             }
-            if (k < id) {
+            if (Long.compareUnsigned(k, id) < 0) {
                 lo = m + 1;
             } else {
                 hi = m - 1;

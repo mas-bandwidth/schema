@@ -222,6 +222,7 @@ func goEmittedNames(t *testing.T, files map[string][]byte) (emitted, declared ma
 // does not compile. A PascalCase-only scan is blind to exactly what this port
 // adds, which is how the hole reached a reviewer.
 func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
+	t.Parallel()
 	files := map[string][]byte{}
 	for i, source := range []string{
 		goRuntimeSrc,

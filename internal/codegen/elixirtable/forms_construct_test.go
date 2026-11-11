@@ -15,9 +15,11 @@ import (
 )
 
 func TestFormsConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir declared form exports and parent closure helpers")
 	for _, mixed := range []bool{false, true} {
 		t.Run(fmt.Sprint(mixed), func(t *testing.T) {
+			t.Parallel()
 			source := `package probe
  fixed table Hidden | forms="wire" { n int32 }
  table WireOnly | forms="wire" { n int32
@@ -135,6 +137,7 @@ func TestDropFormFunctionIncludesExceptionClauses(t *testing.T) {
 }
 
 func TestFormsCookClosureAcrossFilesElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir declared cook closure across source files")
 	dir := t.TempDir()
 	var paths []string
