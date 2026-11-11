@@ -1455,8 +1455,7 @@ func (g *messageGen) emitResetField(f *ir.Field, owner string, indent int) {
 	if f.Type.Optional {
 		g.pf("%s%sPresent = false;\n", ind, expr)
 	}
-	switch {
-	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
+	if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
 		if len(f.DefBytes) > 0 {
 			g.pf("%s%s;\n", ind, fixedByteDefaultExpr(expr, f.DefBytes))
