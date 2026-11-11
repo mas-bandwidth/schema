@@ -4,11 +4,13 @@
 //
 // For every schema the manifest names it generates the Lobster unit, stages
 // test/conformance/lobster/hostile.lobster in it, runs it once under the
-// pinned toolchain, and holds every answer to the committed engine verdict:
-// a refusal by the engine's reason, an accept by the SHA-256 of the decoded
-// value's canonical text: the port's own JSON writer, whose one shape
-// difference from the engine's (internal/tabletext.Model.Write) is the
-// trailing newline, dropped here.
+// pinned toolchain, and holds every answer to the committed engine verdict.
+// A table accept is held by the SHA-256 of the decoded value's canonical
+// text: the port's own JSON writer, whose one shape difference from the
+// engine's (internal/tabletext.Model.Write) is the trailing newline, dropped
+// here. A schema of packet types has no table unit: its rows are read from
+// bit 0 through the generated Read<Root> as packet_refused, and an accept is
+// held by the SHA-256 of the bytes Write<Root> writes back.
 //
 // A disagreement the port already owes is carried by name in the findings
 // file and printed as a FIX-CARD; one no finding names fails, and a finding
@@ -32,6 +34,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -40,6 +43,19 @@ import (
 )
 
 const program = "test/conformance/lobster/hostile.lobster"
+
+// packetMarker divides the staged program: everything before it is the table
+// program, everything from it on is the packet program. A schema of packet
+// types has no table unit to import, so it is answered by its generated
+// Read<Root>/Write<Root> instead.
+const packetMarker = "// ==== PACKET UNIT ===="
+
+var (
+	packetReadRe  = regexp.MustCompile(`(?m)^def Read([A-Za-z_][A-Za-z0-9_]*)\(stream:serialize_read_stream, value:[A-Za-z_][A-Za-z0-9_]*\) -> bool:`)
+	packetWriteRe = regexp.MustCompile(`(?m)^def Write([A-Za-z_][A-Za-z0-9_]*)\(s:serialize_write_stream, v:[A-Za-z_][A-Za-z0-9_]*\) -> bool:`)
+	packetNewRe   = regexp.MustCompile(`(?m)^def New([A-Za-z_][A-Za-z0-9_]*)\(\) -> [A-Za-z_][A-Za-z0-9_]*:`)
+	namespaceRe   = regexp.MustCompile(`(?m)^namespace ([A-Za-z_][A-Za-z0-9_]*)`)
+)
 
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "lobster hostile corpus: "+format+"\n", args...)
@@ -106,24 +122,159 @@ func generate(units, schema string) error {
 	return nil
 }
 
-// run stages the program in the unit and answers every case of the schema.
-func run(units, corpus, schema string) (map[string][]string, error) {
-	dir := unitDir(units, schema)
-	src, err := os.ReadFile(program)
-	if err != nil {
-		return nil, err
+// packetUnit is a schema whose every row is a packet case: it generates a
+// packet unit, not a table one.
+func packetUnit(cases []hostilecorpus.Case, schema string) bool {
+	found := false
+	for _, c := range cases {
+		if c.Schema != schema {
+			continue
+		}
+		if c.Carrier != "packet" {
+			return false
+		}
+		found = true
 	}
-	tables, err := filepath.Glob(filepath.Join(dir, "*Table.lobster"))
+	return found
+}
+
+// programText is the staged program: the table part before the marker, or the
+// packet part from the marker on.
+func programText(packet bool) (string, error) {
+	data, err := os.ReadFile(program)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	sort.Strings(tables)
+	text := string(data)
+	at := strings.Index(text, packetMarker)
+	if at < 0 {
+		if packet {
+			return "", fmt.Errorf("%s: no %q marker", program, packetMarker)
+		}
+		return text, nil
+	}
+	if packet {
+		return text[at:], nil
+	}
+	return text[:at], nil
+}
+
+// packetModule finds the generated packet module in the unit: its import base,
+// its namespace, and the packet types it emits a New, Read and Write for.
+func packetModule(dir string) (base, namespace string, types []string, err error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.lobster"))
+	if err != nil {
+		return "", "", nil, err
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		name := filepath.Base(path)
+		if strings.HasSuffix(name, "View.lobster") || strings.HasPrefix(name, "serialize") ||
+			name == "descriptors.lobster" || strings.HasPrefix(name, "schema_") {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", "", nil, err
+		}
+		reads := packetReadRe.FindAllSubmatch(data, -1)
+		if len(reads) == 0 {
+			continue
+		}
+		ns := namespaceRe.FindSubmatch(data)
+		if ns == nil {
+			return "", "", nil, fmt.Errorf("%s: no namespace", path)
+		}
+		base = strings.TrimSuffix(name, ".lobster")
+		namespace = string(ns[1])
+		writes := map[string]bool{}
+		for _, m := range packetWriteRe.FindAllSubmatch(data, -1) {
+			writes[string(m[1])] = true
+		}
+		news := map[string]bool{}
+		for _, m := range packetNewRe.FindAllSubmatch(data, -1) {
+			news[string(m[1])] = true
+		}
+		seen := map[string]bool{}
+		for _, m := range reads {
+			t := string(m[1])
+			if seen[t] || !writes[t] || !news[t] {
+				continue
+			}
+			seen[t] = true
+			types = append(types, t)
+		}
+		return base, namespace, types, nil
+	}
+	return "", "", nil, fmt.Errorf("%s: no generated packet reader", dir)
+}
+
+// packetDispatch generates the type switch the packet program calls for each
+// row: read from bit 0 through Read<Root>, require a clean end, and write the
+// value back through Write<Root> for the accept digest.
+func packetDispatch(namespace string, types []string) string {
 	var b strings.Builder
-	b.WriteString("// GENERATED by test/conformance/lobster/hostile from hostile.lobster: the unit's table modules, then the program\n")
-	for _, t := range tables {
-		fmt.Fprintf(&b, "import .%s\n", strings.TrimSuffix(filepath.Base(t), ".lobster"))
+	b.WriteString("// hexs spells bytes as lowercase hex, the answer line's accept payload.\n")
+	b.WriteString("def hexs(b:string) -> string:\n")
+	b.WriteString("    var s = \"\"\n")
+	b.WriteString("    for(b) c:\n")
+	b.WriteString("        s += number_to_string(c, 16, 2)\n")
+	b.WriteString("    return lowercase(s)\n\n")
+	b.WriteString("// packet_capacity is a write buffer large enough for the value's wire.\n")
+	b.WriteString("def packet_capacity(data:string) -> int:\n")
+	b.WriteString("    return ((length(data) * 2 + 4096 + 7) / 8) * 8\n\n")
+	b.WriteString("// packet_answer reads one packet row through the unit's generated reader and\n")
+	b.WriteString("// writes an accepted value back through its generated writer.\n")
+	b.WriteString("def packet_answer(name:string, table:string, data:string) -> string:\n")
+	for _, t := range types {
+		fmt.Fprintf(&b, "    if table == %q:\n", t)
+		fmt.Fprintf(&b, "        var v = %s.New%s()\n", namespace, t)
+		b.WriteString("        let r = serialize_read_stream_padded(data)\n")
+		fmt.Fprintf(&b, "        if not %s.Read%s(r, v):\n", namespace, t)
+		b.WriteString("            return name + \" refuse packet_refused\\n\"\n")
+		b.WriteString("        if not r.serialize_end():\n")
+		b.WriteString("            return name + \" refuse packet_refused\\n\"\n")
+		b.WriteString("        let buf = ensure_size(\"\", packet_capacity(data), 0)\n")
+		b.WriteString("        let w = serialize_write_stream(buf)\n")
+		fmt.Fprintf(&b, "        if not %s.Write%s(w, v):\n", namespace, t)
+		b.WriteString("            return name + \" unsaved packet_writer_refused\\n\"\n")
+		b.WriteString("        w.flush()\n")
+		b.WriteString("        return name + \" accept \" + hexs(substring(buf, 0, w.bytes_processed())) + \"\\n\"\n")
 	}
-	b.Write(src)
+	b.WriteString("    return name + \" error no generated packet reader for \" + table + \"\\n\"\n")
+	return b.String()
+}
+
+// run stages the program in the unit and answers every case of the schema.
+func run(units, corpus, schema string, packet bool) (map[string][]string, error) {
+	dir := unitDir(units, schema)
+	src, err := programText(packet)
+	if err != nil {
+		return nil, err
+	}
+	var b strings.Builder
+	if packet {
+		base, namespace, types, err := packetModule(dir)
+		if err != nil {
+			return nil, err
+		}
+		b.WriteString("// GENERATED by test/conformance/lobster/hostile from hostile.lobster: the unit's packet module, then the packet program\n")
+		fmt.Fprintf(&b, "import .%s\n", base)
+		b.WriteString("import .serialize\nimport .serialize_stream\n")
+		b.WriteString(packetDispatch(namespace, types))
+		b.WriteString(src)
+	} else {
+		tables, err := filepath.Glob(filepath.Join(dir, "*Table.lobster"))
+		if err != nil {
+			return nil, err
+		}
+		sort.Strings(tables)
+		b.WriteString("// GENERATED by test/conformance/lobster/hostile from hostile.lobster: the unit's table modules, then the program\n")
+		for _, t := range tables {
+			fmt.Fprintf(&b, "import .%s\n", strings.TrimSuffix(filepath.Base(t), ".lobster"))
+		}
+		b.WriteString(src)
+	}
 	main := filepath.Join(dir, "hostile_main.lobster")
 	if err := os.WriteFile(main, []byte(b.String()), 0o644); err != nil {
 		return nil, err
@@ -167,17 +318,23 @@ func run(units, corpus, schema string) (map[string][]string, error) {
 	return got, nil
 }
 
-// digest is the canonical text's SHA-256: the port's JSON text with its one
-// shape difference from the engine's removed, the trailing newline.
-func digest(textHex string) (string, error) {
-	if textHex == "-" {
+// digest is the answer's SHA-256. A table accept hashes the canonical text:
+// the port's JSON text with its one shape difference from the engine's
+// removed, the trailing newline. A packet accept hashes the bytes the port's
+// writer wrote back.
+func digest(answerHex string, packet bool) (string, error) {
+	if answerHex == "-" {
 		return "-", nil
 	}
-	text, err := hex.DecodeString(textHex)
+	value, err := hex.DecodeString(answerHex)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(bytes.TrimSuffix(text, []byte("\n")))
+	if packet {
+		sum := sha256.Sum256(value)
+		return hex.EncodeToString(sum[:]), nil
+	}
+	sum := sha256.Sum256(bytes.TrimSuffix(value, []byte("\n")))
 	return hex.EncodeToString(sum[:]), nil
 }
 
@@ -231,6 +388,10 @@ func main() {
 		}
 	}
 	sort.Strings(schemas)
+	packet := map[string]bool{}
+	for _, schema := range schemas {
+		packet[schema] = packetUnit(cases, schema)
+	}
 	answers := map[string]map[string][]string{}
 	absent := map[string]string{}
 	for _, schema := range schemas {
@@ -246,7 +407,7 @@ func main() {
 			absent[schema] = "no unit generated for " + schema
 			continue
 		}
-		if answers[schema], err = run(*units, *corpus, schema); err != nil {
+		if answers[schema], err = run(*units, *corpus, schema, packet[schema]); err != nil {
 			fatalf("%v", err)
 		}
 	}
@@ -268,7 +429,7 @@ func main() {
 		case !ok:
 			got = "no answer"
 		case a[0] == "accept":
-			d, err := digest(a[1])
+			d, err := digest(a[1], c.Carrier == "packet")
 			if err != nil {
 				got = "accept, " + err.Error()
 			} else {
