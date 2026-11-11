@@ -14,7 +14,7 @@ fixed table Point {
     y int32 = 2
 }
 `, `package probe
-import "testing"
+import ("bytes";"testing")
 
 func TestFixedTableSaveLoadFormThree(t *testing.T) {
 	one := Point{X: 4242, Y: -7}
@@ -28,6 +28,13 @@ func TestFixedTableSaveLoadFormThree(t *testing.T) {
 	}
 	if wire[0] != TableFixedForm {
 		t.Fatalf("Save of a fixed table wrote form %d, want the fixed form %d", wire[0], TableFixedForm)
+	}
+	fixed := make([]byte, need)
+	if n := PointFixedSave([]Point{one}, fixed); n != need || !bytes.Equal(fixed, wire) {
+		t.Fatalf("Save is not the bytes FixedSave writes")
+	}
+	if n := PointSave(&one, make([]byte, need-1)); n != -1 {
+		t.Fatalf("Save accepted a short buffer: %d", n)
 	}
 	var got Point
 	var report TableReport
