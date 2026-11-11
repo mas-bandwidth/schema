@@ -47,6 +47,7 @@ func TestTextBytesReadCanonicalBase64Only(t *testing.T) {
 		ok   bool
 	}{
 		{name: "canonical padded", body: "QUI=", want: []byte{'A', 'B'}, ok: true},
+		{name: "canonical full group", body: "AQID", want: []byte{1, 2, 3}, ok: true},
 		{name: "unpadded", body: "QUI"},
 		{name: "nonzero pad bits", body: "QUJ="},
 		{name: "one pad where two belong", body: "QQ="},
