@@ -733,12 +733,15 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 			else
 				local order = -1
 				if hasLast then order = loadFixDKeyCompare(keyfd, lastKey, keyVal) end
-				if order > 0 then
+				-- A REPEATED OR DESCENDING KEY IS DAMAGE (docs/SPEC-TABLES.md
+				-- §2.8, §4): no conforming writer produces it, so the load
+				-- discards, as the engine's decode does
+				if order >= 0 then
 					report.malformed = true
 					break
 				end
 				-- the entry's body is read WHOLE now the key has chosen its
-				-- place; a duplicate replaces the entry it repeats, whole.
+				-- place
 				local vals: any = entry.new()
 				while true do
 					local ref = r_leb(body)
@@ -793,14 +796,9 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 				if keyfd ~= nil and vals[keyfd.slot] == nil and keyfd.s == "text" then
 					vals[keyfd.slot] = buffer.create(0)
 				end
-				if order == 0 then
-					report.duplicate = report.duplicate + 1
-					landed[#landed] = vals
-				else
-					landed[#landed + 1] = vals
-					lastKey = loadFixDKeyValue(keyfd, vals)
-					hasLast = true
-				end
+				landed[#landed + 1] = vals
+				lastKey = loadFixDKeyValue(keyfd, vals)
+				hasLast = true
 			end
 		end
 	end
