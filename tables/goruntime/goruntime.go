@@ -15,6 +15,8 @@ package goruntime
 
 import (
 	"encoding/binary"
+	"math"
+	"slices"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -508,6 +510,11 @@ func TableKindWidens(from, to uint8) bool {
 		(from >= 6 && from <= 9 && (to > from && to <= 9 || to == 19)) || from == 10 && to == 11
 }
 
+// tableUTF8Word is the form-1 writer's little-endian word load for its in-line
+// text test (emitTextWords): a function of the runtime file, which imports
+// encoding/binary, so the generated writers in any file of the unit can call it.
+func TableUTF8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+
 func TableUTF8Valid(data []byte) bool {
 	// One pass, eight bytes a step: z gathers the zero-byte test of every word
 	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
@@ -529,6 +536,13 @@ func TableUTF8Valid(data []byte) bool {
 		return false
 	}
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
+}
+
+func TableUTF8Clamp(data []byte, n int64) int64 {
+	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
+		n--
+	}
+	return n
 }
 
 // tableBinaryMaxDepth is the binary nesting bound (mas-bandwidth/schema docs/SPEC-TABLES.md §4,
@@ -620,6 +634,23 @@ const TableFixedHeaderBytes = 16
 
 const TableFixedHashAt = 8
 
+const (
+	TableFixedCopy uint8 = iota
+	TableFixedCount
+	TableFixedText
+	TableFixedOrdinal
+	TableFixedWiden
+	TableFixedConst
+	TableFixedWidenF
+	TableFixedBool
+	TableFixedTag
+)
+
+const (
+	TableFixedTextUTF8  uint8 = 1
+	TableFixedTextBytes uint8 = 3
+)
+
 // tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
 // Meta); its Aux is the source bytes of the payload behind it. A count entry's
 // Aux is the source bytes of one element. The pre-scan reads both to know
@@ -642,6 +673,42 @@ const TableFixedRecordMaxBytes uint32 = 65536
 
 const TableFixedMaxDepth int32 = 64
 
+// Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
+// it. Meta is a text entry's flavour (tableFixedTextUTF8/Wide/Bytes). They
+// shared one lane until reference-fix 12; compiling a string under a union
+// arm overwrote the guard with the flavour and the read skipped the string.
+// tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
+// not this in-memory plan row — Meta does not ride the wire.
+// ArgW IS THE GUARD'S WIDTH IN BYTES (§5.2 THE GUARD'S WIDTH): a union tag is
+// one, two, four or eight bytes, clamped 1..8, and 0 reads as 1. The guard is
+// tested at that FULL width and never at its first byte — a foreign two-byte
+// tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
+// (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
+type TableFixedEntry struct {
+	Src, Dst, Size, Aux, Guard uint32
+	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
+	// enum past 65535 variants holds its ordinal whole in this lane, and the
+	// compare is made against the 64-bit tag load, never a truncation of it.
+	Arg uint64
+	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+	// TO (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
+	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
+	// nests a union leaves the lane unset and the read is unchanged.
+	Guard2 uint32
+	Arg2   uint64
+	// GuardIndex / GuardCount ARE THE GUARD CHAIN (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): offset+count into a pool of (guard, arg, argw) links, OUTERMOST
+	// FIRST. GuardIndex is a BYTE OFFSET from the plan's own base, where the pool
+	// is laid behind the entries the way the ordinal remap tables are, so the
+	// plan stays one slice and the read loop one signature. Every guarded entry
+	// carries its whole chain; the two lanes above stay its innermost two, the
+	// special case, so the loop walks the pool only for a chain past two. The
+	// only bound on a chain is the layout's 64 (tableFixedMaxDepth).
+	GuardIndex, GuardCount               uint32
+	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
+}
+
 // TableFixedGuardLink is ONE LINK of a guard chain (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
 // §4.1): the offset of the tag it reads, the ordinal the tag must hold, and the
 // width it is compared at. A chain is a CONJUNCTION — every link must hold.
@@ -649,6 +716,31 @@ type TableFixedGuardLink struct {
 	Guard uint32
 	Arg   uint64
 	ArgW  uint8
+}
+
+// guardLink is link j of e's chain, read out of the pool laid behind the plan's
+// entries (§4.1: offset+count into the pool). A method, so the unit's package
+// scope gains no name a schema could collide with.
+func (e TableFixedEntry) guardLink(plan []TableFixedEntry, j uint32) TableFixedGuardLink {
+	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{})
+	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))
+}
+
+// chainHolds is whether every link of a chain PAST TWO holds: an arm inside an
+// arm inside an arm answers to EVERY enclosing tag, the outermost first
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1). A chain of one or two is the two-lane
+// special case, already tested on Guard and Guard2.
+func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
+	if p.GuardCount <= 2 {
+		return true
+	}
+	for j := range p.GuardCount {
+		l := p.guardLink(plan, j)
+		if TableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
+			return false
+		}
+	}
+	return true
 }
 
 type TableFixedDst struct {
@@ -659,6 +751,14 @@ type TableFixedDst struct {
 // Arg's high bit marks a deprecated destination field: every compiled lineage
 // plan leaves it uncovered so the reset-image prefill supplies its default.
 const TableFixedDstDeprecated uint8 = 0x80
+
+type TableFixedPlan struct {
+	Entries []TableFixedEntry
+	Count   int32
+	// Split is the number of UNGUARDED entries (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): the index the guarded half starts at, stated by the plan itself.
+	Split int32
+}
 
 func TableFixedWidens(from, to uint8) bool {
 	if from >= 6 && from <= 9 && to >= 6 && to <= 9 {
@@ -753,6 +853,10 @@ func TableFixedLeafSize(kind uint8, size uint32) (admitted, leaf bool) {
 	return true, false
 }
 
+// tableFixedRuns is whether an op advances src and dst together one byte at a
+// time, which is the whole of what lets two adjacent entries become one.
+func TableFixedRuns(op uint8) bool { return op == TableFixedCopy || op == TableFixedBool }
+
 // THE GUARD'S WIDTH, clamped (§5.2): 0 reads as 1, and nothing above 8 is a
 // width an ordinal is stored at.
 func TableFixedArgWidth(w uint8) uint32 {
@@ -776,9 +880,529 @@ func TableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 	return v
 }
 
+// THE PLAN IS PARTITIONED (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.9
+// item 42): every UNGUARDED entry first, then every guarded one, and the
+// split — the NUMBER OF UNGUARDED ENTRIES, the index the second half starts
+// at, not a count of guarded ones — is a property of that order. The emitter
+// lays entries down in field order, so a field past a union would land an
+// unguarded entry behind a guarded one; the builders repair that here, each
+// in its own half, and never coalesce across the split. The run loop still
+// tests the guard per entry, which item 42 allows outright: what a leg may
+// not do is skip the partition. tableFixedPartition stable-partitions the
+// built entries in place and returns the split; a plan with no guarded entry
+// has its split at the END, not at zero.
+func TableFixedPartition(plan []TableFixedEntry, n int32) int32 {
+	split := int32(0)
+	for i := range n {
+		if plan[i].Guard == TableFixedNoGuard {
+			e := plan[i]
+			copy(plan[split+1:i+1], plan[split:i])
+			plan[split] = e
+			split++
+		}
+	}
+	return split
+}
+
+// tableFixedBuildPlan runs the emitted leaf walk and lays THE GUARD CHAIN
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1). The walk records each entry's links
+// INNERMOST FIRST, because an inner union stamps before the outer one that
+// holds it; here they are turned OUTERMOST FIRST, the innermost two are laid on
+// the Guard and Guard2 lanes (the two-lane special case), and the whole chain is
+// laid ONCE into a pool behind the entries, deduped by content, so an entry
+// carries offset+count into it. Two entries under one chain share one slice of
+// the pool, so the coalescer compares GuardIndex and GuardCount alone.
+func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, uint32, uint32) int, n int) TableFixedPlan {
+	scratch := make([]TableFixedEntry, n)
+	links := make([][]TableFixedGuardLink, n)
+	written := emit(scratch, links, 0, 0)
+	var pool []TableFixedGuardLink
+	index := map[string]uint32{}
+	for i := range written {
+		chain := links[i]
+		k := len(chain)
+		if k == 0 {
+			continue
+		}
+		for a, b := 0, k-1; a < b; a, b = a+1, b-1 {
+			chain[a], chain[b] = chain[b], chain[a]
+		}
+		e := &scratch[i]
+		e.Guard, e.Arg, e.ArgW = chain[k-1].Guard, chain[k-1].Arg, chain[k-1].ArgW
+		if k >= 2 {
+			e.Guard2, e.Arg2, e.ArgW2 = chain[k-2].Guard, chain[k-2].Arg, chain[k-2].ArgW
+		}
+		kb := make([]byte, 0, k*13)
+		for _, l := range chain {
+			kb = binary.LittleEndian.AppendUint32(kb, l.Guard)
+			kb = binary.LittleEndian.AppendUint64(kb, l.Arg)
+			kb = append(kb, l.ArgW)
+		}
+		key := string(kb)
+		at, ok := index[key]
+		if !ok {
+			at = uint32(len(pool))
+			index[key] = at
+			pool = append(pool, chain...)
+		}
+		e.GuardIndex = at
+		e.GuardCount = uint32(k)
+	}
+	// THE POOL RIDES BEHIND THE ENTRIES, in the plan's own allocation, and
+	// GuardIndex becomes its byte offset from the plan's base.
+	entryBytes := int(unsafe.Sizeof(TableFixedEntry{}))
+	linkBytes := int(unsafe.Sizeof(TableFixedGuardLink{}))
+	raw := make([]TableFixedEntry, n+(len(pool)*linkBytes+entryBytes-1)/entryBytes)
+	copy(raw, scratch[:written])
+	if len(pool) > 0 {
+		base := uintptr(n * entryBytes)
+		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
+		for i := range written {
+			if raw[i].GuardCount != 0 {
+				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
+			}
+		}
+	}
+	// A RUN COALESCES ONLY WITHIN ONE LANE WIDTH: the read lands each
+	// scalar little-endian-to-native at its own width, so a merged run must
+	// still know the width of the scalars it carries. Byte-wide entries
+	// carry lane one; a wider copy carries its own size. A merged run
+	// stamps its lane on DstSize (no copy entry of its own uses that lane);
+	// an unmerged copy keeps DstSize zero and the read takes its size.
+	laneOf := func(e TableFixedEntry) uint32 {
+		if e.Op == TableFixedBool || e.Size <= 1 {
+			return 1
+		}
+		return e.Size
+	}
+	lanes := make([]uint32, written)
+	plain := make([]bool, written)
+	out := 0
+	for i := range written {
+		if out > 0 && raw[out-1].Op == raw[i].Op && TableFixedRuns(raw[i].Op) &&
+			plain[out-1] && raw[i].DstSize == 0 &&
+			lanes[out-1] == laneOf(raw[i]) &&
+			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
+			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Aux == 0 && raw[i].Aux == 0 &&
+			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
+			raw[out-1].ArgW2 == raw[i].ArgW2 &&
+			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
+			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
+			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
+			raw[out-1].DstSize = uint8(lanes[out-1])
+			raw[out-1].Size += raw[i].Size
+			continue
+		}
+		raw[out] = raw[i]
+		lanes[out] = laneOf(raw[i])
+		plain[out] = raw[i].DstSize == 0
+		out++
+	}
+	n = out
+	// The split is KEPT, not discarded (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// the plan states where its guarded half starts.
+	split := TableFixedPartition(raw, int32(n))
+	return TableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
+}
+
+func TableFixedPut8(b []byte, v uint8) { b[0] = v }
+
+func TableFixedPut16(b []byte, v uint16) { binary.LittleEndian.PutUint16(b, v) }
+
+func TableFixedPut32(b []byte, v uint32) { binary.LittleEndian.PutUint32(b, v) }
+
+func TableFixedPut64(b []byte, v uint64) { binary.LittleEndian.PutUint64(b, v) }
+
+func TableFixedPutF32(b []byte, v float32) { TableFixedPut32(b, math.Float32bits(v)) }
+
+func TableFixedPutF64(b []byte, v float64) { TableFixedPut64(b, math.Float64bits(v)) }
+
+func TableFixedPut128(b []byte, lo, hi uint64) { TableFixedPut64(b, lo); TableFixedPut64(b[8:], hi) }
+
 func TableFixedGet32(b []byte) uint32 { return binary.LittleEndian.Uint32(b) }
 
 func TableFixedGet64(b []byte) uint64 { return binary.LittleEndian.Uint64(b) }
+
+func TableFixedCopyRun(d, s []byte, n uint32) {
+	if n == 0 {
+		return
+	}
+	if n <= 16 {
+		if n >= 8 {
+			a := binary.LittleEndian.Uint64(s)
+			b := binary.LittleEndian.Uint64(s[n-8:])
+			binary.LittleEndian.PutUint64(d, a)
+			binary.LittleEndian.PutUint64(d[n-8:], b)
+		} else if n >= 4 {
+			a := binary.LittleEndian.Uint32(s)
+			b := binary.LittleEndian.Uint32(s[n-4:])
+			binary.LittleEndian.PutUint32(d, a)
+			binary.LittleEndian.PutUint32(d[n-4:], b)
+		} else {
+			d[0] = s[0]
+			d[n>>1] = s[n>>1]
+			d[n-1] = s[n-1]
+		}
+		return
+	}
+	copy(d[:n], s[:n])
+}
+
+// THE READ'S DESTINATION IS CALLER STORAGE, not wire: a scalar the wire
+// carries little-endian lands in a Go value the host reads in its own order,
+// so every multi-byte landing below converts little-endian on the source
+// side to native on the destination side. On a little-endian host the two
+// orders are one and the conversion is the byte copy it always was.
+// tableFixedPutNative lands v in storage at the given width; a width past
+// eight (a 128-bit lane) takes the low word native and zeroes the rest. A
+// widen whose source is negative writes the high word's sign itself.
+func TableFixedPutNative(b []byte, v uint64, size uint32) {
+	if size > 8 {
+		binary.NativeEndian.PutUint64(b, v)
+		clear(b[8:size])
+		return
+	}
+	var tmp, probe [8]byte
+	binary.NativeEndian.PutUint64(tmp[:], v)
+	binary.NativeEndian.PutUint16(probe[:], 1)
+	if probe[0] == 1 {
+		copy(b, tmp[:size])
+	} else {
+		copy(b, tmp[8-size:])
+	}
+}
+
+// tableFixedCopyNative lands size source bytes in storage lane by lane: a
+// lane is one scalar (1, 2, 4 or 8 bytes, or a 128-bit lane's two words),
+// read little-endian and written native. A lane of one is a plain copy.
+func TableFixedCopyNative(d, s []byte, size, lane uint32) {
+	if lane <= 1 || size < lane {
+		copy(d[:size], s[:size])
+		return
+	}
+	for off := uint32(0); off+lane <= size; off += lane {
+		switch lane {
+		case 2:
+			binary.NativeEndian.PutUint16(d[off:], binary.LittleEndian.Uint16(s[off:]))
+		case 4:
+			binary.NativeEndian.PutUint32(d[off:], binary.LittleEndian.Uint32(s[off:]))
+		case 8:
+			binary.NativeEndian.PutUint64(d[off:], binary.LittleEndian.Uint64(s[off:]))
+		case 16:
+			binary.NativeEndian.PutUint64(d[off:], binary.LittleEndian.Uint64(s[off:]))
+			binary.NativeEndian.PutUint64(d[off+8:], binary.LittleEndian.Uint64(s[off+8:]))
+		default:
+			copy(d[off:off+lane], s[off:off+lane])
+		}
+	}
+}
+
+func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// REFUSE is total even for direct callers of the runner: the generated load
+	// performs this pre-scan too, but the compiled-plan tests and any future
+	// internal caller must not observe the old clamp-and-write path.
+	if why := TableFixedTextRefusal(plan, count, src); why != "" {
+		return why
+	}
+	// READ(plan, split, ...) (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
+	// partitioned unguarded-first (§4.1), so the split is the first guarded
+	// index; entries below it run WITHOUT a guard test and only the guarded
+	// half from split on tests one.
+	split := count
+	for i := range count {
+		if plan[i].Guard != TableFixedNoGuard {
+			split = i
+			break
+		}
+	}
+	for i := range count {
+		p := plan[i]
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
+		// split there is no guard to test (§4.4).
+		if i >= split && p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
+		// runs only when the second lane's tag holds its ordinal as well.
+		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		// AND EVERY TAG FURTHER OUT, the guard chain past the two lanes (§4.1).
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
+			continue
+		}
+		switch p.Op {
+		case TableFixedCopy:
+			// A copy lands SCALARS: little-endian on the wire, native in
+			// storage, at the lane width the plan builder kept (DstSize on
+			// a coalesced run, the entry's own size on a lone entry). A
+			// DstSize WIDER than the entry is a lone scalar whose storage
+			// is wider than its wire width (a tag or an enum in a uint32):
+			// it lands native at the storage width, zero-extended.
+			if uint32(p.DstSize) > p.Size {
+				TableFixedPutNative(dst[p.Dst:], TableFixedTagAt(src, p.Src, uint8(p.Size)), uint32(p.DstSize))
+				break
+			}
+			lane := uint32(p.DstSize)
+			if lane == 0 {
+				lane = p.Size
+			}
+			TableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, lane)
+		case TableFixedTag, TableFixedBool:
+			// The check loop refused a tag past the reader's arm count and a
+			// bool or present byte other than 0 or 1 before this run, so the
+			// bytes land as they are (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5) —
+			// a bool byte as itself, a tag as one native scalar.
+			if p.Op == TableFixedTag {
+				TableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, p.Size)
+			} else {
+				TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+			}
+		case TableFixedCount:
+			v := int32(TableFixedGet32(src[p.Src:]))
+			binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))
+		case TableFixedText:
+			v := int32(TableFixedGet32(src[p.Src:]))
+			capn := p.Size
+			// tableFixedTextRefusal above already proved the used extent and
+			// content; this path only lands the validated value and live bytes.
+			binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))
+			TableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
+			if p.Meta != TableFixedTextBytes && uint32(v) < capn {
+				dst[p.Aux+uint32(v)] = 0
+			}
+		case TableFixedOrdinal:
+			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
+			// read through a 32-bit temporary an eight-byte ordinal loses its
+			// top four bytes, so a forged 0x1_0000_0001 would land as 1. The
+			// check loop refused a raw past the writer's set before this run
+			// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6).
+			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			table := unsafe.Slice(p16, int(*p16)+1)
+			var v uint32
+			if raw != 0 && raw <= uint64(table[0]) {
+				v = uint32(table[raw])
+			}
+			switch p.DstSize {
+			case 1:
+				dst[p.Dst] = uint8(v)
+			case 2:
+				binary.NativeEndian.PutUint16(dst[p.Dst:], uint16(v))
+			case 8:
+				binary.NativeEndian.PutUint64(dst[p.Dst:], uint64(v))
+			default:
+				binary.NativeEndian.PutUint32(dst[p.Dst:], v)
+			}
+		case TableFixedWiden:
+			var raw uint64
+			for i := range p.Size {
+				raw |= uint64(src[p.Src+i]) << (8 * i)
+			}
+			if p.Sign != 0 {
+				bits := p.Size * 8
+				top := uint64(1) << (bits - 1)
+				if raw&top != 0 {
+					raw |= ^((top << 1) - 1)
+				}
+			}
+			TableFixedPutNative(dst[p.Dst:], raw, uint32(p.DstSize))
+			// A SIXTEEN-BYTE DESTINATION takes the source's sign through its
+			// high word: all ones for a negative signed value, zero otherwise.
+			if p.DstSize > 8 && p.Sign != 0 && int64(raw) < 0 {
+				for i := p.Dst + 8; i < p.Dst+uint32(p.DstSize); i++ {
+					dst[i] = 0xFF
+				}
+			}
+			report.Widened++
+		case TableFixedWidenF:
+			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
+			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
+			// and the finite pass after the run refuses it.
+			binary.NativeEndian.PutUint64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(TableFixedGet32(src[p.Src:])))))
+			report.Widened++
+		case TableFixedConst:
+			TableFixedPutNative(dst[p.Dst:], uint64(p.Aux), p.Size)
+			// The unguarded None const lands None; the check loop refused a raw
+			// tag past the writer's arm count (this entry's DstSize) before this
+			// run (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.6). tableFixedSrcEnd gives
+			// this one entry a source reach, so the record bound has already
+			// refused a plan that would read past it.
+		}
+	}
+	return ""
+}
+
+// tableFixedTextIllFormed reports whether a text payload's USED units are the
+// text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+// with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
+// unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
+// is the clamped length in the flavour's own units. THE STRING RULE IS THE
+// PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
+// interior zero (mas-bandwidth/schema internal/codegen/golang/functions.go, the TString arm), so
+// every ill-formed sequence utf8 refuses — overlong, surrogate, past U+10FFFF,
+// an invalid lead — refuses here too and not only structural truncation.
+func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
+	switch meta {
+	case TableFixedTextUTF8:
+		if !utf8.Valid(p[:used]) {
+			return true
+		}
+		if slices.Contains(p[:used], 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// tableFixedUTF8Ok is the WRITER's string rule over the used bytes: well-formed
+// UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
+// holds on read). It is one pass, eight bytes a step, with no branch in the
+// loop: z gathers each word's zero-byte test, which is exact (a word has a
+// zero byte if and only if its lane is set), and hi gathers the high bits. A
+// zero refuses; text with no high bit is ASCII and passes; only text with a
+// byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
+// two-pass spelling.
+func TableFixedUTF8Ok(p []byte) bool {
+	var hi, z uint64
+	i := 0
+	for ; i+8 <= len(p); i += 8 {
+		x := TableFixedGet64(p[i:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	}
+	if i < len(p) && len(p) >= 8 {
+		// The tail as one word, overlapping bytes already tested: the test
+		// is the same answer for a byte seen twice.
+		x := TableFixedGet64(p[len(p)-8:])
+		hi |= x
+		z |= (x - 0x0101010101010101) &^ x
+	} else {
+		for ; i < len(p); i++ {
+			c := uint64(p[i])
+			hi |= c
+			z |= (c - 1) &^ c
+		}
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
+}
+
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
+// bool, tag and ordinal entries, run before the caller's storage is touched. A
+// count or a text length past the PLAN's bound refuses by name —
+// count_over_bound / length_over_bound — an ill-formed payload refuses
+// text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
+// tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
+// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). REFUSE is total:
+// no counter moves, nothing is decoded, and not one destination byte is
+// written. It walks each entry under its own guards, writes nothing and moves
+// no counter.
+//
+// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
+// SLACK RULE): the bytes past a counted array's count and under an absent
+// optional's present byte are slack, unspecified on read and never a refusal.
+// Each count and present byte it reads adds the slack behind it to dead, and an
+// entry inside dead is not asked.
+func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	var deadBuf [64][2]uint32
+	dead := deadBuf[:0]
+	for i := range count {
+		p := plan[i]
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
+		// entry runs only under its own tag, and one that does not run cannot
+		// refuse. An arm inside an arm answers the outer tag too (§4.1).
+		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AND THE OUTER TAGS (§4.1): the second lane, then the chain past it.
+		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
+			continue
+		}
+		if p.Op != TableFixedBool && TableFixedDead(dead, p.Src) {
+			continue
+		}
+		switch p.Op {
+		case TableFixedCount:
+			v := int32(TableFixedGet32(src[p.Src:]))
+			if v < 0 || v > int32(p.Size) {
+				return TableRefuseCountOverBound.Error()
+			}
+			if p.Aux != 0 && uint32(v) < p.Size {
+				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+			}
+		case TableFixedText:
+			v := int32(TableFixedGet32(src[p.Src:]))
+			capn := p.Size
+			if v < 0 || uint32(v) > capn {
+				return TableRefuseLengthOverBound.Error()
+			}
+			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return TableRefuseTextIllFormed.Error()
+			}
+		case TableFixedBool:
+			// a bool or present byte other than 0 or 1 is damage (§4.5)
+			for k := range p.Size {
+				if TableFixedDead(dead, p.Src+k) {
+					continue
+				}
+				if src[p.Src+k] > 1 {
+					return TableRefuseWireDamaged.Error()
+				}
+				if p.Meta == TableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
+					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+				}
+			}
+		case TableFixedTag:
+			// a union tag past the reader's arm count names no arm (§4.6)
+			var tag uint64
+			for k := range p.Size {
+				tag |= uint64(src[p.Src+k]) << (8 * k)
+			}
+			if tag > uint64(p.Aux) {
+				return TableRefuseOutOfRange.Error()
+			}
+		case TableFixedOrdinal:
+			// an ordinal past the writer's variant count is forged (§4.6)
+			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			if raw > uint64(*p16) {
+				return TableRefuseOutOfRange.Error()
+			}
+		case TableFixedConst:
+			// an unguarded None const reads the writer's tag: one past the
+			// writer's arm count (DstSize) is forged (§4.6)
+			if p.Aux == 0 && p.DstSize != 0 && p.Guard == TableFixedNoGuard {
+				var raw uint64
+				for k := range p.Size {
+					raw |= uint64(src[p.Src+k]) << (8 * k)
+				}
+				if raw > uint64(p.DstSize) {
+					return TableRefuseOutOfRange.Error()
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// tableFixedDead is whether src offset at lies in one of the slack spans the
+// pre-scan has found.
+func TableFixedDead(dead [][2]uint32, at uint32) bool {
+	for _, d := range dead {
+		if at >= d[0] && at < d[1] {
+			return true
+		}
+	}
+	return false
+}
 
 type TableFixedLayoutEntry struct {
 	ID             uint64
@@ -854,9 +1478,118 @@ func TableFixedTagBytes(b TableFixedLayoutView, i int32) uint32 {
 	return TableFixedEntryAt(b, i).Size - TableFixedUnionArmBytes(b, i)
 }
 
+// tableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
+// guard included, because a guarded entry loads the tag before anything else.
+func TableFixedSrcEnd(e TableFixedEntry) uint64 {
+	var end uint64
+	switch e.Op {
+	case TableFixedConst:
+		end = 0 // a constant reads no source at all
+		if e.Aux == 0 && e.DstSize != 0 {
+			// EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
+			// to count a clamp past DstSize arms (schema#1254). It has a source
+			// reach, so one past the writer's record refuses the plan whole
+			// like every other entry — and the read loop needs no bound of its
+			// own.
+			end = uint64(e.Src) + uint64(e.Size)
+		}
+	case TableFixedCount:
+		end = uint64(e.Src) + 4 // Size is the BOUND, not a byte count
+	case TableFixedText:
+		end = uint64(e.Src) + 4 + uint64(e.Size)
+	default:
+		end = uint64(e.Src) + uint64(e.Size)
+	}
+	if e.Guard != TableFixedNoGuard {
+		if g := uint64(e.Guard) + uint64(TableFixedArgWidth(e.ArgW)); g > end {
+			end = g
+		}
+	}
+	// THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are part
+	// of the entry's source reach.
+	if e.ArgW2 != 0 {
+		if g := uint64(e.Guard2) + uint64(TableFixedArgWidth(e.ArgW2)); g > end {
+			end = g
+		}
+	}
+	return end
+}
+
 // tableFixedRemapMax is the longest remap table the pool's u16 length word can
 // name. A writer's variant count above it is a layout this reader cannot plan.
 const TableFixedRemapMax uint32 = 0xFFFF
+
+// tableFixedHole is one dst range the winning plan does not land. Load copies
+// declared defaults into exactly these, from one Reset image. Identity's list
+// on Go is ABI padding and unselected union arms.
+type TableFixedHole struct {
+	Off, Size uint32
+}
+
+func TableFixedLand(cover []byte, off, n uint32) {
+	if n == 0 {
+		return
+	}
+	end := uint32(len(cover))
+	if off >= end {
+		return
+	}
+	last := off + n
+	last = min(last, end)
+	for i := off; i < last; i++ {
+		cover[i] = 1
+	}
+}
+
+// tableFixedHoles is the complement of the unguarded dest writes. Guarded
+// entries (union arms, compiled tag consts) are not always written, so they
+// stay holes and keep the defaults. The write sizes match tableFixedRun.
+func TableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []TableFixedHole {
+	if dstSize == 0 {
+		return nil
+	}
+	cover := make([]byte, dstSize)
+	for i := range count {
+		p := plan[i]
+		if p.Guard != TableFixedNoGuard {
+			continue
+		}
+		switch p.Op {
+		case TableFixedCopy, TableFixedBool, TableFixedTag, TableFixedConst:
+			TableFixedLand(cover, p.Dst, p.Size)
+		case TableFixedCount:
+			TableFixedLand(cover, p.Dst, 4)
+		case TableFixedText:
+			TableFixedLand(cover, p.Dst, 4)
+			TableFixedLand(cover, p.Aux, p.Size)
+		case TableFixedWiden:
+			TableFixedLand(cover, p.Dst, uint32(p.DstSize))
+		case TableFixedWidenF:
+			TableFixedLand(cover, p.Dst, 8)
+		case TableFixedOrdinal:
+			n := uint32(4)
+			if p.DstSize == 1 || p.DstSize == 2 || p.DstSize == 8 {
+				n = uint32(p.DstSize)
+			}
+			TableFixedLand(cover, p.Dst, n)
+		}
+	}
+	var holes []TableFixedHole
+	i := uint32(0)
+	for i < dstSize {
+		if cover[i] != 0 {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < dstSize && cover[j] == 0 {
+			j++
+		}
+		holes = append(holes, TableFixedHole{Off: i, Size: j - i})
+		i = j
+	}
+	return holes
+}
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
 // on, the layout bytes verbatim with its byte length BESIDE the pointer, and
@@ -867,6 +1600,51 @@ type TableFixedKnownLayout struct {
 	Layout      []byte
 	LayoutBytes int
 	Record      int64
+}
+
+// tableFixedLineagePlan is one older entry's plan, laid down once from the
+// LOCK'S bytes. Unknown is the COMPILE census: a writer field no reader field
+// names is counted ONCE PER ENDPOINT and never per record (§5.4), and on a
+// lawful lineage it is zero.
+type TableFixedLineagePlan struct {
+	Entries []TableFixedEntry
+	Count   int32
+	Unknown int32
+	Why     string
+}
+
+func TableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
+	for i := range known {
+		if known[i].Hash == hash {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// tableFixedRefuseHash is the two refusals that report the FILE'S hash and
+// nothing else (§5.3).
+func TableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64 {
+	report.LayoutHash = hash
+	return TableFixedRefuse(report, reason)
+}
+
+// A REFUSAL BY NAME HAS COUNTERS ALL ZERO (§5.3's joint table). A no_layout
+// found mid-batch must not carry record 0's counters out with it, and a report
+// a caller reuses must not keep a refusal that is no longer true. The FILE'S
+// hash survives, because the two refusals that report it set it first.
+func TableFixedRefuse(report *TableReport, reason string) int64 {
+	hash := report.LayoutHash
+	*report = TableReport{}
+	report.LayoutHash = hash
+	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
+	report.Reason = reason
+	return -1
+}
+
+func TableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
+	return unsafe.Slice((*byte)(ptr), n)
 }
 
 const TableMessageBatchMax = 256
@@ -1049,5 +1827,194 @@ func TableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
 	return raw + uint64(s.Min), ok
 }
 
+func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	s := e.Shape
+	switch s.Kind {
+	case 0, 32:
+		return true
+	case 30:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		_, ok = v.Name(ref)
+		return ok
+	case 13:
+		return TableMessageSkipBody(r, v, indexBits, depth+1)
+	case 17:
+		return indexBits > 0 && r.Skip(indexBits)
+	case 15:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		arm, ok := v.Entry(ref)
+		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
+	case 12:
+		n, ok := TableMessageCount(r, s)
+		if !ok || !r.Align() {
+			return false
+		}
+		return r.Skip(int64(n) * 8)
+	case 31:
+		if !r.Align() {
+			return false
+		}
+		n, ok := r.Get(32)
+		return ok && r.Skip(int64(n)*8)
+	case 14, 16:
+		n, ok := TableMessageCount(r, s)
+		if !ok {
+			return false
+		}
+		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
+			return false
+		}
+		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
+			width := e.Element.Bits
+			width = max(width, 0)
+			if s.Kind == 16 {
+				width += v.RefBits
+			}
+			return r.Skip(int64(n) * width)
+		}
+		for range n {
+			if s.Kind == 16 && !r.Skip(v.RefBits) {
+				return false
+			}
+			before := r.Offset
+			if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
+				return false
+			}
+		}
+		return true
+	}
+	return s.Bits >= 0 && r.Skip(s.Bits)
+}
+
+// Framing scans follow announced shapes; typed body reads diagnose reserved ids.
+func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	for {
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		e, ok := v.Entry(ref)
+		if !ok || !TableMessageSkip(r, v, indexBits, e, depth) {
+			return false
+		}
+	}
+}
+
+// Numeric values are reconstructed at the announced storage width. Typed
+// readers then hold these lanes to the declared ranges, as the file read does.
+func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
+	lo, ok := r.Get(min(s.Bits, 64))
+	if !ok {
+		return false
+	}
+	hi := uint64(0)
+	if s.Bits > 64 {
+		hi, ok = r.Get(s.Bits - 64)
+		if !ok {
+			return false
+		}
+	}
+	if s.Packing == 1 {
+		sum := lo + s.Base[0]
+		carry := uint64(0)
+		if sum < lo {
+			carry = 1
+		}
+		lo = sum
+		hi += s.Base[1] + carry
+	}
+	if s.Packing == 2 {
+		index := min(uint32(lo), s.QCount)
+		ratio := float32(float32(index) / float32(s.QCount))
+		scaled := float32(ratio * s.QDelta)
+		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
+	}
+	binary.LittleEndian.PutUint64(out[:], lo)
+	binary.LittleEndian.PutUint64(out[8:], hi)
+	return true
+}
+
+// A quantized float outside its range is a value the writer refuses
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1. So is a
+// ranged value whose offset from its base does not fit its bits, a flags bit
+// past the declared W among them: a writer never truncates (§5).
+func TableMessageWriteScalar(w *TableBitWriter, over *int32, s TableMessageShape, lo, hi uint64) {
+	if s.Packing == 1 {
+		borrow := uint64(0)
+		if lo < s.Base[0] {
+			borrow = 1
+		}
+		lo -= s.Base[0]
+		hi -= s.Base[1] + borrow
+		if s.Kind >= 18 {
+			if s.Bits < 64 && (hi != 0 || lo>>uint(s.Bits) != 0) || s.Bits >= 64 && s.Bits < 128 && hi>>uint(s.Bits-64) != 0 {
+				*over++
+			}
+		} else if s.Bits < 64 && lo>>uint(s.Bits) != 0 {
+			*over++
+		}
+	}
+	if s.Packing == 2 {
+		value := math.Float32frombits(uint32(lo))
+		ratio := float32((value - s.QMin) / s.QDelta)
+		if !(ratio >= 0) {
+			ratio = 0
+			*over++
+		} else if !(ratio <= 1) {
+			ratio = 1
+			*over++
+		}
+		scaled := float32(ratio * float32(s.QCount))
+		lo = uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))), s.QCount))
+	}
+	w.Put(lo, min(s.Bits, 64))
+	if s.Bits > 64 {
+		w.Put(hi, s.Bits-64)
+	}
+}
+
+func TableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
+	r := TableMessageReader{Vocabulary: v, Report: *report}
+	defer func() { *report = r.Report }()
+	if len(data) == 0 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return r, -1
+	}
+	if data[0] != 2 {
+		TableMessageRefuse(&r.Report, "newer_form")
+		return r, -1
+	}
+	if v == nil || !v.Announced {
+		TableMessageRefuse(&r.Report, "no_vocabulary")
+		return r, -1
+	}
+	if len(data) < 2 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return r, -1
+	}
+	r.Bits.Buffer = data[2:]
+	return r, int64(data[1]) + 1
+}
+
+func TableMessageBatchClose(r *TableMessageReader) bool {
+	if !r.Bits.Align() || r.Bits.Offset != int64(len(r.Bits.Buffer))*8 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	return true
+}
+
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xd902c911e29fa88c
+const Version uint64 = 0xc60521112fb501a8
