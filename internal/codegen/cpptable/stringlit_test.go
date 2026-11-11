@@ -267,8 +267,8 @@ func TestCppEmittedStringLiteralsUseCppEscapes(t *testing.T) {
 	)
 	tableDoc := `Table doc: backslash \ quote " tab ` + tab + ` control ` + ctrl + `a nbsp ` + nbsp + ` bom ` + bom
 	fieldDoc := `Field doc: backslash \ quote " tab ` + tab + ` control ` + ctrl + `a nbsp ` + nbsp + ` bom ` + bom
-	trailingDoc := `Field ending in a backslash \`
-	controlDoc := `Field with ` + ctrl + `a and ` + nbsp + ` and ` + bom + ` and " and \`
+	trailingDoc := `Field with a backslash \ before its end`
+	controlDoc := `Field with ` + ctrl + `a and ` + nbsp + ` and ` + bom + ` and " and \ and its end`
 	src := "package probe\n\n" +
 		"/// " + tableDoc + "\n" +
 		"table Payload {\n" +
@@ -313,6 +313,13 @@ func TestCppEmittedStringLiteralsUseCppEscapes(t *testing.T) {
 	quotedKey := "package probe\ntable Quoted {\n    x int32 | json = \"a\"b\"\n}\n"
 	if errs := cppSchemaErrors(quotedKey); len(errs) == 0 {
 		t.Error("the schema language accepted a JSON key carrying a double quote; the scanner ends the literal there (SPEC §4.2)")
+	}
+
+	// A doc line may carry a backslash anywhere but its end: the scanner
+	// refuses one there (SPEC §4.1), so no emitter is ever handed it.
+	trailing := "package probe\n/// ends in a backslash \\\ntable Trailing {\n    x int32\n}\n"
+	if errs := cppSchemaErrors(trailing); len(errs) == 0 {
+		t.Error("the schema language accepted a doc line ending in a backslash (SPEC §4.1)")
 	}
 
 	files := cppEmitInDir(t, t.TempDir(), src)
