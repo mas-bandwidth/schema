@@ -1,0 +1,24 @@
+# The packet Write of CFloat.x (CFloat.schema: min = 0.0, max = 10.0,
+# resolution = 0.01), SPEC.md §5.1 row 10 and PACKET-WIRE-ALGORITHM.md §2.5.
+#
+# "refused" means: by the debug build's assert in an assert leg (C, C++, C#,
+# Rust, Java, Dart), and by the writer's refusal in every build in an
+# every-build leg (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose).
+# What an assert leg's release build writes for a refused value is
+# unspecified (SPEC.md §5); no case here asks anything of that build.
+# "written" means the write succeeds and the value reads back; "reads-back"
+# names the value a read returns when it differs from the one written.
+#
+# One case per line: <name> <value> <verdict> [reads-back <value>].
+# The largest finite float32 is 0x7f7fffff.
+
+nan                       NaN            refused
+positive-infinity         +Inf           refused
+negative-infinity         -Inf           refused
+above-max                 10.5           refused
+below-min                 -0.5           refused
+largest-finite-float32    3.4028235e+38  refused
+min                       0.0            written
+max                       10.0           written
+mid-range                 5.0            written
+negative-zero             -0.0           written reads-back +0.0

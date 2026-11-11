@@ -1,0 +1,11 @@
+package cfloat
+
+// SPEC §5.1 row 10 on the packet Write: a compressed float that is NaN, an
+// infinity, or finite and outside [min, max] is checked before quantizing, by
+// the leg's mechanism (a debug assert in an assert leg, a refusal in every
+// build elsewhere). cases.txt beside this file lists the values and verdicts.
+
+type CFloat
+{
+    x float32 | min = 0.0, max = 10.0, resolution = 0.01
+}
