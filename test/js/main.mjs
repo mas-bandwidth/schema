@@ -1171,10 +1171,10 @@ if (CHECKED_MODE) {
     "both tiers refuse an out-of-range array count");
 
   const bad5 = new ex.ShipCreate();
-  bad5.shipType = 99; // enum headroom above the wire range
+  bad5.shipType = 99; // an enum value above the wire range
   const ws5 = newWriteStream();
   check(!ex.WriteShipCreate(ws5, bad5) && exFlat.WriteShipCreateFlat(fview, bad5) === -1,
-    "both tiers refuse enum headroom above the wire range");
+    "both tiers refuse an enum value above the wire range");
 }
 
 // ---- FlagName / FlagNames: per-bit names and the set renderer ----

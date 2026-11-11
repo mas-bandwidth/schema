@@ -80,13 +80,12 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 }
 
 // Every generated enum surface carries its extent as the member Max (SPEC
-// §4.2 — the exported-extent rule): declared enums (headroom
-// included) and the generated <Union>Type tag enum alike, in each target's
-// own convention. Call sites then state ranges against E.Max's generated
+// §4.2 — the exported-extent rule): declared enums and the generated
+// <Union>Type tag enum alike, in each target's own convention. Call sites then state ranges against E.Max's generated
 // twin instead of a hand-declared count constant.
 func TestEnumExtentEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Weapon\n{ Laser, Missile, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15 }\n\n" +
 		"type Box { w Weapon }\n\n" +
 		"type Ball { y uint8 }\n\n" +
 		"union Shape {\n    rect  Box\n    ball Ball\n}\n"
@@ -160,11 +159,10 @@ func TestEnumExtentEmitted(t *testing.T) {
 // An enum has no Count (SPEC §4.2, the 2026-09-13 ruling): its declared
 // variant count is its Max, and no target emits an enum Count: every
 // expectation below pins the Count spelling at zero and the Max at one. Both
-// enums are pinned, the widened one (| max = K) asserting Max past its
-// variants.
+// enums are pinned; an enum's Max is its variant count.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Weapon\n{ Laser, Missile, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15 }\n\n" +
 		"enum Team { Red, Blue, Green }\n\n" +
 		"type Box {\n    w Weapon\n    t Team\n}\n"
 	f, perrs := parser.Parse("Counts.schema", []byte(src))
@@ -178,8 +176,8 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
 	}
-	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) >= max {
-		t.Fatalf("Weapon: Count = %d, Max = %d — the headroom case must have Count < Max", got, max)
+	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) != max {
+		t.Fatalf("Weapon: variant count = %d, Max = %d — an enum's Max is its variant count", got, max)
 	}
 
 	type expectation struct {

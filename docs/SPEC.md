@@ -8,9 +8,10 @@ document disagree, one of them is a bug (see VERSIONING.md).
 
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated C,
-C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust source code. Six of the
-nine targets read and write through a serialize-family runtime library; the
-other three carry the bit reader and writer in the generated code itself and
+C++, C#, Dart, Elixir, Go, Java, JavaScript, Rust, Lobster, Lua, Luau and
+Squirrel source code. Ten of the thirteen targets read and write through a
+serialize-family runtime library; the other three carry the bit reader and
+writer in the generated code itself and
 need nothing but their own toolchain:
 
 | target | runtime library |
@@ -24,6 +25,10 @@ need nothing but their own toolchain:
 | Java | none — the generated code is self-contained |
 | JavaScript | [serialize.js](https://github.com/mas-bandwidth/serialize.js) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
+| Lobster | [serialize.lobster](https://github.com/mas-bandwidth/serialize.lobster) |
+| Lua | [serialize.lua](https://github.com/mas-bandwidth/serialize.lua) |
+| Luau | [serialize.luau](https://github.com/mas-bandwidth/serialize.luau) |
+| Squirrel | [serialize.nut](https://github.com/mas-bandwidth/serialize.nut) |
 
 The runtimes are bit-for-bit wire compatible, pinned in CI with shared golden
 bytes, and the self-contained targets are held to the same goldens. schema
@@ -470,7 +475,11 @@ from this projection rather than carried in it.
   element, and why a C# reader gets the text as comments rather than as XML
   documentation. **Elixir carries the descriptor column alone for a field and
   for a variant** — a struct field and an enum variant have no attribute to
-  hang a doc on — and emits `@moduledoc` for a declaration.
+  hang a doc on — and emits `@moduledoc` for a declaration. A `///` line is
+  refused by name when its last byte, after trailing spaces, tabs and a CRLF's
+  carriage return are dropped, is a backslash: in C-family compilers a line
+  comment ending in a backslash continues onto the next line and hides the
+  declaration under it.
 - **A doc comment moves nothing.** It is excluded from the wire shape
   projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
   it moves neither the protocol id nor the build version; it enters no
@@ -1121,9 +1130,11 @@ The rules:
   namespace. The emitter writes it `::`-qualified verbatim (`::GameVec2` for
   the bare spelling, `::math::Vec2` for the qualified one), so a namespaced
   engine type needs no global alias. **`cpp_include` takes a quoted header
-  path** — the header declaring it. They go together: one without the other
-  is an error. String literals (`"..."`, no escapes) exist in the grammar for
-  attribute values only.
+  path** — the header declaring it. A `cpp_include` value is one non-empty
+  header path, with no control byte, double quote or backslash, so the
+  generated `#include "<value>"` is exactly one directive. They go together:
+  one without the other is an error. String literals (`"..."`, no escapes)
+  exist in the grammar for attribute values only.
 - **Inside the basis type's own generated header the mapping is off** —
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
@@ -1228,9 +1239,9 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.3), C (serialize.c v2.0.2), Rust (serialize.rs v5.0.0),
-  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.1.1), C#
-  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
+  (serialize v2.1.3), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
+  JavaScript (serialize.js v2.1.2), Go (serialize.go v2.1.1), C#
+  (serialize.cs v2.1.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
@@ -1491,6 +1502,13 @@ All compile errors with positions:
   `None = 0`, so its wire range is the degenerate `[0, 0]` and it costs zero
   bits — the value is recovered from the range alone, under the same rule as
   any degenerate range.
+- **A packet counted array of a zero-bit element is refused:** an `[..N]T`
+  whose element `T` encodes in zero bits — an empty `type`, a ranged integer
+  or fixed value with `min = max`, or a type all of whose fields cost nothing —
+  is a compile error, because the count alone would be almost the whole cost
+  on the wire while the reader still materializes the declared bound in
+  memory, whereas a fixed `[N]T` stays legal because its extent is a
+  compile-time constant.
 - **A derived size past the cap:** an array bound, a `string(N)` and a
   `bytes(N)` are capped at int32 one at a time (§4.3),
   and what they multiply
@@ -2187,11 +2205,22 @@ read failure like any other) — and fail on any violation, because network
 input is the trust boundary. Generated read code never lets a value that
 controls iteration go unchecked before use.
 
-**Read termination:** `Read` consumes exactly the encoded bits and reports
-bits consumed, so callers can frame several objects in one buffer; bytes
-remaining after the last field are the caller's concern, not a validation
-failure — a stream framed over a union ends on the in-band `None` tag by
-design.
+**Read termination:** Every value has exactly one encoding, so a packet's end
+is checked, not assumed. After the top-level object's last field, a whole
+byte left over is a refusal, and so are non-zero unused bits in the final
+byte. The end check runs **once**, after the top-level object, and never
+inside a nested type's read. The generated public `Read<T>` of a type is the
+one-packet read and ends with that check: it uses the leg's runtime end check
+where the leg has a runtime (serialize format 2.0's `SerializeEnd` /
+`serializeEnd` end call) and its own equivalent where the generated code owns
+its bit reader (Java, Dart, Elixir and the JavaScript flat tier). A nested
+type inside generated code is read through a per-type body that does not end.
+Where the leg reports it, `Read` reports bits consumed. Framing several
+objects in one buffer is not several `Read<T>` calls: use a top-level type
+whose fields are the objects, or the leg's bit-offset entry where it has one
+(§6.1), and the one end check runs once, after the last. The Dart `read<T>`
+and the JavaScript `Read<T>Flat` return a boolean only; they do not report
+bits consumed today. That is an open question for the owner, not changed here.
 
 **Writes refuse what the declaration does not admit, by each language's own
 idiom.** A language verifies correctness the way that language verifies
@@ -2270,25 +2299,32 @@ a caller can hold that the declaration does not admit:
 | 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
-| 10 | a compressed or ranged float off its range | refused (`invalid_value` on write; `out_of_range` on read) |
+| 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
 own error idiom. No leg silently writes a value off the contract in the build
-where its check is active. A check that guards the WRITER'S OWN STORAGE (a
-count or length that would read past the array it indexes) refuses in every
-build in every leg, because past that point the writer would read memory, not
-a value.
+where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart)
+every write check is a debug assert and nothing else, the storage checks
+included** (a count or length that would index past the array it describes):
+correct writes are the programmer's responsibility, and the assert is how the
+leg tells them they got it wrong. An assert leg's release build carries no
+write-side check and no write-side refusal, and none is a defect. Reads are the
+library's responsibility, because they arrive from the network, and every read
+check runs in every build in every leg (§4). Glenn, 2026-11-10: "in languages
+that have assert, we rely on assert to prompt the user they fucked up. when we
+don't have asserts, we have to do some checks in release depending on the
+language."
 
 | leg | idiom | build | how a refusal surfaces |
 |---|---|---|---|
-| C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first. A storage guard returns `-1`/`false` in every build |
-| C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++; a storage guard returns `0`/`-1` |
-| C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it); a storage guard returns `-1` |
-| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic; an every-build refusal is `Err` from `_save_checked`. An out-of-set enum or union tag cannot be built: both are native enums |
-| Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError`; an every-build refusal is `null` or `-1` |
-| Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError`; an every-build refusal is `StateError` or `-1` |
+| C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first |
+| C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++ |
+| C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it) |
+| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums |
+| Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError` |
+| Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError` |
 | Go | none | every build | `-1` and `TableRefuseInvalidValue` (`invalid_value`) from the `...Reason` twin; packets return `serialize.ErrValueOutOfRange` |
 | JavaScript | none | every build | `null` from `Save`, `[-1, "invalid_value"]` from `MeasureReason`, `-1` from `FixedSave` |
 | Elixir | none | every build | `{:error, :invalid_value}` from `save/2`; `ArgumentError` from the fixed and packet writers |
@@ -2300,7 +2336,10 @@ a value.
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
-is the leg's assert, "every build" its refusal.
+is the leg's assert, "every build" its refusal. These tables record the code as
+it stands, not the contract: an "every build" entry in an assert leg is a
+release-build check the contract does not ask for, and the contract for that
+row is the debug assert.
 
 **After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
 success, never after failure: a writer that refuses returns its refusal
@@ -2336,11 +2375,10 @@ truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
 finite value off its range, and no writer quantizes one into it
 (docs/plans/strict-only.md, decision 8).
-**Two rules hold in every leg on top of the table.** A count or a length that
-would index past the storage it describes is refused in EVERY build, before
-the first byte, assert legs included: it guards memory, not a value, and the
-debug-only allowance does not reach it (the `write-refusal-storage-release-<lang>`
-gates hold it in the release builds of C, C++, C#, Rust, Java and Dart). And
+**One rule holds in every leg on top of the table.** A count or a length that
+would index past the storage it describes is a write check like any other: a
+debug assert in an assert leg, a refusal in every build elsewhere. No release
+build of an assert leg is required to refuse it, and no gate may require one.
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: a writer never produces bytes its own
 reader refuses.
@@ -2433,13 +2471,13 @@ Per `type`, per target:
    An enum's representation is the target's choice — an integer-backed named
    type in every target but Elixir (a Rust newtype, C#'s `enum E : uint`, Dart's
    `extension type const E(int _value) implements int`, which is erased to
-   the int and so costs nothing, holds every wire-legal value including `| max`
-   headroom as `E(n)`, and types the fields, union tags and table accessors
-   that store it). In Elixir a value is an ATOM (`:none` for 0, the variant's
-   snake_case otherwise, an unnamed `| max = K` headroom value the integer
-   itself) and `E.to_int/1` / `E.from_int/1` convert at the wire. Nothing
-   on the wire requires it: a wire value above max is refused on read (§4.2),
-   so no unnamed enum value is ever representable on the read side.
+   the int and so costs nothing, holds every wire-legal value in
+   `[0, variant count]` as `E(n)`, and types the fields, union tags and table
+   accessors that store it). In Elixir a value is an ATOM (`:none` for 0, the
+   variant's snake_case otherwise) and `E.to_int/1` / `E.from_int/1` convert
+   at the wire. An enum's wire range is `[0, variant count]` and nothing else:
+   a wire value above max is refused on read (§4.2), so no unnamed enum value
+   exists on the read side.
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
    wire order. In Go, `Write<T>` returns `error` alone and the size written
@@ -2767,11 +2805,10 @@ or a file per declaration where the language demands one.
   `Object.values` enumerates variants. Beside it, **every schema file that
   declares types or unions also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
   inlined at every field with no runtime import at all, held byte-identical
-  to the runtime tier by a standing gate. That tier owns the fork itself:
-  `NODE_ENV` is read ONCE at module load, exactly as `serialize.js`'s own
-  `src/mode.js` does, and whole write variants are selected at export, so a
-  bundler that statically replaces `NODE_ENV` tree-shakes the checked writers
-  out; a writer with no contract to check is one function for both builds.
+  to the runtime tier by a standing gate. The flat tier's writer holds its
+  checks in every build, whatever `NODE_ENV` says: it reads no `NODE_ENV`
+  and selects no production variant, so a value its declaration does not
+  admit refuses whether the bundle is checked or released.
   The READ side is never configurable in either tier. **Every packet module
   ships its TypeScript declarations beside it** — `<Base>.d.ts` and
   `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc
@@ -3190,8 +3227,8 @@ Every row to date is settled, deferred with its design banked, or discarded.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
    `const NumTeams = Team.Max`. `len(Team)` was declined: it has three
-   plausible meanings, and every one sizes enum-indexed tables wrong under
-   `max` headroom — the max is the true primitive.
+   plausible meanings, and every one sizes enum-indexed tables wrong — the
+   max is the true primitive.
 8. ~~Platform-conditional constants~~ — settled: constants are
    platform-uniform (§4.2); platform-varying tuning stays in application
    code.

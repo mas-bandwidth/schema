@@ -44,7 +44,7 @@ const tableBuilderLoadSource = `
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idCount * 8);
         if (!DistinctVocabulary(ids)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
-        int whole = WireCheck(root.Buffer, ids, false, out _);
+        int whole = WireCheck(root.Buffer, ids, false, out bool wireNonFinite);
         if (whole == WireDamaged) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         // THE BUILDER READ IS THE ONE READ TOO: the two apart answers keep
         // their names and every other non-whole answer refuses (docs/SPEC-TABLES.md §6.5).
@@ -83,10 +83,11 @@ const tableBuilderLoadSource = `
             for (int i = 0; i < count && !state.Refused; i++)
             {
                 scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-                long offset = (long)NativeWord(directory + (i + 1L) * 16, 8); TableTypeInfo node = type.PointerType(id);
+                long offset = unchecked((long)NativeWord(directory + (i + 1L) * 16, 8)); TableTypeInfo node = type.PointerType(id);
                 if (offset != -1 && node != null) { NativeReadBody(ref state, ref body, new NativeValue(data, offset) { Mutable = true }, node, report, true); }
             }
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);
+            if (wireNonFinite && report.NonFiniteFloat == null) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; }
             if (state.Refused && !report.Refused) { return false; }
             // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
             if (NonFiniteRefused(report) || report.Refused) { NativeReset(new NativeValue(data, 0) { Mutable = true }, type); Finish(report, Verdict.Refused); return false; }

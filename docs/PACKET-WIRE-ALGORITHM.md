@@ -102,8 +102,8 @@ BYTES_WRITTEN(w) := CEIL8(w.bits_written)      // call FLUSH first
 
 **Always `FLUSH` after the last field**, then take `BYTES_WRITTEN`. Missing the flush drops the
 last scratch qword. The logical length is `bits_written`; the packet size is `CEIL8(bits_written)`
-bytes. Trailing bits in the last byte are zeros from the flush, and a reader that does not consume
-them does not check them.
+bytes. Trailing bits in the last byte are zeros from the flush, and a read REFUSES a final byte
+whose unused bits are not zero (SPEC §5).
 
 ### 1.2 ALIGN
 
@@ -266,7 +266,7 @@ PUT_RANGED(w, value, min, max):
 | `float32` | the IEEE-754 bit pattern of a **finite** value as 32 bits; `-0` and subnormals bit exact. `ASSERT` finite on write; on read, test the raw bits and refuse a NaN or an infinity as `non_finite_float` before the field is written (SPEC.md §4.3, serialize format 2.0; which targets enforce it today is §4.3's backend status) |
 | `float64` | the IEEE-754 bit pattern of a **finite** value as 64 bits, low dword first; the same finite rule as `float32` |
 | compressed `float32 \| min, max, resolution` | see §2.5 |
-| an enum `E` | `PUT_RANGED(w, ordinal, 0, E.Max)` — `None = 0`, variants dense from 1, `Max` may exceed the variant count (`\| max = K` headroom; non-variant values are wire-legal) |
+| an enum `E` | `PUT_RANGED(w, ordinal, 0, E.Max)` — `None = 0`, variants dense from 1, `Max` IS the variant count; the wire range is `[0, variant count]` and every value names a variant |
 | a `flags` mask | `W` raw bits, `W` = variant count or the widened max. `ASSERT value < 2^W` when `W < 64` (a bit above the wire width is writer misuse, not silent truncation). Every pattern of `W` bits is legal |
 | a nested `type` | `WRITE` of that type, in place |
 | a `union` | §2.6 |
@@ -338,14 +338,25 @@ READ_PACKET(T, buf, n, out) -> ok, bits:
     // allocation of buf extends at least 8 bytes past n
     r := ReadStream(buf, n)
     if not READ(T, r, out): return fail
+    if not END(r): return fail
     return ok, r.bits_read
-    // bytes remaining after the last field are the caller's concern, not a refusal
-    // a stream framed over a union ends on the in-band None tag by design
+
+END(r) -> ok:
+    remaining := 8 * r.num_bytes - r.bits_read
+    if remaining >= 8: REFUSE                  // a whole byte left after the object
+    if remaining == 0: return ok
+    if GET_BITS(r, remaining) != 0: REFUSE     // nonzero unused bits in the final byte
+    return ok
 
 READ(T, r, out):
     for item in T.items in declared order:
         READ_ITEM(r, item, out)
 ```
+
+`END` runs **once**, after the top-level object, and never inside a nested type's read. The
+generated public `Read<T>` is the one-packet read and ends with it; a nested type inside generated
+code reads through a per-type body that does not end (SPEC §5). Where the leg reports it, the read
+reports bits consumed.
 
 A refusal is terminal: generated code returns on the first failure, later items are not reached,
 and `out` is unspecified (SPEC §5). Past-end, a ranged offset above the span, and nonzero align
@@ -410,7 +421,7 @@ because the internal align contributes zero bits.
 | `fixed` / `ufixed` | read the offset in `bitlen(max-min)+F` bits (zero when `min == max`); if offset > raw span `REFUSE`; `raw := (min << F) + offset` |
 | `float32` / `float64` | 32 / 64 raw bits as the IEEE-754 pattern; test the raw bits and refuse a NaN or an infinity as `non_finite_float` before the field is written; `-0` and subnormals stay bit exact |
 | compressed `float32` | §3.4 |
-| an enum | `GET_RANGED(r, 0, E.Max)`; a value in headroom stands |
+| an enum | `GET_RANGED(r, 0, E.Max)`; the wire range is `[0, variant count]`, so every value names a variant |
 | a `flags` mask | `GET_VALUE(r, W)`; every pattern legal |
 | a nested `type` | `READ` of that type |
 | a `union` | §3.5 |
@@ -544,7 +555,7 @@ are the work.
 | `string(N)` length + align + bytes | `chat` | golden | | | | | | | | |
 | `string(N)` UTF-8 + interior null | `serialize/conformance/string.txt`, `packet-text` | | | | | | | | | |
 | `bytes(N)` | `serialize/conformance/bytes.txt`; `Block` in `Wire.schema` | | | | | | | | | |
-| enum with `\| max` headroom | `probearray` (`Weapon`) | golden | | | | | | | | |
+| enum, wire range `[0, Max]` | `probearray` (`Weapon`) | golden | | | | | | | | |
 | `flags` | `shipcreate_flags`, `ProbeFlags` | golden | | | | | | | | |
 | union tag + selected arm, None, void | `probecollider`, `packet-void`, `ArmDefaults` `0x51` | golden | | | | | | | | |
 | `int128` / `uint128` / `fixed` / `ufixed` | `ludicrous_state`, `fixed.txt` | golden | | | | | | | | |
