@@ -37,6 +37,12 @@ const depthBoundarySchema = `package depthprobe
 fixed table Root {
 	a int32
 }
+
+fixed table ZExtra {
+	b int32
+	c int32
+	d int32
+}
 `
 
 type depthBoundaryCase struct {
