@@ -13,10 +13,16 @@
 -- first-visit order, the terminator, then the id table in first-use order and
 -- its count. MEASURE is the same walk over a writer that counts and stores
 -- nothing, so measure and save cannot be two rules.
+--
+-- A DECLARED FIXED ROOT IS NOT WRITTEN HERE (§3, §3.4): its file is form 3,
+-- the bytes table_fixed.moo's save writes, and a fixed root with no form-3
+-- data (a record past the 65536-byte ceiling) has no file form, so its save
+-- refuses and never falls back to form 1.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local St = require("./schema_tables")
 local V = require("./table_values")
+local F = require("./table_fixed")
 
 local S = {}
 
@@ -1155,9 +1161,22 @@ local function invalid_deprecated(d: any, v: any, seen: any): any
 	return nil
 end
 
--- save is the root value's form-1 wire as a buffer of exactly its bytes, or
--- nil and the refusal { name, field } (a data cycle, a shared blob, a value
--- with no wire identity or outside its contract) (§3, §3.1, §5).
+-- fixed_save is a declared fixed root's file: form 3, one record, through
+-- table_fixed.moo, or layout_unsupported where the root has no form-3 data
+-- (a record past §3.4's 65536-byte ceiling has no file form).
+local function fixed_save(d: any, v: any): (buffer?, any?)
+	local fixed = F.lookup(d.name)
+	if fixed == nil then
+		return nil, { name = "layout_unsupported", field = d.name }
+	end
+	return F.save(d, fixed, { v })
+end
+
+-- save is the root value's file as a buffer of exactly its bytes: form 1 for
+-- a variable root, form 3 for a declared fixed root (fixed_save); or nil and
+-- the refusal { name, field } (a data cycle, a shared blob, a value with no
+-- wire identity or outside its contract, a fixed root with no file form)
+-- (§3, §3.1, §3.4, §5).
 function S.save(d: any, v: any): (buffer?, any?)
 	if type(v) ~= "table" then
 		return nil, { name = "nil_value", field = d.name }
@@ -1165,6 +1184,9 @@ function S.save(d: any, v: any): (buffer?, any?)
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then
 		return nil, invalid
+	end
+	if d.fixed then
+		return fixed_save(d, v)
 	end
 	local w, why = walk(d, v, false)
 	if w == nil then
@@ -1184,6 +1206,13 @@ function S.measure(d: any, v: any): (number?, any?)
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then
 		return nil, invalid
+	end
+	if d.fixed then
+		local out, why = fixed_save(d, v)
+		if out == nil then
+			return nil, why
+		end
+		return buffer.len(out), nil
 	end
 	local w, why = walk(d, v, true)
 	if w == nil then
