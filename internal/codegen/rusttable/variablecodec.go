@@ -1050,12 +1050,12 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                report.unknown += 1;\n")
 	fmt.Fprintf(b, "                let start = *off;\n")
 	fmt.Fprintf(b, "                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }\n")
+	// A NON-FINITE UNKNOWN FLOAT REFUSES THE READ, plain or retaining
+	// (docs/SPEC-TABLES.md §3.3, §5, §6.6): it is named <owner>.0x<id> and
+	// nothing is kept.
+	fmt.Fprintf(b, "                if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown(%q, id); continue; }\n", st.DeclaredName())
 	fmt.Fprintf(b, "                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);\n")
 	fmt.Fprintf(b, "                if let Some(ret) = retain.as_deref_mut() {\n")
-	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
-	// §3.3, §6.6, ruling 3 of 2026-10-27): a NaN or an infinity is not kept and
-	// refuses the read as non_finite_float, named <owner>.0x<id>.
-	fmt.Fprintf(b, "                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown(%q, id); continue; }\n", st.DeclaredName())
 	fmt.Fprintf(b, "                    match retain_capture(ids, kind, &wire[start..*off]) {\n")
 	fmt.Fprintf(b, "                        Some(resolved) => {\n")
 	fmt.Fprintf(b, "                            let need = 17 + 8 * path.depth as usize + resolved.len();\n")

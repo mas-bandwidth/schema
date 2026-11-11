@@ -11,9 +11,9 @@ package rusttable
 //     tolerant read refuses on the raw bits, at both widths, as an element, in
 //     a nested table and across the float rung (kind 10 into a float64), and a
 //     -0 under a +0 default rides because elision compares bits;
-//   - a RETAINED UNKNOWN float (ruling 3): the retaining read refuses one, at
-//     kind 10 and kind 11, named <Table>.0x<id>; the plain read, which keeps
-//     nothing, skips it as the Go oracle's plain read does;
+//   - an UNKNOWN float this reader cannot name: both the plain and the
+//     retaining read refuse one, at kind 10 and kind 11, named
+//     <Table>.0x<id>;
 //   - the MESSAGE form: measure and save answer -1 for a plain, an element, a
 //     nested, a union arm and a COMPRESSED float (refused before the quantizer,
 //     ruling 1), and a batch holding one in any body delivers nothing;
@@ -269,8 +269,8 @@ fn variable() {
         say(&format!("variable/float-rung-refuses/{i}"), verdict.is_ok(), verdict.err().unwrap_or_default());
     }
 
-    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (ruling 3): a field
-    // id this reader cannot name, at kind 10 and kind 11.
+    // AN UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (ruling 3): a field id this
+    // reader cannot name, at kind 10 and kind 11, plain or retaining.
     let unknown = |kind: u8, payload: &[u8]| -> Vec<u8> {
         let mut w = vec![1u8, 1, kind];
         w.extend_from_slice(payload);
@@ -301,15 +301,16 @@ fn variable() {
                 && report.non_finite_float_id == Some(0x0123_4567_89AB_CDEF)
                 && report.non_finite_float_reason().as_deref() == Some("non_finite_float: Loose.0x0123456789abcdef");
             say(&format!("retain/non-finite-unknown-refuses/{kind}/{i}"), ok, format!("{got:?} {report:?}"));
-            // the plain read keeps nothing, so it skips the bytes and counts
-            // the unknown, as the Go oracle's plain read does
+            // the plain read refuses the same bytes, and keeps nothing either
             let mut plain = TableReport::default();
             let got = loose_load(&unknown(kind, &payload), &mut plain);
-            say(
-                &format!("retain/plain-read-skips/{kind}/{i}"),
-                got.is_some() && plain.unknown == 1 && !plain.refused,
-                format!("{got:?} {plain:?}"),
-            );
+            let ok = got.is_none()
+                && plain.refused
+                && plain.reason == TableReason::NonFiniteFloat
+                && plain.non_finite_float == "Loose"
+                && plain.non_finite_float_id == Some(0x0123_4567_89AB_CDEF)
+                && plain.non_finite_float_reason().as_deref() == Some("non_finite_float: Loose.0x0123456789abcdef");
+            say(&format!("retain/plain-read-refuses/{kind}/{i}"), ok, format!("{got:?} {plain:?}"));
         }
     }
 }
@@ -616,7 +617,7 @@ var finiteFloatFamilies = map[string]int{
 	"variable/float-rung-refuses/":           5,
 	"retain/finite-unknown-is-kept":          1,
 	"retain/non-finite-unknown-refuses/":     10,
-	"retain/plain-read-skips/":               10,
+	"retain/plain-read-refuses/":             10,
 	"message/minus-zero-and-subnormal-ride":  1,
 	"message/writer-refuses/":                35,
 	"message/read-refuses/":                  25,
@@ -671,7 +672,7 @@ func TestRustFiniteFloatNegativeControl(t *testing.T) {
 		}, []string{"variable/writer-refuses/"}},
 		{"retain", [][2]string{
 			{"if !table_retained_float_finite(kind,", "if false && !table_retained_float_finite(kind,"},
-		}, []string{"retain/non-finite-unknown-refuses/"}},
+		}, []string{"retain/non-finite-unknown-refuses/", "retain/plain-read-refuses/"}},
 		{"message-read", [][2]string{
 			{"|| table_finite_f32(lo as u32) {", "|| true /* SABOTAGED */ {"},
 			{"else if table_finite_f64(lo) {", "else if true /* SABOTAGED */ {"},

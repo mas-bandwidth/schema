@@ -617,6 +617,10 @@ impl TableNodeReader {
         let w = table_kind_width(kind);
         if w > 0 {
             if payload.len() != w || (kind == 1 && payload[0] > 1) { report.damaged = true; }
+            // A NON-FINITE FLOAT REFUSES THE READ WHEREVER THE WIRE CARRIES IT
+            // (docs/SPEC-TABLES.md §3.3, §5), in a field this reader cannot
+            // name as in one it can.
+            if !table_retained_float_finite(kind, payload) { report.non_finite("a float the wire carries"); }
             return;
         }
         let mut off = 0usize;
@@ -645,6 +649,10 @@ impl TableNodeReader {
         let w = table_kind_width(kind);
         if w > 0 {
             if content.len() != w || (kind == 1 && content[0] > 1) { report.damaged = true; }
+            // A NON-FINITE FLOAT REFUSES THE READ WHEREVER THE WIRE CARRIES IT
+            // (docs/SPEC-TABLES.md §3.3, §5), in a field this reader cannot
+            // name as in one it can.
+            if !table_retained_float_finite(kind, content) { report.non_finite("a float the wire carries"); }
             return;
         }
         let mut off = 0usize;
@@ -895,10 +903,10 @@ pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Opt
     Some(raw)
 }
 
-/// THE FINITE RULE ON A RETAINED UNKNOWN (docs/SPEC-TABLES.md §3.3, §6.6): a
-/// payload of a float kind is tested on its raw bits like a known field's, and
-/// a NaN or an infinity refuses the read. Every other kind, and a payload that
-/// is not its kind's width, is the walk's to judge.
+/// THE FINITE RULE ON AN UNKNOWN PAYLOAD (docs/SPEC-TABLES.md §3.3, §5, §6.6):
+/// a payload of a float kind is tested on its raw bits like a known field's,
+/// and a NaN or an infinity refuses the read, plain or retaining. Every other
+/// kind, and a payload that is not its kind's width, is the walk's to judge.
 pub fn table_retained_float_finite(kind: u8, payload: &[u8]) -> bool {
     match (kind, payload.len()) {
         (10, 4) => table_finite_f32(u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])),
