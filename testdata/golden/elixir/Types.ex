@@ -1516,7 +1516,7 @@ defmodule Example.Types do
     scratch_bits = 5
 
     {data, scratch, scratch_bits} =
-      w_input_packet_inputs(value_inputs, data, scratch, scratch_bits)
+      wZinput_packetZinputs(value_inputs, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -1572,7 +1572,7 @@ defmodule Example.Types do
       if v > 16, do: throw(:invalid)
       n = v
       if 149 + n * 168 > num_bits, do: throw(:invalid)
-      {bits_read, v_inputs} = r_input_packet_inputs(n, [], data, num_bits, 149)
+      {bits_read, v_inputs} = rZinput_packetZinputs(n, [], data, num_bits, 149)
 
       value = %Example.InputPacket{
         synchronize_sequence: v_synchronize_sequence,
@@ -2502,9 +2502,9 @@ defmodule Example.Types do
     end
   end
 
-  defp w_input_packet_inputs([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZinput_packetZinputs([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_input_packet_inputs([e | rest], data, scratch, scratch_bits) do
+  defp wZinput_packetZinputs([e | rest], data, scratch, scratch_bits) do
     %{
       stick_x: e_stick_x,
       stick_y: e_stick_y,
@@ -2585,13 +2585,13 @@ defmodule Example.Types do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_input_packet_inputs(rest, data, scratch, scratch_bits)
+    wZinput_packetZinputs(rest, data, scratch, scratch_bits)
   end
 
-  defp r_input_packet_inputs(0, acc, _data, _num_bits, bits_read),
+  defp rZinput_packetZinputs(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_input_packet_inputs(remaining, acc, data, num_bits, bits_read) do
+  defp rZinput_packetZinputs(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     e_stick_x = f32_value(v)
@@ -2640,6 +2640,6 @@ defmodule Example.Types do
       ping: e_ping
     }
 
-    r_input_packet_inputs(remaining - 1, [e | acc], data, num_bits, bits_read + 168)
+    rZinput_packetZinputs(remaining - 1, [e | acc], data, num_bits, bits_read + 168)
   end
 end
