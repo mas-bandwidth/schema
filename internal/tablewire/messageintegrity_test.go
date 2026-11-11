@@ -137,10 +137,11 @@ func TestMessageIntegrityIndependentJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, _, _ := messageIntegrityFixture(t)
-	// The JS leg still announces ir.TableVocabulary (jstable is not trimmed),
-	// so its writer is pinned against the shared batch.hex corpus, not the
-	// trimmed tablewire closure pin the fixture returns for EncodeMessages.
+	model, _, sealed := messageIntegrityFixture(t)
+	// The JS leg announces the message closure's vocabulary (§3.3), as
+	// EncodeMessages does, so its writer is pinned against the shared
+	// batch.hex corpus, and that corpus is the sealed batch the fixture
+	// holds the neutral writer to.
 	pinText, err := os.ReadFile(filepath.Join("../../testdata/conformance/feature-witnesses/message-integrity", "batch.hex"))
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +149,9 @@ func TestMessageIntegrityIndependentJavaScript(t *testing.T) {
 	want, err := hex.DecodeString(strings.TrimSpace(string(pinText)))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !bytes.Equal(want, sealed) {
+		t.Fatalf("batch.hex %x is not the neutral writer's sealed batch %x", want, sealed)
 	}
 	files, err := compiler.New().Generate(model.Unit, "js", compiler.Options{})
 	if err != nil {
