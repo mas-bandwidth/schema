@@ -91,7 +91,8 @@ const (
 	// +110: a fixed-class root's Load refuses a form-1 file as previous_form (§3.4), the strict read
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
-	goExamplesLineBudget = 60090
+	// +100: every pointer is a graph edge, a field the reader cannot name included: a record of a type it cannot name, and a named record carrying such a pointer, is counted and released from the wire, and the root walks its own body when it carries one (SPEC-TABLES §3.1, §4)
+	goExamplesLineBudget = 60190
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

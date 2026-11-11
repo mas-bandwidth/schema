@@ -392,7 +392,7 @@ func TestGoDriverReportAndRetainNegativeControl(t *testing.T) {
 			root,
 			"test/conformance/go/retain.go",
 			`r.Nodes.Mark(index)`,
-			`if r.Nested && index > 0 && int(index) <= len(r.Nodes.Entries) { r.Nodes.Entries[index-1].Offset &^= 1 << 63 } // SABOTAGED: unknown nested kind-17 pointers do not mark target nodes`,
+			`_ = index; if r.Nested { for i := range r.Nodes.Entries { if e := &r.Nodes.Entries[i]; e.Offset != ^uint64(0) && e.Offset&(1<<62) == 0 { e.Offset &^= 1 << 63 } } } // SABOTAGED: unknown nested kind-17 pointers do not mark the record they sit in`,
 		)
 		wrong := goDriverCheckAll(t, root, bin, reports, retains)
 		want := []string{

@@ -70,6 +70,28 @@ func TestUnnamedGraph(t *testing.T) {
 	refuses(t, "a named record and an unnameable one naming each other", mixed)
 	if retainLoad(mixed) { t.Fatal("the retaining read accepted a named record and an unnameable one naming each other") }
 
+	// a pointer in a field this reader cannot name is an edge of the graph
+	// too: a loop through one is a cycle, and a record reached only by one is
+	// reached
+	hidden := file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }))
+	refuses(t, "a named record's unknown field and an unnameable record naming each other", hidden)
+	if retainLoad(hidden) { t.Fatal("the retaining read accepted a named record's unknown field and an unnameable record naming each other") }
+	refuses(t, "a named record's unknown field naming itself", file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) })))
+	refuses(t, "two named records naming each other through an unknown field", file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, field(fNext), 3) }), node(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) })))
+	hiddenReach := file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), stranger(&ids, func(w *TableWriter) {}))
+	accepts(t, "an unnameable record reached only by a named record's unknown field", hiddenReach)
+	if !retainLoad(hiddenReach) { t.Fatal("the retaining read refused an unnameable record reached only by a named record's unknown field") }
+	accepts(t, "a named record reached only by a named record's unknown field", file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), node(&ids, func(w *TableWriter) {})))
+	accepts(t, "records reached only by the root's unknown fields", file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2); ptr(w, unknownField+1, 3) },
+		node(&ids, func(w *TableWriter) {}), stranger(&ids, func(w *TableWriter) {})))
+	refuses(t, "a root's unknown field naming a cycle", file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, field(fNext), 3) }), node(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) })))
+
 	// (c) many unreferenced records of unnameable types are all damage
 	var many []record
 	many = append(many, leaf(&ids, 3))
