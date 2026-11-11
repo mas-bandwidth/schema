@@ -184,6 +184,13 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
+	# THE FORM-1 COPY OF R1 FOR THE FRAMING BATTERY (docs/LAYERS/1-framing.md):
+	# a declared fixed root's <T>Load refuses form 1 (docs/SPEC-TABLES.md §3.4),
+	# so the driver reads the framing vectors through the same declaration with
+	# Cfg's class variable, exactly as the oracle does.
+	sed 's/^fixed table /table /' test/tables/R1.schema > build/tables-generated-go/r1var.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/r1var build/tables-generated-go/r1var.schema
+	$(call go_table_module,r1var,tblr1var)
 	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
 	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
