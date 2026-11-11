@@ -4775,9 +4775,8 @@ rbuf.set(buf.subarray(0, bytes));                       // (copy exactly-sized r
 const ok = ReadShipCreateFlat(new DataView(rbuf.buffer), bytes * 8, out);
 ```
 
-Reads validate in every mode; writes fork checked/production once at module
-load on `NODE_ENV` (bundlers tree-shake the checked writer out of production
-bundles).
+Reads validate in every mode; writers check in every build. The flat tier
+emits one writer per type and does not select a variant with `NODE_ENV`.
 
 The **runtime tier** (`Wire.js` + [serialize.js](https://github.com/mas-bandwidth/serialize.js)
 streams) is the diagnostic and reference surface: sticky latched errors that
