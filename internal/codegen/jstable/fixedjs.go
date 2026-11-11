@@ -368,41 +368,42 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
-// fixedFieldNeedsValueCheck covers finite floats and required scalar ranges,
-// here or anywhere below it (a struct by value, a union arm, an array).
+// fixedFieldNeedsValueCheck covers every field whose VALUE the fixed writer
+// must hold to its declaration before the first byte (docs/SPEC.md §5.1 rows
+// 1-8): a ranged or bits-bounded scalar, an enum ordinal, a union tag, a
+// counted array's count, a text's used length and content, and a nested record.
+// A plain bool carries none of those rows and, being a JavaScript boolean in
+// its own slot, has no storage type to refuse either.
 func fixedFieldNeedsValueCheck(f *ir.Field) bool {
 	if f == nil {
 		return false
 	}
-	if fixedIsFloat(f.Type) || (f.Required && f.HasIntRange) {
+	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 		return true
 	}
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return slices.ContainsFunc(r.Fields, fixedFieldNeedsValueCheck)
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if fixedFieldNeedsValueCheck(v.F) {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	return f.Type.Kind != ir.TBool
 }
 
-// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S FINITE CHECK
-// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
-// same rule as packets"): false when any float the record would carry is a
-// NaN or an infinity, or a required scalar is outside its declared range, so the
-// save refuses (-1) before it writes a byte. Only a type that holds a float
-// or a required range gets one; other roots have nothing to check.
+// fixedStructNeedsValueCheck is the question <T>FixedCheckBody asks of a
+// record before it is emitted: false when every field is a plain bool, so the
+// zero-cost rule leaves the body out.
+func fixedStructNeedsValueCheck(st *ir.Struct) bool {
+	return st != nil && slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
+}
+
+// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S PREFLIGHT
+// (docs/SPEC.md §5.1; docs/SPEC-TABLES.md §3.3, §3.4): false when any field,
+// array element, nested record or arm payload holds a value the declaration
+// does not admit, so the save refuses (-1) before it writes a byte. The count
+// and length rows are the every-build STORAGE guards: a count past the array's
+// slots or a length past the field's bytes would index past the storage it
+// describes, so they come first, before any element or byte is touched.
 func (g *fixedGen) emitCheckBody(st *ir.Struct) {
-	if !slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck) {
+	if !fixedStructNeedsValueCheck(st) {
 		return
 	}
-	g.pf("// %s's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).\n", st.Name)
+	g.pf("// %s's writer preflight: every value the declaration does not admit is\n", st.Name)
+	g.pf("// refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).\n")
 	g.pf("export function %sFixedCheckBody(value) {\n", st.Name)
 	for _, f := range st.Fields {
 		if !fixedFieldNeedsValueCheck(f) {
@@ -422,16 +423,56 @@ func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 
 func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	name := js.MemberName(f.Name)
+	expr := val + "." + name
 	switch {
 	case f.KeyEnum != "":
-		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
+		g.emitCheckValueArray(expr, ind)
+		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), expr, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
+		g.emitCheckValueArray(expr, ind)
+		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), expr, ind)
 	case f.Array == ir.ArrayCounted:
-		g.emitCheckValueLoop(f, fmt.Sprintf("%s.%sCount", val, name), val+"."+name, ind)
+		g.emitCheckValueArray(expr, ind)
+		count := expr + "Count"
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+			ind, count, count, count, count, f.ArrayBound)
+		g.emitCheckValueLoop(f, count, expr, ind)
+	case f.Type.Kind == ir.TString:
+		g.emitCheckValueText(f, expr, ind)
+	case f.Type.Kind == ir.TBytes:
+		g.emitCheckValueBytes(f, expr, ind)
 	default:
-		g.emitCheckValueElement(f, val+"."+name, ind)
+		g.emitCheckValueElement(f, expr, ind)
 	}
+}
+
+// emitCheckValueArray is the storage-type guard a fixed array or a text field
+// owes an untyped caller: a value that is not the array the module indexes is
+// refused, never indexed as if it were one.
+func (g *fixedGen) emitCheckValueArray(expr, ind string) {
+	g.pf("%sif (!Array.isArray(%s) && !(%s instanceof Uint8Array)) { return false; }\n", ind, expr, expr)
+}
+
+func (g *fixedGen) emitCheckValueText(f *ir.Field, expr, ind string) {
+	if !g.emitCheckValueBytes(f, expr, ind) {
+		return
+	}
+	g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, new DataView(%s.buffer, %s.byteOffset, %s.byteLength), 0, %sLength)) { return false; }\n",
+		ind, expr, expr, expr, expr)
+}
+
+// emitCheckValueBytes refuses a used length outside 0..N, a value that is not
+// the Uint8Array the module copies from, and a Uint8Array whose own storage is
+// shorter than the used length it names: the writer may only read the units
+// the buffer actually holds. It answers whether the caller can then read the
+// used units (a text has one more content rule to hold).
+func (g *fixedGen) emitCheckValueBytes(f *ir.Field, expr, ind string) bool {
+	g.pf("%sif (!(%s instanceof Uint8Array)) { return false; }\n", ind, expr)
+	length := expr + "Length"
+	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+		ind, length, length, length, length, f.Type.Size)
+	g.pf("%sif (%s.length < %s) { return false; }\n", ind, expr, length)
+	return true
 }
 
 func (g *fixedGen) emitCheckValueLoop(f *ir.Field, count, expr, ind string) {
@@ -442,38 +483,78 @@ func (g *fixedGen) emitCheckValueLoop(f *ir.Field, count, expr, ind string) {
 }
 
 func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
-	if f.Required {
-		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
-		} else if lo, hi, ok := ir.TableRawRange(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, fixedIsBig(f.Type)), expr, jsIntLit(hi, fixedIsBig(f.Type)))
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%sif (%s === null || typeof %s !== \"object\") { return false; }\n", ind, expr, expr)
+			if fixedStructNeedsValueCheck(r) {
+				g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
+			}
+			return
+		case *ir.Union:
+			g.pf("%sif (%s === null || typeof %s !== \"object\") { return false; }\n", ind, expr, expr)
+			g.pf("%sif (!Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d) { return false; }\n",
+				ind, expr, expr, expr, len(r.Variants))
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			for i, v := range r.Variants {
+				if v.F == nil || !fixedFieldNeedsValueCheck(v.F) {
+					continue
+				}
+				g.pf("%s  case %d: {\n", ind, i+1)
+				g.emitCheckValuePayload(v.F, expr, ind+"    ")
+				g.pf("%s    break;\n%s  }\n", ind, ind)
+			}
+			g.pf("%s  default: break;\n%s}\n", ind, ind)
+			return
+		case *ir.Enum:
+			g.pf("%sif (!Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+				ind, expr, expr, expr, r.Max)
+			return
+		case *ir.Flags:
+			g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+			return
 		}
+		return
 	}
 	switch f.Type.Kind {
+	case ir.TBool:
+		return
 	case ir.TFloat32:
-		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) { return false; }\n",
+			ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		}
 		return
 	case ir.TFloat64:
-		g.pf("%sif (!Number.isFinite(%s)) { return false; }\n", ind, expr)
-		return
-	}
-	if f.Type.Kind != ir.TNamed {
-		return
-	}
-	switch r := f.Type.Ref.(type) {
-	case *ir.Struct:
-		g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
-	case *ir.Union:
-		g.pf("%sswitch (%s.type) {\n", ind, expr)
-		for i, v := range r.Variants {
-			if !fixedFieldNeedsValueCheck(v.F) {
-				continue
-			}
-			g.pf("%s  case %d: {\n", ind, i+1)
-			g.emitCheckValuePayload(v.F, expr, ind+"    ")
-			g.pf("%s    break;\n%s  }\n", ind, ind)
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) { return false; }\n",
+			ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
 		}
-		g.pf("%s  default: break;\n%s}\n", ind, ind)
+		return
+	}
+	asBig := fixedIsBig(f.Type)
+	if asBig {
+		g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+	} else {
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
+	}
+	// THE WRITER CHECKS BOTH DECLARED ENDS, never the reader's elision: a
+	// bound sitting on the storage width's own limit is still a bound the
+	// caller can cross, because the caller's value was never loaded through
+	// that width. Writing it would wrap the value the declaration refuses.
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+	}
+	if f.Type.Kind == ir.TBits {
+		// a bits slot is unsigned at EVERY width: an N-bit value is 0..2^N-1,
+		// so a negative value is no more admissible than one past the top, and
+		// a width that fills its storage is no exception.
+		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n",
+			ind, expr, jsIntLit(big.NewInt(0), asBig), expr, jsIntLit(maxv, asBig))
 	}
 }
 
