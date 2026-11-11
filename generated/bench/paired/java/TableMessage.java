@@ -129,6 +129,12 @@ public final class TableMessage {
         public long at;
         public boolean err;
 
+        // THE IDS ONE BODY HAS CARRIED, in a reusable stack so a nested body
+        // takes its own region and a body allocates nothing (docs/SPEC-TABLES.md
+        // §4, §5).
+        private long[] seenIds = new long[64];
+        private int seenUsed;
+
         public Reader(
                 byte[] buf, int startByte, TableVocabulary vocab, TableVocabulary.Report report) {
             this.buf = buf;
@@ -136,6 +142,27 @@ public final class TableMessage {
             this.vocab = vocab;
             this.report = report;
             this.at = (long) startByte << 3;
+        }
+
+        int seenMark() {
+            return seenUsed;
+        }
+
+        void seenRollback(int mark) {
+            seenUsed = mark;
+        }
+
+        boolean seenAdd(int mark, long id) {
+            for (int i = mark; i < seenUsed; i++) {
+                if (seenIds[i] == id) {
+                    return false;
+                }
+            }
+            if (seenUsed == seenIds.length) {
+                seenIds = java.util.Arrays.copyOf(seenIds, seenIds.length * 2);
+            }
+            seenIds[seenUsed++] = id;
+            return true;
         }
 
         public long get(int n) {
