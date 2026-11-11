@@ -161,11 +161,10 @@ const (
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the reference's one refusal
-	// enum: every fixed-form refusal name is a TableRefuseReason member, appended
-	// after TableRefuseBlobShared so no existing value renumbers, in §6.5's
-	// recommended table order so a port that follows it spells them alike; the
-	// verdict, not the names, is the contract. Each member's Error() is its
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
+	// fixed-form refusal name is a TableRefuseReason member, appended after
+	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
+	// names, order and spelling agree in all ports. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
 	// for a fixed load that refused. The form-byte refusals keep answering
@@ -1056,8 +1055,8 @@ func TableFixedCopyRun(d, s []byte, n uint32) {
 // side to native on the destination side. On a little-endian host the two
 // orders are one and the conversion is the byte copy it always was.
 // tableFixedPutNative lands v in storage at the given width; a width past
-// eight (a 128-bit lane) takes the low word native and zeroes the rest,
-// which is what the widen that uses it always wrote past its value.
+// eight (a 128-bit lane) takes the low word native and zeroes the rest. A
+// widen whose source is negative writes the high word's sign itself.
 func TableFixedPutNative(b []byte, v uint64, size uint32) {
 	if size > 8 {
 		binary.NativeEndian.PutUint64(b, v)
@@ -1209,6 +1208,13 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				}
 			}
 			TableFixedPutNative(dst[p.Dst:], raw, uint32(p.DstSize))
+			// A SIXTEEN-BYTE DESTINATION takes the source's sign through its
+			// high word: all ones for a negative signed value, zero otherwise.
+			if p.DstSize > 8 && p.Sign != 0 && int64(raw) < 0 {
+				for i := p.Dst + 8; i < p.Dst+uint32(p.DstSize); i++ {
+					dst[i] = 0xFF
+				}
+			}
 			report.Widened++
 		case TableFixedWidenF:
 			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
@@ -2011,4 +2017,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x27fbacbfc41852e1
+const Version uint64 = 0xc60521112fb501a8

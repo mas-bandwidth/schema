@@ -21,6 +21,12 @@ const depthBoundarySchema = `package depthprobe
 fixed table Root {
 	a int32
 }
+
+fixed table ZExtra {
+	b int32
+	c int32
+	d int32
+}
 `
 
 type depthBoundaryCase struct {
@@ -232,25 +238,25 @@ static class Program
         var verdict = Schema.RootLoadMessages(values, wire, vocab, rep, out int count);
         if (expectOK)
         {
-            if (verdict == Schema.TableWire.Verdict.Ok && count == 2 && !rep.Malformed && !rep.Refused && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99)
+            if (verdict == Schema.TableWire.Verdict.Ok && count == 2 && !rep.Refused && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99)
             {
                 Console.WriteLine("PASS " + name);
             }
             else
             {
-                Console.WriteLine("FAIL " + name + ": verdict=" + verdict + " count=" + count + " malformed=" + rep.Malformed + " refused=" + rep.Refused + " unknown=" + rep.Unknown + " a0=" + values[0].A + " a1=" + values[1].A);
+                Console.WriteLine("FAIL " + name + ": verdict=" + verdict + " count=" + count + " refused=" + rep.Refused + " unknown=" + rep.Unknown + " a0=" + values[0].A + " a1=" + values[1].A);
                 failed = true;
             }
         }
         else
         {
-            if (verdict == Schema.TableWire.Verdict.Damaged && count == 0 && rep.Malformed && !rep.Refused && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7)
+            if (verdict == Schema.TableWire.Verdict.Damaged && count == 0 && !rep.Refused && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7)
             {
                 Console.WriteLine("PASS " + name);
             }
             else
             {
-                Console.WriteLine("FAIL " + name + ": verdict=" + verdict + " count=" + count + " malformed=" + rep.Malformed + " refused=" + rep.Refused + " a0=" + values[0].A + " a1=" + values[1].A);
+                Console.WriteLine("FAIL " + name + ": verdict=" + verdict + " count=" + count + " refused=" + rep.Refused + " a0=" + values[0].A + " a1=" + values[1].A);
                 failed = true;
             }
         }

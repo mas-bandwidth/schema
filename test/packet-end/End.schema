@@ -1,0 +1,8 @@
+// The packet-end conformance corpus: one type whose only field is a
+// three-bit value (bits_required(0, 5) == 3).
+package packetend
+
+type End
+{
+    value uint8 | max = 5
+}
