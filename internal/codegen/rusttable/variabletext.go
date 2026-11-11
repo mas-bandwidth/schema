@@ -848,9 +848,12 @@ impl<'a> Jr<'a> {
                          }
                      }
                     self.space();
-                    if self.p < self.b.len() && self.b[self.p] == b':' {
-                        self.p += 1;
+                    if self.p >= self.b.len() || self.b[self.p] != b':' {
+                        self.damaged = true;
+                        self.depth -= 1;
+                        return;
                     }
+                    self.p += 1;
                     // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
                     // label followed by a field keeps its label as Dropped, so a
                     // reference to it reads null; an &node alone is a reference
@@ -873,8 +876,17 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.space();
-                    if self.p < self.b.len() && self.b[self.p] == b',' {
+                    if self.p >= self.b.len() {
+                        self.damaged = true;
+                        self.depth -= 1;
+                        return;
+                    }
+                    if self.b[self.p] == b',' {
                         self.p += 1;
+                    } else if self.b[self.p] != b'}' {
+                        self.damaged = true;
+                        self.depth -= 1;
+                        return;
                     }
                 }
             }
@@ -903,8 +915,17 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.space();
-                    if self.p < self.b.len() && self.b[self.p] == b',' {
+                    if self.p >= self.b.len() {
+                        self.damaged = true;
+                        self.depth -= 1;
+                        return;
+                    }
+                    if self.b[self.p] == b',' {
                         self.p += 1;
+                    } else if self.b[self.p] != b']' {
+                        self.damaged = true;
+                        self.depth -= 1;
+                        return;
                     }
                 }
             }
