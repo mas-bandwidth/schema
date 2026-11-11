@@ -59,7 +59,7 @@ func TestRustTextTotalNative(t *testing.T) {
 	var b strings.Builder
 	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();assert!(totals_from_json(%q,&mut r).is_none(),"JSON streaming total refuses");assert!(r.damaged);
 let wire=vec!%s;let mut r=TableReport::default();assert_eq!(totals_load(&wire,&mut r).is_some(),%t,"wire past its total");
-let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r);assert_eq!(back.is_some(),%t,"retained wire past its total");if back.is_none(){assert!(store.bytes.is_empty()&&store.ids.is_empty(),"refusal retained state");}
+let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Vec::new() };let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r);assert_eq!(back.is_some(),%t,"retained wire past its total");if back.is_none(){assert!(store.bytes.is_empty()&&store.ids.is_empty(),"refusal retained state");}
 let mut r=TableReport::default();let v=totals_load(&expected,&mut r).expect("expected value");assert!(!r.damaged);assert_eq!(totals_save(&v),expected);
 `, rustByteVector(pin), input, rustByteVector(wire), wireOK, wireOK)
 	for _, big := range []bool{false, true} {
@@ -79,7 +79,7 @@ let mut r=TableReport::default();let v=totals_load(&expected,&mut r).expect("exp
 			one = "Some(" + one + ")"
 			two = "Some(" + two + ")"
 		}
-		fmt.Fprintf(&b, `{let mut bad=Totals::default();bad.%s=vec![Totals%sText{value:%s},Totals%sText{value:%s}];assert!(totals_save_checked(&bad).is_err());let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut report=TableReport::default();assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(||totals_save_retain(&bad,&mut store,&mut report))).is_err());assert!(totals_to_json_checked(&bad).is_none());for order in [1,2]{assert!(totals_cook_write(&bad,order).is_err());}}`, field, strings.ToUpper(field), one, strings.ToUpper(field), two)
+		fmt.Fprintf(&b, `{let mut bad=Totals::default();bad.%s=vec![Totals%sText{value:%s},Totals%sText{value:%s}];assert!(totals_save_checked(&bad).is_err());let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Vec::new() };let mut report=TableReport::default();assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(||totals_save_retain(&bad,&mut store,&mut report))).is_err());assert!(totals_to_json_checked(&bad).is_none());for order in [1,2]{assert!(totals_cook_write(&bad,order).is_err());}}`, field, strings.ToUpper(field), one, strings.ToUpper(field), two)
 	}
 	payload := append([]byte{12, 3, 5}, []byte("aaaaa")...)
 	payload = append(payload, 1, 'x', 1, 0)

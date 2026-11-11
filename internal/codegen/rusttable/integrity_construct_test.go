@@ -40,7 +40,7 @@ let value=root_load(&wire,&mut TableReport::default()).expect("sealed variable l
 assert_eq!(root_save(&value),wire);assert_eq!(root_save_checked(&value).unwrap(),wire);
 assert!(root_load_measure(&wire)>0);
 let text=root_to_json(&value);let back=root_from_json(&text,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);
-let mut store=TableRetain { bytes:Vec::with_capacity(4096), ids:Vec::with_capacity(64) };let mut report=TableReport::default();
+let mut store=TableRetain { bytes:Vec::with_capacity(4096), ids:Vec::with_capacity(64),nodes:Vec::new() };let mut report=TableReport::default();
 let back=root_load_retain(&wire,&mut store,&mut report).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut report),wire);
 for at in 1..wire.len(){let mut bad=wire.clone();bad[at]^=1;let mut r=TableReport::default();assert!(root_load(&bad,&mut r).is_none());assert!(r.damaged);assert_eq!(r.reason.name(),"integrity_mismatch");assert_eq!(r.unknown,0);assert_eq!(root_load_measure(&bad),-1);}
 assert!(plain_root_load(&wire,&mut TableReport::default()).is_none());

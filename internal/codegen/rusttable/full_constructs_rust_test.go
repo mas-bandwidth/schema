@@ -46,7 +46,7 @@ func TestRustFullConstructWitnessNative(t *testing.T) {
 			t.Fatal(e)
 		}
 		n := ir.RustSnake(root)
-		fmt.Fprintf(&b, `{let v=%s_from_json(%q,&mut TableReport::default()).unwrap();let pin=vec!%s;assert_eq!(%s_save_checked(&v).unwrap(),pin);assert_eq!(%s_to_json_checked(&v).unwrap().trim_end(),%q);let mut ret=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536)};let back=%s_load_retain(&pin,&mut ret,&mut TableReport::default()).unwrap();assert_eq!(%s_save_retain(&back,&mut ret,&mut TableReport::default()),pin);`, n, string(input), rustByteVector(pin), n, n, string(text), n, n)
+		fmt.Fprintf(&b, `{let v=%s_from_json(%q,&mut TableReport::default()).unwrap();let pin=vec!%s;assert_eq!(%s_save_checked(&v).unwrap(),pin);assert_eq!(%s_to_json_checked(&v).unwrap().trim_end(),%q);let mut ret=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536),nodes:Vec::new() };let back=%s_load_retain(&pin,&mut ret,&mut TableReport::default()).unwrap();assert_eq!(%s_save_retain(&back,&mut ret,&mut TableReport::default()),pin);`, n, string(input), rustByteVector(pin), n, n, string(text), n, n)
 		for _, big := range []bool{false, true} {
 			cook, e := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if e != nil {

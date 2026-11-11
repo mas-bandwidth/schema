@@ -121,7 +121,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
 
     // the retaining read: no value, and the store keeps nothing
     for (name, wire) in [("root", &FIXED[..]), ("graph", &VARIABLE[..])] {
-        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 12), ids: Vec::new() };
+        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 12), ids: Vec::new(), nodes: Vec::new() };
         let mut r = TableReport::default();
         let got = if name == "root" { root_load_retain(wire, &mut store, &mut r).is_some() } else { graph_load_retain(wire, &mut store, &mut r).is_some() };
         if got { bad.push(format!("{name} retain: load_retain handed back a value on damage")); }
@@ -142,7 +142,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     nan_wire.extend_from_slice(&KNOWN_IDS[3].to_le_bytes());
     nan_wire.extend_from_slice(&2u64.to_le_bytes());
     for name in ["root", "graph"] {
-        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 12), ids: Vec::new() };
+        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 12), ids: Vec::new(), nodes: Vec::new() };
         let mut r = TableReport::default();
         let got = if name == "root" { root_load_retain(&nan_wire, &mut store, &mut r).is_some() } else { graph_load_retain(&nan_wire, &mut store, &mut r).is_some() };
         if got { bad.push(format!("{name} retain late-NaN: load_retain handed back a value")); }

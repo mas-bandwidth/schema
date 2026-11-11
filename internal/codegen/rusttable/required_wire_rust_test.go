@@ -82,7 +82,7 @@ func TestRustRequiredWireReadNative(t *testing.T) {
 		fmt.Fprintf(&body, `{
 let wire=vec![%s];
 for retaining in [false,true] {
-let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::new()};
+let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::new(),nodes:Vec::new() };
 let mut report=TableReport::default();
 let value=if retaining {%s_load_retain(&wire,&mut store,&mut report)} else {%s_load(&wire,&mut report)};
 if value.is_some()!=%t || (value.is_none() && !(report.damaged || report.refused)) {

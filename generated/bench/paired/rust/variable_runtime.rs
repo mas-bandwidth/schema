@@ -6,7 +6,7 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 /// The VARIABLE FORM's form byte (docs/SPEC-TABLES.md §3): the one arm whose
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
@@ -1099,11 +1099,14 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
 /// bounded stores threaded through the retaining load and save. 'bytes' holds
 /// the retained records, 'ids' the retained ids' own list; both are the
 /// caller's, neither grows on demand, and a whole record that does not fit is
-/// dropped and counted once in the report's 'retain_lost'.
+/// dropped and counted once in the report's 'retain_lost'. 'nodes' holds the
+/// weak identity of every node whose records the store names, so a dropped
+/// node's records can never be saved into a later node that reuses its address.
 #[derive(Default)]
 pub struct TableRetain {
     pub bytes: Vec<u8>,
     pub ids: Vec<u64>,
+    pub nodes: Vec<(u64, Weak<dyn Any>)>,
 }
 
 /// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): a small stated constant,
@@ -1163,6 +1166,27 @@ pub fn retain_bind_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
         }
         at += len;
     }
+}
+
+/// retain_hold_node records a built node's identity beside the records its
+/// body retained (docs/SPEC-TABLES.md §6.6): the store keeps a weak handle, so
+/// the allocation lives while these records do and a later node cannot take its
+/// address. It runs after the node's build, when link resolution no longer needs
+/// the strong count to be one.
+pub fn retain_hold_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
+    let key = Rc::as_ptr(node) as *const () as usize as u64;
+    retain.nodes.push((key, Rc::downgrade(node)));
+}
+
+/// retain_node_live reports whether the node being saved is the one this store
+/// bound (docs/SPEC-TABLES.md §6.6): the key must match and the weak handle must
+/// still name it. A node the caller dropped leaves no live handle, so its records
+/// are never saved into a replacement.
+pub fn retain_node_live(retain: &TableRetain, node: &Rc<dyn Any>) -> bool {
+    let key = Rc::as_ptr(node) as *const () as usize as u64;
+    retain.nodes.iter().any(|(bound, weak)| {
+        *bound == key && weak.upgrade().is_some_and(|held| Rc::ptr_eq(&held, node))
+    })
 }
 
 /// ONE RETAINED RECORD is
