@@ -652,7 +652,10 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		w := int64(f.Type.Width)
 		storage := g.goFieldType(f.Type)
 		return flatPiece{
-			bits: w, guard: noGuard,
+			bits: w,
+			guard: func(ind string, idx int) {
+				g.emitBitsWidthGuard(f, name, ind)
+			},
 			emit: g.constEmit(bitsValue(storage, name), w, ""),
 			read: func(ind, src string) {
 				if storage == "uint64" {

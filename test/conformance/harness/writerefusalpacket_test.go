@@ -42,10 +42,10 @@ func TestWriteRefusalPacketSurface(t *testing.T) {
 }
 
 // writeRefusalPacketSchema carries one field per row §5.1 names: a ranged
-// scalar, an enum, a counted array, a string, a union, and a constant and a
-// reserved-range field whose only lawful value is the declared one. The real
-// const() and reserved() wire items ride beside them so the writer's own
-// constant and zero bits are exercised too.
+// scalar, a bits(N) value, an enum, a counted array, a string, a union, and a
+// constant and a reserved-range field whose only lawful value is the
+// declared one. The real const() and reserved() wire items ride beside them
+// so the writer's own constant and zero bits are exercised too.
 const writeRefusalPacketSchema = `package packetrefusal
 
 enum Grade
@@ -74,6 +74,7 @@ union Shot
 type PacketWriteRefusal
 {
     scalar         int32   | min = 0, max = 10
+    narrow         bits(7)
     grade          Grade
     window         [2..8]uint32
     text           string(8)
@@ -106,6 +107,8 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 		{"scalar_low", "refused", func(v *PacketWriteRefusal) { v.Scalar = -1 }},
 		{"scalar_at_max", "wrote", func(v *PacketWriteRefusal) { v.Scalar = 10 }},
 		{"scalar_at_min", "wrote", func(v *PacketWriteRefusal) { v.Scalar = 0 }},
+		{"bits_wide", "refused", func(v *PacketWriteRefusal) { v.Narrow = 200 }},
+		{"bits_at_max", "wrote", func(v *PacketWriteRefusal) { v.Narrow = 127 }},
 		{"enum_high", "refused", func(v *PacketWriteRefusal) { v.Grade = Grade(4) }},
 		{"enum_at_max", "wrote", func(v *PacketWriteRefusal) { v.Grade = GradeGold }},
 		{"union_tag_high", "refused", func(v *PacketWriteRefusal) { v.Shot.Type = ShotType(3) }},
