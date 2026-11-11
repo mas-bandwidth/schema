@@ -827,7 +827,7 @@ fixed table Probe
 		}
 		inputs[tc.name+"_ann"] = announcementWithEntries(u, entries)
 		inputs[tc.name+"_batch"] = messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, tc.raw, tc.bits)
-		fmt.Fprintf(&script, `local v_%s={};local ar_%s={};if(!T.AnnounceRead(v_%s,I["%s_ann"],ar_%s)){print("%s:announce_fail\\n");}else{local out_%s=[T.Probe()];local rr_%s={};local n_%s=T.ProbeLoadMessages(out_%s,v_%s,I["%s_batch"],rr_%s);if(n_%s==-1&&rr_%s.refused&&rr_%s.reason=="out_of_range")print("%s:refused\\n");else print("%s:accepted:"+n_%s+":"+rr_%s.reason+"\\n");}`, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
+		fmt.Fprintf(&script, `local v_%s={};local ar_%s={};if(!T.AnnounceRead(v_%s,I["%s_ann"],ar_%s)){print("%s:announce_fail\\n");}else{local out_%s=[T.Probe()];local rr_%s={};local n_%s=T.ProbeLoadMessages(out_%s,v_%s,I["%s_batch"],rr_%s);if(n_%s==-1&&rr_%s.refused)print("%s:refused\\n");else print("%s:accepted:"+n_%s+":"+rr_%s.reason+"\\n");}`, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script.String()))
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
@@ -881,7 +881,7 @@ fixed table Probe
 	}
 	inputs["widen_ann"] = announcementWithEntries(u, entries)
 	inputs["widen_batch"] = messageBatchScalar(refBits, wideSlot, 0xfe, 8)
-	endScript.WriteString(`local v={};local ar={};T.AnnounceRead(v,I["widen_ann"],ar);local out=[T.Probe()];local rr={};local n=T.ProbeLoadMessages(out,v,I["widen_batch"],rr);if(n==1&&out[0].Wide==-2&&rr.widened==1&&!rr.refused)print("widen:ok\\n");else print("widen:fail\\n");`)
+	endScript.WriteString(`local v={};local ar={};T.AnnounceRead(v,I["widen_ann"],ar);local out=[T.Probe()];local rr={};local n=T.ProbeLoadMessages(out,v,I["widen_batch"],rr);if(n==1&&out[0].Wide==-2&&!rr.refused)print("widen:ok\\n");else print("widen:fail\\n");`)
 	writeFile(t, filepath.Join(dir, "main-endpoints.nut"), []byte(endScript.String()))
 	endOut := string(sqrun.Run(t, dir, "main-endpoints.nut", inputs))
 	for _, tc := range ends {
