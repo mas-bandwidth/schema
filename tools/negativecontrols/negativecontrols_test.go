@@ -1364,11 +1364,26 @@ func TestGooseControlsInstallThePin(t *testing.T) {
 
 	// The negative control: the same check over an in-test copy of the verdict
 	// target with the old prerequisite must fail, naming the target and the
-	// bare dependency.
+	// bare dependency. The copy is the real rule parsed above, so a recipe or
+	// prerequisite the target grows later moves with the plant instead of
+	// drifting away from it.
 	const negTarget = "tables-goose-wire-fuzz-verdict-negative-control"
-	const oldVerdict = ".PHONY: " + negTarget + "\n" +
-		negTarget + ": toolchain-goose\n" +
-		"\tSCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'\n"
+	real, ok := rules[negTarget]
+	if !ok {
+		t.Fatalf("PLANTED: %s is in the plan but make/goose*.mk does not define it", negTarget)
+	}
+	oldPrereqs := slices.Clone(real.prereqs)
+	planted := 0
+	for i, p := range oldPrereqs {
+		if p == "goose-toolchain-ready" {
+			oldPrereqs[i] = "toolchain-goose"
+			planted++
+		}
+	}
+	if planted != 1 {
+		t.Fatalf("PLANTED: %s carries %d goose-toolchain-ready prerequisites, want exactly one to replace with the old toolchain-goose", negTarget, planted)
+	}
+	oldVerdict := negTarget + ": " + strings.Join(oldPrereqs, " ") + "\n" + real.recipe
 	negRules, err := gooseRules(oldVerdict)
 	if err != nil {
 		t.Fatal(err)
