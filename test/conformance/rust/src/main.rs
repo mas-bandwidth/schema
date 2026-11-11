@@ -1468,13 +1468,13 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
         };
         let mut capacity = 1 << 20;
         if f[5] == "short" {
-            let mut probe = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+            let mut probe = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
             let mut report = TableReport::default();
             let _ = node_load_retain(&wire, &mut probe, &mut report)
                 .unwrap_or_else(|| fail(&format!("{}: capacity probe refused", f[1])));
             capacity = probe.bytes.len().saturating_sub(1);
         }
-        let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+        let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
         let mut report = TableReport::default();
         let value = node_load_retain(&wire, &mut store, &mut report)
             .unwrap_or_else(|| fail(&format!("{}: retaining load refused", f[1])));

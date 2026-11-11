@@ -16,7 +16,7 @@ func TestRustRequiredRangeWritersNative(t *testing.T) {
 	}
 	u := unitFrom(t, string(source))
 	probe := `fn good()->R {R{ints:vec![5],wide:vec![9007199254740993,9007199254740993],keyed:vec![5,5],mask:5}}
- fn refuse(v:&R){assert!(r_save_checked(v).is_err());assert!(r_to_json_checked(v).is_none());for order in [1,2]{assert!(r_cook_write(v,order).is_err());}let mut ret=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(||r_save_retain(v,&mut ret,&mut TableReport::default()))).is_err());}
+ fn refuse(v:&R){assert!(r_save_checked(v).is_err());assert!(r_to_json_checked(v).is_none());for order in [1,2]{assert!(r_cook_write(v,order).is_err());}let mut ret=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(||r_save_retain(v,&mut ret,&mut TableReport::default()))).is_err());}
  {let v=good();assert!(r_save_checked(&v).is_ok());assert!(r_cook_write(&v,1).is_ok());let _=r_to_json(&v);}
  {let mut v=good();v.ints[0]=4;refuse(&v);}
  {let mut v=good();v.wide[0]=9007199254740992;refuse(&v);}
