@@ -127,6 +127,14 @@
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
     },
     {
+      "id": "json-read-closed",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: the JSON read refuses a schema name over 255 bytes, counts depth over every container, and is handed bytes"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
+    },
+    {
       "id": "conformance-is-read-then-write",
       "date": "2026-11-03",
       "quotes": [
