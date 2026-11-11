@@ -13,6 +13,7 @@ import (
 // back the first occurrence's list or anything else it decoded: the region read
 // answers no root and the builder read answers false, each reporting the damage.
 func TestRepeatedArrayTailDefaults(t *testing.T) {
+	t.Parallel()
 	paths, err := filepath.Glob("../tables/arms/*.schema")
 	if err != nil {
 		t.Fatal(err)

@@ -628,6 +628,7 @@ func TestPointerGenerationDeterministic(t *testing.T) {
 // puts TableReset in expression position (TableReset.A), where it resolves to
 // the method group rather than the type — CS0119.
 func TestTableRuntimeNamesAreClaimed(t *testing.T) {
+	t.Parallel()
 	// Exercise the native builder as well as the fixed runtime. A fixed-only
 	// source cannot keep the arena and mutable collection names honest.
 	source := runtimeSrc + `
@@ -1025,6 +1026,7 @@ fixed table ShipConfig
 // §6.6): the last depth the cap admits rides and one past it is dropped. The C
 // target pins the same pair in TestCTableRetainFramedDepth.
 func TestCppTableRetainFramedDepth(t *testing.T) {
+	t.Parallel()
 	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
 	files, err := New().Generate(old, "cpp", Options{})
 	if err != nil {

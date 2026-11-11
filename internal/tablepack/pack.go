@@ -359,14 +359,25 @@ func (p *packer) refuseZeroByteText(inst *tabletext.Instance) {
 	}
 }
 
+// zeroByteWalk is the state of one zero-byte walk: the shared nodes already
+// walked, so a DAG of `*T` pointers is walked once per node instead of once
+// per reference, and a count of the distinct nodes entered. The count is
+// what pins the bound: a chain of nodes that each name the next one twice
+// must enter each node once, not exponentially many times.
+type zeroByteWalk struct {
+	visited map[*tabletext.Instance]bool
+	nodes   int
+}
+
 // zeroByteTextPath walks inst through its by-value storage and returns the
 // dot-joined JSON-key path of the first narrow text that holds a U+0000, or ""
 // when none does.
 func zeroByteTextPath(inst *tabletext.Instance) string {
-	return zeroByteInstancePath(inst, "")
+	w := &zeroByteWalk{visited: map[*tabletext.Instance]bool{}}
+	return w.instancePath(inst, "")
 }
 
-func zeroByteInstancePath(inst *tabletext.Instance, prefix string) string {
+func (w *zeroByteWalk) instancePath(inst *tabletext.Instance, prefix string) string {
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
 		p := prefix
@@ -374,14 +385,14 @@ func zeroByteInstancePath(inst *tabletext.Instance, prefix string) string {
 			p += "."
 		}
 		p += ir.TableFieldJsonKey(fv.Def)
-		if s := zeroByteFieldPath(fv, p); s != "" {
+		if s := w.fieldPath(fv, p); s != "" {
 			return s
 		}
 	}
 	return ""
 }
 
-func zeroByteFieldPath(fv *tabletext.Field, path string) string {
+func (w *zeroByteWalk) fieldPath(fv *tabletext.Field, path string) string {
 	f := fv.Def
 	switch {
 	case f.IsMap():
@@ -390,27 +401,27 @@ func zeroByteFieldPath(fv *tabletext.Field, path string) string {
 			if entry == nil {
 				continue
 			}
-			if s := zeroByteInstancePath(entry, path); s != "" {
+			if s := w.instancePath(entry, path); s != "" {
 				return s
 			}
 		}
 	case f.Array != ir.ArrayNone:
 		for j := range fv.Elems {
-			if s := zeroByteCellPath(&fv.Elems[j], f, fmt.Sprintf("%s[%d]", path, j)); s != "" {
+			if s := w.cellPath(&fv.Elems[j], f, fmt.Sprintf("%s[%d]", path, j)); s != "" {
 				return s
 			}
 		}
 	default:
-		if s := zeroByteCellPath(&fv.Cell, f, path); s != "" {
+		if s := w.cellPath(&fv.Cell, f, path); s != "" {
 			return s
 		}
 	}
 	return ""
 }
 
-func zeroByteCellPath(cell *tabletext.Cell, f *ir.Field, path string) string {
+func (w *zeroByteWalk) cellPath(cell *tabletext.Cell, f *ir.Field, path string) string {
 	if cell.Arm != nil {
-		if s := zeroByteFieldPath(cell.Arm, path); s != "" {
+		if s := w.fieldPath(cell.Arm, path); s != "" {
 			return s
 		}
 	}
@@ -427,12 +438,14 @@ func zeroByteCellPath(cell *tabletext.Cell, f *ir.Field, path string) string {
 		}
 	case f.Type.Kind == ir.TNamed:
 		if cell.Tab != nil {
-			if s := zeroByteInstancePath(cell.Tab, path); s != "" {
+			if s := w.instancePath(cell.Tab, path); s != "" {
 				return s
 			}
 		}
-		if cell.Node != nil {
-			if s := zeroByteInstancePath(cell.Node, path); s != "" {
+		if cell.Node != nil && !w.visited[cell.Node] {
+			w.visited[cell.Node] = true
+			w.nodes++
+			if s := w.instancePath(cell.Node, path); s != "" {
 				return s
 			}
 		}

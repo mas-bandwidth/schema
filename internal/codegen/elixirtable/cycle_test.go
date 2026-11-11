@@ -21,6 +21,7 @@ import (
 // actual BEAM term sharing along one path avoids expanding those paths in
 // the test itself. There is no wall-clock cutoff on the native probe.
 func TestCyclicWireIsDamageElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
@@ -285,6 +286,7 @@ table Node
 // changes only its final referent from node 4 to node 2 to close a cycle.
 // The false guard is deliberately decoded with its stored pointer intact.
 func TestCycleSlotKindsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	for _, kind := range []string{"list", "map", "guard", "array", "union"} {
