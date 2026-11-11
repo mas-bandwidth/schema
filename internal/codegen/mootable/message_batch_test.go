@@ -2,7 +2,6 @@ package mootable_test
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -305,9 +304,10 @@ print("fixed-only-ok")
 
 // TestMooMessageRepeatedFieldIdNegativeControl: a field id twice in one body
 // is damage (docs/SPEC-TABLES.md §3.3; docs/plans/strict-only.md decision 5).
-// The batch below is the backend batch with one byte flipped so a body names
-// a field twice; the Go engine refuses it, the emitted reader refuses it, and
-// the reader with the repeated-id check patched out accepts it.
+// The batch is the engine's own batch of one LoginRequest with its first field
+// written a second time before the terminator (repeatedFieldBatch), so it
+// follows the current vocabulary; the Go engine refuses it, the emitted reader
+// refuses it, and the reader with the repeated-id check patched out accepts it.
 func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
@@ -317,16 +317,13 @@ func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 		t.Fatal(g.err)
 	}
 	conn := readRoot(t, "testdata/wire/tables/backend_conn.bin")
-	wire, err := hex.DecodeString("02020419000000f19701000000841900000000")
-	if err != nil {
-		t.Fatal(err)
-	}
 	m := tabletext.NewModel(g.unit)
 	var vocab tablewire.Vocabulary
 	var arep tabletext.Report
 	if err := vocab.AnnounceRead(conn, &arep); err != nil {
 		t.Fatal(err)
 	}
+	wire := repeatedFieldBatch(t, m, &vocab, "LoginRequest", `{"player_id":7,"client_build":3}`)
 	if want := goAnswer(m, &vocab, "LoginRequest", 256, wire); want != "refuse" {
 		t.Fatalf("the Go engine does not refuse the repeated id: %s", want)
 	}
@@ -345,4 +342,48 @@ func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	if _, got, _ := strings.Cut(g.run(t, damageProbe(g, "LoginRequest", 256), inputs), " "); got == "refuse" {
 		t.Fatal("the reader with the repeated-id check patched out still refuses")
 	}
+}
+
+// repeatedFieldBatch is the engine's batch of one root value (text) with the
+// body's first field written again before the terminator: one body that
+// names a field twice, spelled under the unit's current vocabulary.
+func repeatedFieldBatch(t *testing.T, m *tabletext.Model, vocab *tablewire.Vocabulary, rootName, text string) []byte {
+	t.Helper()
+	st := m.Lookup(rootName)
+	inst := m.New(st)
+	var r tabletext.Report
+	if !m.Read(inst, []byte(text), &r) {
+		t.Fatalf("the engine refuses the text: %+v", r)
+	}
+	batch, err := tablewire.EncodeMessage(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := *vocab
+	spots := tablewire.MessageSpots(m, st, batch, &v)
+	if len(spots) < 3 || spots[0].Value == 0 || spots[len(spots)-1].Value != 0 {
+		t.Fatalf("the batch is not one body of at least two fields: %+v", spots)
+	}
+	stream := batch[1:]
+	bit := func(i int) byte { return (stream[i/8] >> uint(i%8)) & 1 }
+	var out []byte
+	n := 0
+	put := func(b byte) {
+		if n%8 == 0 {
+			out = append(out, 0)
+		}
+		out[n/8] |= b << uint(n%8)
+		n++
+	}
+	end := spots[len(spots)-1]
+	for i := 0; i < end.Off; i++ {
+		put(bit(i))
+	}
+	for i := spots[0].Off; i < spots[1].Off; i++ {
+		put(bit(i))
+	}
+	for range end.Width {
+		put(0)
+	}
+	return append([]byte{batch[0]}, out...)
 }

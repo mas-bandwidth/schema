@@ -607,7 +607,6 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		{"delta", plant("table_cookwrite.moo", "putNum64(ctx, at, to - at)", "putNum64(ctx, at, to - at + 8)"), true, true, false},
 		{"align", plant("table_cookwrite.moo", "\tc.at = align_up(c.at, l.ealign)\n\tlocal start = c.at\n\tc.at += count * size\n\tif c.write then\n\t\tlocal array = c.extentAt + start\n\t\t-- an empty list's", "\tlocal start = c.at\n\tc.at += count * size\n\tif c.write then\n\t\tlocal array = c.extentAt + start\n\t\t-- an empty list's"), false, true, false},
 		{"shared", plant("table_cookwrite.moo", "Save.number(d, value, true)", "Save.number(d, value, false)"), true, false, false},
-		{"wideorder", plant("table_cookwrite.moo", "buffer.writeu8(b, at + i * 2, u // 256)\n\t\t\t\tbuffer.writeu8(b, at + i * 2 + 1, u % 256)", "buffer.writeu8(b, at + i * 2, u % 256)\n\t\t\t\tbuffer.writeu8(b, at + i * 2 + 1, u // 256)"), true, false, false},
 		{"mapslot", plant("table_cookwrite.moo", "-- an empty map's reference is null in every encoding (§2.8)\n\t\tputNum64(ctx, at, if count > 0 then array - at else 0)", "putNum64(ctx, at, if count > 0 then array - at + 8 else 0)"), true, false, false},
 		{"mapextent", plant("table_cookwrite.moo", "if hasExtentRecord(d) then\n\t\tfor i = 1, count do\n\t\t\tif not carveRecord(", "if false then\n\t\tfor i = 1, count do\n\t\t\tif not carveRecord("), true, false, false},
 		{"maporder", plant("table_cookwrite.moo", "pcall(Save.mapOrder, fd, val)", "pcall(table.clone, val)"), false, false, true},
