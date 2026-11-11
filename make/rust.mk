@@ -1847,13 +1847,13 @@ define rust_wref_control
 endef
 
 .PHONY: conformance-negative-control-rust-write-refusal
-conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-control,tabledemo/src/tables_table.rs,if !v.damage.is_finite() { table_float_refuse(ids, "WeaponConfig.damage"); },/* SABOTAGED: a non-finite float writes */,write-refusal,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-fixed
-conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
-	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true,write-refusal-fixed,wire)
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
+	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true /* SABOTAGED: no fixed length check */,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-message
-conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,if value.sku_length < 0 || value.sku_length > 32 { return false; },if false { return false; },write-refusal-message,message)
