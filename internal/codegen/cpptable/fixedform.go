@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -557,7 +558,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// run after the guarded payload it replaces: the entries that are nearly\n")
 	g.pf("// all of a plan never test a guard at all.\n")
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
-	for _, e := range plan {
+	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
+	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
+	// width (ccommon.FixedElemPlan, the same split the C leg lays down). The
+	// split count is the new guarded split.
+	emitPlan, emitGuarded := ccommon.FixedElemPlan(entries, plan, guarded)
+	for _, ee := range emitPlan {
+		e := ee.Leaf
 		guard := "kTableFixedNoGuard"
 		if e.Guard != ir.TableFixedNoGuard {
 			guard = fmt.Sprintf("%du", e.Guard)
@@ -583,13 +590,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.GuardCount > 0 {
 			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s }, // %s\n",
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
 			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, e.Note)
+			e.GuardCount, guardIndex, ee.Elem, e.Note)
 	}
 	g.pf("};\n")
-	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))
-	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, guarded)
+	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(emitPlan))
+	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, emitGuarded)
 	g.pf("// THE GUARD POOL: the (guard, arg, argw) links every chain above points\n")
 	g.pf("// into, OUTERMOST FIRST (§5.8 row 6).\n")
 	g.pf("constexpr TableFixedGuardLink %sFixedGuards[] = {\n", st.Name)
