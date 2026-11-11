@@ -56,8 +56,8 @@ var tagAssertsInDebug = map[string][]string{
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v.Type >= 0 and v.Type <= 2"},
-	// js is not here: its debug-only idiom is the PRODUCTION/checked fork of
-	// the flat writer, not a statement. Checked separately below.
+	// js is not here: it has no build-removable assert, so its one flat writer
+	// refuses in every build. Checked separately below.
 }
 
 // tagGoneFromRelease is the every-build refusal each assert target used to
@@ -103,14 +103,15 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 			// packetWriterOwed)
 
 		case target == "js":
-			// the fork, not a statement: the contract lives in the checked
-			// flat writer and the production writer is free of it
-			const want = "value.shot.type < 0 || value.shot.type > 2"
-			if got := jsFlatWriter(t, text, "writeVolleyFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the tag, %q absent", want)
+			// JavaScript has no build-removable assert, so the one flat
+			// writer refuses an out-of-set tag (returns -1) in every build,
+			// and no production fork free of the check is emitted
+			const want = "value.shot.type < 0 || value.shot.type > 2) {"
+			if got := jsFlatWriter(t, text, "WriteVolleyFlat"); !strings.Contains(got, want) || !strings.Contains(got, "return -1;") {
+				t.Errorf("js: the flat writer does not refuse the tag in every build, %q absent", want)
 			}
-			if got := jsFlatWriter(t, text, "writeVolleyFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the tag: %q survives release", want)
+			if strings.Contains(text, "writeVolleyFlatProduction") {
+				t.Errorf("js: a PRODUCTION flat writer is still emitted, and the tag must survive release")
 			}
 
 		case target == "rust":

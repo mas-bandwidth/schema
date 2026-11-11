@@ -117,8 +117,8 @@ var assertsInDebug = map[string][]string{
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
-	// js is not here: its debug-only idiom is not an assert statement but the
-	// PRODUCTION/checked fork of the flat writer, checked separately below.
+	// js is not here: it has no build-removable assert, so its one flat writer
+	// refuses in every build, checked separately below.
 	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
@@ -188,20 +188,22 @@ func generatedText(t *testing.T, src, target string) string {
 }
 
 // jsFlatWriter slices one named function out of the JavaScript flat codec.
-// JavaScript's debug-only idiom is the emitted fork, not a statement: the
-// checked writer holds the contract and the production writer holds none, and
-// `PRODUCTION ? production : checked` picks between them at import time.
+// JavaScript has no build-removable assert, so its writer contracts are
+// refusals in every build, held by the one flat writer (docs/SPEC.md §5.1).
 func jsFlatWriter(t *testing.T, text, fn string) string {
 	t.Helper()
 	i := strings.Index(text, "function "+fn+"(")
 	if i < 0 {
-		t.Fatalf("js: %s is not emitted; the flat writer fork is gone", fn)
+		t.Fatalf("js: %s is not emitted", fn)
 	}
 	rest := text[i+1:]
-	if before, _, ok := strings.Cut(rest, "\nfunction "); ok {
-		return before
+	end := len(rest)
+	for _, next := range []string{"\nfunction ", "\nexport function "} {
+		if j := strings.Index(rest, next); j >= 0 && j < end {
+			end = j
+		}
 	}
-	return rest
+	return rest[:end]
 }
 
 // CLAIM 1. A [A..B] count is born at A in every target: the one wire-legal
@@ -233,14 +235,15 @@ func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		}
 
 		if target == "js" {
-			// the fork, not a statement: the contract lives in the checked
-			// writer and the production writer is free of it
-			const want = "value.windowCount < 2 || value.windowCount > 8"
-			if got := jsFlatWriter(t, text, "writeTFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the count, %q absent", want)
+			// JavaScript has no build-removable assert, so the one flat
+			// writer refuses (returns -1) in every build, and no production
+			// fork free of the check is emitted (docs/SPEC.md §5.1)
+			const want = "value.windowCount < 2 || value.windowCount > 8) {"
+			if got := jsFlatWriter(t, text, "WriteTFlat"); !strings.Contains(got, want) || !strings.Contains(got, "return -1;") {
+				t.Errorf("js: the flat writer does not refuse the count in every build, %q absent", want)
 			}
-			if got := jsFlatWriter(t, text, "writeTFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the count: %q survives release", want)
+			if strings.Contains(text, "writeTFlatProduction") {
+				t.Errorf("js: a PRODUCTION flat writer is still emitted, and the count must survive release")
 			}
 			continue
 		}
