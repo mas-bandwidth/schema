@@ -189,7 +189,10 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok) { return false; }
       if (!r.Align()) { return false; }
-      return r.Skip(Number(n) * 8);
+      // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes this
+      // reader does not keep are still damage when ill-formed.
+      const at = r.Offset >> 3;
+      return r.Skip(Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, Number(n));
     }
     case 31: {
       if (!r.Align()) { return false; }

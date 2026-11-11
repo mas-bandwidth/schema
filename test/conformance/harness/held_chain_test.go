@@ -55,7 +55,6 @@ func TestHeldChainVectorAnswersTheEngine(t *testing.T) {
 	}
 	u := newUnits(m)
 	for _, v := range heldChainVectors {
-		v := v
 		t.Run(v.name, func(t *testing.T) {
 			t.Parallel()
 			unit, err := u.get(v.unit)

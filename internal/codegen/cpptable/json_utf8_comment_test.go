@@ -9,6 +9,7 @@ package cpptable
 // so this test reads the emitted bytes and requires no such promise.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -29,15 +30,15 @@ func scannerUtf8Comment(t *testing.T, text string) string {
 		t.Fatal("the emitted runtime has no TableJsonScanUnit")
 	}
 	rest := text[at:]
-	test := strings.Index(rest, "TableUtf8Valid( (const uint8_t *) unit, unit_length )")
-	if test < 0 {
+	before, _, ok := strings.Cut(rest, "TableUtf8Valid( (const uint8_t *) unit, unit_length )")
+	if !ok {
 		t.Fatal("TableJsonScanUnit has no UTF-8 test over the scanned unit")
 	}
-	lines := strings.Split(rest[:test], "\n")
+	lines := strings.Split(before, "\n")
 	lines = lines[:len(lines)-1]
 	var comment []string
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
+	for _, line := range slices.Backward(lines) {
+		line := strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "//") {
 			break
 		}
