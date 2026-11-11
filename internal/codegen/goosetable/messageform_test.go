@@ -528,6 +528,50 @@ func TestGooseMessageFormMatchesTheGoldens(t *testing.T) {
 	}
 }
 
+// TestGooseMessageFormTextAligns holds the writer's text align on the three
+// golden rows whose bodies carry text (docs/SPEC-TABLES.md §3.3: a string or
+// bytes length ALIGNS before its bytes). The golden values carry their leading
+// 64-bit field, and with the message vocabulary's reference width the length
+// bits then land on a byte boundary, so the align is a no-op there; this test
+// clears that field so the text is the body's first payload, where the align
+// moves the bytes, and holds the save to the Go reference's encode of the same
+// value. make/goose-message.mk's negative control drops the align and requires
+// exactly these three rows red.
+func TestGooseMessageFormTextAligns(t *testing.T) {
+	t.Parallel()
+	carried := map[string]bool{"login_full": true, "store_full": true, "peer_a": true}
+	for _, row := range gooseMsgRows(t) {
+		if !carried[row.name] {
+			continue
+		}
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			u := gooseMsgUnitDir(t, row.unitDir)
+			announce := gooseMsgFile(t, row.conn)
+			golden := gooseMsgFile(t, row.message)
+			bodies := gooseBatchCount(golden)
+			insts := gooseGoDecode(t, u, row.root, announce, golden, bodies)
+			for _, inst := range insts {
+				for i := range inst.Fields {
+					if inst.Def.Fields[i].Name == "player_id" {
+						inst.Fields[i].Cell.U = 0
+					}
+				}
+			}
+			want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
+			if err != nil {
+				t.Fatalf("the Go reference refuses to encode the value: %v", err)
+			}
+			var values [][]string
+			for _, inst := range insts {
+				values = append(values, gooseInstAssign(t, "", inst))
+			}
+			r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: row.root, values: values, data: want, capacity: bodies})
+			r.owes(t, want, bodies)
+		})
+	}
+}
+
 // ---- the fixed corpus, crossed with the reference --------------------------
 
 // gooseMsgFromFixed loads a fixed-form file with the Goose fixed reader and
