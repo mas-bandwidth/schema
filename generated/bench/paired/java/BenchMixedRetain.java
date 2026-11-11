@@ -75,7 +75,8 @@ public final class BenchMixedRetain {
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
-        if (BenchMixedVariable.loadMeasure(data, measure) < 0) {
+        // open proved the id table distinct over these bytes: measure once (§3)
+        if (BenchMixedVariable.loadMeasure(data, measure, false) < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;

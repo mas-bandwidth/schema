@@ -1443,11 +1443,29 @@ public final class TableVariable {
         }
     }
 
+    // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
+    // twice the 4096-entry bound so it is never more than half full (§3): the
+    // walk allocates nothing per call and every slot compares the stored id.
+    private static final ThreadLocal<IdProbe> ID_PROBE =
+            ThreadLocal.withInitial(IdProbe::new);
+
+    static final class IdProbe {
+        final long[] seen = new long[8192];
+        final byte[] used = new byte[8192];
+    }
+
     // trailerBase is open's every check, made IN PLACE on the caller's bytes:
     // the form byte, the id table's count and its repeated ids, and the
     // body's extent (§3). It answers the offset of the table's first entry, or
     // -1 with the report moved exactly as open moves it, and allocates nothing.
     public static int trailerBase(byte[] data, Report report) {
+        return trailerBase(data, report, true);
+    }
+
+    // trailerBase with the distinctness proof already made: a load's measure
+    // passes distinct false after its open proved the same bytes, so the
+    // bounded walk runs ONCE per load and never once per open and measure (§3).
+    private static int trailerBase(byte[] data, Report report, boolean distinct) {
         if (data.length < 1) {
             report.damaged = true;
             return -1;
@@ -1477,14 +1495,9 @@ public final class TableVariable {
             return -1;
         }
         int base = data.length - 8 - (int) count * 8;
-        for (int i = 0; i < count; i++) {
-            long id = u64(data, base + i * 8);
-            for (int j = 0; j < i; j++) {
-                if (u64(data, base + j * 8) == id) {
-                    report.damaged = true;
-                    return -1;
-                }
-            }
+        if (distinct && count > 1 && !idsDistinct(data, base, (int) count)) {
+            report.damaged = true;
+            return -1;
         }
         int end = bodyExtent(data, (int) count, 1, base);
         if (end >= 0 && end != base) {
@@ -1492,6 +1505,38 @@ public final class TableVariable {
             return -1;
         }
         return base;
+    }
+
+    // idsDistinct proves the entries distinct with ONE open-addressing probe
+    // over the fixed 8192-slot table (§3): the count bound above caps the walk
+    // at a fixed 8,386,560 slot-id comparisons, and there is no pairwise arm.
+    // A slot occupied by a different id compares the stored id, not the hash;
+    // the mix is the reference leg's tableOpen.
+    static boolean idsDistinct(byte[] data, int base, int count) {
+        IdProbe probe = ID_PROBE.get();
+        long[] seen = probe.seen;
+        byte[] used = probe.used;
+        java.util.Arrays.fill(used, (byte) 0);
+        for (int i = 0; i < count; i++) {
+            long id = u64(data, base + i * 8);
+            long hash = id;
+            hash ^= hash >>> 33;
+            hash *= 0xff51afd7ed558ccdL;
+            hash ^= hash >>> 33;
+            int slot = (int) hash & 8191;
+            while (true) {
+                if (used[slot] == 0) {
+                    used[slot] = 1;
+                    seen[slot] = id;
+                    break;
+                }
+                if (seen[slot] == id) {
+                    return false;
+                }
+                slot = (slot + 1) & 8191;
+            }
+        }
+        return true;
     }
 
     // u64 reads one little-endian u64 at at.
@@ -1917,11 +1962,17 @@ public final class TableVariable {
         // open is TableVariable.open over the caller's bytes into the one
         // reader: the same checks (trailerBase), the id table read in place.
         public Reader open(byte[] data) {
+            return open(data, true);
+        }
+
+        // open with the distinctness proof already made by the caller's open,
+        // so a load proves the entries distinct once and not again here (§3).
+        Reader open(byte[] data, boolean distinct) {
             report.reset();
             nodeRecords = -1;
             nodeBlobBytes = 0;
             nodeTableBytes = 0;
-            int base = trailerBase(data, report);
+            int base = trailerBase(data, report, distinct);
             if (base < 0) {
                 return null;
             }
