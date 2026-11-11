@@ -840,9 +840,10 @@ FloatExpr   = float expression over float literals, int literals and const names
     constant per variant (`1 << bit`),
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, the one `.Count` in the
-    language — the spelling is each target's own, and all nine emit it:
-    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C, Rust and Java;
-    `capsCount` in Dart; `caps_count/0` in Elixir.
+    language — every packet target emits it in its own spelling:
+    `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, MOO,
+    Goose and Lobster; `CAPS_COUNT` in C, Rust and Java; `capsCount` in Dart;
+    `caps_count/0` in Elixir.
     **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
@@ -1194,7 +1195,7 @@ is.
 **`Max` is the enum's only exported number.** An enum exports no `Count`:
 its declared variant count is its `Max`, and one number needs one name. A
 flags declaration exports `Count` (§4.2) because it has no `Max`. A union's
-generated `<Union>Type` tag enum carries `Max` in the same nine spellings
+generated `<Union>Type` tag enum carries `Max` in each packet target’s spelling
 (§4.8) and no `Count` either, so a tag enum and a declared enum present one
 surface to a reader. A TABLE-CLOSURE union's tag shape is a different
 emitter, written beside the tables, and it carries the same members
@@ -1431,7 +1432,7 @@ All compile errors with positions:
   and a refusal in every build where it is not (Go returns
   `serialize.ErrValueOutOfRange`, Elixir raises `ArgumentError`).
   The READ is untouched: a decoded count outside [A, B] fails the read in
-  every build, in all nine. What such a write leaves on the wire, where it
+  every build, in every packet target. What such a write leaves on the wire, where it
   completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
   may accept some other message.
   The write-side contract is not a compile error
@@ -1648,8 +1649,8 @@ exists for exactly one reason — it sizes the length prefix's bits.
 
 **`string(N)` payloads are well-formed UTF-8, and the reader enforces it.**
 The wire shape is unchanged and identical to `bytes(N)`. What the `string`
-spelling adds is a read-side rule, stated once here and holding in all nine
-targets, in every build mode: **a payload that is not well-formed UTF-8
+spelling adds is a read-side rule, stated once here and holding in every packet
+target, in every build mode: **a payload that is not well-formed UTF-8
 fails the read.** Not well formed means not well formed under Unicode Table
 3-7, so overlong forms, surrogates encoded in UTF-8, code points above
 `10FFFF`, truncated sequences and the bytes `0xFE` and `0xFF` all fail. This
@@ -1659,7 +1660,7 @@ panics or aborts on a malformed payload. An application with genuinely
 arbitrary payloads uses `bytes(N)`, which remains exactly that.
 
 Beneath the encoding rule, `string(N)` carries **bytes excluding 0x00** —
-all generated readers reject interior nulls, and writes assert per §5 (NUL
+all generated readers reject interior nulls, and writes check them in every packet target, by the leg's own mechanism (§5.1) (NUL
 is valid UTF-8, so the interior-null rule is its own, stricter check).
 `bytes(N)` is the same wire with no interior-null rule and no encoding rule.
 The byte-string tightening is what lets the targets agree:
@@ -1675,17 +1676,18 @@ The byte-string tightening is what lets the targets agree:
 **A successful read terminates the C string.** In C and C++, a successful
 read writes the **zero byte at index `length`**, always, so the buffer is a
 valid C string after every accepted read. That is what the `+ 1` in those
-two storage rows is for (§6.1). In the other seven targets the used length
-is the truth, and a successful read writes nothing past it, under §5's tail
-rule.
+two storage rows is for (§6.1). In C#, Rust, Java, JavaScript, Dart,
+Elixir and Go, the used length is the truth, and a successful read writes
+nothing past it, under §5's tail rule.
 
 For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
 
-**All nine backends compose the framing from
-primitives** — length over [0, N], then align, then raw bytes — and none
-emits a runtime string call. This is a generated-code consequence, stated so
-no backend discovers it late: the
+**Every packet target uses the same framing** — length over [0, N], then
+align, then raw bytes. MOO emits a runtime `serializeString` call on both write
+and read; C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Go, Lua, Luau,
+Squirrel, Goose and Lobster compose the framing from primitives. This is a
+generated-code consequence, stated so no backend discovers it late: the
 runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
 necessarily the emitted call. C# and Rust have no alternative: the §6.1
 storage rules make the runtime string method unusable there — C# stores a
@@ -1693,11 +1695,11 @@ byte buffer but `SerializeString` takes `ref string`; Rust stores a byte
 buffer but `serialize_string` takes `&mut String`, which allocates.
 Dart, Java and Elixir have no runtime to call.
 C++, C, Go and JavaScript may use their runtime string call for the framing
-and do not. **The encoding check and the interior-null check are
-generated-code validation in every target** — no runtime primitive performs
-the second, and the first has to hold identically in the three targets that
-have no runtime at all (classic C++ read appends `'\0'` and would silently
-truncate).
+and do not. **The encoding check and the interior-null check hold in every packet
+target, in every build.** MOO gets both checks from its runtime
+`serializeString` call; the other packet targets enforce them from their
+emitted read paths. Dart, Java and Elixir have no runtime at all, while
+classic C++ read appends `'\0'` and would silently truncate.
 
 **Goldens.** The read-side rule is pinned to serialize's shared corpus
 (`conformance/string.txt`), which a `string(15)` field reproduces exactly,
@@ -1796,12 +1798,12 @@ union Value
   the tag as the field encoding its type already has on this wire, a bounded
   integer in its minimal bits, a compressed float in its steps, a string in
   §4.7's form, and nothing new is encoded. What waits is that encoding in
-  nine backends, which is the named follow-on (SPEC-TABLES.md §15).
+  the packet backends, which is the named follow-on (SPEC-TABLES.md §15).
 - **A PAYLOAD-FREE arm is not in that class.** It has no payload to place,
   so there is nothing for a port to guess: it rides the packet wire as its
   tag alone (the wire bullet below), and a `type` body takes it. `check` is
   target-neutral and accepts it, as it accepts every construct some target
-  carries. **All nine backends carry payload-free arms on the packet wire.**
+  carries. **Every packet target carries payload-free arms on the packet wire.**
   C and C++ emit no member for such an arm; selecting it sets the tag alone.
   If no arm has a payload, their generated struct holds only its tag, with no
   empty storage union. The table side is C++ only (SPEC-TABLES.md §11, §15).
@@ -1859,7 +1861,7 @@ union Value
   declarations (docs/SPEC-TABLES.md §2.6), and it emits `None`, the variants,
   `Max` and the debug-name function, because it is the same construct
   to a reader. The table layer is the C++ reference's, so the shape has one
-  emitter where the packet shape has nine.
+  emitter where the packet shape has one per packet target.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).
   The tag encodes in **minimal bits for `[0, variant
@@ -1883,7 +1885,7 @@ union Value
   bits at all while C writes the tag unmasked — a 2-bit tag holding 4 rides
   as `00`, a legal `None`, with the spilled bit landing in whatever follows.
   A shifted-but-legal parse is reachable from either. The READ rejects a tag above the
-  count in EVERY build, in all nine.
+  count in EVERY build, in every packet target.
 - **Selection uses ordinary construction (§4.2).** Selecting an arm with a
   payload constructs it with the declared defaults, recursively. Application
   code initializes the payload before populating it and setting its tag;
@@ -2039,10 +2041,10 @@ Pong may both name a field `sequence` because they are separate types;
   more than the construct returns today. The storage is a language-level
   problem before it is a wire one: C++ has no portable `_Float16`, C# has
   `System.Half` only on modern targets, Go and Elixir have no half type at
-  all, and a generated struct that spells one differently in nine targets is
+  all, and a generated struct that spells one differently in the original packet targets is
   the layout identity SPEC-TABLES.md §20.3 asserts against. The wire half is
   not the hard part and the conversion rules are: an `f32` to `f16` narrowing
-  rounds, and a rounding rule is a conformance surface in nine languages
+  rounds, and a rounding rule is a conformance surface in every packet target
   before it is a feature. **The spelling a program uses today is `bits(16)`
   with the conversion in application code**, which costs the same sixteen bits
   on both wires, says exactly what it stores, and leaves the rounding where
@@ -2150,8 +2152,7 @@ named `timestamp`.
 in a packet `type` — a field, an arm, an array element — is REFUSED BY NAME,
 the diagnostic naming the construct and saying the table wire carries it and
 the packet wire does not yet. No packet wire spells it, no `MaxBits` term
-exists for it, and it takes its own card before any of the nine packet
-targets emits one. In a table body an array of timestamps, an optional one, a
+exists for it, and it takes its own card before any packet target emits one. In a table body an array of timestamps, an optional one, a
 map value and a union arm are each refused by name as a named follow-on.
 Every adopter today writes the same time convention by hand, an `int64` of
 nanoseconds with `0` as the zero time and a hand-written range check; the
@@ -2222,8 +2223,7 @@ whose fields are the objects, or the leg's bit-offset entry where it has one
 and the JavaScript `Read<T>Flat` return a boolean only; they do not report
 bits consumed today. That is an open question for the owner, not changed here.
 
-**Writes refuse what the declaration does not admit, by each language's own
-idiom.** A language verifies correctness the way that language verifies
+**Writes check what the declaration does not admit in every packet target, by the leg's own mechanism (§5.1).** A language verifies correctness the way that language verifies
 correctness: a debug-only assert where that is the language's idiom, a refusal
 in every build where it has none. §5.1 is the whole of it: the contract, the
 mechanism and build per leg, and the conformance surface that holds it. The
@@ -2235,14 +2235,14 @@ reader on the other end refuses it (§4).
 always do the checks!" (2026-09-07). Every read-side refusal §4 and this
 section name — ranges, counts, bounds, wire constants, reserved bits, enum
 values, union tags, UTF-8 in `string(N)` — runs
-in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
+in every packet target, in every build mode, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 
 The generated
 write code's job is to
 make misuse impossible by construction — bounds come from the schema. Every
-write-side contract
-asserts in DEBUG ONLY, and only where a target carries the idiom at all. Text
+write-side contract applies in every packet target, by the leg's own mechanism (§5.1):
+a debug-only assert in assert legs and a refusal in every build elsewhere. Text
 well-formedness is not one of them. UTF-8 in `string(N)` is a READ-side
 refusal in every target (§4.7), so the
 guarantee rests on the reader rather than on a write-side check some
@@ -2273,7 +2273,7 @@ fields.
 
 ### 5.1 The write contract
 
-**Every writer refuses a value its declaration does not admit.** 2026-11-03
+**Every writer checks a value its declaration does not admit, by the leg's own mechanism (§5.1).** 2026-11-03
 (`docs/rulings.json`, `write-refusal`): "It is our intent to refuse the write
 of out of range values. In low level languages like C/C++ our intent is to do
 this at debug time for speed. Keep that behavior. In languages that do not
@@ -2486,8 +2486,8 @@ Per `type`, per target:
    `Flush`): a nested write's count is the enclosing stream's position, so a
    second return value would only repeat that counter at every call site.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
-   validation, in each target's native error idiom — the list is exhaustive
-   at all nine: `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +
+   validation, in each target's native error idiom — the list covers C, C++, C#, Rust, Java, JavaScript, Dart, Elixir and Go:
+ `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +
    latched `Error` in C#, `error` in Go, `Result` in Rust, `{:ok, value}` or
    `:error` in Elixir, and `bool` + the stream's latched `error` in JS
    (generated validation refusals return `false` latching nothing, so callers
@@ -2894,7 +2894,7 @@ closing.
 
 ### 6.3 Per-target notes
 
-All nine targets are covered, in the two groups §1 draws. The six that read
+C, C++, C#, Rust, Java, JavaScript, Dart, Elixir and Go are covered below, in the two groups §1 draws. The six that read
 and write through a serialize-family runtime:
 
 | | C | C++ | C# | Go | JavaScript | Rust |
