@@ -89,18 +89,18 @@ func checkLuauRoadmapNotesAndMake(roadmapText, luauMkText, luauSerializeMkText s
 		return fmt.Errorf("unexpected task counts: packet=%d fixed=%d vt=%d meta=%d", packetCount, fixedCount, vtCount, portMetaCount)
 	}
 
-	distIdx := strings.Index(luauMkText, "\ndist-luau:\n")
+	distIdx := strings.Index(luauMkText, "\ndist-luau-fetch:\n")
 	if distIdx < 0 {
-		return fmt.Errorf("make/luau.mk: dist-luau target not found")
+		return fmt.Errorf("make/luau.mk: dist-luau-fetch target not found")
 	}
 	distRecipe := luauMkText[distIdx:]
-	if endIdx := strings.Index(distRecipe[len("\ndist-luau:\n"):], "\n\n"); endIdx >= 0 {
-		distRecipe = distRecipe[:len("\ndist-luau:\n")+endIdx]
+	if endIdx := strings.Index(distRecipe[len("\ndist-luau-fetch:\n"):], "\n\n"); endIdx >= 0 {
+		distRecipe = distRecipe[:len("\ndist-luau-fetch:\n")+endIdx]
 	}
 	sha256Idx := strings.Index(distRecipe, "sha256sum")
 	shasumIdx := strings.Index(distRecipe, "shasum -a 256")
 	if sha256Idx < 0 || shasumIdx < 0 || sha256Idx > shasumIdx {
-		return fmt.Errorf("make/luau.mk: dist-luau recipe must try sha256sum first and fall back to shasum -a 256")
+		return fmt.Errorf("make/luau.mk: dist-luau-fetch recipe (the archive download dist-luau falls back to) must try sha256sum first and fall back to shasum -a 256")
 	}
 
 	serSha256Idx := strings.Index(luauSerializeMkText, "sha256sum serialize*.luau")
