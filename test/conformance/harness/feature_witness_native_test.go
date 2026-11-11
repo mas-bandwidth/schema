@@ -88,7 +88,7 @@ func TestROOT(t *testing.T){
  input,err:=os.ReadFile("ROOT.input.json");if err!=nil{t.Fatal(err)}
  var b ROOTBuilder;if !b.Init(){t.Fatal("builder init")};defer b.Shutdown()
  var r TableReport
- if !ROOTFromJSONTolerant(&b,input,&r)||r!=(TableReport{}){t.Fatalf("populated JSON: %+v",r)}
+ if !ROOTFromJSON(&b,input,&r)||r!=(TableReport{}){t.Fatalf("populated JSON: %+v",r)}
  v:=b.GetRoot();n:=ROOTMeasure(v,&b.Arena);if n<=10{t.Fatal("fixture is empty or refused")}
  wire:=make([]byte,n);if ROOTSave(v,wire,&b.Arena)!=n{t.Fatal("wire save")}
  if !b.Lock(){t.Fatal("lock")}
