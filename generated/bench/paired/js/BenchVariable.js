@@ -4036,7 +4036,12 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           const s = inp.str();
           if (s === null) { return false; }
           const bit = d.vs.indexOf(s);
-          if (bit >= 0) { mask |= 1n << BigInt(bit); } else { report.unknown++; }
+          if (bit >= 0) {
+            // A FLAGS NAME TWICE IN ONE ARRAY is a repeated key (§16.2)
+            const flag = 1n << BigInt(bit);
+            if ((mask & flag) !== 0n) { inp.bad = true; return false; }
+            mask |= flag;
+          } else { report.unknown++; }
         }
         ch = inp.peek();
         if (ch === ",") { inp.p++; continue; }
