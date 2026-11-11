@@ -13,6 +13,7 @@ import (
 // their direct reader: wrong shapes are malformed, while inexact numbers place
 // a fresh default entry. Keyed duplicates count even before accepted placement.
 func TestJSONDuplicateScopeElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package duplicatescope
 enum Slot { A, B }

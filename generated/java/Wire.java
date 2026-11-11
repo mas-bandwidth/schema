@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -119,6 +119,18 @@ public final class Wire {
         public static final byte LASER = 1;
         public static final byte MISSILE = 2;
         public static final byte RAILGUN = 3;
+        public static final byte FLAK = 4;
+        public static final byte BEAM = 5;
+        public static final byte PLASMA = 6;
+        public static final byte TORPEDO = 7;
+        public static final byte MINE = 8;
+        public static final byte DRONE = 9;
+        public static final byte SWARM = 10;
+        public static final byte PULSE = 11;
+        public static final byte LANCE = 12;
+        public static final byte COMET = 13;
+        public static final byte QUAKE = 14;
+        public static final byte ARC = 15;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 15;
     }
@@ -137,6 +149,42 @@ public final class Wire {
         }
         if (value == Weapon.RAILGUN) {
             return "Railgun";
+        }
+        if (value == Weapon.FLAK) {
+            return "Flak";
+        }
+        if (value == Weapon.BEAM) {
+            return "Beam";
+        }
+        if (value == Weapon.PLASMA) {
+            return "Plasma";
+        }
+        if (value == Weapon.TORPEDO) {
+            return "Torpedo";
+        }
+        if (value == Weapon.MINE) {
+            return "Mine";
+        }
+        if (value == Weapon.DRONE) {
+            return "Drone";
+        }
+        if (value == Weapon.SWARM) {
+            return "Swarm";
+        }
+        if (value == Weapon.PULSE) {
+            return "Pulse";
+        }
+        if (value == Weapon.LANCE) {
+            return "Lance";
+        }
+        if (value == Weapon.COMET) {
+            return "Comet";
+        }
+        if (value == Weapon.QUAKE) {
+            return "Quake";
+        }
+        if (value == Weapon.ARC) {
+            return "Arc";
         }
         return "???";
     }

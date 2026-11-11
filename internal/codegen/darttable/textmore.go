@@ -111,6 +111,9 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
 // every other number is a _JNum.
 dynamic _jsonDecodeExact(String text) {
   final p = _JParse(text);
+  // a leading U+FEFF is a byte-order mark (docs/SPEC-TABLES.md §16.2, §16.12):
+  // skipped once at the very start, and nowhere else.
+  if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) p.i = 1;
   p.ws();
   final v = p.value(0);
   p.ws();
@@ -296,6 +299,7 @@ final class _JParse {
       if (i >= s.length) throw const FormatException('unterminated string');
       final c = s.codeUnitAt(i++);
       if (c == 0x22) return b.toString();
+      if (c < 0x20) throw FormatException('control character in string', s, i - 1);
       if (c != 0x5C) {
         b.writeCharCode(c);
         continue;
@@ -691,7 +695,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		for i, name := range fl.Variants {
 			g.pf("\t\t\tcase %s: bits |= %d;\n", strconv.Quote(name), uint64(1)<<i)
 		}
-		g.pf("\t\t\tdefault: r.unknown++;\n")
+		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
 		g.pf("\t}\n")
 		g.pf("\treturn bits;\n")

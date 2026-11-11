@@ -533,6 +533,17 @@ bool _lebValid(Uint8List d, int off, int len) {
   }
 }
 
+// _decodeText decodes one validated text payload and keeps every code point
+// of its bytes: utf8.decode drops a byte-order mark at the head of its input,
+// while U+FEFF is an ordinary code point on the wire (§3, §16.14).
+String _decodeText(Uint8List d, int start, int end) {
+  final s = utf8.decode(d.sublist(start, end));
+  if (end - start >= 3 && d[start] == 0xEF && d[start + 1] == 0xBB && d[start + 2] == 0xBF) {
+    return '\uFEFF' + s;
+  }
+  return s;
+}
+
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
@@ -888,7 +899,7 @@ final class TableWireReader {
     } else {
       final b = resolveBlob(idx, _kStringBlobId, stringBlob);
       if (b != null) {
-        value = utf8.decode(b);
+        value = _decodeText(b, 0, b.length);
         decoded[rec] = value;
       }
     }
@@ -1251,20 +1262,23 @@ final class TableWireReader {
     return false;
   }
 
-  // _wireLeb reads one LEB128 value at off in buf: (value, next), or
-  // null when it runs past the buffer.
+  // _wireLeb reads one canonical LEB128 value at off in buf: (value, next),
+  // or null when it is truncated, past ten bytes or non-minimal — the same
+  // rule as readLeb (§3), so every walk over this wire agrees.
   (int, int)? _wireLeb(Uint8List buf, int off) {
     var v = 0;
-    var shift = 0;
-    var i = off;
-    while (i < buf.length && shift < 63) {
-      final b = buf[i];
-      i++;
-      v |= (b & 0x7F) << shift;
-      if (b & 0x80 == 0) return (v, i);
-      shift += 7;
+    var p = off;
+    for (var i = 0; ; i++) {
+      if (p >= buf.length || i >= 10) return null;
+      final b = buf[p];
+      p++;
+      if (i == 9 && b > 1) return null;
+      v |= (b & 0x7F) << (7 * i);
+      if ((b & 0x80) == 0) {
+        if (i > 0 && b == 0) return null;
+        return (v, p);
+      }
     }
-    return null;
   }
 
   // _wireScalar checks one fixed-width payload's content rules that the
@@ -1323,15 +1337,16 @@ final class TableWireReader {
         return p.$2;
       case 30:
         final p = _wireLeb(buf, off);
-        return p == null ? -1 : p.$2;
+        if (p == null || p.$1 < 0 || p.$1 > entryCount) return -1;
+        return p.$2;
       case 15:
         final arm = _wireLeb(buf, off);
-        if (arm == null || arm.$1 > entryCount) return -1;
+        if (arm == null || arm.$1 < 0 || arm.$1 > entryCount) return -1;
         if (arm.$1 == 0) return arm.$2;
         if (arm.$2 >= buf.length) return -1;
         final akind = buf[arm.$2];
         final alen = _wireLeb(buf, arm.$2 + 1);
-        if (alen == null || alen.$1 > buf.length - alen.$2) return -1;
+        if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
       case 12:
@@ -1341,7 +1356,7 @@ final class TableWireReader {
       case 31:
       case 32:
         final p = _wireLeb(buf, off);
-        if (p == null || p.$1 > buf.length - p.$2) return -1;
+        if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
         final end = p.$2 + p.$1;
         return _wireContent(buf.sublist(p.$2, end), kind, out, depth) ? end : -1;
     }
@@ -1362,7 +1377,7 @@ final class TableWireReader {
       case 14:
         if (depth >= 64 || b.length < 2) return false;
         final head = _wireLeb(b, 1);
-        if (head == null) return false;
+        if (head == null || head.$1 < 0) return false;
         var off = head.$2;
         for (var i = 0; i < head.$1; i++) {
           off = _wirePayload(b, off, b[0], out, depth + 1);
@@ -1372,14 +1387,14 @@ final class TableWireReader {
       case 16:
         if (depth >= 64 || b.length < 2) return false;
         final head = _wireLeb(b, 1);
-        if (head == null) return false;
+        if (head == null || head.$1 < 0) return false;
         var off = head.$2;
         final seenKeys = <int>{};
         for (var i = 0; i < head.$1; i++) {
           final key = _wireLeb(b, off);
-          if (key == null || key.$1 == 0 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
+          if (key == null || key.$1 < 1 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
           final len = _wireLeb(b, key.$2);
-          if (len == null || len.$1 > b.length - len.$2) return false;
+          if (len == null || len.$1 < 0 || len.$1 > b.length - len.$2) return false;
           if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1)) return false;
           off = len.$2 + len.$1;
         }
@@ -1416,7 +1431,7 @@ final class TableWireReader {
         // kind 12 (internal/tablewire/wirecheck.go body).
         if (!root || kind != 12) return false;
         final len = _wireLeb(buf, off);
-        if (len == null || len.$1 > buf.length - len.$2) return false;
+        if (len == null || len.$1 < 0 || len.$1 > buf.length - len.$2) return false;
         off = len.$2 + len.$1;
         continue;
       }
@@ -4182,7 +4197,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           if (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.playerName = ''; r.pos += len; break; }
           final keep = _textBoundary(r.data, r.pos, len, 15);
           if (keep != len) { r.report.refuse('length_over_bound'); return; }
-          v.playerName = utf8.decode(r.data.sublist(r.pos, r.pos + keep));
+          v.playerName = _decodeText(r.data, r.pos, r.pos + keep);
           r.pos += len;
         }
         break;
@@ -5386,6 +5401,14 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   if (val is int) {
     wide = BigInt.from(val);
   } else if (val is _JNum && val.integral) {
+    // a token whose magnitude a double rounds to infinity is past every
+    // integer storage domain: refuse it by value, never an Error, without
+    // materializing a BigInt from an arbitrarily long token
+    // (docs/SPEC-TABLES.md §16.2)
+    if (!val.d.isFinite) {
+      r.refuse('out_of_range');
+      return def;
+    }
     final parts = _jsonNumberParts(val.token);
     if (parts.digits.isEmpty) {
       wide = BigInt.zero;
@@ -5829,7 +5852,11 @@ String _jsonPrepare(String text, TableTextReport r) {
     if (c == 0x2c) {
       var j = i + 1;
       while (j < stripped.length && stripped[j] <= 0x20) j++;
-      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) continue;
+      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) {
+        var k = i - 1;
+        while (k >= 0 && stripped[k] <= 0x20) k--;
+        if (k >= 0 && stripped[k] != 0x7b && stripped[k] != 0x5b && stripped[k] != 0x2c && stripped[k] != 0x3a) continue;
+      }
     }
     clean.add(c);
   }
@@ -5901,6 +5928,9 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
 // every other number is a _JNum.
 dynamic _jsonDecodeExact(String text) {
   final p = _JParse(text);
+  // a leading U+FEFF is a byte-order mark (docs/SPEC-TABLES.md §16.2, §16.12):
+  // skipped once at the very start, and nowhere else.
+  if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) p.i = 1;
   p.ws();
   final v = p.value(0);
   p.ws();
@@ -6086,6 +6116,7 @@ final class _JParse {
       if (i >= s.length) throw const FormatException('unterminated string');
       final c = s.codeUnitAt(i++);
       if (c == 0x22) return b.toString();
+      if (c < 0x20) throw FormatException('control character in string', s, i - 1);
       if (c != 0x5C) {
         b.writeCharCode(c);
         continue;
@@ -6527,7 +6558,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
       case "Shielded": bits |= 32;
       case "Airborne": bits |= 64;
       case "Downed": bits |= 128;
-      default: r.unknown++;
+      default: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }
     }
   }
   return bits;

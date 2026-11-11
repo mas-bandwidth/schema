@@ -996,6 +996,18 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-squirrel", streamToDevPR); ok {
 		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-squirrel below main")
 	}
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-cpp", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-cpp below main")
+	}
+	// the C++ parts run exactly when the plan selects the C++ leg
+	cppIntoMain := sameRepoMainUnlabeled
+	cppIntoMain.PlanLegs = `["cpp"]`
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", cppIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the C++ leg did not run ci-fast.yml:leg-gate-cpp (err=%v)", err))
+	}
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast.yml:leg-gate-cpp ran with no C++ leg in the plan")
+	}
 	// the Lobster rows run exactly when the plan selects the Lobster leg
 	lobsterIntoMain := sameRepoMainUnlabeled
 	lobsterIntoMain.PlanLegs = `["lobster"]`
@@ -1175,13 +1187,13 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// does not name it (a push-and-pull-request replay, say).
 	// The plan here selects the Lobster leg too, whose rows are a job of
 	// their own (ci-fast.yml leg-gate-lobster) gated on that selection.
-	// leg-gate-squirrel is gated the same way on the Squirrel leg.
+	// leg-gate-squirrel and leg-gate-cpp are gated the same way on theirs.
 	dispatchEv := ciEvent{
 		Name:     "workflow_dispatch",
 		Branch:   "main",
 		Repo:     repo,
 		PlanPkgs: planPkgs,
-		PlanLegs: `["go","lobster","squirrel"]`,
+		PlanLegs: `["cpp","go","lobster","squirrel"]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1233,6 +1245,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
+		"ci-fast.yml:leg-gate-cpp",
 		"ci-fast.yml:leg-gate-lobster",
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
