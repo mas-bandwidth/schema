@@ -266,12 +266,14 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
     let mut seen = [false; 2];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
-    let mut seen_ids: Vec<u64> = Vec::new();
+    let mut seen_ids = [0u64; 2];
+    let mut seen_ids_len = 0usize;
+    let mut seen_ids_more: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids[..seen_ids_len].contains(&id) || seen_ids_more.contains(&id) { report.damaged = true; } else if seen_ids_len < seen_ids.len() { seen_ids[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids_more.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -357,12 +359,14 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
     let mut seen = [false; 14];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
-    let mut seen_ids: Vec<u64> = Vec::new();
+    let mut seen_ids = [0u64; 14];
+    let mut seen_ids_len = 0usize;
+    let mut seen_ids_more: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids[..seen_ids_len].contains(&id) || seen_ids_more.contains(&id) { report.damaged = true; } else if seen_ids_len < seen_ids.len() { seen_ids[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids_more.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -597,12 +601,14 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
     let mut seen = [false; 4];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
-    let mut seen_ids: Vec<u64> = Vec::new();
+    let mut seen_ids = [0u64; 4];
+    let mut seen_ids_len = 0usize;
+    let mut seen_ids_more: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids[..seen_ids_len].contains(&id) || seen_ids_more.contains(&id) { report.damaged = true; } else if seen_ids_len < seen_ids.len() { seen_ids[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids_more.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -709,12 +715,14 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
     let mut seen = [false; 2];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
-    let mut seen_ids: Vec<u64> = Vec::new();
+    let mut seen_ids = [0u64; 2];
+    let mut seen_ids_len = 0usize;
+    let mut seen_ids_more: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids[..seen_ids_len].contains(&id) || seen_ids_more.contains(&id) { report.damaged = true; } else if seen_ids_len < seen_ids.len() { seen_ids[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids_more.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -800,12 +808,14 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
     let mut seen = [false; 2];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
-    let mut seen_ids: Vec<u64> = Vec::new();
+    let mut seen_ids = [0u64; 2];
+    let mut seen_ids_len = 0usize;
+    let mut seen_ids_more: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids[..seen_ids_len].contains(&id) || seen_ids_more.contains(&id) { report.damaged = true; } else if seen_ids_len < seen_ids.len() { seen_ids[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids_more.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)

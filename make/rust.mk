@@ -933,10 +933,10 @@ tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp bu
 	cd test/rust-agree && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
 	./test/rust-agree/target/debug/rust-agree
 
-tables-rust-accessor-negative-control: bin/schema
+tables-rust-accessor-negative-control: bin/schema build/cook-fuzz/.stamp
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control accessor
 
-tables-rust-slot-negative-control: bin/schema
+tables-rust-slot-negative-control: bin/schema build/cook-fuzz/.stamp
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control slot
 
 test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
@@ -1207,10 +1207,17 @@ tables-rust-retain-negative-control:
 # to the old reader — a decoded U+0000 never flags the string, and the string's
 # bytes decode lossily to U+FFFD — through a `go test -overlay` of
 # internal/codegen/rusttable/variabletext.go, so no tracked file is edited.
-# TestJsonHostileTextRefusalsRust must go red on EXACTLY its fifteen refusal
-# rows, and its five rows that are not the event (a skipped zero, a zero object
-# key, a `\u0001`, a well-formed clamp, a lone surrogate) must stay green: a
-# control that reddened those would localise nothing.
+# TestJsonHostileTextRefusalsRust must go red on EXACTLY the nine rows whose
+# refusal is these two checks' alone (RUST_JSON_HOSTILE_EVENT_ROWS, each by
+# name), and its rows that are not the event (a skipped zero, a zero object
+# key, a `\u0001`, a well-formed string past its bound) must stay green: a
+# control that reddened those would localise nothing. The test's other refusal
+# rows (a zero or an ill-formed byte past the bound, a zero in an integer key
+# or after a lone surrogate, surrogate bytes that decode past the bound) refuse
+# under the strict read whether or not these two checks run, so they pin the
+# verdict and are not this control's event.
+RUST_JSON_HOSTILE_EVENT_ROWS := zero-string zero-blob zero-map-key illformed-inside illformed-truncated \
+	illformed-unknown-value illformed-object-key illformed-map-key str-entry-zero
 tables-rust-json-hostile-negative-control:
 	@rm -rf build/rust-json-hostile-control && mkdir -p build/rust-json-hostile-control
 	@sed -e 's|self.zero [|]= cp == 0;|/* SABOTAGED */|' \
@@ -1226,14 +1233,17 @@ tables-rust-json-hostile-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
 		cat build/rust-json-hostile-control/log; exit 1; \
 	fi
-	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = 15 || \
-		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the fifteen refusal rows"; \
+	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = $(words $(RUST_JSON_HOSTILE_EVENT_ROWS)) || \
+		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the $(words $(RUST_JSON_HOSTILE_EVENT_ROWS)) event rows"; \
 		  cat build/rust-json-hostile-control/log; exit 1; }
-	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape):' build/rust-json-hostile-control/log || \
+	@for row in $(RUST_JSON_HOSTILE_EVENT_ROWS); do \
+		grep -q "MISMATCH $$row:" build/rust-json-hostile-control/log || \
+			{ echo "NEGATIVE CONTROL FAILED: the old reader left the event row $$row green"; \
+			  cat build/rust-json-hostile-control/log; exit 1; }; \
+	done
+	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound):' build/rust-json-hostile-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: a row that is not the event went red"; exit 1; }
-	@grep -m1 'MISMATCH illformed-at-bound' build/rust-json-hostile-control/log
-	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
-	@echo "rust json-hostile negative control: the old reader turns exactly the fifteen §16.3 refusal rows RED"
+	@echo "rust json-hostile negative control: the old reader turns exactly the $(words $(RUST_JSON_HOSTILE_EVENT_ROWS)) §16.3 event rows RED, each by name"
 
 # THE GUARD NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.1, §4; test/tables/G1.schema):
 # the generated guard gate is taken out of the numbering, the save and the
@@ -1403,10 +1413,10 @@ test-rust: conformance-negative-control-rust-walk
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
 # leg and requires it green WITH absences counted; its control rebuilds the
-# driver (its own target directory) from a copy whose four absence writes
-# (the named refusal, the not-applicable rows and spill_absent) write an ANSWER
-# where the `.absent` marker belongs, and the leg must go red on the surfaces
-# that carry an absence.
+# driver (its own target directory) from a copy whose seven absence writes
+# (the named refusal, the not-applicable rows, the fixed-root text and cook
+# rows and spill_absent) write an ANSWER where the `.absent` marker belongs,
+# and the leg must go red on the surfaces that carry an absence.
 RUST_ABSENT_CONTROL := build/rust-absent-control
 .PHONY: conformance-rust-absent conformance-rust-absent-negative-control
 conformance-rust-absent: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
@@ -1418,13 +1428,13 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 	@grep -Eq 'pass [0-9]+/[0-9]+ \+[0-9]+a' build/conformance-rust-absent.log || \
 		{ echo "conformance-rust-absent: no surface counted a per-case absence"; exit 1; }
 	@echo "conformance-rust-absent: the Rust leg is green with its per-case absences counted"
-conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
 	@sed -e 's|spill(dir, &format!("{name}.absent"), b"");|spill(dir, name, b""); // SABOTAGED: an absence answered as an answer|' \
 		-e 's|&format!("{}.absent", f\[1\])|\&f[1] /* SABOTAGED: an absence answered as an answer */|g' \
 		test/conformance/rust/src/main.rs > $(RUST_ABSENT_CONTROL)/driver/src/main.rs
-	@[ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = 4 ] || \
-		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach all four absence writes"; exit 1; }
+	@[ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = 7 ] || \
+		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach all seven absence writes"; exit 1; }
 	@cmp -s test/conformance/rust/src/main.rs $(RUST_ABSENT_CONTROL)/driver/src/main.rs && \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
@@ -1638,7 +1648,7 @@ define RUST_FRAMING_DRIVER
 		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
 	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 endef
-conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
 	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/
 	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)-share/
