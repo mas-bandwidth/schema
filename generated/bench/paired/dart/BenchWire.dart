@@ -5085,6 +5085,61 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
   return def;
 }
 
+// _JNumParts is one JSON number token split into its sign, its significant
+// digits and the point's place: the value is digits × 10^(point - digits.length).
+// Leading and trailing zeros are dropped with two index scans, never one copy
+// per digit, so a long token is read in one pass (§16.2).
+final class _JNumParts {
+  final bool negative;
+  final String digits;
+  final int point;
+  _JNumParts(this.negative, this.digits, this.point);
+}
+
+_JNumParts _jsonNumberParts(String token) {
+  var i = 0;
+  var negative = false;
+  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
+    negative = token[i] == '-';
+    i++;
+  }
+  final intStart = i;
+  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) i++;
+  final intDigits = token.substring(intStart, i);
+  var fracDigits = '';
+  if (i < token.length && token[i] == '.') {
+    i++;
+    final fracStart = i;
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) i++;
+    fracDigits = token.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
+    i++;
+    var expNegative = false;
+    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
+      expNegative = token[i] == '-';
+      i++;
+    }
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (expNegative) exp = -exp;
+  }
+  final all = intDigits + fracDigits;
+  var start = 0;
+  var point = intDigits.length + exp;
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
+    point--;
+  }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  if (start == end) return _JNumParts(false, '', point);
+  return _JNumParts(negative, all.substring(start, end), point);
+}
+
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
 // float, placed and range-checked; anything else is a kind mismatch. lo and hi
 // are the declared range, or the storage width below 64 bits; an unsigned
@@ -5093,7 +5148,9 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
 // token in an unsigned field, an integral float) is placed EXACTLY as the
 // engine places it (internal/tabletext interpretInteger, integerInDomain): its
 // sign and magnitude, saturated at 2^64-1 and counted; the declared range;
-// then the 64-bit storage domain, each move counted.
+// then the 64-bit storage domain, each move counted. The range is decided from
+// the token's significant digits before any parse, so a long token stays
+// linear (§16.2, §16.12).
 int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
   if (val is int && (!unsigned || val >= 0)) {
     var v = val;
@@ -5118,7 +5175,19 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
       r.refuse('out_of_range');
       return def;
     }
-    wide = BigInt.parse(val.token);
+    final parts = _jsonNumberParts(val.token);
+    if (parts.digits.isEmpty) {
+      wide = BigInt.zero;
+    } else if (parts.point > 20) {
+      r.refuse('out_of_range');
+      return def;
+    } else {
+      wide = BigInt.parse(parts.digits);
+      if (parts.negative) wide = -wide;
+      if (parts.point > parts.digits.length) {
+        wide *= BigInt.from(10).pow(parts.point - parts.digits.length);
+      }
+    }
   } else {
     final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
     if (!d.isFinite || d != d.truncateToDouble()) {
@@ -5379,42 +5448,27 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
 }
 
 int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
-  var i = 0;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) i++;
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i++]);
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i++]);
+  final parts = _jsonNumberParts(token);
+  if (parts.digits.isEmpty) return -1;
+  // The midpoint is n × 2^e2 with n below 2^53, so at the float32 widths
+  // this helper is reached from its decimal spelling has fewer than 200
+  // significant digits. A longer token is decided by its first 512 digits
+  // and whether any digit follows them (§16.2): BigInt.parse stays bounded
+  // and the compare stays linear in the token.
+  const keep = 512;
+  var sig = parts.digits;
+  var sticky = false;
+  if (sig.length > keep) {
+    for (var k = keep; k < sig.length; k++) {
+      if (sig.codeUnitAt(k) != 0x30) {
+        sticky = true;
+        break;
+      }
     }
+    sig = sig.substring(0, keep);
   }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var neg = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) neg = token[i++] == '-';
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (neg) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
-  if (digits.isEmpty) return -1;
-  final e10 = point - digits.length;
-  var lhs = BigInt.parse(digits);
+  final e10 = parts.point - sig.length;
+  var lhs = BigInt.parse(sig);
   var rhs = n;
   final ten = BigInt.from(10);
   if (e10 >= 0) {
@@ -5427,7 +5481,9 @@ int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
   } else {
     lhs <<= -e2;
   }
-  return lhs.compareTo(rhs);
+  final cmp = lhs.compareTo(rhs);
+  if (cmp == 0 && sticky) return 1;
+  return cmp;
 }
 
 double? _narrowF32(double d, String token) {
@@ -5889,48 +5945,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('kind_mismatch');
     return def;
   }
-  var i = 0;
-  var negative = false;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-    negative = token[i] == '-';
-    i++;
-  }
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i]);
-    i++;
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i]);
-      i++;
-    }
-  }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var expNegative = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-      expNegative = token[i] == '-';
-      i++;
-    }
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (expNegative) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  final parts = _jsonNumberParts(token);
+  final digits = parts.digits;
+  final point = parts.point;
+  final negative = parts.negative;
   final domainLo = signed ? -(BigInt.one << 127) : BigInt.zero;
   final domainHi = signed ? (BigInt.one << 127) - BigInt.one : (BigInt.one << 128) - BigInt.one;
   BigInt raw;
@@ -5940,6 +5958,12 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('out_of_range');
     return def;
   } else if (point < -40) {
+    r.refuse('kind_mismatch');
+    return def;
+  } else if (point < digits.length && digits.length - point > frac) {
+    // A fraction with more significant digits than the Q I.F grid has
+    // fraction bits cannot be exact; decide it before any big arithmetic,
+    // so BigInt.parse only ever sees a bounded string (§16.2).
     r.refuse('kind_mismatch');
     return def;
   } else {
@@ -6155,15 +6179,16 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     if (expNeg) exp = -exp;
   }
   if (i != k.length) throw const FormatException('invalid integer map key');
-  var digits = intDigits + fracDigits;
+  final all = intDigits + fracDigits;
+  var start = 0;
   var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
-    digits = digits.substring(1);
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
     point--;
   }
-  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  final digits = all.substring(start, end);
   BigInt mag;
   if (digits.isEmpty) {
     mag = BigInt.zero;
