@@ -139,6 +139,34 @@ func listNodeRecordNext(v int32, next byte) []byte {
 	return cat(b(5, 10, 1, 4), i32(v), b(3, 17, next), b(0))
 }
 
+// listNodeRecordNextIndex is a node record of `ListNode { next = k }` for a
+// node index of any width: the pointer field, then the terminator. The value
+// stays at its default, so the index's LEB128 is the only part that grows with
+// the chain.
+func listNodeRecordNextIndex(next uint64) []byte {
+	payload := cat(b(3, 17), leb(next), b(0))
+	return cat(b(5), leb(uint64(len(payload))), payload)
+}
+
+// listNodeChain is a Scene whose head names record 1 and whose record k names
+// record k+1, with record n's next absent. The records ride in index order, so
+// the chain costs the node count and not its length in stack (docs/SPEC-TABLES.md §3.1).
+func listNodeChain(n int) []byte {
+	records := make([][]byte, n)
+	for k := 1; k <= n; k++ {
+		if k == n {
+			records[k-1] = cat(b(5, 1, 0))
+			continue
+		}
+		records[k-1] = listNodeRecordNextIndex(uint64(k + 2))
+	}
+	return cat(b(6, 17, 2), nodeTable(uint64(n), records...), b(0))
+}
+
+// The graphdemo Scene-to-ListNode chain id table: 1 value, 2 name, 3 next,
+// 4 the reserved node-table id, 5 ListNode's type id, 6 Scene.head.
+var sceneListNodeIds = []string{"value", "name", "next", "node-table", "type:ListNode", "head"}
+
 // The graphdemo Scene-to-TreeNode id table: 1 tree, 2 left, 3 right, 4 the
 // reserved node-table id, 5 TreeNode's type id.
 var sceneTreeIds = []string{"tree", "left", "right", "node-table", "type:TreeNode"}
@@ -411,6 +439,11 @@ var framingVectors = []framingVector{
 	// T8's legal twin: a chain of two records, each pointer naming a node not
 	// yet reached, reads clean.
 	{name: "node_chain_two", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecordNext(2, 3), listNodeRecord(3)), b(0))},
+	// §3.1: a legal chain of 200,000 records, each next naming the following
+	// record and the last next absent. The node table is flat, so the chain's
+	// length is not a depth and no pass recurses per pointer. Held out of the
+	// manifest on this file's held rule.
+	{name: "node_chain_200000", unit: "graphdemo", root: "Scene", ids: sceneListNodeIds, body: listNodeChain(200000), held: true},
 	// T6: a reader that cannot name the reserved id counts one unknown.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.
