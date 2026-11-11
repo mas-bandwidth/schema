@@ -1,0 +1,34 @@
+# testdata/wire/skipped-value — a value a reader SKIPS is held to what a read
+# of it would hold, in every form (docs/SPEC-TABLES.md §4, §16.3;
+# docs/rulings.json skipped-value-is-validated).
+#
+# Two units under test/skipped-value/: reader/Reader.schema declares `known`
+# only; writer/Writer.schema declares `known` plus one extra field of each shape
+# the reader does not — a string, a float, a quantized float, a counted array,
+# an enum-keyed array and a nested table. A reader of the reader unit skips each
+# extra field and is held to what a read of it would hold, in the JSON and the
+# message form.
+#
+# Columns, tab-separated: file, form (json or message), verdict (read or refused).
+#
+# JSON rows read at the reader unit's Root. Message rows decode a batch of one
+# Root body against announcement.bin (the writer unit's announcement): the
+# canonical batch reads, and each damaged batch refuses, one per message-skip
+# condition of docs/SPEC-TABLES.md §3.3. The reserved-id condition (a nested
+# body naming a reserved id) needs a vocabulary no conforming writer announces,
+# so no batch carries it.
+#
+unknown-string-zero.json	json	refused
+unknown-string-control.json	json	read
+skipped-object-key-zero.json	json	refused
+skipped-object-key-control.json	json	read
+announcement.bin	message	read
+canonical.bin	message	read
+string-zero.bin	message	refused
+string-illformed.bin	message	refused
+float-nan.bin	message	refused
+quant-index-over.bin	message	refused
+array-count-over.bin	message	refused
+keyed-repeat.bin	message	refused
+keyed-wrong-sort.bin	message	refused
+nested-id-twice.bin	message	refused

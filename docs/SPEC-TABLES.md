@@ -8566,7 +8566,11 @@ hand-editable text form alone refuses an unknown name, §6.5):
 - **Unknown field** (newer writer): skipped by its length, counted `unknown`,
   or kept under the retain rules (§6.6). Skipped is not unread: the conditions
   decidable from the wire alone apply to its bytes as to every other byte
-  (§6.5), so damage inside an unknown field refuses the load. That walk, and
+  (§6.5), so damage inside an unknown field refuses the load. **A value a
+  reader skips is held to what a read of it would hold in every form** — the
+  variable form's unknown field here, the message form's skipped payload
+  (§3.3), and the JSON form's skipped value and every object key (§16.3) —
+  and damage inside it refuses the whole read. That walk, and
   every other walk of the binary forms, holds ONE NESTING BOUND, normative for
   every reader and every path: the root body is at depth 0, and each
   STRUCTURAL payload inside it is one level deeper: a table body, an array, a
@@ -16111,9 +16115,10 @@ text is authoring input and a wire is untrusted input: it is the form's answer t
 name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
-of an unknown key, an object key, whether it names a field or none —
-stores nothing and is not this event, and a `\u0001` escape, or any escape
-but `\u0000`, is not affected. A map key past its bound (over a string key's bound, or too long to be any
+of an unknown key, an object key, whether it names a field or none — is held
+to the grammar and text rules a placed value is held to, and one that decodes
+to `U+0000` refuses the read as a placed one does; a `\u0001` escape, or any
+escape but `\u0000`, is not affected. A map key past its bound (over a string key's bound, or too long to be any
 integer) refuses the read, and a zero in any map key refuses it
 the same way, in every Go reader alike. **The other answer, the wire
 and every writer carrying the zero, was considered and refused**: it would

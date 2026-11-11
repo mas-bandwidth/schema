@@ -14,7 +14,7 @@ func TestSpecGoS163NulEscapeScope(t *testing.T) {
 	}
 	page := strings.Join(strings.Fields(string(data)), " ")
 	tick := string(rune(96))
-	wantObject := "an object key, whether it names a field or none " + string(rune(0x2014)) + " stores nothing and is not this event"
+	wantObject := "an object key, whether it names a field or none " + string(rune(0x2014)) + " is held to the grammar and text rules a placed value is held to"
 	wantEscape := "a " + tick + `\u0001` + tick + " escape, or any escape but " + tick + `\u0000` + tick + ", is not affected"
 	for _, want := range []string{wantObject, wantEscape} {
 		if !strings.Contains(page, want) {

@@ -65,6 +65,14 @@ func TestIssue710UnpackPaths(t *testing.T) {
 			if _, err := c.UnpackOneFile(u, "Root", wire, dir); err != nil {
 				t.Fatalf("one-file key %q: %v", key, err)
 			}
+			if strings.IndexByte(key, 0) >= 0 {
+				// a JSON key that decodes to U+0000 refuses the read (§16.3),
+				// so a text whose key holds NUL does not round-trip
+				if _, _, _, err := c.Pack(u, "Root", dir); err == nil {
+					t.Fatalf("packed a text whose key holds NUL %q", key)
+				}
+				return
+			}
 			if _, _, _, err := c.Pack(u, "Root", dir); err != nil {
 				t.Fatal(err)
 			}

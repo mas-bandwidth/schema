@@ -259,6 +259,17 @@
         "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "skipped-value-is-validated",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a value a reader skips is held to what a read of it would hold, and damage inside it refuses the read, in every form"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that strict wins, applied by the coordinator",
+      "supersedes": [
+        "the §16.3 sentence \"a string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — stores nothing and is not this event\""
+      ]
     }
   ]
 }
