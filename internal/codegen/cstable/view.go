@@ -46,7 +46,7 @@ func generateView(u *ir.Unit, closure map[string]bool) []byte {
 		return ""
 	}
 	annotation := func(doc string, tags []string) string {
-		return fmt.Sprintf("Doc = %s, Tags = %s", ir.QuoteDoc(doc), armTags(tags))
+		return fmt.Sprintf("Doc = %s, Tags = %s", csQuote(doc), armTags(tags))
 	}
 	typeRows := func(set []*ir.Struct) string {
 		var rows []string

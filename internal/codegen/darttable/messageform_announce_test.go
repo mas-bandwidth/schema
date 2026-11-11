@@ -387,6 +387,9 @@ func announceDartBinary(t *testing.T) string {
 	if dart, err := exec.LookPath("dart"); err == nil {
 		return dart
 	}
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no Dart toolchain is at DART, dist/dart-sdk-3.13.2, or on the PATH")
+	}
 	t.Skip("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
 	return ""
 }
@@ -397,11 +400,18 @@ func announceDartBinary(t *testing.T) string {
 // runs it with the leg's own toolchain. The surface is executed on its own so a
 // defect in an unrelated form does not decide whether the announcement compiles.
 func runAnnounceProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
+	return runAnnounceProbeWithRuntime(t, u, body, dartMessageAnnounceRuntime)
+}
+
+// runAnnounceProbeWithRuntime is runAnnounceProbe over a supplied copy of the
+// announcement runtime, so a gate can put a fault in the emitted source in
+// memory and require its own positive test red.
+func runAnnounceProbeWithRuntime(t *testing.T, u *ir.Unit, body, runtime string) (string, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
-	lib := "import 'dart:typed_data';\n\n" + dartMessageAnnounceRuntime + "\n" + dartTableAnnouncementConstant(u)
+	lib := "import 'dart:typed_data';\n\n" + runtime + "\n" + dartTableAnnouncementConstant(u)
 	if err := os.WriteFile(filepath.Join(dir, "announce.dart"), []byte(lib), 0o600); err != nil {
 		t.Fatal(err)
 	}

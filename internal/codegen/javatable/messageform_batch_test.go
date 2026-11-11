@@ -17,6 +17,7 @@ package javatable
 //      buffer, unknown field skipped, quantized index at/above count).
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
@@ -451,6 +453,10 @@ func messageBatchLoadPaths(t *testing.T, root string, paths []string) *ir.Unit {
 }
 
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
+	return runMessageBatchProbeWithin(t, u, body, 0)
+}
+
+func runMessageBatchProbeWithin(t *testing.T, u *ir.Unit, body string, timeout time.Duration) string {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -522,9 +528,21 @@ func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+	var run *exec.Cmd
+	var ctx context.Context
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		run = exec.CommandContext(ctx, javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+	} else {
+		run = exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+	}
 	out, err := run.CombinedOutput()
 	if err != nil {
+		if ctx != nil && ctx.Err() == context.DeadlineExceeded {
+			t.Fatalf("java did not finish within %s\n%s", timeout, out)
+		}
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	return string(out)
