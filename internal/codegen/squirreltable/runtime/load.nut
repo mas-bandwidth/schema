@@ -459,9 +459,14 @@ local nodeScan = function(bytes, table, end, report) {
   while (rec.at < rec.end) {
     local tref = leb(rec);
     if (rec.bad || tref == 0 || tref > table.len()) { report.bodyDamaged = true; return null; }
+    local tid = table[tref - 1];
+    if (tid == NODE_TABLE_ID || tid == BUILD_VERSION_ID || tid == MESSAGE_VOCABULARY_ID) {
+      report.bodyDamaged = true;
+      return null;
+    }
     local tlen = leb(rec);
     if (rec.bad || rec.at + tlen > rec.end) { report.bodyDamaged = true; return null; }
-    raw.append({ tid = table[tref - 1], b = bytes, at = rec.at, end = rec.at + tlen });
+    raw.append({ tid = tid, b = bytes, at = rec.at, end = rec.at + tlen });
     rec.at += tlen;
   }
   if (count != raw.len()) { report.bodyDamaged = true; return null; }
