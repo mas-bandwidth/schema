@@ -159,8 +159,9 @@ failure in their tree and not only in ours.
   int16 and int32, and `bits(N <= 32)` alike, so uint32 and int8 both store
   `int` — and 33 to 64 bits in `long`, wider integers as `Int128`/`UInt128`.
   Where such storage is wider than the kind, the type does not bound it: the
-  writer stores the kind's low bits and the reader reads them back at the
-  kind's width.
+  save writes the kind's low bits and the load reads them back at the kind's
+  width, so a value outside the kind's range is truncated on save rather than
+  refused.
 - **The packet codecs compose** (SPEC §6.1): `write<Name>Bits(value, data,
   bitOffset)` and `read<Name>Bits(value, data, bitOffset, numBits)` return
   the bit position after the value (`-1` on a refused read); `write<Name>` and
