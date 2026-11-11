@@ -404,6 +404,13 @@ local function node_scan(bytes, o, report, variable, st)
     local id = o.table[ref]
     local kind = r_u8(w)
     if id == NODE_TABLE_ID and variable then
+      -- the node table is one field of the root body; carried twice, its id
+      -- repeats in one body, which is damage (§3, §3.1, §4), as the
+      -- engine's decode holds it
+      if present then
+        bad = true
+        break
+      end
       present = true
       if kind ~= 12 then
         bad = true
@@ -2100,7 +2107,14 @@ local function read_form1(T, name, bytes, report, state, into)
     end
     local rd = state.rd
     for _, node in ipairs(ctx.nodes) do
-      if node.kind == "t" then read_body(T, ctx, node.codec, point(rd, bytes, node.at, node.lim), node.value, true) end
+      if node.kind == "t" then
+        local r = point(rd, bytes, node.at, node.lim)
+        read_body(T, ctx, node.codec, r, node.value, true)
+        -- a record's body ends at its own terminator, the last byte of its L:
+        -- bytes after it inside L are damage (§3, §3.1), as the engine's
+        -- decode holds a nested body
+        if not r.bad and r.at ~= r.lim then report.damaged = true end
+      end
     end
   end
   local root

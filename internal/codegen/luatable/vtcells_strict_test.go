@@ -9,20 +9,20 @@ package luatable
 // array_L1_inert, keyed_L1_inert, map_L1_inert, node_index_null,
 // node_table_twice, node_unknown_to_fixed_reader), and no test named that
 // refusal for the row it belongs to. The wire-alone check (wire_check in
-// load.lua) refuses them now; this file names, per cell, the vectors that
-// cell's feature owns and holds the strict read to their refusal:
+// load.lua) refuses them now, save node_table_twice, which the walk itself
+// discards as the engine's decode does (walk_damage_test.go); this file
+// names, per cell, the vectors that cell's feature owns and holds the strict
+// read to their refusal:
 //
 //	id-table-wire     a repeated field id, and unknown field bodies whose
 //	                  own bytes are damaged or point past the node table
 //	unbounded-arrays  array bodies with L 0 or 1, which carry no count
 //	enum-keyed-arrays an enum-keyed body with L 1, which carries no count
 //	maps              a map body with L 1, which carries no count
-//	variable-class    a node record no pointer reaches, a node table
-//	                  twice, a node table an unknown field carries whose
-//	                  record's type ref is 0, and a node record with bytes
-//	                  after its terminator inside its L
+//	variable-class    a node record no pointer reaches, and a node table an
+//	                  unknown field carries whose record's type ref is 0
 //
-// The eleven vectors are exactly luaWireCheckOnly: the walk reads them and
+// The nine vectors are exactly luaWireCheckOnly: the walk reads them and
 // only the wire-alone check refuses them, so the negative control below
 // switches that check off in the generated load.lua (the real artifact)
 // and requires every vector of every cell to read again, and no other
@@ -44,7 +44,7 @@ var luaVTFramingCells = []struct {
 	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference"}},
 	{"maps", []string{"map_L1_inert"}},
 	{"unbounded-arrays", []string{"array_L0_inert", "array_L1_inert"}},
-	{"variable-class", []string{"node_index_null", "node_table_twice", "node_unknown_to_fixed_reader", "node_record_bytes_after_terminator"}},
+	{"variable-class", []string{"node_index_null", "node_unknown_to_fixed_reader"}},
 }
 
 // luaVTFramingPins answers the manifest verdict of every vector the five
