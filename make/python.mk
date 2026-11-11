@@ -18,7 +18,7 @@
 .PHONY: test-python update-goldens-python
 test-python: python-toolchain-check python-toolchain-negative-control
 	SCHEMA_SLOW=1 go test ./internal/codegen/python/... -count=1
-	go test -tags schema_leg_python ./compiler -run 'Python' -count=1
+	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonRefusesADeclarationThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
 
 # The conformance driver answers every surface ABSENT until a layer carries
