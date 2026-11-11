@@ -68,15 +68,24 @@ printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers"
 rc=0
 build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
 if [ "$mode" = replacement ]; then
-    [ "$rc" -ne 0 ] || { cat "$out/log"; echo 'replacement decoding stayed green' >&2; exit 1; }
-    grep -q 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
-    if grep '^  dart / ' "$out/log" | grep -v 'dart / json-hostile: str-illformed-at-bound:'; then
-        cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
+    # The corpus's one ill-formed row (str-illformed-at-bound) sits at its
+    # string's bound, so a U+FFFD put in for the 0xFF byte is past the bound
+    # and the read refuses it anyway: that row cannot see the decoder. The
+    # ill-formed byte under the bound below can, and the strict boundary
+    # refuses it (the positive run holds that).
+    if grep '^  dart / ' "$out/log"; then
+        cat "$out/log"; echo 'replacement decoding changed a corpus row the bound already refuses' >&2; exit 1
     fi
     grep -Eq '^json-read +pass ' "$out/log"
     grep -Eq '^json-write +pass ' "$out/log"
-    grep 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
-    echo 'Dart replacement-decoder control: only invalid UTF-8 fails; read/write remain green'
+    mkdir -p "$out/short/illformed" "$out/short/answers"
+    printf '{ "version_note": "a\377b" }\n' > "$out/short/illformed/RootConfig.json"
+    printf 'json-hostile illformed tabledemo RootConfig %s/short/illformed refused\n' "$out" > "$out/short/manifest"
+    "$binary" "$out/short/manifest" json-hostile "$out/short/answers"
+    if grep -qx 'refused' "$out/short/answers/illformed"; then
+        echo 'replacement decoding left the ill-formed byte under the bound refused' >&2; exit 1
+    fi
+    echo 'Dart replacement-decoder control: an ill-formed byte under the bound reads; read/write remain green'
     exit 0
 fi
 rows=$(grep -c '^json-hostile ' testdata/conformance/tables/MANIFEST.txt)
@@ -84,6 +93,14 @@ if [ "$rc" -ne 0 ] || ! grep -Eq "^json-hostile +pass $rows/$rows *\$" "$out/log
     cat "$out/log"; echo 'Dart strict text boundary claims failed' >&2; exit 1
 fi
 grep -E '^json-(read|write|hostile) ' "$out/log"
+
+# An ill-formed byte under the string's bound is refused at the boundary
+# (docs/SPEC-TABLES.md §16.3); the replacement control reads it.
+mkdir -p "$out/short/illformed" "$out/short/answers"
+printf '{ "version_note": "a\377b" }\n' > "$out/short/illformed/RootConfig.json"
+printf 'json-hostile illformed tabledemo RootConfig %s/short/illformed refused\n' "$out" > "$out/short/manifest"
+"$binary" "$out/short/manifest" json-hostile "$out/short/answers"
+grep -qx 'refused' "$out/short/answers/illformed" || { echo 'an ill-formed byte under the bound was not refused' >&2; exit 1; }
 
 # The corresponding Go test checks these exact bytes on tabledemo.RootConfig.
 mkdir -p "$out/bom/plain" "$out/bom/leading-bom" "$out/bom/double-bom" "$out/bom/space-bom" "$out/bom/cut-bom" "$out/bom/answers"
