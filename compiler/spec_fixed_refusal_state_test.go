@@ -19,7 +19,7 @@ func TestSpecFixedRefusalLeavesValues(t *testing.T) {
 	const algorithm = "../docs/FIXED-FORM-ALGORITHM.md"
 	const tables = "../docs/SPEC-TABLES.md"
 	load := specSection(t, algorithm, "### 5.3 ", "### 5.4 ")
-	proofs := specSection(t, algorithm, "## 7. What a port takes", "## 8. Coverage matrix")
+	proofs := specSection(t, algorithm, "## 7. What a port takes", "## 8. Coverage")
 	fixedLoad := specSection(t, tables, "### 6.5 ", "### 6.6 ")
 
 	rows := []struct {
