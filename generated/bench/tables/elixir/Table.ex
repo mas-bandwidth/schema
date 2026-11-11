@@ -1742,8 +1742,8 @@ defmodule Benchtable.Table do
     # DISTINCT node: a table node two fields share is numbered once, so the
     # saved wire matches the reference backends byte for byte (§3.1), and a
     # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
-    # are two records. A blob the strict read found named from two slots
-    # refuses the save by name, blob_shared (§2.5).
+    # are two records. A blob a second slot names refuses the save by name,
+    # blob_shared (§2.5, §6.5), as the strict read refuses it.
     try do
       nodes = collect_root(desc, value)
       idx_map = node_index(nodes)
@@ -1781,8 +1781,9 @@ defmodule Benchtable.Table do
   # the body that holds it (the root, or the table node by its content) and its
   # position among that body's blob slots in declaration order. The node walk
   # and the body writer meet a body's blob slots in the same order, so the two
-  # name the same site. A {:blob_shared, bytes} slot is the strict read's
-  # mark of a blob a second slot named, and every writer refuses it (§2.5).
+  # name the same site. A {:blob_shared, bytes} slot a caller hands the writer
+  # names a blob a second slot names, and every writer refuses it (§2.5,
+  # §6.5); the strict read itself already refused that wire.
   defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
 
   defp blob_site({:__wire_blob__, idx, order, _bytes}), do: {:wire_blob, idx, order}
@@ -2798,14 +2799,14 @@ defmodule Benchtable.Table do
             {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
           end
 
-        {{value, report}, shared} =
+        {value, report} =
           with_node_directory(table, nodes, fn ->
             blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
           end)
 
         if not terminated, do: throw(:wire_damaged)
 
-        report = Map.put(report, :blob_shared, shared)
+        report = Map.put(report, :blob_shared, 0)
 
         # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
         # that met damage anywhere returns no value, only its report
@@ -2823,6 +2824,11 @@ defmodule Benchtable.Table do
 
     {:count_over_extent_cap, report} ->
       {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
+
+    # A BLOB NAMED FROM TWO SLOTS refuses the read (docs/SPEC-TABLES.md §2.5,
+    # §6.5): no value lands.
+    :blob_shared ->
+      {:error, :blob_shared, reasoned(empty_report(), :blob_shared)}
 
     # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
     # strict one too, and outranks any damage the walk would have met after
@@ -2853,14 +2859,14 @@ defmodule Benchtable.Table do
             {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
           end
 
-        {{value, report}, shared} =
+        {value, report} =
           with_node_directory(table, nodes, fn ->
             blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
           end)
 
         if not terminated, do: throw(:wire_damaged)
 
-        report = Map.put(report, :blob_shared, shared)
+        report = Map.put(report, :blob_shared, 0)
 
         # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
         # that met damage anywhere returns no value, only its report
@@ -2878,6 +2884,11 @@ defmodule Benchtable.Table do
 
     {:count_over_extent_cap, report} ->
       {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
+
+    # A BLOB NAMED FROM TWO SLOTS refuses the read (docs/SPEC-TABLES.md §2.5,
+    # §6.5): no value lands.
+    :blob_shared ->
+      {:error, :blob_shared, reasoned(empty_report(), :blob_shared)}
 
     # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
     # strict one too, and outranks any damage the walk would have met after
@@ -2913,6 +2924,8 @@ defmodule Benchtable.Table do
 
   defp reasoned(report, :count_over_extent_cap),
     do: Map.put(report, :reason, "count_over_extent_cap")
+
+  defp reasoned(report, :blob_shared), do: Map.put(report, :reason, "blob_shared")
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
@@ -3171,26 +3184,23 @@ defmodule Benchtable.Table do
     end
   end
 
-  # THE TOLERANT READ OF A SHARED BLOB (docs/SPEC-TABLES.md §2.5): a blob is
-  # owned by one slot, and a wire whose two slots name ONE blob record is read,
-  # not refused. Final stored slots use bytes for the first owner and
-  # {:blob_shared, bytes} for each other owner, never a copy. The report counts
-  # extra read namings; writers refuse only ownership that survives replacement.
-  # A read site is the body holding it (root or table node by index) and its
-  # position among that body's blob reads, so a table node a second pointer
-  # decodes again names the same slots and is not a sharing.
+  # A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5, §6.5): a wire whose
+  # two slots name ONE blob record is refused, never read — the second naming
+  # throws blob_shared on the plain and the retaining read alike, so no value
+  # is returned and nothing is retained. A read site is the body holding it
+  # (root or table node by index) and its position among that body's blob
+  # reads, so a table node a second pointer decodes again names the same slots
+  # and is not a sharing.
   defp blob_namings(fun) do
     Process.put(:elixir_blob_read, %{
       holder: :root,
       n: 0,
       next: 0,
-      named: %{},
-      shared: MapSet.new()
+      named: %{}
     })
 
     try do
-      result = fun.()
-      {result, MapSet.size(Process.get(:elixir_blob_read).shared)}
+      fun.()
     after
       Process.delete(:elixir_blob_read)
     end
@@ -3227,7 +3237,7 @@ defmodule Benchtable.Table do
           case Map.fetch(st.named, idx) do
             :error -> %{st | named: Map.put(st.named, idx, site)}
             {:ok, ^site} -> st
-            {:ok, _first} -> %{st | shared: MapSet.put(st.shared, site)}
+            {:ok, _first} -> throw(:blob_shared)
           end
 
         Process.put(:elixir_blob_read, st)
@@ -5077,7 +5087,7 @@ defmodule Benchtable.Table do
     do: tally_node(name, v, acc)
 
   # a blob is its slot's own (§2.5), so equal bytes in two slots are two
-  # strings; only the strict read's {:blob_shared, bytes} mark is a sharing
+  # strings; a {:blob_shared, bytes} slot a caller hands the writer is a sharing
   defp tally_field(%{t: :blob, type_id: id}, {:blob_shared, _bytes}, acc),
     do: Map.put(acc, {:blob, id, :shared}, 2)
 

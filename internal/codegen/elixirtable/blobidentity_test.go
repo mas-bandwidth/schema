@@ -19,10 +19,9 @@ import (
 //     counts no sharing and the save writes the Go engine's two records byte
 //     for byte, and so does a FRESH value built with equal binaries.
 //   - blob_shared and blob_shared_string: one blob record named from two
-//     slots. The tolerant read keeps the value, marks the second slot
-//     {:blob_shared, bytes} and counts one blob_shared; the save and the text
-//     writer refuse it by name, blob_shared, rather than writing a copy per
-//     slot.
+//     slots. Every read refuses the whole wire (docs/SPEC-TABLES.md §2.5,
+//     §6.5): load, variable_load and load_retain return no value, and the
+//     retaining store is left empty.
 //
 // It runs the leg's own toolchain, so it is a FUNCTIONAL test.
 func TestBlobIsNumberedByItsSlotElixir(t *testing.T) {
@@ -40,6 +39,8 @@ func TestBlobIsNumberedByItsSlotElixir(t *testing.T) {
 			equal := filepath.Join(root, "testdata", "wire", "tables", "blob_equal_bytes.bin")
 			shared := filepath.Join(root, "testdata", "wire", "tables", "blob_shared.bin")
 			return fmt.Sprintf(`
+store = %%{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
+zero = %%{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
 wire = File.read!(%[1]q)
 {:ok, value, report} = %[3]s.load("Catalog", wire)
 Probe.check(report.blob_shared == 0, "blob_equal_bytes", "no sharing counted: " <> inspect(report))
@@ -52,21 +53,28 @@ fresh = Map.merge(value, %%{"thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>})
 Probe.check(again == out and back["alias"] == <<1, 2, 3>>, "fresh equal blobs", "round trip as two nodes")
 
 swire = File.read!(%[2]q)
-{:ok, svalue, sreport} = %[3]s.load("Catalog", swire)
-Probe.check(sreport.blob_shared == 1, "blob_shared", "one extra naming counted: " <> inspect(sreport))
-Probe.check(svalue["alias"] == {:blob_shared, svalue["thumb"]}, "blob_shared", "the second slot is marked: " <> inspect(svalue))
-Probe.check(%[3]s.save("Catalog", svalue) == {:error, :blob_shared}, "blob_shared", "save refuses by name")
-Probe.check(%[3]s.to_json("Catalog", svalue) == {:error, :blob_shared}, "blob_shared", "text refuses by name")
+Probe.check(match?({:error, _, _}, %[3]s.load("Catalog", swire)), "blob_shared", "load accepted a shared blob")
+Probe.check(match?({:error, _, _}, %[3]s.variable_load("Catalog", swire)), "blob_shared", "variable_load accepted a shared blob")
+case %[3]s.load_retain("Catalog", swire, store, zero) do
+  {:error, _, _, rt} ->
+    Probe.check(rt.records == [] and rt.used == 0 and rt.ids == [], "blob_shared", "the retaining refusal left a store: " <> inspect(rt))
+  other -> Probe.check(false, "blob_shared", "load_retain accepted a shared blob: " <> inspect(other))
+end
 `, equal, shared, mod)
 		}},
 		{"mapdemo", "tables/maps", func(mod string) string {
 			shared := filepath.Join(root, "testdata", "wire", "tables", "blob_shared_string.bin")
 			return fmt.Sprintf(`
+store = %%{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
+zero = %%{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
 swire = File.read!(%[1]q)
-{:ok, svalue, sreport} = %[2]s.load("Docs", swire)
-Probe.check(sreport.blob_shared == 1, "blob_shared_string", "one extra naming counted: " <> inspect(sreport))
-Probe.check(%[2]s.save("Docs", svalue) == {:error, :blob_shared}, "blob_shared_string", "save refuses by name")
-Probe.check(%[2]s.to_json("Docs", svalue) == {:error, :blob_shared}, "blob_shared_string", "text refuses by name")
+Probe.check(match?({:error, _, _}, %[2]s.load("Docs", swire)), "blob_shared_string", "load accepted a shared blob")
+Probe.check(match?({:error, _, _}, %[2]s.variable_load("Docs", swire)), "blob_shared_string", "variable_load accepted a shared blob")
+case %[2]s.load_retain("Docs", swire, store, zero) do
+  {:error, _, _, rt} ->
+    Probe.check(rt.records == [] and rt.used == 0 and rt.ids == [], "blob_shared_string", "the retaining refusal left a store: " <> inspect(rt))
+  other -> Probe.check(false, "blob_shared_string", "load_retain accepted a shared blob: " <> inspect(other))
+end
 `, shared, mod)
 		}},
 	}

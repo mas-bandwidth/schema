@@ -34,7 +34,7 @@ func TestBlockBuildAndCookWriteElixir(t *testing.T) {
 	})
 }
 
-func pinOneCook(t *testing.T, elixirBin, root string, unit *ir.Unit, rootName, wireName, cookName string) {
+func pinOneCook(t *testing.T, elixirBin, root string, unit *ir.Unit, rootName, wireName, valueExpr, cookName string) {
 	t.Helper()
 	files := generateElixir(t, unit)
 	dir := t.TempDir()
@@ -58,10 +58,16 @@ defmodule Probe do
     System.halt(1)
   end
 end
-wire = File.read!(` + elixirString(wire) + `)
+`
+	if valueExpr == "" {
+		probe += `wire = File.read!(` + elixirString(wire) + `)
 {:ok, value, report} = ` + mod + `.load(` + elixirString(rootName) + `, wire)
 Probe.check(true, "load")
-{size, reason} = ` + mod + `.cook_measure_reason(` + elixirString(rootName) + `, value)
+`
+	} else {
+		probe += "value = " + valueExpr + "\n"
+	}
+	probe += `{size, reason} = ` + mod + `.cook_measure_reason(` + elixirString(rootName) + `, value)
 Probe.check(reason == :ok and size > 0, "measure " <> inspect({size, reason}))
 Probe.check(` + mod + `.cook_measure(` + elixirString(rootName) + `, value) == size, "measure agrees")
 stamp = :binary.copy(<<0xA5>>, size)
@@ -135,20 +141,21 @@ func pinBlockGolden(t *testing.T, elixirBin, root string) {
 func pinCookWrite(t *testing.T, elixirBin, root string) {
 	t.Helper()
 	cases := []struct {
-		unit   string
-		schema []string
-		root   string
-		wire   string
-		name   string
+		unit      string
+		schema    []string
+		root      string
+		wire      string
+		valueExpr string
+		name      string
 	}{
-		{"graphdemo", []string{"tables/pointers/Graph.schema", "tables/pointers/Marks.schema", "tables/pointers/Parts.schema"}, "Scene", "graph_empty.bin", "graph_empty"},
-		{"graphdemo", []string{"tables/pointers/Graph.schema", "tables/pointers/Marks.schema", "tables/pointers/Parts.schema"}, "Scene", "graph_shared.bin", "graph_shared"},
-		{"graphdemo", []string{"tables/pointers/Graph.schema", "tables/pointers/Marks.schema", "tables/pointers/Parts.schema"}, "Scene", "graph_tree.bin", "graph_tree"},
-		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_empty.bin", "blob_empty"},
-		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_small.bin", "blob_small"},
-		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_shared.bin", "blob_shared"},
-		{"tblp1", []string{"test/tables/P1.schema"}, "Chain", "testdata/conformance/tables/wire/chain_value.bin", "chain_value"},
-		{"tblp3", []string{"test/tables/P3.schema"}, "Chain", "testdata/conformance/tables/wire/chain_optional.bin", "chain_optional"},
+		{"graphdemo", []string{"tables/pointers/Graph.schema", "tables/pointers/Marks.schema", "tables/pointers/Parts.schema"}, "Scene", "graph_empty.bin", "", "graph_empty"},
+		{"graphdemo", []string{"tables/pointers/Graph.schema", "tables/pointers/Marks.schema", "tables/pointers/Parts.schema"}, "Scene", "graph_shared.bin", "", "graph_shared"},
+		{"graphdemo", []string{"tables/pointers/Graph.schema", "tables/pointers/Marks.schema", "tables/pointers/Parts.schema"}, "Scene", "graph_tree.bin", "", "graph_tree"},
+		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_empty.bin", "", "blob_empty"},
+		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_small.bin", "", "blob_small"},
+		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_shared.bin", `%{"name" => "twin", "head" => nil, "thumb" => <<16, 32, 48, 64>>, "note" => nil, "alias" => {:blob_shared, <<16, 32, 48, 64>>}}`, "blob_shared"},
+		{"tblp1", []string{"test/tables/P1.schema"}, "Chain", "testdata/conformance/tables/wire/chain_value.bin", "", "chain_value"},
+		{"tblp3", []string{"test/tables/P3.schema"}, "Chain", "testdata/conformance/tables/wire/chain_optional.bin", "", "chain_optional"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -157,7 +164,7 @@ func pinCookWrite(t *testing.T, elixirBin, root string) {
 			for i, p := range c.schema {
 				paths[i] = filepath.Join(root, p)
 			}
-			pinOneCook(t, elixirBin, root, loadUnit(t, paths...), c.root, c.wire, c.name)
+			pinOneCook(t, elixirBin, root, loadUnit(t, paths...), c.root, c.wire, c.valueExpr, c.name)
 		})
 	}
 }
