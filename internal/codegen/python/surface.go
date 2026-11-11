@@ -336,7 +336,7 @@ func docComment(doc, indent, marker string) string {
 		return ""
 	}
 	var b strings.Builder
-	for _, line := range strings.Split(strings.TrimRight(doc, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(doc, "\n"), "\n") {
 		fmt.Fprintf(&b, "%s%s %s\n", indent, marker, line)
 	}
 	return b.String()
