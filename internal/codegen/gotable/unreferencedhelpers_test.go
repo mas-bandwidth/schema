@@ -184,7 +184,19 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("generate private-root unit: %v", err)
 			}
-			present := map[string]bool{}
+			upperPresent := map[string]bool{}
+			for _, src := range want {
+				file, err := parser.ParseFile(token.NewFileSet(), "generated.go", src, 0)
+				if err != nil {
+					t.Fatalf("parse uppercase-root output: %v", err)
+				}
+				for _, decl := range file.Decls {
+					if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
+						upperPresent["func:"+fn.Name.Name] = true
+					}
+				}
+			}
+			privatePresent := map[string]bool{}
 			for _, src := range got {
 				file, err := parser.ParseFile(token.NewFileSet(), "generated.go", src, 0)
 				if err != nil {
@@ -194,16 +206,16 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 					switch decl := decl.(type) {
 					case *ast.FuncDecl:
 						if decl.Recv == nil {
-							present["func:"+decl.Name.Name] = true
+							privatePresent["func:"+decl.Name.Name] = true
 						}
 					case *ast.GenDecl:
 						for _, spec := range decl.Specs {
 							switch spec := spec.(type) {
 							case *ast.TypeSpec:
-								present["type:"+spec.Name.Name] = true
+								privatePresent["type:"+spec.Name.Name] = true
 							case *ast.ValueSpec:
 								for _, name := range spec.Names {
-									present["value:"+name.Name] = true
+									privatePresent["value:"+name.Name] = true
 								}
 							}
 						}
@@ -221,10 +233,10 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 			for _, suffix := range apiSuffixes {
 				from := tc.upperGoRoot + suffix
 				to := tc.privateGoRoot + suffix
-				if !present["func:"+from] {
+				if !upperPresent["func:"+from] {
 					missing = append(missing, "uppercase fixture missing "+from)
 				}
-				if !present["func:"+to] {
+				if !privatePresent["func:"+to] {
 					missing = append(missing, to)
 				}
 			}
