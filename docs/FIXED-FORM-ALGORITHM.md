@@ -577,7 +577,9 @@ fnv1a64 over `bytes` and then `digest` and refuses a line whose `wire` disagrees
 the field lines. **The SET is bound too**: `lineage=0x…` on the `fixed table` line is one hash over every
 entry's wire hash and retired mark, in order (#912), so a hand that DELETES, reorders or re-marks a lineage
 line is caught by name — and the remedy it names is never "write it again", because no command can recover the
-layout bytes of a record nobody declares any more: restore the file from version control. A layout stops being
+layout bytes of a record nobody declares any more: restore the file from version control. **AND THE LOCK REFUSES
+TWO LINEAGE ENTRIES WITH ONE HASH**: step 5 resolves a hash by its FIRST index, so a second entry carrying the
+same wire hash would be unreadable for ever, and the lock refuses the collision by name. A layout stops being
 served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and moves the
 floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
 becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
@@ -968,9 +970,12 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
      record_bytes IS THE WHOLE RECORD, 8 + body, handed down already added (§5.2)
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
-      if record_bytes <= 8 or rest mod record_bytes != 0: REFUSE truncated
-                                                         -- 8 is the per-record hash; a body of nothing behind
-                                                        -- it would make `n` the file's length (fixedform.go:563)
+      if rest == 0 or record_bytes <= 8 or rest mod record_bytes != 0: REFUSE truncated
+                                                         -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a header
+                                                        -- and a layout followed by no record reads `n` = 0, and a
+                                                        -- batch of none holds no value to read. 8 is the per-record
+                                                        -- hash; a body of nothing behind it would make `n` the
+                                                        -- file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
  11  CHECK, every record, before any byte lands       -- in any order; the first condition met refuses
      per record, at `at`:
@@ -1034,6 +1039,7 @@ nothing could reach.
 | a known hash whose LINEAGE ENTRY would not build | `layout_malformed` | the entry's own lane carries it, never a throw (§5.9 #36); a plan the compiler cannot lay is a GENERATE-time failure |
 | the plan does not fit the CALLER's declared capacity | `plan_too_large` | a caller resource refusal, outside the verdict contract (SPEC-TABLES §6.5); never a read-time stand-in for a plan the build should have laid |
 | an entry past the writer's record size | `layout_record_too_large` | the name |
+| a header and a layout followed by no record — `n` is 0, and a batch of none holds no value to read | `truncated` | the name |
 | a record size of `8` or less — the per-record hash and no body behind it | `truncated` | the name |
 | a ragged tail: `rest mod record_bytes != 0` | `truncated` | the name |
 | more records than the caller's capacity | `batch_too_large` | the name |
@@ -1842,7 +1848,7 @@ of its own LINEAGE and its own files, and a table with no form is a root of neit
 | bound | verdict |
 |---|---|
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
-| **65536 bytes of record body** | a DECLARED fixed table keeps its storage, cook and block forms, but has NO FILE FORM: its file save refuses and its root refuses form `1`; the compiler names the table and its size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
+| **a record body of 65536 bytes is lawful and 65537 is not** | measured on the BODY, never on `8 + body`. A DECLARED fixed table PAST it keeps its storage, cook and block forms, but has NO FILE FORM: its file save refuses and its root refuses form `1`; the compiler names the table and its size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
 | **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
 | **64 nested LAYOUT ENTRIES** | a WARNING, always on, naming the table and its depth, and past it the table DOES NOT CARRY THE FIXED FORM — it keeps form `1`, and the `fixed` keyword still buys it the CLASS. A DECLARED fixed table is named the more loudly (the keyword is a request, and a request this form cannot serve is said out loud), but NEITHER IS EVER A SILENT DROP (fix 4). **THERE IS ONE NUMBER**: the layout's own 64 (§5.2's `layout_malformed`, docs/SPEC-TABLES.md §3.4's *"the walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*), which is what every runtime holds the wire to (`kTableFixedMaxDepth`), so the compiler cannot drop a form the wire would have carried. The root is depth 0. A nesting GROWN across it is refused at the lock, like the ceiling: the entries all widen legally while the form changes underneath |
 | **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |

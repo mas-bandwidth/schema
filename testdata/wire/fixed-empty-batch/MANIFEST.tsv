@@ -1,0 +1,7 @@
+# fixed-empty-batch: a fixed-form file holds at least one record
+# (docs/rulings.json fixed-form-edges). The two files share one header, one
+# layout and one integrity trailer; they differ only in the record the
+# one-record file carries.
+# name	schema	table	verdict	reason
+one-record.bin	test/fixed-empty-batch/Batch.schema	Batch	read	-
+no-record.bin	test/fixed-empty-batch/Batch.schema	Batch	refused	truncated

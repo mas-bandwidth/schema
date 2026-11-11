@@ -1,0 +1,7 @@
+package fixedemptybatch
+
+fixed table Batch | integrity = "crc32c"
+{
+    a    int32
+    name string(8)
+}
