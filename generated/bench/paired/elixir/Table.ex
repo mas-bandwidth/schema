@@ -1416,6 +1416,15 @@ defmodule Bench.Table do
     }
   end
 
+  # A refusal names its reason in the report (docs/SPEC-TABLES.md §4.2): the
+  # fixed form's own word when it gave one, the refusal's name otherwise.
+  defp fixed_class_refused(reason, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = report -> %{report | reason: Atom.to_string(reason)}
+      report -> report
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -2718,7 +2727,7 @@ defmodule Bench.Table do
 
   def load("FixedTable", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("FixedTable", data) when is_binary(data) do
@@ -2727,13 +2736,13 @@ defmodule Bench.Table do
         {:ok, fixed_class_to_table("FixedTable", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refused(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
