@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -135,6 +136,7 @@ func probeVerdicts(t *testing.T, out []byte) map[string]string {
 // 100000-deep text refuses without a Throwable. The pointer chain also
 // round-trips at 128 and does neither at 129, as §16.14 W2 says.
 func TestJavaTextReadDepthCap(t *testing.T) {
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 

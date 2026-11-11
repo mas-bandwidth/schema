@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -201,6 +202,7 @@ func checkMessageLoadFreshVerdict(t *testing.T, out string) {
 }
 
 func TestCSharpMessageLoadFreshVerdict(t *testing.T) {
+	slowtest.Gate(t, "the .NET SDK")
 	t.Parallel()
 	u, ann, good, refused := messageLoadFreshVerdictFixtures(t)
 	out, err := runCSMessageLoadFreshVerdictProbe(t, u, ann, good, refused, nil)
@@ -211,6 +213,7 @@ func TestCSharpMessageLoadFreshVerdict(t *testing.T) {
 }
 
 func TestCSharpMessageLoadFreshVerdictNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the .NET SDK")
 	t.Parallel()
 	u, ann, good, refused := messageLoadFreshVerdictFixtures(t)
 	controlOut, controlErr := runCSMessageLoadFreshVerdictProbe(t, u, ann, good, refused, func(files map[string][]byte) {

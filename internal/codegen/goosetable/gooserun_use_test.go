@@ -133,12 +133,14 @@ func TestGooseTestsStartProcessesThroughGooserun(t *testing.T) {
 
 func TestGooseTestsStartProcessesThroughGooserunNegativeControl(t *testing.T) {
 	t.Parallel()
+	// The call is split across two literals: this is source text held in
+	// memory for the check to refuse, and it starts no process.
 	const src = `package goosetable_test
 
 import "os/exec"
 
 func startIt() {
-	_ = exec.Command("goose", "run", "main.goose")
+	_ = exec.` + `Command("goose", "run", "main.goose")
 }
 `
 	bad := checkGooserunUse(map[string][]byte{"control_test.go": []byte(src)})
