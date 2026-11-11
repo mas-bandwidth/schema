@@ -14215,7 +14215,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_body_pack_(struct graphdemo_tabl
     if(!graphdemo_table_cook_ref(n,at+56,&value->settings,order)) { return 0; }
     if(!graphdemo_table_cook_ref(n,at+64,&value->alias,order)) { return 0; }
     if(!schema_graphdemo_layer_body_pack_(n,at+72,&value->ground,order)) { return 0; }
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<4;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->layers_count && cook_i1<4;cook_i1++) {
         if(!schema_graphdemo_layer_body_pack_(n,at+88+cook_i1*16,&value->layers[cook_i1],order)) { return 0; }
     } }
     graphdemo_table_cook_put(at+88+64,(uint32_t)value->layers_count,4,order);

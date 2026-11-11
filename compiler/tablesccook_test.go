@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The compiler's canonical writer is independent of the C generator. These
@@ -102,16 +103,101 @@ int main(void) {
  CHECK(!root_cook(&ctx,root,output,sizeof(output),TableByteOrder_Little));CHECK(output[0]==0xa5);CHECK(!root_builder_lock(&b));
  CHECK(bucket_numbers_erase(&b.arena,&root->buckets[1].numbers,number));
  CHECK(root_cook_measure(&ctx,root)==need);
- /* A hidden pointer is patched only if its node was independently reached. */
+ /* A pointer in a slot past the count is dead storage: the cook never follows
+    or checks it, and the cooked slot is zero (§7.2). */
  CHECK(tiny_emplace(&sink,&root->hidden[1])!=NULL);
- CHECK(root_cook_measure(&ctx,root)==need);CHECK(!root_cook(&ctx,root,output,sizeof(output),TableByteOrder_Little));
- CHECK(root_open(output,need)==NULL);CHECK(!root_builder_lock(&b));
+ CHECK(root_cook_measure(&ctx,root)==need);CHECK(root_cook(&ctx,root,output,sizeof(output),TableByteOrder_Little));
+ CHECK(!memcmp(output,little,sizeof(little)));
+ opened=root_open(output,need);CHECK(opened!=NULL && tiny_at(NULL,&opened->hidden[1])==NULL);
+ for(i=0;i<(int)sizeof(opened->hidden[1]);i++) {CHECK(((const uint8_t *)(const void *)&opened->hidden[1])[i]==0);}
  root->hidden[1]=root->first;
  CHECK(root_cook(&ctx,root,output,sizeof(output),table_cook_byte_order==1 ? TableByteOrder_Little : TableByteOrder_Big));
- opened=root_open(output,need);CHECK(opened!=NULL && tiny_at(NULL,&opened->hidden[1])==tiny_at(NULL,&opened->first));
+ opened=root_open(output,need);CHECK(opened!=NULL && tiny_at(NULL,&opened->hidden[1])==NULL);
+ for(i=0;i<(int)sizeof(opened->hidden[1]);i++) {CHECK(((const uint8_t *)(const void *)&opened->hidden[1])[i]==0);}
  CHECK(root_builder_lock(&b));opened=(const Root *)(const void *)b.region;
- CHECK(tiny_at(NULL,&opened->hidden[1])==tiny_at(NULL,&opened->first));
+ CHECK(tiny_at(NULL,&opened->hidden[1])==NULL);
+ for(i=0;i<(int)sizeof(opened->hidden[1]);i++) {CHECK(((const uint8_t *)(const void *)&opened->hidden[1])[i]==0);}
  root_builder_shutdown(&b);return 0;
+}
+`
+	issue710CompileRun(t, dir, "cc", ".c", source)
+}
+
+// A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD BYTES: zero on write, refused
+// on read when not zero (docs/SPEC-TABLES.md §7.2, and the cook check's dead-byte
+// clause). Storage past the count holds a pattern here; both
+// cooks must ignore it, agree byte for byte, and leave the tail zero.
+func TestCTableCookCountedArrayTailZero(t *testing.T) {
+	t.Parallel()
+	u := unitFromSource(t, `package probe
+type Leaf { a uint16 = 3
+ b int8 = -1 }
+fixed table Root {
+ weights [..4]ufixed(8,8) | min = 0, max = 255
+ leaves [..3]Leaf
+}
+`)
+	m := tabletext.NewModel(u)
+	value := m.New(u.Tables["Root"])
+	report := tabletext.Report{}
+	if !m.Read(value, []byte(`{"weights":[1.5],"leaves":[{"a":9,"b":-2}]}`), &report) || !report.Silent() {
+		t.Fatalf("input: %+v", report)
+	}
+	wire, err := tablewire.Encode(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cooked, _, _, err := New().Cook(u, "Root", wire, CookOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the fixed cook's body follows the 64-byte header
+	layout := ir.RecordLayout(u, u.Tables["Root"])
+	for _, name := range []string{"weights", "leaves"} {
+		fl := layout.FieldByName(name)
+		slots := ir.FieldPieces(u, fl.Field, fl.Offset)[0]
+		stride := slots.Size / fl.Field.ArrayBound
+		for at := 64 + slots.Offset + stride; at < 64+slots.Offset+slots.Size; at++ {
+			if cooked[at] != 0 {
+				t.Fatalf("Go cook: %s slot past the count holds 0x%02x at byte %d, want zero", name, cooked[at], at)
+			}
+		}
+	}
+	var octets strings.Builder
+	for _, v := range cooked {
+		fmt.Fprintf(&octets, "0x%02x,", v)
+	}
+	files, err := generateCUnqualified(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := `#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t reference[]={` + octets.String() + `};
+int main(void) {
+ static uint8_t space[4096]; uint8_t * output=(uint8_t *)(((uintptr_t)space+63)&~(uintptr_t)63);
+ Root root; const Root * opened; const uint8_t * p; int64_t need; size_t i;
+ root_reset(&root);
+ memset(&root.weights,0xa5,sizeof(root.weights));memset(&root.leaves,0x5a,sizeof(root.leaves));
+ root.weights_count=1;root.leaves_count=1;root.leaves[0].a=9;root.leaves[0].b=-2;
+ need=root_cook_measure(&root);CHECK(need==(int64_t)sizeof(reference));
+ /* slot 0 holds 1.5, which ufixed(8,8) stores as 0x0180 */
+ root.weights[0]=0x0180;
+ CHECK(root_cook(&root,output,need,TableByteOrder_Little));
+ for(i=0;i<sizeof(reference);i++) { if(output[i]!=reference[i]) { fprintf(stderr,"byte %d: C 0x%02x, Go 0x%02x\n",(int)i,output[i],reference[i]); return 1; } }
+ CHECK(root_cook(&root,output,need,table_cook_byte_order==1 ? TableByteOrder_Little : TableByteOrder_Big));
+ opened=root_open(output,need);CHECK(opened!=NULL);
+ CHECK(opened->weights_count==1 && opened->leaves_count==1 && opened->leaves[0].a==9 && opened->leaves[0].b==-2);
+ for(p=(const uint8_t *)&opened->weights[1];p<(const uint8_t *)&opened->weights[4];p++) {CHECK(*p==0);}
+ for(p=(const uint8_t *)&opened->leaves[1];p<(const uint8_t *)&opened->leaves[3];p++) {CHECK(*p==0);}
+ return 0;
 }
 `
 	issue710CompileRun(t, dir, "cc", ".c", source)

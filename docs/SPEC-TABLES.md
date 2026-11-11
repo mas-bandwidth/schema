@@ -11478,7 +11478,7 @@ fields would get wrong:
 | `[E]T` | `E.Max` elements, one per named variant, nothing for `None` |
 | `*T` | `int64` self-relative delta, eight bytes at eight |
 | `[N]*T` | `N` `int64` self-relative deltas, each eight bytes at eight, null zero |
-| `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
+| `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes its live elements, below) |
 | `*bytes`, `*string` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
 | `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8); `?map[K]V` adds the `bool` present after the slot, as every `?T` does |
@@ -11499,11 +11499,12 @@ fields would get wrong:
   alignment )`, the whole rounded to the union's alignment. **Only the SET
   arm's bytes are written**; every other byte of the extent is zero, which is
   the arm-zeroing shape §13.2 already pins, taken to a region.
-- **A COUNTED array writes all `N` slots.** The storage is allocate-max, and a
-  slot past the live count holds the VALUE-INITIALIZED element — zero for a
-  scalar, the element type's own declared defaults for a record. That is what
-  `T x[N] = {}` produces and what a wire load leaves there (§6.1), so a cook
-  of a loaded wire and a cook of a built structure agree.
+- **A COUNTED array writes its live elements; its slots past the count are
+  zero.** The storage is allocate-max, and a slot past the live count is dead
+  bytes (below): the cook writes zero there whatever the storage holds, so a
+  cook of a loaded wire and a cook of a built structure agree. A pointer stored
+  in a slot past the count is never followed or checked, because that slot is
+  dead.
 - **A `*T` SLOT IS EIGHT BYTES AT EIGHT**, holding the signed self-relative
   delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
   difference of, so a region of any size expresses every reference it holds and
@@ -12029,11 +12030,9 @@ does not imply a non-`ok` measurement reason.
   are written at the offsets §20.3's model gives — one zeroing rather than a
   rule per padding site, and the same model the region's bytes, the
   `static_assert`s and the build version all come from.
-- **WHAT THE STORAGE HOLDS IS WHAT IS WRITTEN.** A counted array writes all `N`
-  slots (§7.2), so a slot past the live count carries what the storage carries:
-  for a value a wire load or `Reset` produced, that is the value-initialized
-  element the page names, which is why a cook of a loaded wire and a cook of a
-  built structure agree.
+- **A COUNTED ARRAY WRITES ITS LIVE ELEMENTS.** Its slots past the live count
+  are zero (§7.2) whatever the storage holds there, which is why a cook of a
+  loaded wire and a cook of a built structure agree.
 - **THE ATTRIBUTION PART IS WRITTEN.** One entry per node in index order —
   `offset (u64), type id (u64)`, the root first at offset zero, a type id the
   `fnv1a64` of the table's name (§3.1, §6.3) — so what comes out is a file
@@ -12084,13 +12083,14 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   that placed them.
 - **A REFERENCE THE NUMBERING DOES NOT CARRY IS A REFUSAL.** The walk visits
   what a writer writes (§3.1) — it does not descend a counted array's slot past
-  the count, an absent optional's value or an unset union arm — while the record
-  writer writes the whole storage (§7.2). A non-null slot in storage the walk
-  did not reach names a node the region will not hold, and `Cook` returns
-  `false` rather than writing a partial region, which is what the tool does with
-  the same input. A region `Load` produced holds null in every such slot, so a
-  cook of a loaded wire never meets the case; a built structure that does has a
-  pointer in storage its own count says is dead.
+  the count, an absent optional's value or an unset union arm. The record writer
+  does not write a counted array's slots past the count either: they are zero
+  (§7.2), and a pointer stored there is never followed or checked, because the
+  slot is dead. A non-null slot the record writer does write in storage the
+  walk did not reach names a node the region will not hold, and `Cook`
+  returns `false` rather than writing a partial region, which is what the
+  tool does with the same input. A region `Load` produced holds null in every
+  such slot, so a cook of a loaded wire never meets the case.
 - **THE GO WRITER NAMES ITS REFUSALS.** For pointered roots, an invalid
   value (including a nil root, a counted used count below zero or above `N`,
   a union tag past the arms, or a negative count or non-empty container in dead

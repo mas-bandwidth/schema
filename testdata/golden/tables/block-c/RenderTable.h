@@ -16318,39 +16318,39 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_body_pack_(struct blockde
     const blockdemo_render_frame_t * value=(const blockdemo_render_frame_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->version,8,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<1;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->cameras_count && cook_i1<1;cook_i1++) {
         if(!schema_blockdemo_render_camera_body_pack_(n,at+8+cook_i1*72,&value->cameras[cook_i1],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+8+72,(uint32_t)value->cameras_count,4,order);
-    { int32_t cook_i2; for(cook_i2=0;cook_i2<4096;cook_i2++) {
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<value->ships_count && cook_i2<4096;cook_i2++) {
         if(!schema_blockdemo_render_ship_body_pack_(n,at+88+cook_i2*88,&value->ships[cook_i2],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+88+360448,(uint32_t)value->ships_count,4,order);
-    { int32_t cook_i3; for(cook_i3=0;cook_i3<1024;cook_i3++) {
+    { int32_t cook_i3; for(cook_i3=0;cook_i3<value->turrets_count && cook_i3<1024;cook_i3++) {
         if(!schema_blockdemo_render_turret_body_pack_(n,at+360544+cook_i3*64,&value->turrets[cook_i3],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+360544+65536,(uint32_t)value->turrets_count,4,order);
-    { int32_t cook_i4; for(cook_i4=0;cook_i4<4096;cook_i4++) {
+    { int32_t cook_i4; for(cook_i4=0;cook_i4<value->missiles_count && cook_i4<4096;cook_i4++) {
         if(!schema_blockdemo_render_missile_body_pack_(n,at+426088+cook_i4*72,&value->missiles[cook_i4],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+426088+294912,(uint32_t)value->missiles_count,4,order);
-    { int32_t cook_i5; for(cook_i5=0;cook_i5<4096;cook_i5++) {
+    { int32_t cook_i5; for(cook_i5=0;cook_i5<value->dynamic_props_count && cook_i5<4096;cook_i5++) {
         if(!schema_blockdemo_render_dynamic_prop_body_pack_(n,at+721008+cook_i5*72,&value->dynamic_props[cook_i5],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+721008+294912,(uint32_t)value->dynamic_props_count,4,order);
-    { int32_t cook_i6; for(cook_i6=0;cook_i6<20000;cook_i6++) {
+    { int32_t cook_i6; for(cook_i6=0;cook_i6<value->static_props_count && cook_i6<20000;cook_i6++) {
         if(!schema_blockdemo_render_static_prop_body_pack_(n,at+1015928+cook_i6*80,&value->static_props[cook_i6],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+1015928+1600000,(uint32_t)value->static_props_count,4,order);
-    { int32_t cook_i7; for(cook_i7=0;cook_i7<8192;cook_i7++) {
+    { int32_t cook_i7; for(cook_i7=0;cook_i7<value->cosmetic_props_count && cook_i7<8192;cook_i7++) {
         if(!schema_blockdemo_render_cosmetic_prop_body_pack_(n,at+2615936+cook_i7*80,&value->cosmetic_props[cook_i7],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+2615936+655360,(uint32_t)value->cosmetic_props_count,4,order);
-    { int32_t cook_i8; for(cook_i8=0;cook_i8<32000;cook_i8++) {
+    { int32_t cook_i8; for(cook_i8=0;cook_i8<value->lasers_count && cook_i8<32000;cook_i8++) {
         if(!schema_blockdemo_render_laser_body_pack_(n,at+3271304+cook_i8*64,&value->lasers[cook_i8],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+3271304+2048000,(uint32_t)value->lasers_count,4,order);
-    { int32_t cook_i9; for(cook_i9=0;cook_i9<32000;cook_i9++) {
+    { int32_t cook_i9; for(cook_i9=0;cook_i9<value->explosions_count && cook_i9<32000;cook_i9++) {
         if(!schema_blockdemo_render_explosion_body_pack_(n,at+5319312+cook_i9*80,&value->explosions[cook_i9],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+5319312+2560000,(uint32_t)value->explosions_count,4,order);

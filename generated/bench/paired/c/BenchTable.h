@@ -9579,11 +9579,11 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_(struct bench_table_
     bench_table_cook_put(at+40,(uint64_t)value->world_time,8,order);
     bench_table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
     bench_table_cook_put(at+56,(uint64_t)value->server_time,4,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<8;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->entities_count && cook_i1<8;cook_i1++) {
         if(!schema_bench_mixed_entity_body_pack_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
     } }
     bench_table_cook_put(at+64+512,(uint32_t)value->entities_count,4,order);
-    { int32_t cook_i2; for(cook_i2=0;cook_i2<80;cook_i2++) {
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<value->stats_count && cook_i2<80;cook_i2++) {
         if(!schema_bench_mixed_stat_body_pack_(n,at+580+cook_i2*8,&value->stats[cook_i2],order)) { return 0; }
     } }
     bench_table_cook_put(at+580+640,(uint32_t)value->stats_count,4,order);

@@ -6976,7 +6976,7 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_body_pack_(struct blockde
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->marker,1,order);
     blockdemo_table_cook_put(at+8,(uint64_t)value->stamp,8,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<64;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->rows_count && cook_i1<64;cook_i1++) {
         if(!schema_blockdemo_padded_row_body_pack_(n,at+16+cook_i1*64,&value->rows[cook_i1],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+16+4096,(uint32_t)value->rows_count,4,order);
