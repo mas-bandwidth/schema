@@ -1486,8 +1486,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		return nil
 	}
 	seenUnion := map[*ir.Union]bool{}
-	var fields func(fs []*ir.Field)
-	fields = func(fs []*ir.Field) {
+	fields := func(fs []*ir.Field) {
 		for _, f := range fs {
 			e := ir.TableFieldEntry(f)
 			if r := fieldRule(f); r != nil {
