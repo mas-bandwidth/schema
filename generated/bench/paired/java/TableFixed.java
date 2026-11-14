@@ -521,10 +521,12 @@ public final class TableFixed {
         lengthOverBound,
 
         /**
-         * A SLACK BYTE THAT IS NOT ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
-         * docs/rulings.json fixed-dead-bytes-zero): an absent optional's payload, a counted array's
-         * tail, text or bytes past the used length, or a union's arm bytes under tag 0 or behind
-         * the taken arm. Spelled wire_damaged on every wire.
+         * DAMAGE NO WRITER EMITS, refused by name rather than landed; spelled wire_damaged on every
+         * wire. Two rules give it: a bool or a present byte other than 0 or 1 in live data
+         * (docs/FIXED-FORM-ALGORITHM.md §4.5), and a slack byte that is not zero
+         * (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/rulings.json fixed-dead-bytes-zero): an
+         * absent optional's payload, a counted array's tail, text or bytes past the used length, or
+         * a union's arm bytes under tag 0 or behind the taken arm.
          */
         wireDamaged
     }

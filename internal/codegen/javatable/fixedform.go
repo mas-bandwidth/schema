@@ -1225,10 +1225,16 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    /** land one record image into a value. The image is this reader's own\n")
 	g.pf("     *  body layout, so every offset here is a constant. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.pf("        scatter(b, at, v, r, true);\n")
+	g.pf("    }\n\n")
+	g.pf("    /** the same landing, where `live` is false inside an absent optional's\n")
+	g.pf("     *  payload: those bytes ride whole and the engine never walks them, so no\n")
+	g.pf("     *  bool or present byte there is held to 0 or 1 (docs/SPEC-TABLES.md §3.4). */\n")
+	g.pf("    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {\n")
 	g.owner = st.DeclaredName()
 	off := int64(0)
 	for _, f := range st.Fields {
-		g.emitScatterField(f, off, "b", "at", "v", "r", 8)
+		g.emitScatterField(f, off, "b", "at", "v", "r", "live", 8)
 		off += fixedFieldBytes(f)
 	}
 	if len(st.Fields) == 0 {
@@ -1237,44 +1243,61 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    }\n\n")
 }
 
-func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep string, indent int) {
+// scatterRefuse is one refusal of the scatter, held to live data: walked is
+// the Java condition under which the engine walks these bytes
+// (internal/tablewire/fixed.go, fixedDecoder; docs/FIXED-FORM-ALGORITHM.md
+// §4.5, "over LIVE data only"). It is false inside an absent optional's
+// payload, which rides whole and is never read, so nothing there refuses.
+func scatterRefuse(rep, walked, why string) string {
+	return fmt.Sprintf("if (%s) { %s.refuse(TableFixed.Reason.%s); }", walked, rep, why)
+}
+
+// emitScatterField lands one field; walked is scatterRefuse's.
+func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep, walked string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	name := javaName(f.Name)
 	base := off
 	if f.Type.Optional {
-		// BOOLS LAND AS `byte != 0`, whatever the byte holds
-		g.pf("%s%s.%sPresent = %s[%s + %d] != 0;\n", ind, val, name, buf, at, base)
+		// A PRESENT BYTE OTHER THAN 0 OR 1 REFUSES THE READ as wire_damaged
+		// (docs/FIXED-FORM-ALGORITHM.md §4.5), the engine's and the C++
+		// reference's rule
+		g.pf("%s{\n", ind)
+		g.pf("%s    final int present = %s[%s + %d] & 0xFF;\n", ind, buf, at, base)
+		g.pf("%s    if (present > 1) { %s }\n", ind, scatterRefuse(rep, walked, "wireDamaged"))
+		g.pf("%s    %s.%sPresent = present != 0;\n", ind, val, name)
+		g.pf("%s}\n", ind)
 		base += fixedPresentBytes
+		walked = fmt.Sprintf("%s && %s.%sPresent", walked, val, name)
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, rep, walked, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, walked, indent)
 	case f.Array == ir.ArrayCounted:
-		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, walked, "countOverBound", indent)
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
 		// this scatter; write still stores MAX (Dart #834).
-		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, walked, indent)
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "lengthOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "lengthOverBound", indent)
 		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
 		// validity over the stated length, never over N, and a violation
 		// refuses by name with nothing decoded past it.
-		g.pf("%sif (!TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
-			ind, buf, at, base+4, val, name, rep)
+		g.pf("%sif (%s && !TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+			ind, walked, buf, at, base+4, val, name, rep)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TBytes:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "countOverBound", indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	default:
-		g.emitScatterElement(f, base, buf, at, val+"."+name, rep, indent, f)
+		g.emitScatterElement(f, base, buf, at, val+"."+name, rep, walked, indent, f)
 	}
 }
 
@@ -1283,21 +1306,21 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 // The plan's own count op has already done it for a compiled plan; this is
 // what holds the IDENTITY path to the same rule, because a record under this
 // reader's own hash can still carry a count this build does not admit.
-func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep, why string, indent int) {
+func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep, walked, why string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	g.pf("%s{\n", ind)
 	g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, off)
-	g.pf("%s    if (n < 0) { n = 0; %s.refuse(TableFixed.Reason.%s); } else if (n > %d) { n = %d; %s.refuse(TableFixed.Reason.%s); }\n",
-		ind, rep, why, bound, bound, rep, why)
+	g.pf("%s    if (n < 0) { n = 0; %s } else if (n > %d) { n = %d; %s }\n",
+		ind, scatterRefuse(rep, walked, why), bound, bound, scatterRefuse(rep, walked, why))
 	g.pf("%s    %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }
 
-func (g *fixedGen) emitScatterLoop(f *ir.Field, base int64, count, buf, at, expr, rep string, indent int) {
+func (g *fixedGen) emitScatterLoop(f *ir.Field, base int64, count, buf, at, expr, rep, walked string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
 	g.pf("%sfor (int i = 0; i < %s; i++) {\n", ind, count)
-	g.emitScatterElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), expr+"[i]", rep, indent+4, f)
+	g.emitScatterElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), expr+"[i]", rep, walked, indent+4, f)
 	g.pf("%s}\n", ind)
 }
 
@@ -1334,15 +1357,15 @@ func slackZero(typ string) string {
 	return ""
 }
 
-func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep string, indent int, owner *ir.Field) {
+func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep, walked string, indent int, owner *ir.Field) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%s%s.scatter(%s, %s + %d, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep)
+			g.pf("%s%s.scatter(%s, %s + %d, %s, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep, walked)
 			return
 		case *ir.Union:
-			g.pf("%s%s.scatter(%s, %s + %d, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep)
+			g.pf("%s%s.scatter(%s, %s + %d, %s, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep, walked)
 			return
 		case *ir.Enum:
 			// AN ORDINAL PAST THE LAST VARIANT LANDS None (0) AND COUNTS ONE
@@ -1351,7 +1374,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			// POSITION, so a value past the last one names nothing here.
 			g.pf("%s{\n", ind)
 			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
-			g.pf("%s    if (q > %dL) { q = 0L; %s.refuse(TableFixed.Reason.outOfRange); }\n", ind, len(r.Variants), rep)
+			g.pf("%s    if (q > %dL) { q = 0L; %s }\n", ind, len(r.Variants), scatterRefuse(rep, walked, "outOfRange"))
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
 			return
@@ -1363,7 +1386,10 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	w := fixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`: an endpoint's 2 is true and never damage.
+		// A BOOL BYTE OTHER THAN 0 OR 1 REFUSES wire_damaged, over live data
+		// only (docs/FIXED-FORM-ALGORITHM.md §4.5, 2026-11-03): no writer
+		// emits one, and an absent optional's payload is never walked.
+		g.pf("%sif ((%s[%s + %d] & 0xFF) > 1) { %s }\n", ind, buf, at, off, scatterRefuse(rep, walked, "wireDamaged"))
 		g.pf("%s%s = %s[%s + %d] != 0;\n", ind, expr, buf, at, off)
 		return
 	case ir.TFloat32, ir.TFloat64:
@@ -1388,11 +1414,11 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		}
 		g.pf("%s{\n", ind)
 		g.pf("%s    final %s fbits = TableFixed.%s(%s, %s + %d);\n", ind, bits, get, buf, at, off)
-		g.pf("%s    if ((fbits & %s) == %s) { %s.refuseNonFinite(%q); return; }\n", ind, mask, mask, rep, g.owner+"."+f.Name)
+		g.pf("%s    if (%s && (fbits & %s) == %s) { %s.refuseNonFinite(%q); return; }\n", ind, walked, mask, mask, rep, g.owner+"."+f.Name)
 		if lo, hi, ok := fixedFloatRange(owner); ok {
 			g.pf("%s    %s q = %s(fbits);\n", ind, typ, conv)
-			g.pf("%s    if (q < %s) { q = %s; %s.refuse(TableFixed.Reason.outOfRange); } else if (q > %s) { q = %s; %s.refuse(TableFixed.Reason.outOfRange); }\n",
-				ind, lo, lo, rep, hi, hi, rep)
+			g.pf("%s    if (q < %s) { q = %s; %s } else if (q > %s) { q = %s; %s }\n",
+				ind, lo, lo, scatterRefuse(rep, walked, "outOfRange"), hi, hi, scatterRefuse(rep, walked, "outOfRange"))
 			g.pf("%s    %s = q;\n", ind, expr)
 		} else {
 			g.pf("%s    %s = %s(fbits);\n", ind, expr, conv)
@@ -1405,8 +1431,30 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		if f.Type.Signed {
 			typ = "Int128"
 		}
-		g.pf("%s%s = new %s(TableFixed.get64(%s, %s + %d), TableFixed.get64(%s, %s + %d));\n",
-			ind, expr, typ, buf, at, off+8, buf, at, off)
+		// A RANGED WIDE SCALAR CLAMPS ON LOAD AND REFUSES out_of_range, on the
+		// RAW scale exactly as the narrow ones below (tabletext.WideClamp)
+		var lo, hi *big.Int
+		ok := false
+		if owner != nil {
+			lo, hi, ok = ir.TableRawRange(owner)
+		}
+		if !ok {
+			g.pf("%s%s = new %s(TableFixed.get64(%s, %s + %d), TableFixed.get64(%s, %s + %d));\n",
+				ind, expr, typ, buf, at, off+8, buf, at, off)
+			return
+		}
+		cmp := "compareTo"
+		if typ == "UInt128" {
+			cmp = "compareUnsigned"
+		}
+		loLit, hiLit := fixedWideLiteral(typ, lo), fixedWideLiteral(typ, hi)
+		g.pf("%s{\n", ind)
+		g.pf("%s    %s q = new %s(TableFixed.get64(%s, %s + %d), TableFixed.get64(%s, %s + %d));\n",
+			ind, typ, typ, buf, at, off+8, buf, at, off)
+		g.pf("%s    if (q.%s(%s) < 0) { q = %s; %s } else if (q.%s(%s) > 0) { q = %s; %s }\n",
+			ind, cmp, loLit, loLit, scatterRefuse(rep, walked, "outOfRange"), cmp, hiLit, hiLit, scatterRefuse(rep, walked, "outOfRange"))
+		g.pf("%s    %s = q;\n", ind, expr)
+		g.pf("%s}\n", ind)
 		return
 	}
 	typ := fixedScalarType(f.Type)
@@ -1421,15 +1469,15 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	if lo, hi, ok := fixedRawRange(owner); ok && typ != "Int128" && typ != "UInt128" {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (q < %dL) { q = %dL; %s.refuse(TableFixed.Reason.outOfRange); } else if (q > %dL) { q = %dL; %s.refuse(TableFixed.Reason.outOfRange); }\n",
-			ind, lo, lo, rep, hi, hi, rep)
+		g.pf("%s    if (q < %dL) { q = %dL; %s } else if (q > %dL) { q = %dL; %s }\n",
+			ind, lo, lo, scatterRefuse(rep, walked, "outOfRange"), hi, hi, scatterRefuse(rep, walked, "outOfRange"))
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
 	} else if ulo, uhi, ok := fixedRawUnsigned64Range(owner); ok {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s.refuse(TableFixed.Reason.outOfRange); } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s.refuse(TableFixed.Reason.outOfRange); }\n",
-			ind, ulo, ulo, rep, uhi, uhi, rep)
+		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s }\n",
+			ind, ulo, ulo, scatterRefuse(rep, walked, "outOfRange"), uhi, uhi, scatterRefuse(rep, walked, "outOfRange"))
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
 	} else {
@@ -1440,8 +1488,8 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	// two lands the width's own top and counts.
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := int64(uint64(1)<<uint(f.Type.Width) - 1)
-		g.pf("%sif (%s > %dL) { %s = %s; %s.refuse(TableFixed.Reason.outOfRange); } // bits(%d) clamps to 2^N - 1\n",
-			ind, expr, maxv, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), rep, f.Type.Width)
+		g.pf("%sif (%s > %dL) { %s = %s; %s } // bits(%d) clamps to 2^N - 1\n",
+			ind, expr, maxv, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), scatterRefuse(rep, walked, "outOfRange"), f.Type.Width)
 	}
 }
 
@@ -1488,6 +1536,18 @@ func fixedRawUnsigned64Range(f *ir.Field) (uint64, uint64, bool) {
 		return 0, 0, false
 	}
 	return lo.Uint64(), hi.Uint64(), true
+}
+
+// fixedWideLiteral spells a 128-bit bound as the port's own value: the two's
+// complement halves, high then low, of an Int128 or a UInt128.
+func fixedWideLiteral(typ string, v *big.Int) string {
+	u := new(big.Int).Set(v)
+	if u.Sign() < 0 {
+		u.Add(u, new(big.Int).Lsh(big.NewInt(1), 128))
+	}
+	lo := new(big.Int).And(u, new(big.Int).SetUint64(math.MaxUint64)).Uint64()
+	hi := new(big.Int).Rsh(u, 64).Uint64()
+	return fmt.Sprintf("new %s(0x%xL, 0x%xL)", typ, hi, lo)
 }
 
 func fixedNarrow(typ, expr string) string {
@@ -1574,6 +1634,10 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.pf("        scatter(b, at, v, r, true);\n")
+	g.pf("    }\n\n")
+	g.pf("    /** the same landing, where `live` is false inside an absent optional's payload. */\n")
+	g.pf("    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {\n")
 	g.owner = un.Name
 	switch tag {
 	case 4:
@@ -1587,14 +1651,14 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("        // is a value this reader's own storage does not admit, and\n")
 	g.pf("        // landing it raw would hand a caller a `type` that names no arm\n")
 	g.pf("        // and that its own switch cannot answer.\n")
-	g.pf("        if (v.type > %d) { v.type = none; r.refuse(TableFixed.Reason.outOfRange); }\n", len(un.Variants))
+	g.pf("        if (v.type > %d) { v.type = none; %s }\n", len(un.Variants), scatterRefuse("r", "live", "outOfRange"))
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
 			continue
 		}
 		g.pf("            case %d:\n                {\n", i+1)
-		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", 20)
+		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", "live", 20)
 		g.pf("                    break;\n                }\n")
 	}
 	g.pf("            default: break;\n")

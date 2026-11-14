@@ -1017,7 +1017,7 @@ public final class TableVariable {
                     continue;
                 }
                 if (index - 1 >= n || index < 0) {
-                    return damage();
+                    return damage(); // a reference above the entry count is damage
                 }
                 names[(int) index - 1]++;
             }
@@ -1827,6 +1827,12 @@ public final class TableVariable {
                 r.report.damaged = true;
                 return null;
             }
+            // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+            // anywhere but its own transport. The two blob ids are lawful types.
+            if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
+                r.report.damaged = true;
+                return null;
+            }
             long size = r.leb();
             if (r.fail || size < 0 || !r.has((int) size)) {
                 r.report.damaged = true;
@@ -2217,7 +2223,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -2246,7 +2252,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -2335,7 +2341,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];

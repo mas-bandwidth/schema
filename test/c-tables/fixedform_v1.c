@@ -96,14 +96,14 @@ void fixed_v1_bounds( void )
         fixed_check( made > 0, "C live-count: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) TBLV1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
+            if ( compiled[i].op > (uint8_t) TBLV1_K_TABLE_FIXED_PRESENT_DEFAULTS ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no range op either" );
 
         tblv1_cfg_reset( &held );
         memset( &run_r, 0, sizeof( run_r ) );
         body = file2 + TBLV1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblv1_cfg_fixed_layout ) + 8;
-        tblv1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r, tblv1_cfg_fixed_guards );
+        tblv1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r, tblv1_cfg_fixed_guards, NULL );
         fixed_check( held.a == 5000 && held.items[0] == 300,
                      "C live-count, compiled loop: nothing in the plan held either value" );
         fixed_check( !run_r.refused, "C live-count, compiled loop: and it refused nothing" );

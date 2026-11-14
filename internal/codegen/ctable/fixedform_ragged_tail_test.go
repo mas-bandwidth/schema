@@ -39,20 +39,20 @@ func TestCFixedFormRaggedTail(t *testing.T) {
 
 	body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "ragged: the full-length file did not read: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }
-    if ( r.refused || r.refused || r.reason != 0 )
-        { printf( "ragged: the full-length file must read clean: malformed=%%d refused=%%d reason=%%d\n", r.refused, r.refused, r.reason ); return 1; }
+    if ( r.refused || r.reason != 0 || r.refuse_reason != 0 )
+        { printf( "ragged: the full-length file must read clean: refused=%%d reason=%%d refuse_reason=%%d\n", r.refused, r.reason, r.refuse_reason ); return 1; }
     for ( k = 1; k < (int) %s; ++k )
     {
         memset( &r, 0, sizeof( r ) );
         memcpy( &back[0], &fresh, sizeof( fresh ) ); /* the sentinel: the reader's own default image */
         n = %s( back, 8, data, len + k, plan, 4096, NULL, &r );
         if ( n != -1 ) { printf( "ragged: at extra=%%d a tail short of a whole record is malformed, not n=%%lld\n", k, (long long) n ); return 1; }
-        if ( r.refused != 1 ) { printf( "ragged: at extra=%%d malformed=%%d, not 1\n", k, r.refused ); return 1; }
-        if ( r.refused ) { printf( "ragged: at extra=%%d a ragged tail is the residue, never refused by name: refused=%%d\n", k, r.refused ); return 1; }
-        if ( r.reason != 0 ) { printf( "ragged: at extra=%%d reason stays untouched, not %%d\n", k, r.reason ); return 1; }
-        if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
-            { printf( "ragged: at extra=%%d MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", k, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
-        if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "ragged: at extra=%%d a malformed read wrote destination bytes\n", k ); return 1; }
+        if ( r.refused != 1 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+            { printf( "ragged: at extra=%%d refused=%%d refuse_reason=%%d, not wire_damaged\n", k, r.refused, r.refuse_reason ); return 1; }
+        if ( r.reason != 0 ) { printf( "ragged: at extra=%%d a ragged tail is damage, never refused by name: reason=%%d\n", k, r.reason ); return 1; }
+        if ( r.widened != 0 || r.unknown != 0 )
+            { printf( "ragged: at extra=%%d damage is total: no counter moves (w=%%d u=%%d)\n", k, r.widened, r.unknown ); return 1; }
+        if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "ragged: at extra=%%d a damaged read wrote destination bytes\n", k ); return 1; }
     }
 `, recordBytes, load)
 

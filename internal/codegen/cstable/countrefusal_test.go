@@ -32,13 +32,13 @@ func TestCountCapRefusesWithoutDamageCSharp(t *testing.T) {
 	body += `
 foreach (byte[] bytes in caps) {
  foreach (bool before in new[] { false, true }) {
-  var report = new Probe.TableReport { Unknown = 3, Malformed = before };
+  var report = new Probe.TableReport { Unknown = 3, Damaged = before };
   var value = new Probe.Root();
   var verdict = Probe.Schema.RootLoadVerdict(value, bytes, report);
   if (verdict != Probe.Schema.TableWire.Verdict.Refused || !report.Refused ||
-      report.Reason != "count_over_extent_cap" || report.Malformed != before || report.Unknown != 3)
+      report.Reason != "count_over_extent_cap" || report.Damaged != before || report.Unknown != 3)
    bad += ProbeLog.Fail("count cap must preserve prior counters and malformed history");
-  if (!Probe.Schema.RootLoad(value, clean, report) || report.Refused || report.Reason != null || report.Malformed != before)
+  if (!Probe.Schema.RootLoad(value, clean, report) || report.Refused || report.Reason != null || report.Damaged != before)
    bad += ProbeLog.Fail("count refusal poisoned a clean read");
  }
 }
@@ -46,12 +46,12 @@ foreach (byte[] bytes in caps) {
  using (var builder = new Probe.RootBuilder()) {
   var report = new Probe.TableReport { Unknown = 3 };
   if (Probe.Schema.RootLoadBuilder(builder, bytes, report) || !report.Refused ||
-      report.Reason != "count_over_extent_cap" || report.Malformed || report.Unknown != 3)
+      report.Reason != "count_over_extent_cap" || report.Damaged || report.Unknown != 3)
    bad += ProbeLog.Fail("the builder load must refuse a count cap by name, without damage or counters");
  }
 }
 var damage = new Probe.TableReport();
-if (Probe.Schema.RootLoad(new Probe.Root(), shortBody, damage) || !damage.Malformed || damage.Refused)
+if (Probe.Schema.RootLoad(new Probe.Root(), shortBody, damage) || !damage.Damaged || damage.Refused)
  bad += ProbeLog.Fail("INT32_MAX short body must remain damage");
 `
 	t15RunCS(t, "package probe\ntable Root { entries map[int32]int32 }\n", body)

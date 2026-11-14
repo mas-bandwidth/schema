@@ -134,7 +134,7 @@ static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const Tab
  uint64_t count;
  memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
  if(bytes<1 || buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return -1;}
- if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
+ if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;report->refuse_reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM;return -1;}
  if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
  r->bits=table_bit_reader(buffer+1,bytes-1);
  if(!table_bit_get(&r->bits,&count,8)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return -1;}
@@ -382,7 +382,7 @@ func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages"), st.Name)
 	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;memset(report,0,sizeof(*report));\n if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}capacity=*count;*count=0;\n")
 	if st.Integrity != "" {
-		g.pf(" if(bytes<1||buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
+		g.pf(" if(bytes<1||buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;report->refuse_reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
 	}
 	g.pf(" bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok||table_report_finish(report,ok)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
 
