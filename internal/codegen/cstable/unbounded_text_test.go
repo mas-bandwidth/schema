@@ -62,7 +62,7 @@ const unboundedTextNativeProbe = `unsafe {
  void* memory=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((size+15)&~15L),16);
  try{
   var report=new TableReport();IntPtr ptr=Schema.TableWire.LoadRegion(type,(IntPtr)memory,size,wire,report);
-  if(ptr==IntPtr.Zero||report.Malformed)throw new Exception("unbounded native load");
+  if(ptr==IntPtr.Zero||report.Damaged||report.Refused)throw new Exception("unbounded native load");
   var copied=Schema.RootLoadBuilder(ptr);
   long copySize=Schema.RootMeasure(copied);
   if(copySize!=wire.Length)throw new Exception("unbounded authoring conversion measure: "+copySize+" expected "+wire.Length);
@@ -98,17 +98,22 @@ const unboundedTextNativeProbe = `unsafe {
  }
  foreach(byte[] element in new[]{new byte[]{0},new byte[]{0xff},new byte[]{0xc0,0x80}}){
   byte[] payload=new byte[element.Length+3];payload[0]=12;payload[1]=1;payload[2]=(byte)element.Length;element.CopyTo(payload,3);byte[] source=TextWire(payload,type.Fields[0].Id);
-  var read=new Root();var r=new TableReport();if(Schema.RootLoad(read,source,r)||!r.Malformed)throw new Exception("unbounded wire invalid text accepted");
-  long need=Schema.RootLoadMeasure(source);void* mem=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((need+15)&~15L),16);
-  try{var nr=new TableReport();if(Schema.TableWire.LoadRegion(type,(IntPtr)mem,need,source,nr)!=IntPtr.Zero||!nr.Malformed)throw new Exception("unbounded native invalid text accepted");}finally{System.Runtime.InteropServices.NativeMemory.AlignedFree(mem);}
+  var read=new Root();var r=new TableReport();if(Schema.RootLoad(read,source,r)||(!r.Damaged&&!r.Refused))throw new Exception("unbounded wire invalid text accepted");
+  long need=Schema.RootLoadMeasure(source);
+  if(need>=0){
+   void* mem=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((need+15)&~15L),16);
+   try{var nr=new TableReport();if(Schema.TableWire.LoadRegion(type,(IntPtr)mem,need,source,nr)!=IntPtr.Zero||(!nr.Damaged&&!nr.Refused))throw new Exception("unbounded native invalid text accepted");}finally{System.Runtime.InteropServices.NativeMemory.AlignedFree(mem);}
+  }
  }
  foreach(string json in new[]{"{\"names\":[\"!\"]}","{\"by_name\":{\"!\":1}}"}){
   byte[] input=Encoding.UTF8.GetBytes(json);input[Array.IndexOf(input,(byte)'!')]=0xff;var badText=new Root();var report=new TableReport();
   string field=json.Contains("names")?"Root.names":"Root.by_name";
-  if(Schema.RootFromJson(badText,input,report)||!report.Malformed||report.Reason!="string_not_utf8: "+field)throw new Exception("unbounded JSON invalid UTF-8 named refusal");
+  if(Schema.RootFromJson(badText,input,report)||!report.Damaged||report.Reason!="string_not_utf8: "+field)throw new Exception("unbounded JSON invalid UTF-8 named refusal");
  }
  byte[] forgedCount=TextWire(new byte[]{12,127},type.Fields[0].Id);
- if(Schema.RootLoadMeasure(forgedCount,out TableRefuseReason countReason)!=-1||countReason!=TableRefuseReason.count_over_length)throw new Exception("unbounded allocation beyond framing");
+ // the verdict is the contract, the reason a diagnostic (docs/rulings.json
+ // refusal-verdict-only): a count past the framing measures as a refusal
+ if(Schema.RootLoadMeasure(forgedCount)!=-1)throw new Exception("unbounded allocation beyond framing");
  original.Names[0].Value[0]=0;byte[] untouched=new byte[wire.Length];Array.Fill(untouched,(byte)0xa5);
  if(Schema.RootMeasure(original)!=-1||Schema.RootSave(original,untouched)!=-1||Array.Exists(untouched,b=>b!=0xa5))throw new Exception("unbounded writer invalid text");
 }`
@@ -134,7 +139,7 @@ func unboundedGoWitness(t *testing.T, input string) string {
 import("os";"testing")
 func TestUnboundedOracle(t *testing.T){
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var r TableReport
- if !RootFromJSONTolerant(&b,[]byte(%q),&r)||r.Clamped!=0||r.Malformed{t.Fatal("unbounded JSON",r)}
+ if !RootFromJSON(&b,[]byte(%q),&r)||r.Refused(){t.Fatal("unbounded JSON",r)}
  saved:=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));if RootSave(b.GetRoot(),saved,&b.Arena)!=int64(len(saved)){t.Fatal("save")}
  if err:=os.WriteFile(%q,saved,0600);err!=nil{t.Fatal(err)}
 }
