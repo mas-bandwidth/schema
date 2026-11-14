@@ -402,7 +402,7 @@ func (g *fixedGen) writePayload(f *ir.Field, val string) []wseg {
 		// BEAM has no compile-out assert, so a check here is always on.
 		out = append(out, wseg{inline: fmt.Sprintf("byte_size(%s)::little-signed-32", name)})
 		out = append(out, wseg{inline: fmt.Sprintf("%s::binary", name)})
-		out = append(out, wseg{inline: fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size)})
+		out = append(out, wseg{inline: fmt.Sprintf("0::size(%s)-unit(8)", textSlack(f, name))})
 	default:
 		out = append(out, g.writeElement(f, name)...)
 	}
@@ -514,7 +514,25 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 	if f.HasIntRange {
 		return fmt.Sprintf("R.ranged(%s, %s)::little-%s-%d", name, g.rangeAttr(f), sign, width)
 	}
-	return fmt.Sprintf("R.fits(%s, %d, %t)::little-%s-%d", name, width, f.Type.Signed, sign, width)
+	// A bits(N) leaf's DOMAIN is its N bits, not the word it is stored in:
+	// the storage holds 2^N and above, which no reader of a bits(N) admits.
+	domain := width
+	if f.Type.Kind == ir.TBits {
+		domain = int64(f.Type.Width)
+	}
+	return fmt.Sprintf("R.fits(%s, %d, %t)::little-%s-%d", name, domain, f.Type.Signed, sign, width)
+}
+
+// textSlack is the call that sizes a text or bytes leaf's zero slack, and
+// raises ArgumentError when the value is past its bound. A string must also be
+// WELL-FORMED UTF-8 WITH NO ZERO BYTE (docs/SPEC.md §5.1, FixedSave's row 8):
+// the fixed reader refuses either as text_ill_formed, and a writer never
+// produces bytes its own reader refuses. Bytes are any bytes.
+func textSlack(f *ir.Field, name string) string {
+	if f.Type.Kind == ir.TString {
+		return fmt.Sprintf("R.string_slack(%s, %d)", name, f.Type.Size)
+	}
+	return fmt.Sprintf("R.text_slack(%s, %d)", name, f.Type.Size)
 }
 
 // rangeAttr is the module attribute one ranged leaf's DECLARED bounds ride in,
@@ -1559,7 +1577,7 @@ func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, sla
 			"acc::binary",
 			fmt.Sprintf("byte_size(%s)::little-signed-32", name),
 			fmt.Sprintf("%s::binary", name),
-			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size),
+			fmt.Sprintf("0::size(%s)-unit(8)", textSlack(f, name)),
 		}
 		if slack > 0 {
 			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
