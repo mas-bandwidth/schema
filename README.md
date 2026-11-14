@@ -134,4 +134,4 @@ Assignment Agreement, described in
 
 ## Author
 
-Glenn Fiedler, Rowan Claude and Stella Codex, Más Bandwidth LLC.
+Glenn Fiedler and Rowan Claude, Más Bandwidth LLC.

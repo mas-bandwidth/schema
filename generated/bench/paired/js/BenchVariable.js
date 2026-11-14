@@ -336,7 +336,11 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     if (rec.bad || tref === 0 || tref > table.length) { report.damaged = true; return null; }
     const tlen = rec.leb();
     if (rec.bad || rec.at + tlen > rec.end) { report.damaged = true; return null; }
-    raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
+    // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+    // anywhere but its own transport. The two blob ids are lawful types.
+    const tid = table[tref - 1];
+    if (tid === TableNodeTableId || tid === TableBuildVersionId || tid === TableMessageVocabularyId) { report.damaged = true; return null; }
+    raw.push({ tid, body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
   if (count !== raw.length) { report.damaged = true; return null; }
