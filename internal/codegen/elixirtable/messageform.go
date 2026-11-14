@@ -1270,7 +1270,12 @@ const messageRuntimeBody = `  defstruct announced: false,
                         # (docs/SPEC-TABLES.md §3.3): int128 and the signed
                         # fixed-point widths announce a base below zero.
                         base = hi <<< 64 ||| lo
-                        base = if kind in [18, 20, 21, 22, 23, 24], do: sign_extend(base, 128), else: base
+
+                        base =
+                          if kind in [18, 20, 21, 22, 23, 24],
+                            do: sign_extend(base, 128),
+                            else: base
+
                         {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
 
                       _ ->
