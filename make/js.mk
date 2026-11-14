@@ -1666,6 +1666,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 	@rm -rf build/$@ && mkdir -p build/$@
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
 	@cp test/conformance/js/fixed.mjs build/$@/fixed.mjs
+	@cp test/conformance/js/writerefusal.mjs build/$@/writerefusal.mjs
 	@[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" = "$$(grep -c 'writeFileSync(join(outDir.*\.absent"' test/conformance/js/main.mjs)" ] && \
 		[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" -gt 0 ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
@@ -1674,7 +1675,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the JavaScript leg's absences wrote nothing and the run stayed green"; cat build/$@/log; exit 1; \
 	fi
-	@grep -qF 'the driver wrote nothing' build/$@/log || \
+	@grep -qF 'driver wrote nothing' build/$@/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
 	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
 
@@ -1684,6 +1685,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 conformance-negative-control-js-fixed: build/conformance-harness build/tables-generated-js/.stamp
 	@rm -rf build/$@ && mkdir -p build/$@
 	@cp test/conformance/js/main.mjs build/$@/main.mjs
+	@cp test/conformance/js/writerefusal.mjs build/$@/writerefusal.mjs
 	@sed 's/  if (row === undefined) { return codec; }/  if (row !== null) { return codec; }/' test/conformance/js/fixed.mjs > build/$@/fixed.mjs
 	@! cmp -s test/conformance/js/fixed.mjs build/$@/fixed.mjs || { echo "NEGATIVE CONTROL FAILED: the sabotage changed nothing"; exit 1; }
 	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver
