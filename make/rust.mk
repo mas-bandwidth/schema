@@ -933,10 +933,10 @@ tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp bu
 	cd test/rust-agree && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
 	./test/rust-agree/target/debug/rust-agree
 
-tables-rust-accessor-negative-control: bin/schema
+tables-rust-accessor-negative-control: bin/schema build/cook-fuzz/.stamp
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control accessor
 
-tables-rust-slot-negative-control: bin/schema
+tables-rust-slot-negative-control: bin/schema build/cook-fuzz/.stamp
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control slot
 
 test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
@@ -964,7 +964,10 @@ build/tables-generated-rust/tblrt1/src/lib.rs: bin/schema test/tables/RT1.schema
 	./bin/schema generate --lang rust --out build/tables-generated-rust/tblrt1/src test/tables/RT1.schema
 	@printf '[package]\nname = "tblrt1"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > build/tables-generated-rust/tblrt1/Cargo.toml
 
-build/conformance-rust: build/tables-generated-rust/tblrt1/src/lib.rs
+# The conformance driver's Cargo.toml names tblrt1 beside the .stamp crates, so
+# the crate rides on the stamp: every target that builds the driver, or a copy
+# of its Cargo.toml (the framing, absent and write-refusal controls), finds it.
+build/tables-generated-rust/.stamp: build/tables-generated-rust/tblrt1/src/lib.rs
 
 build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.rs test/conformance/rust/wire-fuzz-all-build
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
@@ -985,10 +988,13 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 # sabotage goes through a `go build -overlay` of
 # internal/codegen/rusttable/variable.go, so no tracked file is edited; the
 # all-roots driver is rebuilt from that generator and the harness's enumerated
-# passes (--n 0) must go red on the REPORT, which is the half of the
-# differential a value comparison alone would never see.
+# passes (--n 0) must go red on the VERDICT: under strict-only the report is
+# the refusal (docs/plans/strict-only.md), so the leg accepts a mutant the
+# oracle refuses as damaged. The mutant must be the plant's own: the clean
+# all-roots driver, replayed on it, must agree with the oracle, so a red the
+# clean leg shares never passes for this control's.
 .PHONY: tables-rust-wire-fuzz-negative-control
-tables-rust-wire-fuzz-negative-control: build/conformance-harness
+tables-rust-wire-fuzz-negative-control: build/conformance-harness build/conformance-rust-all
 	@rm -rf build/rust-wire-fuzz-control && mkdir -p build/rust-wire-fuzz-control
 	@sed '/index - 2 >= self.slots.len() as u64 {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
 		internal/codegen/rusttable/variable.go > build/rust-wire-fuzz-control/variable.go.txt
@@ -1003,11 +1009,18 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness
 		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
 		cat build/rust-wire-fuzz-control/log; exit 1; \
 	fi
-	@grep -qE '^harness: FAILED after [0-9]* mutants: (the report differs|the oracle discards a damaged load)' build/rust-wire-fuzz-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
+	@grep -qE '^harness: FAILED after [0-9]* mutants: read acceptance differs: the leg says true, the oracle says false' build/rust-wire-fuzz-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the verdict"; \
 		  cat build/rust-wire-fuzz-control/log; exit 1; }
+	@root=$$(grep -m1 '^  replay:' build/rust-wire-fuzz-control/log | sed 's/.* --unit /--unit /'); \
+	case "$$root" in --unit\ *\ --root\ *) ;; *) echo "NEGATIVE CONTROL: the fuzzer named no replayable root"; \
+		cat build/rust-wire-fuzz-control/log; exit 1;; esac; \
+	./build/conformance-harness wire-fuzz --driver build/conformance-rust-all --replay build/rust-wire-fuzz-control/failed.bin \
+		--failed build/rust-wire-fuzz-control/clean.bin $$root > build/rust-wire-fuzz-control/clean.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the clean leg is red on the same mutant, so the red is not the plant's"; \
+		  cat build/rust-wire-fuzz-control/clean.log; exit 1; }
 	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
-	@echo "rust wire-fuzz negative control: an out-of-range node index read without its malformed verdict turns the differential RED on the report"
+	@echo "rust wire-fuzz negative control: an out-of-range node index read without its malformed verdict turns the differential RED on the verdict, on a mutant the clean leg answers right"
 
 test-rust: tables-rust-wire-fuzz-negative-control
 
@@ -1403,10 +1416,12 @@ test-rust: conformance-negative-control-rust-walk
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
 # leg and requires it green WITH absences counted; its control rebuilds the
-# driver (its own target directory) from a copy whose four absence writes
-# (the named refusal, the not-applicable rows and spill_absent) write an ANSWER
-# where the `.absent` marker belongs, and the leg must go red on the surfaces
-# that carry an absence.
+# driver (its own target directory) from a copy whose every absence write
+# (spill_absent, the named refusals and the not-applicable rows, on the plain,
+# `.json` and `-be` names alike) drops its `.absent` suffix and so writes an
+# ANSWER where the marker belongs, and the leg must go red on the surfaces that
+# carry an absence. The count of writes is read off the driver, not written
+# here, so a new absence write is sabotaged with the rest.
 RUST_ABSENT_CONTROL := build/rust-absent-control
 .PHONY: conformance-rust-absent conformance-rust-absent-negative-control
 conformance-rust-absent: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
@@ -1420,11 +1435,13 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 	@echo "conformance-rust-absent: the Rust leg is green with its per-case absences counted"
 conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
-	@sed -e 's|spill(dir, &format!("{name}.absent"), b"");|spill(dir, name, b""); // SABOTAGED: an absence answered as an answer|' \
-		-e 's|&format!("{}.absent", f\[1\])|\&f[1] /* SABOTAGED: an absence answered as an answer */|g' \
+	@sed -e 's|\.absent"\([,)]\)|" /* SABOTAGED: an absence answered as an answer */\1|' \
 		test/conformance/rust/src/main.rs > $(RUST_ABSENT_CONTROL)/driver/src/main.rs
-	@[ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = 4 ] || \
-		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach all four absence writes"; exit 1; }
+	@writes=$$(grep -c '\.absent"[,)]' test/conformance/rust/src/main.rs); \
+	[ "$$writes" -gt 0 ] && [ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = "$$writes" ] || \
+		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach every absence write"; exit 1; }
+	@! grep -q '\.absent"[,)]' $(RUST_ABSENT_CONTROL)/driver/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: an absence write survived the absent sabotage"; exit 1; }
 	@cmp -s test/conformance/rust/src/main.rs $(RUST_ABSENT_CONTROL)/driver/src/main.rs && \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
@@ -1813,7 +1830,10 @@ write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEAS
 #
 # rust_wref_control: $(1) the control's directory, $(2) the generated file
 # under the copy, $(3) the text removed, $(4) the text left in its place, $(5)
-# the surface that must go red and $(6) the surface that must stay green.
+# the surface that must go red and $(6) the surface that must stay green. The
+# harness pads a surface's name to 14 columns, so a longer name
+# (write-refusal-fixed, write-refusal-message) runs straight into its verdict:
+# the FAIL match takes no space after the name.
 define rust_wref_control
 	@rm -rf $(1) && mkdir -p $(1)/driver
 	@cp -R build/tables-generated-rust $(1)/generated
@@ -1823,7 +1843,7 @@ define rust_wref_control
 	@file=$(1)/generated/$(2); \
 	n=$$(grep -cF '$(3)' $$file); \
 	[ "$$n" -gt 0 ] || { echo "NEGATIVE CONTROL: the $(5) check matches no generated line in $$file"; exit 1; }; \
-	sed -i 's@$(3)@$(4)@g' $$file; \
+	sed -i.orig 's@$(3)@$(4)@g' $$file && rm -f $$file.orig || exit 1; \
 	grep -qF '$(4)' $$file || { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; }
 	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
 		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
@@ -1838,7 +1858,7 @@ define rust_wref_control
 		echo "NEGATIVE CONTROL FAILED: the Rust $(5) writer without its check left the matrix green"; \
 		cat $(1)/log; exit 1; \
 	fi
-	@grep -Eq '^ *$(5) +FAIL' $(1)/log || \
+	@grep -Eq '^ *$(5) *FAIL' $(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: $(5) is not marked FAIL"; cat $(1)/log; exit 1; }
 	@grep -Eq '^ *$(6) +pass' $(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: $(6) did not stay green"; cat $(1)/log; exit 1; }
