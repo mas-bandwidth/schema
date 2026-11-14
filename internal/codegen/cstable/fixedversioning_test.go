@@ -11,8 +11,8 @@ package cstable
 //	                 event.
 //	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
 //	                 `layout_newer` BEFORE any record, reporting THE FILE'S HASH
-//	                 and nothing else, with no counter moved and `Malformed`
-//	                 false (§5.3's joint answer), and the destination still every
+//	                 and nothing else, with no counter moved and the refused
+//	                 verdict (§5.3's joint answer), and the destination still every
 //	                 field of a fresh value.
 //
 // The bytes are the C++ reference's: `make tables-fixedform-corpus` writes
@@ -474,11 +474,9 @@ func csVersionJSON(generated, table string) string {
 
 // ---- the probe bodies, one per column ---------------------------------------
 
-const csVersionClean = `            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0
-                || r.Retained != 0 || r.RetainLost != 0)
+const csVersionClean = `            if (r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
                 bad += ProbeLog.Fail(@NAME@, "counters moved on a clean backward read: unknown=" + r.Unknown
-                    + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate
                     + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`
 
@@ -550,9 +548,9 @@ func csVersionNewReadsOld(t *testing.T, corpus string, r csVersionRow) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "the newer reader refused the older writer's file: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean NEW-READS-OLD is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean NEW-READS-OLD is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             _ = want;
 ` + csVersionClean + "\n" + counters + "\n" + bracket + r.check
@@ -568,9 +566,9 @@ func csVersionOldRefusesNew(r csVersionRow) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "a row that moved no layout byte must READ in both directions: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok)
             {
-                bad += ProbeLog.Fail(@NAME@, "an equal hash is not a version: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "an equal hash is not a version: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             _ = want;
 ` + csVersionClean
@@ -588,11 +586,11 @@ func csVersionOldRefusesNew(r csVersionRow) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "layout_newer reports THE FILE'S hash: 0x" + want.ToString("x16") + ", not 0x" + r.LayoutHash.ToString("x16"));
             }
-            if (r.Malformed)
+            if (r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too (§5.3, the joint answer)");
+                bad += ProbeLog.Fail(@NAME@, "a refusal by name carries the refused verdict (§5.3, the joint answer): verdict=" + r.Verdict);
             }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0)
+            if (r.Widened != 0 || r.Unknown != 0)
             {
                 bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves");
             }
@@ -604,7 +602,7 @@ func csVersionFloorReads(name string) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "a file AT the floor reads: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok)
             {
                 bad += ProbeLog.Fail(@NAME@, "a file at the floor is not a refusal: reason=" + r.Reason);
             }
@@ -624,7 +622,7 @@ func csVersionFloorRefuses(name string) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "layout_unsupported reports the file's hash too (§5.9 #7)");
             }
-            if (r.Malformed || r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0)
+            if (r.Verdict != Schema.TableWire.Verdict.Refused || r.Widened != 0 || r.Unknown != 0)
             {
                 bad += ProbeLog.Fail(@NAME@, "REFUSE is total");
             }`
@@ -647,9 +645,9 @@ func csVersionHashUnknown() string {
             {
                 bad += ProbeLog.Fail(@NAME@, "layout_newer reports THE FILE'S hash and nothing else");
             }
-            if (r.Malformed)
+            if (r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too");
+                bad += ProbeLog.Fail(@NAME@, "a refusal by name carries the refused verdict: verdict=" + r.Verdict);
             }`
 }
 
@@ -665,14 +663,14 @@ func csVersionHashBytesDiffer() string {
             {
                 bad += ProbeLog.Fail(@NAME@, "a KNOWN hash whose layout bytes differ is one name, layout_malformed: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Malformed)
+            if (r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too");
+                bad += ProbeLog.Fail(@NAME@, "a refusal by name carries the refused verdict: verdict=" + r.Verdict);
             }`
 }
 
 func csVersionHashIdentity() string {
-	return csVersionHead + `            if (n < 1 || r.Refused || r.Malformed)
+	return csVersionHead + `            if (n < 1 || r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok)
             {
                 bad += ProbeLog.Fail(@NAME@, "the reader's OWN hash selects the identity plan: n=" + n + " reason=" + r.Reason);
             }
@@ -693,7 +691,7 @@ func csVersionLineageMerge() string {
                 TableReport r = new TableReport();
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
-                if (n < 1 || r.Refused || r.Malformed)
+                if (n < 1 || r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok)
                 {
                     bad += ProbeLog.Fail(@NAME@, one + " does not read on the merged build: n=" + n + " reason=" + r.Reason);
                 }

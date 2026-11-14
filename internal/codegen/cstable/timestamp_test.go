@@ -51,7 +51,7 @@ fixed table Root {
 `, inputs, `long[] counts = { 0L, 1740746045000000000L, -1L, long.MinValue, long.MaxValue };
  var vocabulary = new TableVocabulary(); var annReport = new TableReport();
  Schema.AnnounceRead(vocabulary, Schema.Announce(), annReport);
- if (!vocabulary.Announced || annReport.Malformed || annReport.Refused) throw new Exception("timestamp announcement");
+ if (!vocabulary.Announced || annReport.Damaged || annReport.Refused) throw new Exception("timestamp announcement");
  if (Schema.RootTableType().Fields[0].Kind != 36) throw new Exception("timestamp descriptor kind");
  foreach (long count in counts) {
   var value = new Root { At = count };
@@ -62,17 +62,18 @@ fixed table Root {
    byte[] mismatch = (byte[])wire.Clone(); mismatch[2] = 5;
    var skipped = new Root(); var mismatchReport = new TableReport();
    Schema.RootLoadVerdict(skipped, mismatch, mismatchReport);
-   if (skipped.At != 0 || mismatchReport.KindMismatch != 1 || mismatchReport.Widened != 0 || mismatchReport.Malformed) throw new Exception("timestamp must not widen from int64");
+   // a changed kind refuses the whole load (docs/SPEC-TABLES.md §4, §6.5)
+   if (skipped.At != 0 || (!mismatchReport.Refused && !mismatchReport.Damaged) || mismatchReport.Widened != 0) throw new Exception("timestamp must not widen from int64");
   }
   byte[] fixedWire = new byte[Schema.RootFixedMeasure(1)];
   if (Schema.RootFixedSave(value, fixedWire) != fixedWire.Length) throw new Exception("timestamp fixed save");
   var fixedBack = new Root(); var fixedReport = new TableReport();
-  if (Schema.RootFixedLoad(fixedBack, fixedWire, new TableFixedEntry[32], fixedReport) != 1 || fixedBack.At != count || fixedReport.Clamped != 0) throw new Exception("timestamp fixed load");
+  if (Schema.RootFixedLoad(fixedBack, fixedWire, new TableFixedEntry[32], fixedReport) != 1 || fixedBack.At != count || fixedReport.Refused) throw new Exception("timestamp fixed load");
   var values = new Root[] { value };
   byte[] message = new byte[Schema.RootMeasureMessages(values)];
   if (Schema.RootSaveMessages(values, message) != message.Length) throw new Exception("timestamp message save");
   var back = new Root[] { new Root() }; var read = new TableReport();
   Schema.RootLoadMessages(back, message, vocabulary, read, out int n);
-  if (n != 1 || read.Malformed || read.Refused || read.Clamped != 0 || back[0].At != count) throw new Exception("timestamp message load: " + read.Reason);
+  if (n != 1 || read.Damaged || read.Refused || back[0].At != count) throw new Exception("timestamp message load: " + read.Reason);
  }`)
 }

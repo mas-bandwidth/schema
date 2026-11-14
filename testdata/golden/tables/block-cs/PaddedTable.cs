@@ -871,6 +871,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PaddedRowFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4049,6 +4050,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PaddedFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }

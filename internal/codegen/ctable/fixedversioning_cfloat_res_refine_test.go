@@ -31,10 +31,9 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
     if ( back[0].lead != 1 || back[0].trail != 2 )
         { printf( "cfloat_res_refine: a bracket moved: lead=%%u trail=%%u\n", back[0].lead, back[0].trail ); return 1; }
     { uint32_t aimbits = 0; memcpy( &aimbits, &back[0].aim, 4 ); if ( aimbits != %#[1]xu ) { printf( "cfloat_res_refine: aim is %%#x, not the manifest's %#[1]x\n", aimbits, %#[1]xu ); return 1; } }
-    if ( r.clamped != 0 ) { printf( "cfloat_res_refine: clamped == %%d, not 0\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_res_refine: a counter moved on a clean backward read: u=%%d km=%%d w=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.refused || r.refused ) { printf( "cfloat_res_refine: a clean read refused: malformed=%%d refused=%%d\n", r.refused, r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "cfloat_res_refine: a counter moved on a clean backward read: u=%%d w=%%d\n", r.unknown, r.widened ); return 1; }
+    if ( r.refused || r.refuse_reason != 0 ) { printf( "cfloat_res_refine: a clean read refused: refused=%%d refuse_reason=%%d\n", r.refused, r.refuse_reason ); return 1; }
     if ( r.reason != 0 ) { printf( "cfloat_res_refine: reason == %%d, not 0\n", r.reason ); return 1; }
 `, aim)
 

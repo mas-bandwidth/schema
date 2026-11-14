@@ -42,6 +42,16 @@ CPP_HOSTILE_JOBS     ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 # It keys on the preprocessed source and the flags, so a changed unit, header
 # or flag always compiles fresh.
 CPP_HOSTILE_CCACHE   ?= $(shell command -v ccache 2>/dev/null)
+# The cache must not key on the checkout's directory. With -g1 ccache hashes
+# the working directory into every key (hash_dir), and each fleet runner checks
+# out under its own path (actions-runner/<repo>-<n>/_work/...), so a unit
+# compiled warm by one runner missed on every other runner of the same host,
+# and the gate went red at 2 minutes on commits that changed no C++ (main at
+# de14e15, 2026-11-14). The prefix map writes the directory out of the
+# objects' debug info, so an object really is the same from any checkout and
+# NOHASHDIR is sound; BASEDIR makes any absolute path under it relative.
+CPP_HOSTILE_DIRFREE  := -ffile-prefix-map=$(CURDIR)=.
+CPP_HOSTILE_CCACHE_ENV := CCACHE_NOHASHDIR=1 CCACHE_BASEDIR=$(CURDIR)
 
 CPP_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -79,8 +89,8 @@ $(CPP_HOSTILE_BUILD)/case: $(CPP_HOSTILE_BUILD)/generated/.stamp $(wildcard test
 		for src in $(CPP_HOSTILE_BUILD)/generated/$$name/*.cpp; do if [ -f "$$src" ]; then echo "$$name $$src"; fi; done; \
 	done; } | \
 	xargs -P $(CPP_HOSTILE_JOBS) -L 1 sh -c 'out=$(CPP_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .cpp).o; \
-		$(CPP_HOSTILE_CCACHE) $(CXX) $(CPP_HOSTILE_CXXFLAGS) -Itest/cpp-hostile -Itest/c-hostile -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
-	$(CPP_HOSTILE_CCACHE) $(CC) $(CPP_HOSTILE_CFLAGS) -Itest/c-hostile -c test/c-hostile/main.c -o $(CPP_HOSTILE_BUILD)/obj/main.o
+		$(if $(CPP_HOSTILE_CCACHE),$(CPP_HOSTILE_CCACHE_ENV)) $(CPP_HOSTILE_CCACHE) $(CXX) $(CPP_HOSTILE_CXXFLAGS) $(CPP_HOSTILE_DIRFREE) -Itest/cpp-hostile -Itest/c-hostile -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
+	$(if $(CPP_HOSTILE_CCACHE),$(CPP_HOSTILE_CCACHE_ENV)) $(CPP_HOSTILE_CCACHE) $(CC) $(CPP_HOSTILE_CFLAGS) $(CPP_HOSTILE_DIRFREE) -Itest/c-hostile -c test/c-hostile/main.c -o $(CPP_HOSTILE_BUILD)/obj/main.o
 	$(CXX) $(CPP_HOSTILE_SANITIZE) -pthread $(CPP_HOSTILE_BUILD)/obj/*.o -o $@
 
 $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go internal/ci/hostilecorpus/*.go)
