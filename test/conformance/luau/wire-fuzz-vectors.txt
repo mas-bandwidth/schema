@@ -10,6 +10,12 @@
 # diverge (test/conformance/luau/wire-fuzz-vectors-negative-control).
 # They live beside the leg rather than in the shared index until every leg
 # answers them: the shared index seeds every leg's run.
+#
+# UNDER THE STRICT READ (docs/rulings.json strict-only-read, refusal-verdict-only)
+# the fuzzer compares the VERDICT and the written-back bytes only, never which
+# counter or reason refused. A vector found under the tolerant read that both
+# readers now refuse for more than one reason stays here as a regression replay,
+# and its control is re-aimed at a vector the plant turns from REFUSED into READ.
 
 # A MAP HEADER IS READ AGAINST THE PARENT (§2.8, §3): `0e 02 | 0e 82 06`, a map
 # whose count LEB128 runs past its L = 2. The count reads, the element kind 14
@@ -17,10 +23,19 @@
 # bounds the header by L calls the count truncated and reports framing damage.
 map_header_count_past_length mapdemo Slots test/conformance/luau/vectors/map_header_count_past_length.bin
 
+# A MAP HEADER's FOREIGN ELEMENT KIND REFUSES (§2.8, §4): the clean read refuses
+# this wire on the map header's kind alone; a reader that skips the map instead
+# reads it. Found by the wire fuzzer with that refusal planted out.
+map_header_foreign_element_kind listdemo Army test/conformance/luau/vectors/map_header_foreign_element_kind.bin
+
 # A KEYED ARRAY's HEADER IS READ AGAINST THE PARENT (§3, §3.2): `10 02 | 0e 82
 # 06`, the same shape on a kind 16 body, judged against the declared element
 # kind before any triple.
 keyed_header_count_past_length tabledemo KeyedConfig test/conformance/luau/vectors/keyed_header_count_past_length.bin
+
+# A KEYED BODY's FOREIGN ELEMENT KIND REFUSES (§3.2, §4), the same rule on a
+# kind 16 body. Found by the wire fuzzer with that refusal planted out.
+keyed_header_foreign_element_kind mapdemo Depth test/conformance/luau/vectors/keyed_header_foreign_element_kind.bin
 
 # ILL-FORMED TEXT READS THE DECLARED DEFAULT (§3, §4): StorePurchase.sku arrives
 # well-formed, then again with a payload that is not UTF-8. The second
@@ -28,6 +43,10 @@ keyed_header_count_past_length tabledemo KeyedConfig test/conformance/luau/vecto
 # first value does not survive it; the re-save carries no sku. Found by the
 # random pass at mutant 1527 of seed 1 (make tables-luau-wire-fuzz).
 text_ill_formed_repeat_reads_default backenddemo StorePurchase test/conformance/luau/vectors/text_ill_formed_repeat_reads_default.bin
+
+# ILL-FORMED TEXT REFUSES THE LOAD (§3, §4): w1_fleet with the first byte of
+# "armada" replaced by 0xff. A reader without the kind 12 content rule reads it.
+text_ill_formed_refuses tblw1 Fleet test/conformance/luau/vectors/text_ill_formed_refuses.bin
 
 # A LIST COUNT PAST THE STORAGE CAP WHOSE SPELLING CROSSES ITS L (§2.9, §3):
 # LoadMeasure, bounded by L, sees no count and sizes the region, so the load
@@ -39,6 +58,10 @@ list_count_cross_length listdemo Album testdata/wire/tables/fuzz-vectors/list_co
 # later occurrence is the key, widened, so the map keeps its entries rather
 # than resetting on the earlier kind mismatch.
 map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+
+# A MAP KEY UNDER A FOREIGN KIND REFUSES (§2.8, §4): the key scan's kind
+# mismatch is the refusal. Found by the wire fuzzer with it planted out.
+map_key_foreign_kind listdemo Army test/conformance/luau/vectors/map_key_foreign_kind.bin
 
 # THE REGION'S ALIGNMENT IS ITS EXTENTS' TOO (§2.8, §6.5; ir.TableRegionAlign):
 # a []uint128 in a record aligned eight rounds the region to sixteen, so the

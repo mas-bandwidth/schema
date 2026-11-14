@@ -1719,6 +1719,12 @@ static partial class Program
             c.Cook = (value, bytes, big) => Blobdemo.Schema.CatalogCook((Blobdemo.Catalog)value, bytes, big ? Blobdemo.TableByteOrder.Big : Blobdemo.TableByteOrder.Little);
         }
         {
+            // the feature witnesses (SPEC-TABLES §2.13.1): non-empty unbounded text
+            Codec c = Find("featurewitnesses", "Root");
+            c.CookMeasure = value => Featurewitnesses.Schema.RootCookMeasure((Featurewitnesses.Root)value);
+            c.Cook = (value, bytes, big) => Featurewitnesses.Schema.RootCook((Featurewitnesses.Root)value, bytes, big ? Featurewitnesses.TableByteOrder.Big : Featurewitnesses.TableByteOrder.Little);
+        }
+        {
             Codec c = Find("graphdemo", "Album");
             c.CookMeasure = value => Graphdemo.Schema.AlbumCookMeasure((Graphdemo.Album)value);
             c.Cook = (value, bytes, big) => Graphdemo.Schema.AlbumCook((Graphdemo.Album)value, bytes, big ? Graphdemo.TableByteOrder.Big : Graphdemo.TableByteOrder.Little);
