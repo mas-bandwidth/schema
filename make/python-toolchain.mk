@@ -33,9 +33,13 @@ PYTHON_SHA256_3.15.2   := f74e1db0eabd651cd01e4e2a00201bd41866abe74869ab716f9bf3
 PYTHON_VERSIONS        := $(PYTHON_FLOOR_VERSION) $(PYTHON_CURRENT_VERSION)
 PYTHON_BUILD_JOBS      ?= 8
 
-PYTHON_FLOOR ?= $(CURDIR)/dist/python-$(PYTHON_FLOOR_VERSION)/bin/python3.11
-PYTHON       ?= $(CURDIR)/dist/python-$(PYTHON_CURRENT_VERSION)/bin/python3.15
-MYPY         ?= $(CURDIR)/dist/python-$(PYTHON_FLOOR_VERSION)/bin/mypy
+# A prebuilt pinned interpreter under $(HOME)/sdk/python-<version>, built from
+# the same sha256-checked tarball with mypy from the same lock, is taken first
+# where it exists, so a machine without network runs the leg.
+python_pin = $(or $(wildcard $(HOME)/sdk/python-$(1)/bin/$(2)),$(CURDIR)/dist/python-$(1)/bin/$(2))
+PYTHON_FLOOR ?= $(call python_pin,$(PYTHON_FLOOR_VERSION),python3.11)
+PYTHON       ?= $(call python_pin,$(PYTHON_CURRENT_VERSION),python3.15)
+MYPY         ?= $(call python_pin,$(PYTHON_FLOOR_VERSION),mypy)
 # the Go tests (internal/codegen/python/pyrun) and the conformance driver are
 # processes this make spawns, so they read the pins from the environment
 export PYTHON PYTHON_FLOOR MYPY
