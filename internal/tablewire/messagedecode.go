@@ -321,7 +321,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		i, known := index[entry.Id]
 		if !known {
 			d.report.Unknown++
-			if !d.skip(entry) {
+			if !d.skip(entry, 0) {
 				d.damage()
 				return false
 			}
@@ -350,7 +350,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			// carries the sender's, which is exactly what makes a body from
 			// another build the ordinary case this wire exists for.
 			d.refuse(ReasonKindMismatch)
-			if !d.skip(entry) {
+			if !d.skip(entry, 0) {
 				d.damage()
 				return false
 			}
@@ -680,7 +680,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	if tag == 0 {
 		cell.U = 0
 		d.report.Unknown++
-		return d.skip(entry)
+		return d.skip(entry, 0)
 	}
 	arm := un.Variants[tag-1]
 	mine := ir.TableArmEntry(arm)
@@ -688,7 +688,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		if !messageWidens(entry, mine) {
 			cell.U = 0
 			d.refuse(ReasonKindMismatch)
-			return d.skip(entry)
+			return d.skip(entry, 0)
 		}
 		// WIDENED AT AN ARM (§3.3, §4): the arm is SELECTED and its payload
 		// decodes at the width the announcement states, rather than skipped
@@ -1035,7 +1035,10 @@ func (d *bitDecoder) rangedFloat(v float64, f *ir.Field) float64 {
 // ENTRY alone (docs/SPEC-TABLES.md §3.3). It is what makes an unknown entry
 // skippable on a body with no kind byte, and it is one walk over every table,
 // because a shape says everything a skipper needs.
-func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
+func (d *bitDecoder) skip(entry ir.TableVocabularyEntry, depth int) bool {
+	if depth > 128 {
+		return false
+	}
 	shape := entry.Shape
 	switch int(entry.Kind) {
 	case 0, ir.TableKindNoPayload:
@@ -1067,9 +1070,9 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		if !named {
 			return false
 		}
-		return d.skip(arm)
+		return d.skip(arm, depth+1)
 	case ir.TableKindTable:
-		return d.skipBody()
+		return d.skipBody(depth + 1)
 	case ir.TableKindPointer:
 		// A FIXED ROOT NUMBERS NO NODE, so a node index has no width to be
 		// stepped over at, and an entry of kind 17 in its batch is damage
@@ -1155,7 +1158,7 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 					return false
 				}
 			}
-			if !d.skip(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}) {
+			if !d.skip(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}, depth+1) {
 				return false
 			}
 			// A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array whose
@@ -1247,7 +1250,10 @@ func kindHolds(kind uint8, v *big.Int) bool {
 
 // skipBody walks a nested body it cannot name, field by field, against the
 // same announced vocabulary its parent resolves through.
-func (d *bitDecoder) skipBody() bool {
+func (d *bitDecoder) skipBody(depth int) bool {
+	if depth > 128 {
+		return false
+	}
 	seen := map[uint64]bool{}
 	for {
 		ref, ok := d.reference()
@@ -1258,7 +1264,7 @@ func (d *bitDecoder) skipBody() bool {
 			return true
 		}
 		entry, named := d.bodyEntry(ref, seen)
-		if !named || !d.skip(entry) {
+		if !named || !d.skip(entry, depth) {
 			return false
 		}
 	}
