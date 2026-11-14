@@ -277,6 +277,22 @@
         "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "fixed-dead-bytes-zero",
+      "date": "2026-11-10",
+      "quotes": [
+        "take the strict approach and refuse.",
+        "Every dead byte",
+        "Be strict.",
+        "non-conformance to standard is usually an attack."
+      ],
+      "source": "the owner, live in session on 2026-11-10, relayed verbatim by the coordinator: first on an absent optional's dead bytes in the fixed form, then, asked whether every dead byte in a fixed record must be zero or only an absent optional's payload, 'Every dead byte'. In the fixed form an absent optional's payload, a counted array's tail past its live count, text and bytes past their used length, and the union arm bytes behind a narrower arm or under tag 0 must all be zero, and a reader refuses a record where any is not, on the identity read and the lineage read alike, in every port. Only the verdict is compared (refusal-verdict-only). Specified in docs/SPEC-TABLES.md §3.4 (THE SLACK RULE) and docs/FIXED-FORM-ALGORITHM.md §3.1.",
+      "supersedes": [
+        "docs/SPEC-TABLES.md §3.4's 'UNSPECIFIED on read, never a refusal' and 'IGNORED on read, never a refusal' slack rows and the slack rule's 'UNSPECIFIED ON READ, AND NOT A REFUSAL'",
+        "docs/FIXED-FORM-ALGORITHM.md §3.1's 'Slack is UNSPECIFIED on read and not a refusal'",
+        "docs/SPEC-TABLES.md §13's exception keeping non-zero slack unread and not refused"
+      ]
     }
   ]
 }

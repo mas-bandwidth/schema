@@ -992,6 +992,21 @@ report r1_cfg_as_r2 tblr2 Cfg testdata/wire/tables/r1_cfg.bin
 report r1_ping_as_r2 tblr2 Cfg testdata/wire/tables/r1_ping.bin
 report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 
+# EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+# docs/rulings.json fixed-dead-bytes-zero). Each is a conforming fixed record
+# with one slack byte set to a value that would be lawful if it were live:
+# under an absent optional, past a counted array's count (a table element and
+# an enum element), past a text's and a byte buffer's length, under a union
+# with no arm and behind a payload-free arm. Every leg refuses each. The
+# offsets are written out in test/conformance/harness/fixed_dead_vectors_test.go.
+instance fixed_dead_optional_payload tabledemo KeyedConfig testdata/conformance/tables/wire/fixed_dead_optional_payload.bin no-text wire-refused
+instance fixed_dead_text_tail        tabledemo RootConfig  testdata/conformance/tables/wire/fixed_dead_text_tail.bin        no-text wire-refused
+instance fixed_dead_array_tail       tabledemo RootConfig  testdata/conformance/tables/wire/fixed_dead_array_tail.bin       no-text wire-refused
+instance fixed_dead_bytes_tail       tabledemo RootConfig  testdata/conformance/tables/wire/fixed_dead_bytes_tail.bin       no-text wire-refused
+instance fixed_dead_enum_array_tail  tabledemo RootConfig  testdata/conformance/tables/wire/fixed_dead_enum_array_tail.bin  no-text wire-refused
+instance fixed_dead_arm_none         tabledemo RootConfig  testdata/conformance/tables/wire/fixed_dead_arm_none.bin         no-text wire-refused
+instance fixed_dead_arm_void         tblr1     Cfg         testdata/conformance/tables/wire/fixed_dead_arm_void.bin         no-text wire-refused
+
 # THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2): one
 # TableRefuseReason for a cook's Open, a block's BlockOpen and LoadMeasure's
 # -1, the FIRST failing clause in §7's order. Each row names a forgery above

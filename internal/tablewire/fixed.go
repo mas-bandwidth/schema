@@ -386,11 +386,29 @@ func (d *fixedDecoder) field(b []byte, fv *tabletext.Field) string {
 		}
 		fv.Present = b[0] != 0
 		if !fv.Present {
-			return ""
+			// EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): an absent
+			// optional's payload is the zeros a conforming writer leaves
+			return fixedDeadZero(b[ir.TableFixedPresentBytes:])
 		}
 		return d.payload(b[ir.TableFixedPresentBytes:], fv)
 	}
 	return d.payload(b, fv)
+}
+
+// fixedDeadZero answers wire_damaged when a span of slack holds a byte other
+// than zero: the bytes past a counted array's live count, past a text's or a
+// byte buffer's used length, behind a narrower or absent union arm, and under
+// an absent optional's present byte. A conforming writer leaves zeros there,
+// so anything else is a record no conforming writer produced, and the read
+// refuses it (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/rulings.json
+// fixed-dead-bytes-zero).
+func fixedDeadZero(b []byte) string {
+	for _, c := range b {
+		if c != 0 {
+			return ReasonWireDamaged
+		}
+	}
+	return ""
 }
 
 func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
@@ -420,6 +438,8 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 				return reason
 			}
 		}
+		// the tail past the live count is slack, and slack is zero (§3.4)
+		return fixedDeadZero(b[ir.TableFixedCountBytes+int64(count)*elem : ir.TableFixedCountBytes+f.ArrayBound*elem])
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		used := int32(binary.LittleEndian.Uint32(b))
 		if used < 0 || int64(used) > f.Type.Size {
@@ -431,6 +451,8 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 		}
 		fv.Cell.Str = append([]byte(nil), text...)
 		fv.Count = int(used)
+		// the bytes past the used length are slack, and slack is zero (§3.4)
+		return fixedDeadZero(b[4+used : 4+f.Type.Size])
 	default:
 		return d.element(b, f, &fv.Cell, false)
 	}
@@ -445,10 +467,12 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 	}
 	if un := tabletext.UnionOf(f); un != nil {
 		tagBytes := ir.TableFixedUnionTagBytes(un)
+		armBytes := b[tagBytes:ir.TableFixedUnionBytes(un)]
 		tag := getFixedUint(b, tagBytes)
 		*cell = tabletext.Cell{}
 		if tag == 0 {
-			return ""
+			// no arm is taken: every arm byte is slack, and slack is zero (§3.4)
+			return fixedDeadZero(armBytes)
 		}
 		if tag > uint64(len(un.Variants)) {
 			// A FORGED TAG: outside the writer's set, which on the identity
@@ -457,6 +481,14 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		}
 		arm := un.Variants[tag-1]
 		cell.U = tag
+		// the bytes behind the taken arm, up to the widest, are slack (§3.4)
+		taken := int64(0)
+		if arm.F != nil {
+			taken = ir.TableFixedFieldBytes(arm.F)
+		}
+		if reason := fixedDeadZero(armBytes[taken:]); reason != "" {
+			return reason
+		}
 		switch {
 		case arm.Void():
 			return ""

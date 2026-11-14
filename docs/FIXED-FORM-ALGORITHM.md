@@ -239,9 +239,16 @@ the Go writer stores exactly that extent and nothing past it, so the caller's st
 storing it, and its dead slots in one clear, rather than inside the record-wide template zero (the same bytes,
 measured faster). The READ side keeps the wire safe: it checks the same number in every build: a count or length
 past its bound refuses `count_over_bound` / `length_over_bound` (§4.5), and a ranged scalar outside the writer's range
-refuses `out_of_range` (§4.6). **Slack is UNSPECIFIED on
-read and not a refusal**: a reader validates the USED UNITS only, and non-zero slack is not damage, not a
-refusal, and moves no counter.
+refuses `out_of_range` (§4.6). **Every dead byte is ZERO on read, or the record is refused** (the owner, 2026-11-10:
+"Every dead byte", "Be strict"; `docs/rulings.json` `fixed-dead-bytes-zero`; docs/SPEC-TABLES.md §3.4, THE SLACK
+RULE): the bytes past a counted array's live count, past a text's or a byte buffer's used length, behind a
+narrower union arm or under tag `0`, and an absent optional's payload. A reader checks every one of them before
+one destination byte is written, and a non-zero byte refuses the whole read as damage (`wire_damaged` is the
+recommended name; only the verdict is compared across ports). This holds on the identity plan and on a lineage
+plan alike, where the slack is the WRITER's: past the writer's count, length and arm, under the writer's layout.
+It replaces the retired rule that slack was unspecified on read and not a refusal. The content rules still apply
+to the used units only: slack is checked for zero and for nothing else, so a ranged scalar, a bool or an ordinal
+inside slack is never asked its own rule.
 
 ## 4. The reader: ONE path
 

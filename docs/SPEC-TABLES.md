@@ -7980,11 +7980,11 @@ VALUE.**
   | an ENUM | the ordinal's storage width, 1, 2 or 4; **the ORDINAL is the variant's POSITION IN THE LAYOUT, from `1`, and `0` is `None`** |
   | a nested `table` or `type` `T` | `C(T)`, INLINE — no length and no terminator |
   | `[N]T` | `N * C(T)`; no count rides, because `min` equals `max` |
-  | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**; ZERO on write past the count, UNSPECIFIED on read, never a refusal |
-  | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
-  | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
-  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm, IGNORED on read, never a refusal |
-  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, IGNORED on read, never a refusal |
+  | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**; ZERO on write past the count, ZERO on read or the record is refused |
+  | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, ZERO on read or the record is refused |
+  | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, ZERO on read or the record is refused |
+  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm and under tag `0`, ZERO on read or the record is refused |
+  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, ZERO on read or the record is refused |
   | `[Enum]T` | `slots * C(T)` — **every slot is written**, in the key enum's declared order, and no key rides |
   | `const`, `reserved`, `align` | refused in a table body already (§11) |
 
@@ -7997,14 +7997,22 @@ so the used extent is always stated before the bytes are reached.
   under an absent optional's present flag. It costs the writer nothing: the
   template is zero everywhere a value lands, so the zeros are already there
   (below).
-- **UNSPECIFIED ON READ, AND NOT A REFUSAL.** A reader validates the USED UNITS
-  ONLY and never looks at the slack, so a peer that leaves garbage there is a
-  peer this reader reads correctly. **NON-ZERO SLACK IS NOT DAMAGE, NOT A
-  REFUSAL, AND MOVES NO COUNTER — A DELIBERATE EXCEPTION to "refuse what no
-  writer produces" (§13.10)**, kept because no reader reads slack, so no two
-  readers can disagree about it. Making it one would mean reading every byte
-  of a bound to check bytes that carry no meaning, which is the cost this form
-  exists to avoid, and it would refuse records that are perfectly readable.
+- **ZERO ON READ, OR THE RECORD IS REFUSED.** Every dead byte is zero: a
+  reader checks every byte of slack and refuses the whole record when any of
+  them is not, exactly as it refuses a bool byte of `2` (`wire_damaged` is the
+  recommended name; the verdict is the contract, `docs/rulings.json`
+  `refusal-verdict-only`). The owner's ruling of 2026-11-10, asked whether it
+  covers every dead byte in a fixed record: *"Every dead byte"*; and the
+  standing rule behind it, *"Be strict"*, because *"non-conformance to standard
+  is usually an attack."* A conforming writer leaves zeros there, so a record
+  with anything else is one no conforming writer produced (§13.10), and it is
+  refused in every port (`docs/rulings.json` `fixed-dead-bytes-zero`). This
+  overturns the earlier exception that slack was unspecified on read and never
+  a refusal. The check is over slack only: a byte the layout gives a value is
+  checked by that value's own rule, and slack nested inside a live value (a
+  text inside a taken arm, an array tail inside a live element) is checked as
+  that value's own slack. A byte of a `| deprecated` slot is not slack; it
+  reads by the deprecated-slot rule below.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
   `N`. A
@@ -14835,10 +14843,11 @@ compared, and each language checks in whatever order is fastest for it, so long
 as the verdict is the same (§6.5). This supersedes the fixed rank of reason
 names and every reason-identity rule.
 
-**What it keeps on purpose, as an exception.** Non-zero slack in a fixed record
-is unread and not refused (§3.4): no writer leaves it and no reader looks at
-it, so it cannot make two readers disagree, and refusing it would cost a read
-of every byte of every bound.
+**What it no longer keeps as an exception.** Non-zero slack in a fixed record
+was once unread and not refused. The owner's ruling of 2026-11-10 ("Every dead
+byte", "Be strict") retired that exception: every dead byte of a fixed record
+is zero, and a reader refuses a record where one is not (§3.4, THE SLACK RULE;
+`docs/rulings.json` `fixed-dead-bytes-zero`).
 
 **What it overturns.** The tolerant read and its named entry points
 (`...Tolerant`, §6.5); the owner read policy of 2026-10-17 ("reads forgiving

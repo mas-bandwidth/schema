@@ -192,7 +192,9 @@ func (d *lineageDecoder) field(w *fixedNode, b []byte, fv *tabletext.Field) stri
 		}
 		present := b[0] != 0
 		if !present {
-			return "" // absent: the reader's declared default stands
+			// absent: the reader's declared default stands, and the payload
+			// under the flag is slack, which is zero (§3.4)
+			return fixedDeadZero(b[ir.TableFixedPresentBytes:w.size])
 		}
 		fv.Present = true
 		return d.payload(w.children[0], b[ir.TableFixedPresentBytes:], fv)
@@ -253,7 +255,8 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 				return reason
 			}
 		}
-		return ""
+		// the writer's tail past its live count is slack, and slack is zero
+		return fixedDeadZero(b[head+n*elem.size : head+theirs*elem.size])
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		if f.Type.Kind == ir.TString && w.kind != ir.TableKindString {
 			return FixedReasonKindMismatch
@@ -271,7 +274,8 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 		}
 		fv.Cell.Str = append([]byte(nil), text...)
 		fv.Count = int(used)
-		return ""
+		// the bytes past the used length are slack, and slack is zero (§3.4)
+		return fixedDeadZero(b[4+used : w.size])
 	}
 	return d.element(w, b, f, &fv.Cell)
 }
@@ -382,12 +386,24 @@ func (d *lineageDecoder) union(w *fixedNode, b []byte, un *ir.Union, cell *table
 	*cell = tabletext.Cell{}
 	tag := getFixedUint(b, tagBytes)
 	if tag == 0 {
-		return ""
+		// no arm is taken: every arm byte is slack, and slack is zero (§3.4)
+		return fixedDeadZero(b[tagBytes:w.size])
 	}
 	if tag > uint64(len(w.children)) {
 		return FixedReasonOutOfRange // a forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4)
 	}
 	arm := w.children[tag-1]
+	// the bytes behind the writer's taken arm, up to its widest, are slack
+	taken := arm.size
+	if arm.kind == ir.TableKindNoPayload {
+		taken = 0
+	}
+	if taken < 0 || taken > widest {
+		return FixedReasonKindMismatch
+	}
+	if reason := fixedDeadZero(b[tagBytes+taken : w.size]); reason != "" {
+		return reason
+	}
 	for i, v := range un.Variants {
 		if ir.TableWireId(v.WireName()) != arm.id {
 			continue
