@@ -3861,8 +3861,9 @@ defmodule Bench.Table do
   end
 
   # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
-  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
-  # declared size clamps.
+  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. The bytes after the
+  # count number exactly the count, never fewer and never more, and a body too
+  # short for its header is damage.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
       # a body too short to carry its own header is damage (§3, §4)
