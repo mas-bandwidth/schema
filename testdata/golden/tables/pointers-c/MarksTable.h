@@ -6737,7 +6737,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(graphdemo_table_rea
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0x69ff34904242a73d): graphdemo_tally_load_body(&body,(graphdemo_tally_t *)value); break;
+                    case UINT64_C(0x69ff34904242a73d): graphdemo_tally_load_body(&body,(graphdemo_tally_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -6883,7 +6883,8 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_retain_(graphdemo_ta
                 switch(id) {
                     case UINT64_C(0x69ff34904242a73d):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_tally_load_body_retain(&body,(graphdemo_tally_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
