@@ -653,6 +653,28 @@ func fixedEmitDeadTail(m *Module, f *ir.Field, base int64, dyn, ind string) {
 	m.Printf("%sif (!_rt_fixed.deadZero(b, %s + c * %d, (%d - c) * %d)) return \"wire_damaged\";\n", ind, fixedDeadAt(base, dyn), elem, f.ArrayBound, elem)
 }
 
+// fixedEmitTaken declares `taken`, the bytes the arm under tag carries:
+// sizes[i] is tag i+1's, 0 for a payload-free arm, and 0 under tag 0. Each run
+// of tags sharing a size is one flat range test, so a union of hundreds of
+// arms nests nothing in the generated source.
+func fixedEmitTaken(m *Module, ind, tag string, sizes []int64) {
+	m.Printf("%slocal taken = 0;\n", ind)
+	for i := 0; i < len(sizes); {
+		j := i
+		for j+1 < len(sizes) && sizes[j+1] == sizes[i] {
+			j++
+		}
+		if sizes[i] != 0 {
+			if i == j {
+				m.Printf("%sif (%s == %d) taken = %d;\n", ind, tag, i+1, sizes[i])
+			} else {
+				m.Printf("%sif (%s >= %d && %s <= %d) taken = %d;\n", ind, tag, i+1, tag, j+1, sizes[i])
+			}
+		}
+		i = j + 1
+	}
+}
+
 func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
@@ -716,14 +738,14 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			// all of them under tag 0 or a payload-free arm, and every dead
 			// byte is zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
 			widest := fixedElementBytes(f) - tag
-			taken := "0"
-			for i := len(r.Variants) - 1; i >= 0; i-- {
-				if v := r.Variants[i]; v.F != nil {
-					taken = fmt.Sprintf("(%s.Type == %d ? %d : %s)", expr, i+1, fixedFieldBytes(v.F), taken)
+			sizes := make([]int64, len(r.Variants))
+			for i, v := range r.Variants {
+				if v.F != nil {
+					sizes[i] = fixedFieldBytes(v.F)
 				}
 			}
 			m.Printf("%s{\n", ind)
-			m.Printf("%s  local taken = %s;\n", ind, taken)
+			fixedEmitTaken(m, ind+"  ", expr+".Type", sizes)
 			m.Printf("%s  if (!_rt_fixed.deadZero(b, at + %s + %d + taken, %d - taken)) return \"wire_damaged\";\n", ind, off, tag, widest)
 			m.Printf("%s}\n", ind)
 			for i, v := range r.Variants {

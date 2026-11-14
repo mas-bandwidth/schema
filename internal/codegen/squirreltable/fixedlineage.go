@@ -499,14 +499,14 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			// are slack, all of them under tag 0 or a payload-free arm (its
 			// layout entry has size 0), and every dead byte is zero
 			// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
-			taken := "0"
-			for i := nArms - 1; i >= 0; i-- {
-				if a := node.children[i]; a != nil && a.size > 0 {
-					taken = fmt.Sprintf("(%s.Type == %d ? %d : %s)", expr, i+1, a.size, taken)
+			sizes := make([]int64, nArms)
+			for i := range nArms {
+				if a := node.children[i]; a != nil {
+					sizes[i] = a.size
 				}
 			}
 			m.Printf("%s{\n", ind)
-			m.Printf("%s  local taken = %s;\n", ind, taken)
+			fixedEmitTaken(m, ind+"  ", expr+".Type", sizes)
 			m.Printf("%s  if (!_rt_fixed.deadZero(b, at + %s + %d + taken, %d - taken)) return \"wire_damaged\";\n", ind, off, tagW, node.size-tagW)
 			m.Printf("%s}\n", ind)
 			for i := range maxArms {

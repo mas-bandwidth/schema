@@ -23,7 +23,8 @@ const sqEvoArrayOld = "package probe\nfixed table A\n{\n    lead uint32 = 1\n   
 // TestSquirrelFixedEvolutionArrayBounds is array-bounds (C1, C2, R11): the
 // plan carries the WRITER's bound. A counted array the old writer bounded at 4
 // and the reader at 8 refuses count_over_bound for a count of -1 and of 7 on
-// the compiled plan, and reads at exactly 4 and at 0; the reader's own
+// the compiled plan, and reads at exactly 4 and at 0 over a zero tail (a tail
+// stained past the writer's count refuses wire_damaged); the reader's own
 // identity plan refuses 9 and reads 8. The negative control bounds the
 // compiled plan's count by the reader's 8.
 func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
@@ -32,14 +33,22 @@ func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 	older := fixedSynthetic(t, sqEvoArrayOld)
 	newer := fixedSynthetic(t, strings.Replace(sqEvoArrayOld, "[..4]", "[..8]", 1))
 	eo, en := sqEvoEntry(t, older, "A"), sqEvoEntry(t, newer, "A")
-	body := func(n uint32, slots int) []byte {
+	// the slots past the live count are slack, and a conforming writer leaves
+	// them zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): stained fills
+	// every slot whatever the count
+	fill := func(n uint32, slots int, stained bool) []byte {
 		b := binary.LittleEndian.AppendUint32(nil, 0xAAAA)
 		b = binary.LittleEndian.AppendUint32(b, n)
 		for i := range slots {
-			b = binary.LittleEndian.AppendUint32(b, uint32(1000+i))
+			v := uint32(0)
+			if stained || uint32(i) < n {
+				v = uint32(1000 + i)
+			}
+			b = binary.LittleEndian.AppendUint32(b, v)
 		}
 		return binary.LittleEndian.AppendUint32(b, 0xBBBB)
 	}
+	body := func(n uint32, slots int) []byte { return fill(n, slots, false) }
 	lineage := map[string][]squirreltable.FixedLineageEntry{"A": {eo}}
 	g := sqEvoGenerate(t, newer, lineage)
 	for _, c := range []struct {
@@ -52,6 +61,8 @@ func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 		{"C2 count 5, one past the writer's 4", sqEvoFile(eo.Wire, eo.Layout, body(5, 4)), refused("count_over_bound")},
 		{"R11 count 4, the writer's bound", sqEvoFile(eo.Wire, eo.Layout, body(4, 4)), "ok 1 w0"},
 		{"count 0", sqEvoFile(eo.Wire, eo.Layout, body(0, 4)), "ok 1 w0"},
+		{"count 0 over a stained tail, the writer's slack", sqEvoFile(eo.Wire, eo.Layout, fill(0, 4, true)), refused("wire_damaged")},
+		{"count 2 over a stained tail, the writer's slack", sqEvoFile(eo.Wire, eo.Layout, fill(2, 4, true)), refused("wire_damaged")},
 		{"the reader's own 9 of 8", sqEvoFile(en.Wire, en.Layout, body(9, 8)), refused("count_over_bound")},
 		{"the reader's own 8 of 8", sqEvoFile(en.Wire, en.Layout, body(8, 8)), "ok 1 w0"},
 	} {
