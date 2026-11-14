@@ -5,6 +5,14 @@
 #include <stdio.h>
 #include <string.h>
 
+/* THE WRITER HERE IS BUILT THE WAY A RELEASE BUILD IS. The fixed writer's
+   value checks (docs/SPEC.md §5.1: range, bits width, enum, union tag,
+   ill-formed text) are debug asserts, the programmer's job, and in a release
+   build a caller CAN put a value past them on the wire. This unit writes such
+   values on purpose so the READER can be made to answer for them, so it
+   compiles the write assert out, exactly as a release build does. */
+#define schema_assert( x ) ( (void) 0 )
+
 #include "FX1Table.h"
 #include "fixedform.h"
 
@@ -222,9 +230,9 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
    resets the caller's storage.
 
    THE POISON IS WRITTEN THROUGH THE WRITER and not poked into the bytes: the
-   write side's own bounds are debug-only by rule and a range is not one of
-   them, so a caller CAN put an out-of-range value on the wire and the reader is
-   what has to answer for it. */
+   write side's range check is debug-only by rule (docs/SPEC.md §5.1), this unit
+   is built the way a release build is, so a caller CAN put an out-of-range
+   value on the wire and the reader is what has to answer for it. */
 int64_t fixed_fx1_write_out_of_range( uint8_t * buffer, int64_t capacity )
 {
     tblfx1_fx_root_t v;
@@ -323,8 +331,8 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
    nothing past the refusal is decoded.
 
    The poison is written THROUGH THE WRITER, because it can be: the write side's
-   bounds are the used length and the live count, both debug-only, and neither
-   is a content rule. */
+   content check is debug-only by rule (docs/SPEC.md §5.1), and this unit is
+   built the way a release build is. */
 void fixed_fx1_text_content( void )
 {
     static const struct { const char * what; const char * bytes; int32_t length; } cases[] = {

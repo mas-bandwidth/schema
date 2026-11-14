@@ -1262,7 +1262,10 @@ static partial class Program
             Array.Copy(absentBytes, present.Name, absentBytes.Length);
             present.NameLength = 6;
             present.LinkPresent = true;
-            present.Link.Value = 0x5A5A5A;
+            // inside value's declared [0, 1000]: a present value off its range
+            // is refused by the write contract (docs/SPEC.md §5.1); the tag's
+            // 0x5A bytes are the ones this half looks for on the wire
+            present.Link.Value = 1000;
             Array.Fill(present.Link.Tag, (byte)0x5A);
             present.Link.TagLength = 4;
             byte[] pw = new byte[(int)P3.Schema.ChainFixedMeasure(1)];
