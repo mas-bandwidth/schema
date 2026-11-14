@@ -126,19 +126,30 @@ func (in *reader) space() {
 		// whitespace is, and a lone slash is not JSON.
 		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '/' {
 			in.pos += 2
+			start := in.pos
 			for in.pos < len(in.text) && in.text[in.pos] != '\n' {
 				in.pos++
+			}
+			if !utf8.Valid(in.text[start:in.pos]) || bytes.IndexByte(in.text[start:in.pos], 0) >= 0 {
+				in.bad = true
+				return
 			}
 			continue
 		}
 		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '*' {
-			end := bytes.Index(in.text[in.pos+2:], []byte("*/"))
+			start := in.pos + 2
+			end := bytes.Index(in.text[start:], []byte("*/"))
 			if end < 0 {
 				in.bad = true
 				in.pos = len(in.text)
 				return
 			}
-			in.pos += 2 + end + 2
+			comment := in.text[start : start+end]
+			if !utf8.Valid(comment) || bytes.IndexByte(comment, 0) >= 0 {
+				in.bad = true
+				return
+			}
+			in.pos = start + end + 2
 			continue
 		}
 		if c == '/' {
