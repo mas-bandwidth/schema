@@ -20,13 +20,11 @@ import (
 // NEW reader's three, so no arm lands. The needle — 01 07 00 00 00 0f 00 00 00,
 // pick.type=alpha, m=7, seq=15 — is located with bytes.Index and asserted to
 // occur EXACTLY once, never zero and never twice, because a search that is not
-// a locator is not a forge. Both plans land the tag None and never the forged 9,
-// and leave seq at the writer's 15. The bound that wins is the WRITER's. On this
-// leg the COMPILED plan lands None through the lineage plan's guarded const with
-// NO counter (clamped == 0, schema#1254), while the IDENTITY plan counts exactly
-// once through the decode bound's clamp (clamped == 1), so each column asserts
-// what its own plan does. clamped is asserted == an exact number, never >= 1:
-// a looser read is the thing this row exists to catch.
+// a locator is not a forge. Under the strict read (docs/FIXED-FORM-ALGORITHM.md
+// §4.6: a tag past the writer's arm count is refused by the bounds pass) both
+// plans refuse the whole load, never land the forged 9, and leave the tag at
+// None and seq at its declared default; the same verdict on both plans is the
+// row's whole proof.
 func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -59,64 +57,58 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 		{name: "union_tag_both_plans/compiled", reader: "VNEW_union_append",
 			older: []string{"VOLD_union_append"}, file: "hostile_union_append.bin",
 			body: csVersionHead + `            _ = want;
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan read one record: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan must refuse the forged tag: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a forged tag is not a refusal and not malformed on the COMPILED plan: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged tag is a refusal on the COMPILED plan: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
             if (back[0].Pick.Type != PickType.None)
             {
-                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan lands the forged tag as None, not pick.type=" + (int)back[0].Pick.Type);
+                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan's refusal left the tag at None, not pick.type=" + (int)back[0].Pick.Type);
             }
             if ((int)back[0].Pick.Type == 9)
             {
                 bad += ProbeLog.Fail(@NAME@, "the COMPILED plan never lands the forged tag as 9: pick.type=" + (int)back[0].Pick.Type);
             }
-            if (back[0].Seq != 15)
+            if (back[0].Seq != fresh.Seq)
             {
-                bad += ProbeLog.Fail(@NAME@, "the scalar after the union is untouched: seq=" + back[0].Seq);
+                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan's refusal wrote the scalar after the union: seq=" + back[0].Seq);
             }
-            if (r.Clamped != 0)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan lands None through the lineage plan's guarded const with no counter: clamped=" + r.Clamped);
-            }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved on the COMPILED plan: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves on the COMPILED plan: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 		{name: "union_tag_both_plans/identity", reader: "VOLD_union_append",
 			older: nil, file: "hostile_union_append.bin",
 			body: csVersionHead + `            _ = want;
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan read one record: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan must refuse the forged tag: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a forged tag is not a refusal and not malformed on the IDENTITY plan: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged tag is a refusal on the IDENTITY plan: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
             if (back[0].Pick.Type != PickType.None)
             {
-                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan lands the forged tag as None, not pick.type=" + (int)back[0].Pick.Type);
+                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan's refusal left the tag at None, not pick.type=" + (int)back[0].Pick.Type);
             }
             if ((int)back[0].Pick.Type == 9)
             {
                 bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan never lands the forged tag as 9: pick.type=" + (int)back[0].Pick.Type);
             }
-            if (back[0].Seq != 15)
+            if (back[0].Seq != fresh.Seq)
             {
-                bad += ProbeLog.Fail(@NAME@, "the scalar after the union is untouched: seq=" + back[0].Seq);
+                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan's refusal wrote the scalar after the union: seq=" + back[0].Seq);
             }
-            if (r.Clamped != 1)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan counts the forged tag exactly once through the decode bound's clamp: clamped=" + r.Clamped);
-            }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved on the IDENTITY plan: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves on the IDENTITY plan: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 	}
 

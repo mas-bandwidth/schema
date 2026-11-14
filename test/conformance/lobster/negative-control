@@ -3,7 +3,8 @@
 # docs/PORTING.md I2 and I11). Each one sabotages the EMITTER, never a
 # generated file and never the driver: a sed over a copy of one runtime file
 # the table emitter embeds (internal/codegen/lobstertable/runtime/*.lobster,
-# the //go:embed glob), checked to have matched, `go build -overlay` into a
+# the //go:embed glob) or of one emitter source (write-refusal), checked to
+# have matched, `go build -overlay` into a
 # private compiler, the conformance units regenerated from it, and the harness
 # required red on the named surfaces with their neighbours green. No tracked
 # file is written, so an interrupt leaves no sabotaged tree.
@@ -29,8 +30,19 @@
 #           instead of being refused as malformed (docs/SPEC-TABLES.md §3.1,
 #           §4), so exactly `lobster / framing` goes red, on its node_cycle_*
 #           rows; `wire`, `report` and `retain` green.
+#   write-refusal
+#           fixedevolve.go's checked fixed writer never runs its write check
+#           (docs/SPEC.md §5.1): exactly `write-refusal` and
+#           `write-refusal-fixed` go red — every row of both batteries is a
+#           declared fixed root, saved through its own form's one checked
+#           writer — while `wire`, `message` and `write-refusal-message` stay
+#           green.
+#   write-refusal-message
+#           message.lobster's writer stops refusing a scalar its declaration
+#           does not admit: exactly `write-refusal-message` red, on its
+#           ranged rows; `wire`, `message` and `write-refusal` green.
 #
-# usage: test/conformance/lobster/negative-control <report|walk|framing|cycle>
+# usage: test/conformance/lobster/negative-control <report|walk|framing|cycle|write-refusal|write-refusal-message>
 set -eu
 
 mode=$1
@@ -57,6 +69,17 @@ cycle)
 walk)
     source=internal/codegen/lobstertable/runtime/json.lobster
     sed 's/^        if sl\.fd\.json == key:$/        if sl.fd.json == key and i != 0:/' "$source" > "$out/runtime.lobster"
+    ;;
+write-refusal)
+    # the emitter's fixed SaveChecked stops calling its write check (a copy
+    # of fixedevolve.go, overlaid as the runtime files are)
+    source=internal/codegen/lobstertable/fixedevolve.go
+    sed 's/if not %sFixedCheckBody(v):/if false and not %sFixedCheckBody(v):/' "$source" > "$out/runtime.lobster"
+    ;;
+write-refusal-message)
+    # the message writer's scalar admission check is taken out
+    source=internal/codegen/lobstertable/runtime/message.lobster
+    sed 's/^    if not scalar_admitted(d, kind, v):$/    if false and not scalar_admitted(d, kind, v):/' "$source" > "$out/runtime.lobster"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -95,6 +118,8 @@ report) want="framing retain retain-save " ; green="wire json-read cook-write" ;
 framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
+write-refusal) want="write-refusal write-refusal-fixed " ; green="wire message write-refusal-message" ;;
+write-refusal-message) want="write-refusal-message " ; green="wire message write-refusal" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lobster $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
@@ -102,7 +127,8 @@ if [ "$red" != "$want" ]; then
     exit 1
 fi
 for surface in $green; do
-    if ! grep -qE "^$surface +pass" "$out/log"; then
+    # a surface name as wide as the table's column abuts its verdict
+    if ! grep -qE "^$surface *pass" "$out/log"; then
         echo "NEGATIVE CONTROL FAILED: the lobster $mode sabotage did not leave $surface green" >&2
         cat "$out/log" >&2
         exit 1

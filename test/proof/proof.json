@@ -5915,8 +5915,10 @@
     {
       "row": "porting M5",
       "lang": "goose",
-      "status": "red",
-      "why": "❌ #2236 — card schema-goose-vt-optionals (docs/PORT-GOOSE.md, THE CARD MAP)"
+      "status": "proven",
+      "gate": "tables-goose-keyed",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "tables-goose-keyed-negative-control (CI full / negative controls (goose))"
     },
     {
       "row": "porting M5",
@@ -6845,8 +6847,10 @@
     {
       "row": "porting M19",
       "lang": "goose",
-      "status": "red",
-      "why": "❌ #2236 — the table wire carries maps in ascending key order (`TestGooseTableWireMatchesTheCorpus`, the mapdemo rows); the holder's node-exten…"
+      "status": "proven",
+      "gate": "tables-goose-maps",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "tables-goose-maps-negative-controls (CI full / negative controls (goose))"
     },
     {
       "row": "porting M19",

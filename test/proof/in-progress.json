@@ -1,0 +1,10 @@
+{
+  "note": "Ports still being built (tools/matrix proof). A cell of a port listed here that would be red is reported as in progress with its reason and the port's issue, and does not hold the proof red. A listed port whose column has no cell left in progress is at parity: the proof refuses until it is removed from this list, and from then on it is gated like every other port. The maintainer's ruling, 2026-11-14: a port still being built must not hold the proof red, and a port at parity must.",
+  "ports": [
+    {
+      "lang": "python",
+      "issue": "#381",
+      "plan": "docs/PORT-PYTHON.md"
+    }
+  ]
+}
