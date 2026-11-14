@@ -405,12 +405,12 @@ func TestDartMessageBodyFieldOnceNegativeControl(t *testing.T) {
 	replaced := 0
 	out, err := runBatchProbe(t, u, root, body, func(files map[string][]byte) {
 		for name, data := range files {
-			n := strings.Count(string(data), "r.seenHasId(named)")
+			n := strings.Count(string(data), "r.seenHasId(entry.id)")
 			if n == 0 {
 				continue
 			}
 			replaced += n
-			files[name] = []byte(strings.ReplaceAll(string(data), "r.seenHasId(named)", "false"))
+			files[name] = []byte(strings.ReplaceAll(string(data), "r.seenHasId(entry.id)", "false"))
 		}
 	})
 	if replaced == 0 {
