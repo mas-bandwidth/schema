@@ -1372,7 +1372,9 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblfx1::kTableFixedBool ) { past_the_set++; }
+            // kTableFixedDead checks slack for zero and holds no range
+            if ( compiled[(size_t) i].op > tblfx1::kTableFixedBool &&
+                 compiled[(size_t) i].op != tblfx1::kTableFixedDead ) { past_the_set++; }
         }
         check( past_the_set == 0, "bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
@@ -1487,9 +1489,11 @@ static void bounds_case()
         for ( int32_t i = 0; i < made; ++i )
         {
             // kTableFixedPresentDefaults is the present flag plus an absent
-            // payload's declared defaults, not a range/clamp op.
+            // payload's declared defaults, and kTableFixedDead checks slack
+            // for zero: neither is a range/clamp op.
             if ( compiled[(size_t) i].op > tblv1::kTableFixedBool &&
-                 compiled[(size_t) i].op != tblv1::kTableFixedPresentDefaults ) { past_the_set++; }
+                 compiled[(size_t) i].op != tblv1::kTableFixedPresentDefaults &&
+                 compiled[(size_t) i].op != tblv1::kTableFixedDead ) { past_the_set++; }
         }
         check( past_the_set == 0, "live-count: a compiled plan carries no clamp op either" );
 
@@ -2197,6 +2201,8 @@ static void nested_union_case()
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        // a slack check lands nothing, so it has no destination to share
+        if ( e.op == tblfg1::kTableFixedDead ) { continue; }
         if ( e.guard != outer_tag_at || e.guard2 != tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
         other_arm_dst = e.dst;
     }

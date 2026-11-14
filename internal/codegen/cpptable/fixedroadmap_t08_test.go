@@ -238,7 +238,12 @@ func t08W16(t *testing.T) {
 			continue
 		}
 		found = true
-		if e.Arg == 0 || e.Arg2 == 0 {
+		// THE ONE ORDINAL 0 IS THE INNER UNION'S OWN SLACK CHECK (Glenn,
+		// 2026-11-10, every dead byte is zero): under the outer arm, an inner
+		// tag of 0 leaves the inner arm bytes dead, so that check's inner
+		// lane names tag 0. It lands nothing; every entry that lands, and
+		// every outer lane, still names an arm.
+		if (e.Arg == 0 && e.Op != ir.TableFixedOpDead) || e.Arg2 == 0 {
 			t.Errorf("W16: a doubly guarded entry is missing an ordinal: %+v", e)
 		}
 		if e.Guard2 == e.Guard {

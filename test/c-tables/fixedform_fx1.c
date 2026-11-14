@@ -295,7 +295,9 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
+            /* TBLFX1_K_TABLE_FIXED_DEAD checks slack for zero and holds no range */
+            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_BOOL &&
+                 compiled[i].op != (uint8_t) TBLFX1_K_TABLE_FIXED_DEAD ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them holds a range" );
 

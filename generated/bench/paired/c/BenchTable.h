@@ -1294,10 +1294,11 @@ static SCHEMA_UNUSED int bench_table_fixed_dead( const bench_table_fixed_entry_t
     uint8_t any = 0;
     if ( p->meta == BENCH_K_TABLE_FIXED_DEAD_TAIL )
     {
-        /* THE WORD IS HELD TO ITS BOUND HERE ONLY TO STAY INSIDE THE RECORD: a
-           count or length past it is refused by its own op */
+        /* A COUNT OR LENGTH OUTSIDE ITS BOUND IS REFUSED BY ITS OWN OP and
+           names no slack, as the engine's read: below zero the tail is not
+           judged, and past the bound it is empty */
         int32_t v = (int32_t) bench_table_fixed_get32( s );
-        if ( v < 0 ) { v = 0; }
+        if ( v < 0 ) { return 0; }
         if ( (uint32_t) v > p->aux ) { v = (int32_t) p->aux; }
         from = 4u + (uint64_t) v * p->size;
         to = 4u + (uint64_t) p->aux * p->size;

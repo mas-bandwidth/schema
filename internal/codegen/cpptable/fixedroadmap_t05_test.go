@@ -183,7 +183,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
 		t.Parallel()
 		body := `
     // A lawful one-record file whose label carries 4 USED bytes; bytes 4..7 are
-    // SLACK, unspecified on read and never judged.
+    // SLACK, zero, and checked for zero only.
     {
         FxRoot v;
         FxRootReset( v );
@@ -197,16 +197,26 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     int64_t at = find_bytes( data, n, mark, 4 );
     if ( at < 0 ) { printf( "C4: the label payload is not locatable: %lld\n", (long long) at ); return 1; }
 
-    // SLACK IS NOT JUDGED: a byte that is not UTF-8 PAST the used length v=4
-    // reads clean — the content rule runs over the used units and nothing else.
-    data[at + 6] = 0xFF;
+    // THE WRITER'S OWN FILE READS: its slack is zero.
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.damaged )
-            { printf( "C4: a slack byte past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
+            { printf( "C4: the clean file did not read: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
     }
+    // EVERY DEAD BYTE IS ZERO (Glenn, 2026-11-10): a byte that is not UTF-8
+    // PAST the used length v=4 refuses the record as wire_damaged — checked for
+    // zero only, never judged as text.
+    data[at + 6] = 0xFF;
+    {
+        memset( &r, 0, sizeof( r ) );
+        for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
+        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        if ( n != -1 || !r.refused || r.reason != wire_damaged )
+            { printf( "C4: a slack byte past v did not refuse as wire_damaged: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
+    }
+    data[at + 6] = 0;
     // ILL-FORMED CONTENT INSIDE v REFUSES BY NAME, the verdict the packet
     // reader gives (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): refused plus the
     // name, never malformed, nothing decoded, no counter moved.
@@ -269,16 +279,19 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( r.unknown != 0 || r.widened != 0 )
             { printf( "R24: refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
-    // SLACK IS NOT JUDGED: an ill-formed byte PAST the used bytes is no refusal.
+    // EVERY DEAD BYTE IS ZERO (Glenn, 2026-11-10): an ill-formed byte PAST the
+    // used bytes refuses as wire_damaged, checked for zero only and never
+    // judged as text.
     TableFixedPut32( data + at - 4, 4 );
     data[at + 6] = 0xC0;
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.damaged )
-            { printf( "R24: a slack byte past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
+        if ( n != -1 || !r.refused || r.reason != wire_damaged )
+            { printf( "R24: a slack byte past v did not refuse as wire_damaged: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
     }
+    data[at + 6] = 0;
     // THE LENGTH REFUSAL AND THE CONTENT REFUSAL ON THE SAME RECORD: the length
     // word forged ONE PAST THE CAP (9 bytes) AND the used bytes ill-formed. The
     // count/length pre-scan runs first and refuses length_over_bound by name —
