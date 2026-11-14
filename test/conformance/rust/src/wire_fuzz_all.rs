@@ -283,25 +283,27 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
 // the generated readers read it. A form 3 wire goes through the root's
 // <root>_fixed_load and its write-back through <root>_fixed_save, the way the
 // conformance driver's fixed_read does (test/conformance/rust/src/main.rs);
-// any other form byte goes to the form 1 arm. Damage answers malformed, any
-// other refusal answers refused, so a refusal is always named.
+// any other form byte goes to the form 1 arm.
+//
+// A ROOT FILE HOLDS ONE RECORD (the engine's fixed read; the Java leg's
+// TablesWireFuzz does the same): the read is handed room for one, and only a
+// clean read of exactly that record is an accept. A read of none (a file cut at
+// the end of its layout) or a named refusal refuses the whole wire.
 const TABLE_FIXED_FORM_BYTE: u8 = 3;
-const FIXED_RECORDS: usize = 64;
 const FIXED_PLAN: usize = 1 << 14;
 
 macro_rules! fixed_arm {
     ($unit:ident, $load:ident, $save:ident, $measure:ident, $row:ident, $wire:expr) => {{
-        let mut values = vec![$unit::$row::default(); FIXED_RECORDS];
+        let mut values = vec![$unit::$row::default(); 1];
         let mut plan = vec![$unit::TableFixedEntry::default(); FIXED_PLAN];
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = $unit::TableFixedReport::default();
         let read = $unit::$load(&mut values, $wire, &mut plan, &mut remap, &mut report);
-        let read = read.filter(|_| !report.refused && !report.damaged);
+        let read = read.filter(|&n| n == 1 && !report.refused && !report.damaged);
         let mut reply = Reply { loaded: true, measure: -1, ..Default::default() };
         reply.unknown = u64::from(report.unknown);
         reply.widened = u64::from(report.widened);
-        reply.damaged = report.damaged;
-        reply.refused = read.is_none() && !report.damaged;
+        reply.refused = read.is_none();
         match read {
             Some(n) => {
                 let mut buffer = vec![0u8; $unit::$measure(n)];
@@ -346,8 +348,7 @@ fn fixed_drive(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
                 loaded: true,
                 unknown: u64::from(report.unknown),
                 widened: u64::from(report.widened),
-                damaged: report.damaged,
-                refused: !report.damaged,
+                refused: true,
                 measure: -1,
                 save_fail: true,
                 ..Default::default()
