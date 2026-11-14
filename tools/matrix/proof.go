@@ -24,6 +24,14 @@ package main
 //     register cell that is ❌ or `—` with no ruling, and a gate with no
 //     negative control are all red, by name.
 //
+// A PORT STILL BEING BUILT is declared in test/proof/in-progress.json with
+// its issue and its design page. Its column is computed exactly as every
+// other column is, and a cell that would be red is IN PROGRESS instead:
+// reported by name with its reason and the port's issue, and not gated. A
+// declared port with a column and no cell left in progress is at parity, and
+// the declaration then holds the proof red until it is removed, so a port at
+// parity is gated like every other.
+//
 // The table does not hold a release by being printed: `make release` refuses
 // a commit whose proof report is not green at that exact commit
 // (VerifyRelease), and ci-full prints the red list on every merge to main.
@@ -47,6 +55,7 @@ const (
 	controlsPath            = "make/negative-controls.json"
 	rulingsPath             = "docs/rulings.json"
 	proofPath               = "test/proof/proof.json"
+	inProgressPath          = "test/proof/in-progress.json"
 	// referenceLang is the conformance reference leg (test/conformance/harness).
 	referenceLang = "cpp"
 )
@@ -69,6 +78,9 @@ const (
 	StatusProven = "proven"
 	StatusNA     = "n/a"
 	StatusRed    = "red"
+	// StatusInProgress is a cell that would be red, in the column of a port
+	// test/proof/in-progress.json declares still being built.
+	StatusInProgress = "in progress"
 )
 
 // Cell is one language's answer to one row, with what proves it or why it is red.
@@ -82,6 +94,7 @@ type Cell struct {
 	Ruling  string `json:"ruling,omitempty"`
 	Cites   string `json:"cites,omitempty"`
 	Why     string `json:"why,omitempty"`
+	Port    string `json:"port,omitempty"`
 }
 
 // Proof is the generated table.
@@ -97,6 +110,18 @@ func (p Proof) Red() []Cell {
 	var out []Cell
 	for _, c := range p.Cells {
 		if c.Status == StatusRed {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// InProgress is every cell of a port still being built that would be red, in
+// table order.
+func (p Proof) InProgress() []Cell {
+	var out []Cell
+	for _, c := range p.Cells {
+		if c.Status == StatusInProgress {
 			out = append(out, c)
 		}
 	}
@@ -272,6 +297,85 @@ func (r Rulings) rowRuling(row, lang string) string {
 
 func langIn(langs []string, lang string) bool {
 	return len(langs) == 0 || slices.Contains(langs, lang)
+}
+
+// Port is one entry of test/proof/in-progress.json: a port still being built,
+// the issue that carries it and its design page.
+type Port struct {
+	Lang  string `json:"lang"`
+	Issue string `json:"issue"`
+	Plan  string `json:"plan"`
+}
+
+// label is what an in-progress cell carries: the port's issue and plan.
+func (p Port) label() string {
+	return "port in progress, " + p.Issue + " (" + p.Plan + ")"
+}
+
+// LoadPorts reads test/proof/in-progress.json and refuses an entry with no
+// language, an issue that is not #<number>, a plan page that is not in the
+// tree, or a language declared twice.
+func LoadPorts(root string) (map[string]Port, error) {
+	data, err := os.ReadFile(filepath.Join(root, inProgressPath))
+	if err != nil {
+		return nil, err
+	}
+	var f struct {
+		Note  string `json:"note"`
+		Ports []Port `json:"ports"`
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("%s: %w", inProgressPath, err)
+	}
+	issue := regexp.MustCompile(`^#[0-9]+$`)
+	out := map[string]Port{}
+	for _, p := range f.Ports {
+		switch {
+		case p.Lang == "":
+			return nil, fmt.Errorf("%s: a port names no language", inProgressPath)
+		case out[p.Lang].Lang != "":
+			return nil, fmt.Errorf("%s: %s is declared twice", inProgressPath, p.Lang)
+		case !issue.MatchString(p.Issue):
+			return nil, fmt.Errorf("%s: port %s names no issue (#<number>)", inProgressPath, p.Lang)
+		}
+		if _, err := os.Stat(filepath.Join(root, p.Plan)); p.Plan == "" || err != nil {
+			return nil, fmt.Errorf("%s: port %s names no design page in the tree (%q)", inProgressPath, p.Lang, p.Plan)
+		}
+		out[p.Lang] = p
+	}
+	return out, nil
+}
+
+// AtParity names every declared port whose column the table carries and that
+// has no cell left in progress: a port at parity, which the declaration must
+// no longer cover. A declared port with no column yet (its leg runs nothing)
+// is not at parity.
+func AtParity(p Proof, ports map[string]Port) []string {
+	var out []string
+	for _, lang := range p.Langs {
+		if _, ok := ports[lang]; !ok {
+			continue
+		}
+		open := false
+		for _, c := range p.Cells {
+			if c.Lang == lang && c.Status == StatusInProgress {
+				open = true
+				break
+			}
+		}
+		if !open {
+			out = append(out, lang)
+		}
+	}
+	return out
+}
+
+// parityError is the refusal AtParity's languages earn, or "".
+func parityError(langs []string) string {
+	if len(langs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s declared in progress but at parity: remove %s from %s so the proof gates it", strings.Join(langs, ", "), strings.Join(langs, ", "), inProgressPath)
 }
 
 // Controls is make/negative-controls.json reduced to what a cell cites: each
@@ -475,6 +579,8 @@ type Inputs struct {
 	// its table rows taken out (a cell cannot cite itself or its neighbors)
 	// and docs/SPEC-TABLES.md, each with its whitespace collapsed.
 	Docs map[string]string
+	// InProgress is test/proof/in-progress.json by language.
+	InProgress map[string]Port
 }
 
 // LoadInputs reads every input but the results from the tree at root.
@@ -494,6 +600,9 @@ func LoadInputs(root string, results Results) (Inputs, error) {
 		return in, err
 	}
 	if in.Docs, err = LoadCitable(root); err != nil {
+		return in, err
+	}
+	if in.InProgress, err = LoadPorts(root); err != nil {
 		return in, err
 	}
 	return in, nil
@@ -586,7 +695,11 @@ func Compute(in Inputs) Proof {
 	}
 	for _, row := range p.Rows {
 		for _, lang := range p.Langs {
-			p.Cells = append(p.Cells, computeCell(in, row, lang))
+			c := computeCell(in, row, lang)
+			if port, ok := in.InProgress[lang]; ok && c.Status == StatusRed {
+				c.Status, c.Port = StatusInProgress, port.label()
+			}
+			p.Cells = append(p.Cells, c)
 		}
 	}
 	return p
@@ -821,13 +934,25 @@ func RedList(p Proof) string {
 	return b.String()
 }
 
-// Report is what the proof job hands the release: the commit it ran at and
-// the red cells by name.
+// InProgressList prints the cells of ports still being built that would be
+// red, one per line with the port's issue: reported, not gated.
+func InProgressList(p Proof) string {
+	var b strings.Builder
+	for _, c := range p.InProgress() {
+		fmt.Fprintf(&b, "%s / %s: %s [%s]\n", c.Row, c.Lang, c.Why, c.Port)
+	}
+	return b.String()
+}
+
+// Report is what the proof job hands the release: the commit it ran at, the
+// red cells by name, and the cells of ports still being built.
 type Report struct {
-	Commit string `json:"commit"`
-	Cells  int    `json:"cells"`
-	Red    []Cell `json:"red"`
-	Stale  string `json:"stale,omitempty"`
+	Commit     string `json:"commit"`
+	Cells      int    `json:"cells"`
+	Red        []Cell `json:"red"`
+	InProgress []Cell `json:"in_progress,omitempty"`
+	Stale      string `json:"stale,omitempty"`
+	Parity     string `json:"parity,omitempty"`
 }
 
 // VerifyRelease is the release lock: a release of commit refuses unless the
@@ -845,6 +970,9 @@ func VerifyRelease(r Report, commit string) error {
 	}
 	if r.Stale != "" {
 		return fmt.Errorf("release REFUSES: at %s, %s", commit, r.Stale)
+	}
+	if r.Parity != "" {
+		return fmt.Errorf("release REFUSES: at %s, %s", commit, r.Parity)
 	}
 	if len(r.Red) > 0 {
 		var names []string
