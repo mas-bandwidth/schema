@@ -537,12 +537,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_float(_shape, _r), do: :malformed
 
   # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
-  # are well-formed UTF-8 with no NUL, or the batch refuses
+  # number at most the declared max and are well-formed UTF-8 with no NUL, or
+  # the batch refuses
   defp read_string(shape, r) do
     with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
          {:ok, rest2} <- align(rest),
          {:ok, bytes, rest3} <- take_bytes(rest2, n),
-         true <- String.valid?(bytes) and :binary.match(bytes, <<0>>) == :nomatch do
+         true <- n <= shape.max,
+         true <- text_ok?(bytes) do
       {:ok, bytes, rest3}
     else
       _ -> :malformed
