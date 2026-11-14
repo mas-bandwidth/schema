@@ -1395,11 +1395,13 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = TableVariableNodeTableScan(bytes, table, open.end, report);
-  const st = { missingBefore, good: raw !== null, nodes: [], reached: new Set(), root: v, rootCodec: c, pending: [], maps: [], report: report };
+  const st = { missingBefore, good: raw !== null, nodes: [], nodeTypes: [], unknownBlobNamed: new Set(), reached: new Set(), graphFrom: [], graphTo: [], owner: 0, root: v, rootCodec: c, pending: [], maps: [], report: report };
   if (raw !== null) {
     const place = c.variable ? c.place : { str: false, bytes: false, byType: new Map() };
     const unplaced = [];
-    for (const rec of raw) {
+    for (let recordIndex = 0; recordIndex < raw.length; recordIndex++) {
+      const rec = raw[recordIndex];
+      st.nodeTypes.push(rec.tid);
       if (rec.tid === TableStringBlobId && place.str) {
         // a text blob's content is refused on the terms a kind 12 payload is:
         // the record is damaged, and every slot naming it reads null
@@ -1420,21 +1422,24 @@ function TableVariableLoad(c, bytes, report, retain) {
         // A blob this root does not place is raw bytes, not a field body.
         // Only an unplaced table record contributes pointer edges.
         if (rec.tid === TableStringBlobId && !TableVariableUtf8Decode(rec.body).ok) { report.damaged = true; }
-        if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push(rec.body); }
+        if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push({ body: rec.body, owner: recordIndex + 1 }); }
         continue;
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
     }
     // Edges are noted after every record is pushed: a pointer names a later
     // record by index, and that index is not in the list until the scan ends.
-    for (const body of unplaced) {
-      if (!TableVariableNoteEdges(body, table, st, report, 0)) {
+    for (const record of unplaced) {
+      st.owner = record.owner;
+      if (!TableVariableNoteEdges(record.body, table, st, report, 0)) {
         if (!TableVariableCountRefused(report)) { report.damaged = true; }
         break;
       }
     }
-    for (const n of st.nodes) {
+    for (let i = 0; i < st.nodes.length; i++) {
+      const n = st.nodes[i];
       if (n === null || n.kind !== "t") { continue; }
+      st.owner = i + 1;
       // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
       // the node's own identity, so its unknown fields ride back into the same
       // record's tail on the save.
@@ -1442,6 +1447,7 @@ function TableVariableLoad(c, bytes, report, retain) {
       if (TableVariableCountRefused(report)) { break; }
     }
   }
+  st.owner = 0;
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
   // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks
   // any damage the walk met after it (§3.3): nothing lands.
@@ -1498,6 +1504,7 @@ function TableVariableResolve(st, report) {
   const strings = new Map();
   for (const [holder, key, index, d] of st.pending) {
     let value = null, str = null;
+    if (st.good) { TableVariableNoteBlobReference(index, st); }
     if (st.good && index !== 0) {
       if (index === 1) {
         if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; } else { report.mismatch++; }
@@ -1515,12 +1522,6 @@ function TableVariableResolve(st, report) {
             value = n.v;
           } else {
             report.mismatch++;
-          }
-          // Count every extra valid naming, including repeated field events.
-          // The mark belongs to this load's node, so reused reports accumulate
-          // while distinct equal blobs and rejected kinds never become shares.
-          if ((d.s === "sblob" && n.kind === "s") || (d.s === "bblob" && n.kind === "b")) {
-            if (n.named) { report.sharedBlob++; } else { n.named = true; }
           }
         }
       }
@@ -1562,7 +1563,7 @@ function TableVariableResolve(st, report) {
       const n = st.nodes[i];
       if (n !== null && n.kind === "t") { nodeAt.set(n.v, i + 1); }
     }
-    const from = [], to = [];
+    const from = st.graphFrom.slice(), to = st.graphTo.slice();
     for (const e of TableVariableEdges(st.rootCodec, st.root, [], true)) {
       if (!e.blob) { from.push(0); to.push(nodeAt.get(e.val)); }
     }
@@ -1638,17 +1639,34 @@ function TableVariableCyclic(count, from, to) {
 // kind-17 index in the record body still reaches its target. A placed record
 // named only from here is not damage.
 function TableVariableNoteIndex(idx, st) {
-  if (idx === 0 || idx === 1) { return true; }
+  if (idx === 0) { return true; }
+  if (idx === 1) {
+    st.graphFrom.push(st.owner);
+    st.graphTo.push(0);
+    return true;
+  }
   if (!Number.isSafeInteger(idx) || !st.good || idx - 2 < 0 || idx - 2 >= st.nodes.length) { return false; }
   if (st.reached !== undefined) { st.reached.add(idx - 2); }
+  st.graphFrom.push(st.owner);
+  st.graphTo.push(idx - 1);
+  TableVariableNoteBlobReference(idx, st);
+  return true;
+}
+
+// Sharing belongs to the wire record type, including a blob this declaration
+// cannot place. Keep unknown records null for evolution, but still count every
+// kind-17 slot that names the same blob (§3.1).
+function TableVariableNoteBlobReference(idx, st) {
+  if (!Number.isSafeInteger(idx) || idx < 2 || idx - 2 >= st.nodeTypes.length) { return; }
+  const tid = st.nodeTypes[idx - 2];
+  if (tid !== TableStringBlobId && tid !== TableBytesBlobId) { return; }
   const n = st.nodes[idx - 2];
-  // A kind-17 index names its record wherever it sits: an unknown field, a
-  // map entry, an array element (internal/tablewire/wirecheck.go graph). A
-  // blob record named from two slots is the blob_shared refusal.
   if (n !== null && (n.kind === "b" || n.kind === "s")) {
     if (n.named) { st.report.sharedBlob++; } else { n.named = true; }
+    return;
   }
-  return true;
+  if (st.unknownBlobNamed.has(idx - 2)) { st.report.sharedBlob++; }
+  else { st.unknownBlobNamed.add(idx - 2); }
 }
 
 function TableVariableNoteEdges(body, table, st, report, depth) {
