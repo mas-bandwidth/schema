@@ -168,6 +168,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitWriteBody(st)
 			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
+			g.gen.emitDeadBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
 		// THE MESSAGE FORM'S BODY VERBS RIDE THE MESSAGE ROOTS' WHOLE CLOSURE,
@@ -223,6 +224,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	finite := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
 	if finite {
 		g.needHome(st.Name + "FixedCheckBody")
+	}
+	dead := fixedStructSlack(st)
+	if dead {
+		g.needHome(st.Name + "FixedDeadZero")
 	}
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
@@ -526,6 +531,15 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
 	g.pf("    if (identity) {\n")
+	if dead {
+		// EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): the record's slack
+		// is checked before the projection lands a value, and a stained span
+		// refuses the record whole.
+		g.pf("      if (!%sFixedDeadZero(srcView, at + 8)) {\n", st.Name)
+		g.pf("        stage.refused = TableFixedRefusal.WireDamaged;\n")
+		g.pf("        return %sFixedRefuseBatch(values, k, stage, report);\n", st.Name)
+		g.pf("      }\n")
+	}
 	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
 	g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
 	g.pf("      at += recordBytes;\n")

@@ -152,6 +152,8 @@ type fixedGen struct {
 	loops int
 	// inl numbers the locals an inlined struct element binds.
 	inl int
+	// dead numbers the locals of one <T>FixedDeadZero (emitDeadBody).
+	dead int
 }
 
 // loopVar names the loop variable at the current decode nesting depth: `i` at
@@ -828,6 +830,203 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind stri
 			g.pf("%s    default: break;\n%s  }\n", ind, ind)
 			g.pf("%s}\n", ind)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+// ---------------------------------------------------------------------------
+//
+// The owner's ruling of 2026-11-10 (docs/rulings.json fixed-dead-bytes-zero):
+// an absent optional's payload, a counted array's tail past its live count,
+// text and bytes past their used length, and a union's arm bytes under tag 0
+// or behind a narrower arm are SLACK, a conforming writer leaves zeros there,
+// and a reader refuses the whole record when any of them is not zero. The
+// writer already leaves them zero (the template's zeros, emitWriteField).
+//
+// <T>FixedDeadZero( view, at ) is the IDENTITY read's half: the record's own
+// bytes are this build's layout, so every slack span is a constant offset and
+// a zero scan of it. It answers false when a slack byte is not zero. It reads
+// a count or a length only to place the span, and one past its bound is left
+// to the decode's own count_over_bound / length_over_bound. Slack is checked
+// for zero and nothing else: no bool, range, ordinal or text rule runs on it,
+// and slack inside slack is covered by the outer span's scan. The lineage
+// read checks the WRITER's slack in the compiled plan instead
+// (fixedruntime.go, TableFixedOpZero).
+
+// fixedFieldSlack reports whether a field's storage can hold slack. A
+// `| deprecated` field's slot is not slack (§3.4, DEPRECATED SLOT) and is left
+// to its own handling.
+func fixedFieldSlack(f *ir.Field) bool {
+	if f == nil || f.Deprecated {
+		return false
+	}
+	if f.Type.Optional {
+		return true
+	}
+	return fixedPayloadSlack(f)
+}
+
+func fixedPayloadSlack(f *ir.Field) bool {
+	switch {
+	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
+		return fixedElementSlack(f)
+	case f.Array == ir.ArrayCounted, f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		return true
+	}
+	return fixedElementSlack(f)
+}
+
+func fixedElementSlack(f *ir.Field) bool {
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return fixedStructSlack(r)
+	case *ir.Union:
+		return fixedElementBytes(f) > fixedUnionTagBytes(r)
+	}
+	return false
+}
+
+func fixedStructSlack(st *ir.Struct) bool {
+	return st != nil && slices.ContainsFunc(st.Fields, fixedFieldSlack)
+}
+
+// emitDeadBody emits <T>FixedDeadZero( view, at ) for a type with slack.
+func (g *fixedGen) emitDeadBody(st *ir.Struct) {
+	if !fixedStructSlack(st) {
+		return
+	}
+	g.pf("// %s's slack, every span of it zero or the record is refused (§3.4).\n", st.Name)
+	g.pf("export function %sFixedDeadZero(view, at) {\n", st.Name)
+	g.dead = 0
+	var cur int64
+	for _, f := range st.Fields {
+		if fixedFieldSlack(f) {
+			g.emitDeadField(f, "at", cur, "  ")
+		}
+		cur += fixedFieldBytes(f)
+	}
+	g.pf("  return true;\n")
+	g.pf("}\n\n")
+}
+
+// deadVar names a local of the dead walk, unique inside one function, so a
+// loop inside a loop never shadows the variable its base offset is written in.
+func (g *fixedGen) deadVar(prefix string) string {
+	g.dead++
+	return fmt.Sprintf("%s%d", prefix, g.dead)
+}
+
+func (g *fixedGen) emitDeadZero(ind, from, to string) {
+	g.pf("%sif (!TableFixedZero(view, %s, %s)) { return false; }\n", ind, from, to)
+}
+
+func (g *fixedGen) emitDeadField(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS SLACK, WHOLE. A present byte above 1
+		// is the check pass's wire_damaged; any non-zero byte reads present.
+		g.pf("%sif (view.getUint8(%s) === 0) {\n", ind, off(base, at))
+		g.emitDeadZero(ind+"  ", off(base, at+fixedPresentBytes), off(base, at+fixedFieldBytes(f)))
+		if fixedPayloadSlack(f) {
+			g.pf("%s} else {\n", ind)
+			g.emitDeadPayload(f, base, at+fixedPresentBytes, ind+"  ")
+		}
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitDeadPayload(f, base, at, ind)
+}
+
+func (g *fixedGen) emitDeadPayload(f *ir.Field, base string, at int64, ind string) {
+	switch {
+	case f.KeyEnum != "":
+		g.emitDeadLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), ind)
+	case f.Array == ir.ArrayFixed:
+		g.emitDeadLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), ind)
+	case f.Array == ir.ArrayCounted:
+		// THE TAIL PAST THE LIVE COUNT IS SLACK, every byte of every element
+		elem := fixedElementBytes(f)
+		n := g.deadVar("n")
+		g.pf("%s{\n", ind)
+		g.pf("%s  const %s = view.getInt32(%s, true);\n", ind, n, off(base, at))
+		g.pf("%s  if (%s >= 0 && %s <= %d) {\n", ind, n, n, f.ArrayBound)
+		g.emitDeadZero(ind+"    ", fmt.Sprintf("%s + %s * %d", off(base, at+fixedCountBytes), n, elem),
+			off(base, at+fixedCountBytes+f.ArrayBound*elem))
+		g.emitDeadLoop(f, base, at+fixedCountBytes, n, ind+"    ")
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		// THE BYTES PAST THE USED LENGTH ARE SLACK
+		n := g.deadVar("n")
+		g.pf("%s{\n", ind)
+		g.pf("%s  const %s = view.getInt32(%s, true);\n", ind, n, off(base, at))
+		g.pf("%s  if (%s >= 0 && %s <= %d) {\n", ind, n, n, f.Type.Size)
+		g.emitDeadZero(ind+"    ", fmt.Sprintf("%s + %s", off(base, at+fixedCountBytes), n),
+			off(base, at+fixedCountBytes+f.Type.Size))
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitDeadElement(f, base, at, ind)
+	}
+}
+
+func (g *fixedGen) emitDeadLoop(f *ir.Field, base string, at int64, count, ind string) {
+	if !fixedElementSlack(f) {
+		return
+	}
+	elem := fixedElementBytes(f)
+	i := g.deadVar("i")
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, i, i, count, i)
+	g.emitDeadElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), i, elem), 0, ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedGen) emitDeadElement(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedStructSlack(r) {
+			g.pf("%sif (!%sFixedDeadZero(view, %s)) { return false; }\n", ind, r.Name, off(base, at))
+		}
+	case *ir.Union:
+		// NO ARM TAKEN: every arm byte is slack. AN ARM TAKEN: the bytes behind
+		// it, up to the widest arm, are slack, and a payload-free arm takes
+		// none. A forged tag is the decode's out_of_range.
+		tag := fixedUnionTagBytes(r)
+		widest := fixedElementBytes(f) - tag
+		t := g.deadVar("tag")
+		g.pf("%s{\n", ind)
+		g.pf("%s  let %s = 0;\n", ind, t)
+		g.loadTag(ind+"  ", t, off(base, at), tag)
+		g.pf("%s  switch (%s) {\n", ind, t)
+		g.pf("%s    case 0: {\n", ind)
+		g.emitDeadZero(ind+"      ", off(base, at+tag), off(base, at+tag+widest))
+		g.pf("%s      break;\n%s    }\n", ind, ind)
+		for i, v := range r.Variants {
+			taken := int64(0)
+			if v.F != nil {
+				taken = fixedFieldBytes(v.F)
+			}
+			armSlack := v.F != nil && fixedPayloadSlack(v.F)
+			if taken == widest && !armSlack {
+				continue
+			}
+			g.pf("%s    case %d: {\n", ind, i+1)
+			if taken < widest {
+				g.emitDeadZero(ind+"      ", off(base, at+tag+taken), off(base, at+tag+widest))
+			}
+			if armSlack {
+				g.emitDeadPayload(v.F, base, at+tag, ind+"      ")
+			}
+			g.pf("%s      break;\n%s    }\n", ind, ind)
+		}
+		g.pf("%s    default: break;\n%s  }\n", ind, ind)
+		g.pf("%s}\n", ind)
 	}
 }
 

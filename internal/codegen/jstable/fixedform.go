@@ -172,9 +172,13 @@ type fixedDst struct {
 	dst     int64 // this entry's byte offset inside its parent's image
 	stride  int64 // an array entry's element stride
 	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
-	counted int   // an array that carries a live count
+	counted int   // an array that carries a live count; fixedDstDeprecated on a deprecated field's first row
 	arg     int   // a text field's flavour
 }
+
+// fixedDstDeprecated is the counted lane's second bit (fixedruntime.go,
+// TableFixedDstDeprecated).
+const fixedDstDeprecated = 2
 
 // the text flavours, which say how a `text` entry lands its units.
 const (
@@ -215,6 +219,13 @@ func fixedWalkRoot(st *ir.Struct) *fixedWalk {
 // fixedWalkField pushes one FIELD of a table, at its byte offset inside the
 // table's own image.
 func fixedWalkField(w *fixedWalk, f *ir.Field, at int64) {
+	if f.Deprecated {
+		// A DEPRECATED FIELD'S SLOT IS NOT SLACK (docs/SPEC-TABLES.md §3.4):
+		// its first row says so, on the counted lane's second bit, and the
+		// plan compiler's slack pass steps over the field.
+		first := len(w.dst)
+		defer func() { w.dst[first].counted |= fixedDstDeprecated }()
+	}
 	id := ir.TableFieldWireId(f)
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
