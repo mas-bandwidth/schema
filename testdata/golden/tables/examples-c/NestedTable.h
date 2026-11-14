@@ -4567,6 +4567,7 @@ static SCHEMA_UNUSED int64_t tabledemo_table_message_open(tabledemo_table_messag
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
