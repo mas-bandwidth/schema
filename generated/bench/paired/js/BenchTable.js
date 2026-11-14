@@ -103,6 +103,15 @@ const TableFixedOpOrdinal = 3; // a variant ordinal, remapped through the plan's
 const TableFixedOpWiden = 4;   // a narrower source into a wider destination
 const TableFixedOpConst = 5;   // a constant this reader's own storage takes: a remapped union tag
 const TableFixedOpWidenF = 6;  // f32 into f64, SPEC-TABLES §4's float rung
+// THE WRITER'S SLACK IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): a
+// compiled plan's last entries check the spans a conforming writer leaves zero
+// and write nothing. size is the whole field's extent from src; meta's low byte
+// names the span: an absent optional's payload, a count's or a length's tail,
+// or a union's arm bytes.
+const TableFixedOpZero = 7;
+const TableFixedZeroOptional = 0; // src is the present byte; under 0 the payload is slack
+const TableFixedZeroTail = 1;     // src is a count or a length; aux the unit's bytes
+const TableFixedZeroUnion = 2;    // src is the tag, meta's next byte its width; aux the arm sizes
 
 // the flavours an TableFixedOpText entry lands its units under
 const TableFixedTextUtf8 = 1;
@@ -385,6 +394,22 @@ export function TableFixedTextOk(flavour, view, at, len) {
   return true;
 }
 
+// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/
+// rulings.json fixed-dead-bytes-zero): true when every byte of [from, to) is
+// zero. A span of slack holding anything else is a record no conforming writer
+// produced, and the read refuses it whole as wire_damaged. The scan moves in
+// 32-bit lanes and then a tail of at most three bytes, like a copy run.
+export function TableFixedZero(view, from, to) {
+  let k = from;
+  for (; k + 4 <= to; k += 4) {
+    if (view.getUint32(k, true) !== 0) { return false; }
+  }
+  for (; k < to; k++) {
+    if (view.getUint8(k) !== 0) { return false; }
+  }
+  return true;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -573,6 +598,36 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
           // A TAG PAST THE WRITER'S OWN ARM SET IS OUT OF RANGE (§4.6): it
           // refuses BY NAME, never a silent oor count.
           if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        break;
+      }
+      case TableFixedOpZero: {
+        // THE WRITER'S SLACK, in the writer's layout: its absent flag, its
+        // count or length, its arm. A count or a length past the writer's
+        // bound has already refused at its own op; a forged tag is the tag
+        // const's out_of_range. Slack is checked for zero and nothing else.
+        const end = s + size;
+        const mode = e[b + TableFixedLaneMeta] & 0xff;
+        let from = end;
+        if (mode === TableFixedZeroOptional) {
+          if (src[s] === 0) { from = s + 1; }
+        } else if (mode === TableFixedZeroTail) {
+          const unit = e[b + TableFixedLaneAux];
+          const v = TableFixedGetU32(src, s) | 0;
+          if (v >= 0 && unit > 0 && v <= ((size - 4) / unit | 0)) { from = s + 4 + v * unit; }
+        } else {
+          const width = (e[b + TableFixedLaneMeta] >>> 8) & 0xff;
+          const table = e[b + TableFixedLaneAux];
+          const tag = TableFixedTagAt(src, s, width);
+          if (tag === 0) {
+            from = s + width;
+          } else if (tag <= remap[table]) {
+            from = s + width + remap[table + tag];
+          }
+        }
+        if (!TableFixedZero(srcView, from, end)) {
+          report.refused = TableFixedRefusal.WireDamaged;
+          return;
         }
         break;
       }
@@ -951,11 +1006,14 @@ const TableFixedDstStride = 1;
 const TableFixedDstAux = 2;
 const TableFixedDstCounted = 3;
 const TableFixedDstArg = 4;
+// the counted lane's second bit: the reader declares this field deprecated
+const TableFixedDstDeprecated = 2;
 
 function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
   // the guarded ones, and the plan states where the second half starts (§4.1).
-  if (!TableFixedKeeping(plan, guard)) { return; }
+  // Pass 2 keeps the slack checks alone, which write nothing and run last.
+  if (op === TableFixedOpZero ? plan.pass !== 2 : !TableFixedKeeping(plan, guard)) { return; }
   // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD (docs/SPEC-TABLES.md
   // §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2 fix 3): the plan's source offsets
   // are arithmetic over sizes a STRANGER wrote, so a layout whose child sizes
@@ -1100,6 +1158,7 @@ function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt,
 // half FIRST, or the discarded pass still spends the pool and a plan that fits
 // comes back plan_too_large.
 function TableFixedKeeping(plan, guard) {
+  if (plan.pass === 2) { return false; }
   return plan.pass === 0 ? guard === TableFixedNoGuard : guard !== TableFixedNoGuard;
 }
 
@@ -1109,6 +1168,9 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   const theirSize = TableFixedSize(theirs, ti);
   const mySize = TableFixedSize(mine, mi);
   const row = mi * TableFixedDstLanes;
+  // A DEPRECATED FIELD'S SLOT IS NOT SLACK (docs/SPEC-TABLES.md §3.4,
+  // DEPRECATED SLOT): the slack pass leaves it to its own handling.
+  if (plan.pass === 2 && (dst[row + TableFixedDstCounted] & TableFixedDstDeprecated) !== 0) { return; }
   const at = myAt + dst[row + TableFixedDstOff];
   const auxAt = myAt + dst[row + TableFixedDstAux];
   // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
@@ -1135,6 +1197,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   switch (myKind) {
     case 35: { // the OPTIONAL wrapper: payload ops run only when present
       TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);
+      // the writer's payload under an absent flag is slack (§3.4)
+      TableFixedPush(plan, TableFixedOpZero, theirAt, 0, theirSize, 0, guard, arg, TableFixedZeroOptional);
       if (plan.chainLen >= 65) { plan.overflow = true; return; }
       const savedAt = plan.chainAt;
       const savedArgw = plan.argw;
@@ -1158,7 +1222,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
     case 14: { // an array: the count, then min( their bound, my bound ) elements
       const theirElem = TableFixedSize(theirs, ti + 1);
       const myElem = TableFixedSize(mine, mi + 1);
-      const head = dst[row + TableFixedDstCounted] ? 4 : 0;
+      const counted = (dst[row + TableFixedDstCounted] & 1) !== 0;
+      const head = counted ? 4 : 0;
       // THE WRITER'S ELEMENT COUNT IS u32 ARITHMETIC (docs/FIXED-FORM-ALGORITHM.md
       // §5.2 EMIT kind 14): their_n := (te.size - head) / their element size, and
       // te.size is a u32, so a bare array SMALLER than the reader's four-byte count
@@ -1167,12 +1232,14 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // here would underflow to a negative bound and let the over-reach through.
       const theirN = theirElem ? Math.floor(((theirSize - head) >>> 0) / theirElem) : 0;
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
-      if (dst[row + TableFixedDstCounted]) {
+      if (counted) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
         // bill §12.5): a count forged past what THAT endpoint could have written
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
         TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
+        // the writer's tail past its live count is slack (§3.4)
+        TableFixedPush(plan, TableFixedOpZero, theirAt, 0, theirSize, theirElem, guard, arg, TableFixedZeroTail);
       }
       const theirBase = theirAt + head;
       const n = theirN < myN ? theirN : myN;
@@ -1228,6 +1295,21 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         const theirArmCount = TableFixedChildren(theirs, ti);
         TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, 0, guard, arg,
           (theirArmCount >= 1 && theirArmCount <= 255) ? theirArmCount : 0);
+      }
+      // THE WRITER'S ARM BYTES under tag 0, and behind a narrower arm up to its
+      // widest, are slack (§3.4): one check at the OUTER width, through a
+      // table of the writer's arm sizes, a payload-free arm's zero.
+      if (plan.pass === 2 && theirTag >= 1 && theirTag <= 8) {
+        const theirArmCount = TableFixedChildren(theirs, ti);
+        const sizes = TableFixedRemapRoom(theirArmCount);
+        let armAt = ti + 1;
+        for (let j = 0; j < theirArmCount; j++) {
+          sizes[j] = TableFixedKind(theirs, armAt) === 32 ? 0 : TableFixedSize(theirs, armAt);
+          armAt += TableFixedSubtree(theirs, armAt);
+        }
+        const table = TableFixedLayRemap(plan, sizes, theirArmCount);
+        TableFixedPush(plan, TableFixedOpZero, theirAt, 0, theirSize, table, guard, arg,
+          TableFixedZeroUnion | (theirTag << 8));
       }
       const savedArgw = plan.argw;
       plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
@@ -1298,6 +1380,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // two facts are independent, so they get independent lanes.
       const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
       TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);
+      // the writer's bytes past its used length are slack (§3.4)
+      TableFixedPush(plan, TableFixedOpZero, theirAt, 0, theirSize, 1, guard, arg, TableFixedZeroTail);
       break;
     }
     default: {
@@ -1493,6 +1577,11 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const quiet = new TableFixedReport();
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   TableFixedCoalesce(plan, plan.split);
+  // PASS 3, THE WRITER'S SLACK (docs/SPEC-TABLES.md §3.4, THE SLACK RULE):
+  // the checks that every dead byte is zero, each under its own guard, after
+  // every entry that lands a value and before the projection reads one.
+  plan.pass = 2;
+  TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
   if (plan.overflow) { return -1; }
@@ -2662,6 +2751,54 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   if (value.idleTicks < 0 || value.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
 }
 
+// BenchMixed's slack, every span of it zero or the record is refused (§3.4).
+export function BenchMixedFixedDeadZero(view, at) {
+  {
+    const n1 = view.getInt32(at + 52, true);
+    if (n1 >= 0 && n1 <= 8) {
+      if (!TableFixedZero(view, at + 56 + n1 * 51, at + 464)) { return false; }
+    }
+  }
+  {
+    const n2 = view.getInt32(at + 464, true);
+    if (n2 >= 0 && n2 <= 80) {
+      if (!TableFixedZero(view, at + 468 + n2 * 8, at + 1108)) { return false; }
+    }
+  }
+  {
+    let tag3 = 0;
+    tag3 = view.getUint8(at + 1108);
+    switch (tag3) {
+      case 0: {
+        if (!TableFixedZero(view, at + 1109, at + 1122)) { return false; }
+        break;
+      }
+      case 2: {
+        if (!TableFixedZero(view, at + 1117, at + 1122)) { return false; }
+        break;
+      }
+      case 3: {
+        if (!TableFixedZero(view, at + 1117, at + 1122)) { return false; }
+        break;
+      }
+      default: break;
+    }
+  }
+  {
+    const n4 = view.getInt32(at + 1126, true);
+    if (n4 >= 0 && n4 <= 15) {
+      if (!TableFixedZero(view, at + 1130 + n4, at + 1145)) { return false; }
+    }
+  }
+  {
+    const n5 = view.getInt32(at + 1145, true);
+    if (n5 >= 0 && n5 <= 16) {
+      if (!TableFixedZero(view, at + 1149 + n5, at + 1165)) { return false; }
+    }
+  }
+  return true;
+}
+
 // FixedTable's stores. Every offset is a constant of the type and nothing is
 // measured: on this form MeasureBody is a constant, not a walk.
 export function FixedTableFixedWriteBody(view, at, value) {
@@ -2871,6 +3008,12 @@ export function FixedTableFixedDecode(value, view, at, report) {
     e1.idleTicks = view.getInt32(at + 1232, true);
     if (e1.idleTicks < 0 || e1.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
   }
+}
+
+// FixedTable's slack, every span of it zero or the record is refused (§3.4).
+export function FixedTableFixedDeadZero(view, at) {
+  if (!BenchMixedFixedDeadZero(view, at)) { return false; }
+  return true;
 }
 
 // ---- MixedEntity, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----

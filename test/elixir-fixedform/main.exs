@@ -1198,11 +1198,20 @@ present_at = only_diff.(absent_bytes, present_bytes)
 {:ok, [seven], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7))
 Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_present, true)
 
-{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
+{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(absent_bytes)
 Leg.eq("and only 0 is absent", zero.link_present, false)
 
-# LIVE-count: an absent optional's payload is ignored and moves no counter,
-# both paths. C++ skips the payload when the present byte is 0.
+# A present byte of 0 planted over a written payload leaves that payload as an
+# absent optional's slack, and slack is zero (docs/SPEC-TABLES.md §3.4).
+Leg.eq(
+  "a zero present byte over a written payload is stained slack, and refuses",
+  Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0)),
+  {:error, :wire_damaged, Tblp3.FixedRuntime.report()}
+)
+
+# LIVE-count: an absent optional's payload moves no counter through the plan,
+# and on the load it is slack that is not zero, so the read refuses it whole.
+# C++ skips the payload when the present byte is 0.
 value0 = %{present | link_present: true, link: %{present.link | value: 0}}
 value1 = %{present | link_present: true, link: %{present.link | value: 1}}
 
@@ -1215,8 +1224,11 @@ value_at =
 hostile_opt =
   Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
 
-{:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
-Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.unknown, 0)
+Leg.eq(
+  "identity: absent optional payload 0xFF is stained slack, and refuses",
+  Tblp3.P3Fixed.chain_fixed_load(hostile_opt),
+  {:error, :wire_damaged, Tblp3.FixedRuntime.report()}
+)
 
 opt_body =
   bodies_of.(hostile_opt, Tblp3.P3Fixed.chain_fixed_body_bytes())
@@ -1263,8 +1275,11 @@ hp_at = only_diff.(hp1, hp2)
 hostile_hp =
   Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
 
-{:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
-Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.unknown, 0)
+Leg.eq(
+  "identity: counted-array slack 0xFF is stained slack, and refuses",
+  Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp),
+  {:error, :wire_damaged, Tabledemo.FixedRuntime.report()}
+)
 
 hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
 

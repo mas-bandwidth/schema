@@ -3377,6 +3377,8 @@ let TableEntityFixedResetImage = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x
 let TableEntityFixedHoles = schema_rt.fixed_holes(TableEntityFixedPlan.entries, TableEntityFixedPlan.count, 51)
 let TableEntityFixedLineageHoles = schema_rt.fixed_lineage_holes(TableEntityFixedLineagePlans, 51)
 let TableEntityFixedPlanMax = schema_rt.fixed_plan_max(TableEntityFixedPlan, TableEntityFixedLineagePlans)
+let TableEntityFixedSlack = schema_rt.fixed_slack_of(TableEntityFixedLayoutBytes(), TableEntityFixedLayoutBytes(), TableEntityFixedDst)
+let TableEntityFixedLineageSlack = schema_rt.fixed_lineage_slack(TableEntityFixedKnown, TableEntityFixedLayoutBytes(), TableEntityFixedDst)
 
 def TableEntityFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 514 + count * (8 + 51)
@@ -3447,6 +3449,7 @@ def TableEntityFixedLoad(values:[TableEntity], data_in:string, plan:[schema_rt.T
     var entries = TableEntityFixedPlan.entries
     var entry_count = TableEntityFixedPlan.count
     var holes = TableEntityFixedHoles
+    var slack = TableEntityFixedSlack
     let record_bytes = known.record
     var census_unknown = 0
     var census_kind = 0
@@ -3458,6 +3461,7 @@ def TableEntityFixedLoad(values:[TableEntity], data_in:string, plan:[schema_rt.T
         entries = lane.entries
         entry_count = lane.count
         holes = TableEntityFixedLineageHoles[pick]
+        slack = TableEntityFixedLineageSlack[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
     if census_kind != 0:
@@ -3486,6 +3490,10 @@ def TableEntityFixedLoad(values:[TableEntity], data_in:string, plan:[schema_rt.T
         if why != "":
             for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, why)
+        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)
+        if why_slack != "":
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, why_slack)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(51), TableEntityFixedResetImage, holes)
@@ -3564,6 +3572,8 @@ let TableStatFixedResetImage = "\x00\x00\x00\x00\x00\x00\x00\x00"
 let TableStatFixedHoles = schema_rt.fixed_holes(TableStatFixedPlan.entries, TableStatFixedPlan.count, 8)
 let TableStatFixedLineageHoles = schema_rt.fixed_lineage_holes(TableStatFixedLineagePlans, 8)
 let TableStatFixedPlanMax = schema_rt.fixed_plan_max(TableStatFixedPlan, TableStatFixedLineagePlans)
+let TableStatFixedSlack = schema_rt.fixed_slack_of(TableStatFixedLayoutBytes(), TableStatFixedLayoutBytes(), TableStatFixedDst)
+let TableStatFixedLineageSlack = schema_rt.fixed_lineage_slack(TableStatFixedKnown, TableStatFixedLayoutBytes(), TableStatFixedDst)
 
 def TableStatFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
@@ -3634,6 +3644,7 @@ def TableStatFixedLoad(values:[TableStat], data_in:string, plan:[schema_rt.Table
     var entries = TableStatFixedPlan.entries
     var entry_count = TableStatFixedPlan.count
     var holes = TableStatFixedHoles
+    var slack = TableStatFixedSlack
     let record_bytes = known.record
     var census_unknown = 0
     var census_kind = 0
@@ -3645,6 +3656,7 @@ def TableStatFixedLoad(values:[TableStat], data_in:string, plan:[schema_rt.Table
         entries = lane.entries
         entry_count = lane.count
         holes = TableStatFixedLineageHoles[pick]
+        slack = TableStatFixedLineageSlack[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
     if census_kind != 0:
@@ -3673,6 +3685,10 @@ def TableStatFixedLoad(values:[TableStat], data_in:string, plan:[schema_rt.Table
         if why != "":
             for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, why)
+        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)
+        if why_slack != "":
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, why_slack)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableStatFixedResetImage, holes)
@@ -3767,6 +3783,8 @@ let TableHitEventFixedResetImage = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00
 let TableHitEventFixedHoles = schema_rt.fixed_holes(TableHitEventFixedPlan.entries, TableHitEventFixedPlan.count, 13)
 let TableHitEventFixedLineageHoles = schema_rt.fixed_lineage_holes(TableHitEventFixedLineagePlans, 13)
 let TableHitEventFixedPlanMax = schema_rt.fixed_plan_max(TableHitEventFixedPlan, TableHitEventFixedLineagePlans)
+let TableHitEventFixedSlack = schema_rt.fixed_slack_of(TableHitEventFixedLayoutBytes(), TableHitEventFixedLayoutBytes(), TableHitEventFixedDst)
+let TableHitEventFixedLineageSlack = schema_rt.fixed_lineage_slack(TableHitEventFixedKnown, TableHitEventFixedLayoutBytes(), TableHitEventFixedDst)
 
 def TableHitEventFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 89 + count * (8 + 13)
@@ -3837,6 +3855,7 @@ def TableHitEventFixedLoad(values:[TableHitEvent], data_in:string, plan:[schema_
     var entries = TableHitEventFixedPlan.entries
     var entry_count = TableHitEventFixedPlan.count
     var holes = TableHitEventFixedHoles
+    var slack = TableHitEventFixedSlack
     let record_bytes = known.record
     var census_unknown = 0
     var census_kind = 0
@@ -3848,6 +3867,7 @@ def TableHitEventFixedLoad(values:[TableHitEvent], data_in:string, plan:[schema_
         entries = lane.entries
         entry_count = lane.count
         holes = TableHitEventFixedLineageHoles[pick]
+        slack = TableHitEventFixedLineageSlack[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
     if census_kind != 0:
@@ -3876,6 +3896,10 @@ def TableHitEventFixedLoad(values:[TableHitEvent], data_in:string, plan:[schema_
         if why != "":
             for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
+        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)
+        if why_slack != "":
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, why_slack)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(13), TableHitEventFixedResetImage, holes)
@@ -3954,6 +3978,8 @@ let TableChatEventFixedResetImage = "\x00\x00\x00\x00\x00\x00\x00\x00"
 let TableChatEventFixedHoles = schema_rt.fixed_holes(TableChatEventFixedPlan.entries, TableChatEventFixedPlan.count, 8)
 let TableChatEventFixedLineageHoles = schema_rt.fixed_lineage_holes(TableChatEventFixedLineagePlans, 8)
 let TableChatEventFixedPlanMax = schema_rt.fixed_plan_max(TableChatEventFixedPlan, TableChatEventFixedLineagePlans)
+let TableChatEventFixedSlack = schema_rt.fixed_slack_of(TableChatEventFixedLayoutBytes(), TableChatEventFixedLayoutBytes(), TableChatEventFixedDst)
+let TableChatEventFixedLineageSlack = schema_rt.fixed_lineage_slack(TableChatEventFixedKnown, TableChatEventFixedLayoutBytes(), TableChatEventFixedDst)
 
 def TableChatEventFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
@@ -4024,6 +4050,7 @@ def TableChatEventFixedLoad(values:[TableChatEvent], data_in:string, plan:[schem
     var entries = TableChatEventFixedPlan.entries
     var entry_count = TableChatEventFixedPlan.count
     var holes = TableChatEventFixedHoles
+    var slack = TableChatEventFixedSlack
     let record_bytes = known.record
     var census_unknown = 0
     var census_kind = 0
@@ -4035,6 +4062,7 @@ def TableChatEventFixedLoad(values:[TableChatEvent], data_in:string, plan:[schem
         entries = lane.entries
         entry_count = lane.count
         holes = TableChatEventFixedLineageHoles[pick]
+        slack = TableChatEventFixedLineageSlack[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
     if census_kind != 0:
@@ -4063,6 +4091,10 @@ def TableChatEventFixedLoad(values:[TableChatEvent], data_in:string, plan:[schem
         if why != "":
             for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
+        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)
+        if why_slack != "":
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, why_slack)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableChatEventFixedResetImage, holes)
@@ -4141,6 +4173,8 @@ let TablePickupEventFixedResetImage = "\x00\x00\x00\x00\x00\x00\x00\x00"
 let TablePickupEventFixedHoles = schema_rt.fixed_holes(TablePickupEventFixedPlan.entries, TablePickupEventFixedPlan.count, 8)
 let TablePickupEventFixedLineageHoles = schema_rt.fixed_lineage_holes(TablePickupEventFixedLineagePlans, 8)
 let TablePickupEventFixedPlanMax = schema_rt.fixed_plan_max(TablePickupEventFixedPlan, TablePickupEventFixedLineagePlans)
+let TablePickupEventFixedSlack = schema_rt.fixed_slack_of(TablePickupEventFixedLayoutBytes(), TablePickupEventFixedLayoutBytes(), TablePickupEventFixedDst)
+let TablePickupEventFixedLineageSlack = schema_rt.fixed_lineage_slack(TablePickupEventFixedKnown, TablePickupEventFixedLayoutBytes(), TablePickupEventFixedDst)
 
 def TablePickupEventFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
@@ -4211,6 +4245,7 @@ def TablePickupEventFixedLoad(values:[TablePickupEvent], data_in:string, plan:[s
     var entries = TablePickupEventFixedPlan.entries
     var entry_count = TablePickupEventFixedPlan.count
     var holes = TablePickupEventFixedHoles
+    var slack = TablePickupEventFixedSlack
     let record_bytes = known.record
     var census_unknown = 0
     var census_kind = 0
@@ -4222,6 +4257,7 @@ def TablePickupEventFixedLoad(values:[TablePickupEvent], data_in:string, plan:[s
         entries = lane.entries
         entry_count = lane.count
         holes = TablePickupEventFixedLineageHoles[pick]
+        slack = TablePickupEventFixedLineageSlack[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
     if census_kind != 0:
@@ -4250,6 +4286,10 @@ def TablePickupEventFixedLoad(values:[TablePickupEvent], data_in:string, plan:[s
         if why != "":
             for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
+        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)
+        if why_slack != "":
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, why_slack)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TablePickupEventFixedResetImage, holes)
@@ -4709,6 +4749,8 @@ let TableMixedFixedResetImage = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0
 let TableMixedFixedHoles = schema_rt.fixed_holes(TableMixedFixedPlan.entries, TableMixedFixedPlan.count, 1224)
 let TableMixedFixedLineageHoles = schema_rt.fixed_lineage_holes(TableMixedFixedLineagePlans, 1224)
 let TableMixedFixedPlanMax = schema_rt.fixed_plan_max(TableMixedFixedPlan, TableMixedFixedLineagePlans)
+let TableMixedFixedSlack = schema_rt.fixed_slack_of(TableMixedFixedLayoutBytes(), TableMixedFixedLayoutBytes(), TableMixedFixedDst)
+let TableMixedFixedLineageSlack = schema_rt.fixed_lineage_slack(TableMixedFixedKnown, TableMixedFixedLayoutBytes(), TableMixedFixedDst)
 
 def TableMixedFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 1279 + count * (8 + 1224)
@@ -4779,6 +4821,7 @@ def TableMixedFixedLoad(values:[TableMixed], data_in:string, plan:[schema_rt.Tab
     var entries = TableMixedFixedPlan.entries
     var entry_count = TableMixedFixedPlan.count
     var holes = TableMixedFixedHoles
+    var slack = TableMixedFixedSlack
     let record_bytes = known.record
     var census_unknown = 0
     var census_kind = 0
@@ -4790,6 +4833,7 @@ def TableMixedFixedLoad(values:[TableMixed], data_in:string, plan:[schema_rt.Tab
         entries = lane.entries
         entry_count = lane.count
         holes = TableMixedFixedLineageHoles[pick]
+        slack = TableMixedFixedLineageSlack[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
     if census_kind != 0:
@@ -4818,6 +4862,10 @@ def TableMixedFixedLoad(values:[TableMixed], data_in:string, plan:[schema_rt.Tab
         if why != "":
             for(values) failed: TableMixedReset(failed)
             return schema_rt.fixed_refuse(report, why)
+        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)
+        if why_slack != "":
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, why_slack)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(1224), TableMixedFixedResetImage, holes)

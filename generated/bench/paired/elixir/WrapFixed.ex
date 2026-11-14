@@ -291,10 +291,13 @@ defmodule Bench.WrapFixed do
   # nothing on it can fail for want of a plan: an entry whose plan would not
   # build carries its own refusal reason, and this is where it is read.
   defp fixed_table_fixed_lane(i, records, hash, report, cap, bcap, copy) do
+    dead = R.lineage_dead(__MODULE__, :fixed_table, i)
+
     case R.lineage_lane(__MODULE__, :fixed_table, i) do
       :identity ->
         fixed_table_fixed_run(
           @fixed_table_plan,
+          dead,
           @fixed_table_body_bytes,
           records,
           hash,
@@ -310,7 +313,7 @@ defmodule Bench.WrapFixed do
         {:error, :plan_too_large, report}
 
       {:ok, plan, size, _made, u, k} ->
-        fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})
+        fixed_table_fixed_run(plan, dead, size, records, hash, report, copy, bcap, {u, k})
 
       {:error, why} ->
         {:error, why, report}
@@ -320,7 +323,7 @@ defmodule Bench.WrapFixed do
   # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
   # a byte is landed. Neither plan clamps a ranged integer: the generated
   # projection holds the bound after the loop, the same pass for either plan.
-  defp fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
+  defp fixed_table_fixed_run(plan, dead, size, records, hash, report, copy, bcap, census) do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
@@ -331,12 +334,14 @@ defmodule Bench.WrapFixed do
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
-    # left at zero.
+    # left at zero. THE SLACK RULE (§3.4) refuses the same way: every byte of
+    # the writer's slack is zero, checked on the body before the plan runs.
     try do
       with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
            {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
+            :ok = R.dead(dead, body)
             {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
             report = R.forged_check(report)
             {value, c, m} = fixed_table_fixed_decode(image, 0, false)

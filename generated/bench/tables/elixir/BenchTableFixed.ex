@@ -1044,10 +1044,13 @@ defmodule Benchtable.BenchTableFixed do
   # nothing on it can fail for want of a plan: an entry whose plan would not
   # build carries its own refusal reason, and this is where it is read.
   defp table_entity_fixed_lane(i, records, hash, report, cap, bcap, copy) do
+    dead = R.lineage_dead(__MODULE__, :table_entity, i)
+
     case R.lineage_lane(__MODULE__, :table_entity, i) do
       :identity ->
         table_entity_fixed_run(
           @table_entity_plan,
+          dead,
           @table_entity_body_bytes,
           records,
           hash,
@@ -1063,7 +1066,7 @@ defmodule Benchtable.BenchTableFixed do
         {:error, :plan_too_large, report}
 
       {:ok, plan, size, _made, u, k} ->
-        table_entity_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})
+        table_entity_fixed_run(plan, dead, size, records, hash, report, copy, bcap, {u, k})
 
       {:error, why} ->
         {:error, why, report}
@@ -1073,7 +1076,7 @@ defmodule Benchtable.BenchTableFixed do
   # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
   # a byte is landed. Neither plan clamps a ranged integer: the generated
   # projection holds the bound after the loop, the same pass for either plan.
-  defp table_entity_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
+  defp table_entity_fixed_run(plan, dead, size, records, hash, report, copy, bcap, census) do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
@@ -1084,12 +1087,14 @@ defmodule Benchtable.BenchTableFixed do
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
-    # left at zero.
+    # left at zero. THE SLACK RULE (§3.4) refuses the same way: every byte of
+    # the writer's slack is zero, checked on the body before the plan runs.
     try do
       with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
            {:ok, bodies} <- table_entity_fixed_split(records, hash, size, []) do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
+            :ok = R.dead(dead, body)
             {image, report} = R.run(plan, R.detach(body, copy), @table_entity_prefill, report)
             report = R.forged_check(report)
             {value, c, m} = table_entity_fixed_decode(image, 0, false)
@@ -1292,10 +1297,13 @@ defmodule Benchtable.BenchTableFixed do
   # nothing on it can fail for want of a plan: an entry whose plan would not
   # build carries its own refusal reason, and this is where it is read.
   defp table_stat_fixed_lane(i, records, hash, report, cap, bcap, copy) do
+    dead = R.lineage_dead(__MODULE__, :table_stat, i)
+
     case R.lineage_lane(__MODULE__, :table_stat, i) do
       :identity ->
         table_stat_fixed_run(
           @table_stat_plan,
+          dead,
           @table_stat_body_bytes,
           records,
           hash,
@@ -1311,7 +1319,7 @@ defmodule Benchtable.BenchTableFixed do
         {:error, :plan_too_large, report}
 
       {:ok, plan, size, _made, u, k} ->
-        table_stat_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})
+        table_stat_fixed_run(plan, dead, size, records, hash, report, copy, bcap, {u, k})
 
       {:error, why} ->
         {:error, why, report}
@@ -1321,7 +1329,7 @@ defmodule Benchtable.BenchTableFixed do
   # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
   # a byte is landed. Neither plan clamps a ranged integer: the generated
   # projection holds the bound after the loop, the same pass for either plan.
-  defp table_stat_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
+  defp table_stat_fixed_run(plan, dead, size, records, hash, report, copy, bcap, census) do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
@@ -1332,12 +1340,14 @@ defmodule Benchtable.BenchTableFixed do
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
-    # left at zero.
+    # left at zero. THE SLACK RULE (§3.4) refuses the same way: every byte of
+    # the writer's slack is zero, checked on the body before the plan runs.
     try do
       with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
            {:ok, bodies} <- table_stat_fixed_split(records, hash, size, []) do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
+            :ok = R.dead(dead, body)
             {image, report} = R.run(plan, R.detach(body, copy), @table_stat_prefill, report)
             report = R.forged_check(report)
             {value, c, m} = table_stat_fixed_decode(image, 0, false)
@@ -1612,10 +1622,13 @@ defmodule Benchtable.BenchTableFixed do
   # nothing on it can fail for want of a plan: an entry whose plan would not
   # build carries its own refusal reason, and this is where it is read.
   defp table_mixed_fixed_lane(i, records, hash, report, cap, bcap, copy) do
+    dead = R.lineage_dead(__MODULE__, :table_mixed, i)
+
     case R.lineage_lane(__MODULE__, :table_mixed, i) do
       :identity ->
         table_mixed_fixed_run(
           @table_mixed_plan,
+          dead,
           @table_mixed_body_bytes,
           records,
           hash,
@@ -1631,7 +1644,7 @@ defmodule Benchtable.BenchTableFixed do
         {:error, :plan_too_large, report}
 
       {:ok, plan, size, _made, u, k} ->
-        table_mixed_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})
+        table_mixed_fixed_run(plan, dead, size, records, hash, report, copy, bcap, {u, k})
 
       {:error, why} ->
         {:error, why, report}
@@ -1641,7 +1654,7 @@ defmodule Benchtable.BenchTableFixed do
   # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
   # a byte is landed. Neither plan clamps a ranged integer: the generated
   # projection holds the bound after the loop, the same pass for either plan.
-  defp table_mixed_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
+  defp table_mixed_fixed_run(plan, dead, size, records, hash, report, copy, bcap, census) do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
@@ -1652,12 +1665,14 @@ defmodule Benchtable.BenchTableFixed do
     # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
-    # left at zero.
+    # left at zero. THE SLACK RULE (§3.4) refuses the same way: every byte of
+    # the writer's slack is zero, checked on the body before the plan runs.
     try do
       with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
            {:ok, bodies} <- table_mixed_fixed_split(records, hash, size, []) do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
+            :ok = R.dead(dead, body)
             {image, report} = R.run(plan, R.detach(body, copy), @table_mixed_prefill, report)
             report = R.forged_check(report)
             {value, c, m} = table_mixed_fixed_decode(image, 0, false)

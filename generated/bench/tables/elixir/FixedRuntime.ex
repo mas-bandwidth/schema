@@ -892,7 +892,11 @@ defmodule Benchtable.FixedRuntime do
   def compile(theirs, mine, dst, capacity, report) do
     record = size_at(theirs, 0)
     {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, report, true)
-    {entries, n} = acc
+    # THE SLACK CHECKS RIDE APART (compile_dead/3): they write nothing, so they
+    # are no entry of the plan and no part of the count its capacity holds.
+    {all, _} = acc
+    entries = Enum.reject(all, &dead?/1)
+    n = length(entries)
 
     cond do
       # A REMAP PAST THE uint16 LENGTH WORD REFUSES BY NAME (§5.2, §5.8
@@ -920,6 +924,26 @@ defmodule Benchtable.FixedRuntime do
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
 
+  @doc """
+  The WRITER'S SLACK CHECKS for a plan compiled from theirs against mine: the
+  spans a conforming writer leaves zero (docs/SPEC-TABLES.md §3.4, THE SLACK
+  RULE), each under the guard, present flag or live count it sits behind, in
+  the writer's own offsets. Compiled against my own layout it is the identity
+  read's list. dead/2 runs it over a record body before the plan does.
+  """
+  def compile_dead(theirs, mine, dst) do
+    {{all, _}, _} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, report(), true)
+    all |> Enum.filter(&dead?/1) |> :lists.reverse()
+  end
+
+  # an entry whose innermost op is a slack check
+  defp dead?({:dead, _mode, _at, _size, _aux}), do: true
+  defp dead?({:guard, _, _, _, e}), do: dead?(e)
+  defp dead?({:live, _, _, e}), do: dead?(e)
+  defp dead?({:live_src, _, _, e}), do: dead?(e)
+  defp dead?({:present, _, e}), do: dead?(e)
+  defp dead?(_), do: false
+
   # THE LAST SOURCE BYTE, EXCLUSIVE, an entry reads — the guard included, so a
   # guarded entry loads the tag before anything else (docs/FIXED-FORM-ALGORITHM.md
   # §4.2). A plan entry that reaches past the writer's declared record size
@@ -936,6 +960,8 @@ defmodule Benchtable.FixedRuntime do
   defp src_end({:remap_too_large, _variants}), do: 0
   defp src_end({:tagcount, at, tag, _arms}), do: at + tag
   defp src_end({:const, _at, _value, _size}), do: 0
+  defp src_end({:live_src, src, _i, entry}), do: max(src + 4, src_end(entry))
+  defp src_end({:dead, _mode, at, size, _aux}), do: at + size
 
   # ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§4.2). The bound
   # is the writer's declared root size and not this reader's: an entry that
@@ -975,8 +1001,13 @@ defmodule Benchtable.FixedRuntime do
     {Enum.map(new, fun) ++ rest, n}
   end
 
-  defp live_wrap_entry({:copy, _, _, _} = e, _dst, _i), do: e
-  defp live_wrap_entry(e, dst, i), do: {:live, dst, i, e}
+  defp live_wrap_entry({:copy, _, _, _} = e, _dst, _src, _i), do: e
+
+  defp live_wrap_entry(e, dst, src, i) do
+    # A SLACK CHECK INSIDE A LIVE ELEMENT answers to the WRITER's count in the
+    # record body, because it runs before the plan lands anything.
+    if dead?(e), do: {:live_src, src, i, e}, else: {:live, dst, i, e}
+  end
 
   defp present_wrap_entry({:copy, _, _, _} = e, _src), do: e
   defp present_wrap_entry(e, src), do: {:present, src, e}
@@ -1178,7 +1209,10 @@ defmodule Benchtable.FixedRuntime do
             census
           )
 
-        {wrap_new(acc, old_n, &present_wrap_entry(&1, their_at)), report}
+        acc = wrap_new(acc, old_n, &present_wrap_entry(&1, their_at))
+        # THE WRITER'S PAYLOAD UNDER AN ABSENT FLAG IS SLACK (§3.4)
+        dead = {:dead, :optional, their_at, size_at(theirs, ti), 0}
+        {guarded(acc, guard, tag, dead), report}
 
       # a nested TABLE: match its fields
       13 ->
@@ -1246,7 +1280,9 @@ defmodule Benchtable.FixedRuntime do
       12 ->
         units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)
         entry = {:text, their_at, at, aux_at, units, elem(row, 4)}
-        {guarded(acc, guard, tag, entry), report}
+        acc = guarded(acc, guard, tag, entry)
+        # THE WRITER'S BYTES PAST ITS USED LENGTH ARE SLACK (§3.4)
+        {guarded(acc, guard, tag, {:dead, :tail, their_at, size_at(theirs, ti), 1}), report}
 
       _ ->
         # SAME-SIZE IS A COPY. A ranged integer's bound is held after the loop
@@ -1298,7 +1334,10 @@ defmodule Benchtable.FixedRuntime do
         # so a count forged past what the writer could have written clamps and
         # counts. Holding it to MY bound lets a count between their_n and my_n
         # through untouched, and every slot behind it reads as live.
-        guarded(acc, guard, tag, {:count, their_at, aux_at, their_n})
+        acc = guarded(acc, guard, tag, {:count, their_at, aux_at, their_n})
+        # THE WRITER'S TAIL PAST ITS LIVE COUNT IS SLACK (§3.4)
+        dead = {:dead, :tail, their_at, size_at(theirs, ti), their_elem}
+        guarded(acc, guard, tag, dead)
       else
         acc
       end
@@ -1329,7 +1368,7 @@ defmodule Benchtable.FixedRuntime do
 
       acc =
         if counted do
-          wrap_new(acc, old_n, &live_wrap_entry(&1, aux_at, i))
+          wrap_new(acc, old_n, &live_wrap_entry(&1, aux_at, their_at, i))
         else
           acc
         end
@@ -1436,6 +1475,17 @@ defmodule Benchtable.FixedRuntime do
       else
         acc
       end
+
+    # THE WRITER'S ARM BYTES under tag 0, and behind a narrower arm up to its
+    # widest, are SLACK (§3.4): one check at the writer's tag width, through
+    # the writer's arm sizes, a payload-free arm's zero.
+    sizes =
+      theirs
+      |> offsets(ti, their_arms)
+      |> Enum.map(fn arm -> if kind_at(theirs, arm) == 32, do: 0, else: size_at(theirs, arm) end)
+
+    dead = {:dead, :union, their_at, size_at(theirs, ti), List.to_tuple([their_tag | sizes])}
+    acc = guarded(acc, guard, tag, dead)
 
     Enum.reduce(
       Enum.with_index(offsets(mine, mi, my_arms)),
@@ -1585,6 +1635,96 @@ defmodule Benchtable.FixedRuntime do
     {assemble(writes, prefill), report}
   end
 
+  @doc """
+  Hold one record body to THE SLACK RULE (docs/SPEC-TABLES.md §3.4): every
+  byte of the writer's slack is zero, or the whole read refuses
+  `wire_damaged`. It runs over the BODY, before the plan lands a byte, so a
+  refusal lands nothing and moves no counter. Slack is checked for zero and
+  nothing else: no bool, range or text rule runs on it.
+  """
+  def dead([], _body), do: :ok
+
+  def dead([entry | rest], body) do
+    dead_one(entry, body)
+    dead(rest, body)
+  end
+
+  defp dead_one({:guard, gsrc, tag, argw, inner}, body) do
+    w = clamp_argw(argw)
+
+    case body do
+      <<_::binary-size(^gsrc), raw::little-unsigned-size(^w)-unit(8), _::binary>>
+      when raw == tag ->
+        dead_one(inner, body)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp dead_one({:present, src, inner}, body) do
+    case body do
+      <<_::binary-size(^src), p, _::binary>> when p != 0 -> dead_one(inner, body)
+      _ -> :ok
+    end
+  end
+
+  defp dead_one({:live_src, src, index, inner}, body) do
+    # the WRITER's live count, raw: a count out of its bound is refused by the
+    # plan's own count op, and no element past it is live
+    case body do
+      <<_::binary-size(^src), n::little-signed-32, _::binary>> when index < n ->
+        dead_one(inner, body)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp dead_one({:dead, :optional, at, size, _aux}, body) do
+    pay = size - 1
+
+    case body do
+      <<_::binary-size(^at), 0, payload::binary-size(^pay), _::binary>> -> zero!(payload)
+      _ -> :ok
+    end
+  end
+
+  defp dead_one({:dead, :tail, at, size, unit}, body) do
+    room = size - 4
+
+    case body do
+      <<_::binary-size(^at), n::little-signed-32, held::binary-size(^room), _::binary>>
+      when n >= 0 and n * unit <= room ->
+        zero!(binary_part(held, n * unit, room - n * unit))
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp dead_one({:dead, :union, at, size, arms}, body) do
+    tagw = elem(arms, 0)
+    w = clamp_argw(tagw)
+    room = size - tagw
+
+    case body do
+      <<_::binary-size(^at), t::little-unsigned-size(^w)-unit(8), _::binary>>
+      when t < tuple_size(arms) ->
+        taken = if t == 0, do: 0, else: elem(arms, t)
+        zero!(binary_part(body, at + tagw + taken, room - taken))
+
+      _ ->
+        # a tag past the writer's arm set is refused or counted by the plan
+        :ok
+    end
+  end
+
+  defp zero!(<<0::64, rest::binary>>), do: zero!(rest)
+  defp zero!(<<0, rest::binary>>), do: zero!(rest)
+  defp zero!(<<>>), do: :ok
+  defp zero!(_), do: throw({:refuse, :wire_damaged})
+
   defp step([], _body, writes, report), do: {writes, report}
 
   defp step([{:live, count_dst, index, inner} | rest], body, writes, report) do
@@ -1599,8 +1739,8 @@ defmodule Benchtable.FixedRuntime do
   end
 
   defp step([{:present, src, inner} | rest], body, writes, report) do
-    # AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
-    # held to a bound either.
+    # AN ABSENT OPTIONAL'S PAYLOAD IS SLACK (§3.4): no value rule and no bound
+    # runs on it, and that it is zero is dead/2's check, run before the plan.
     case body do
       <<_::binary-size(^src), p, _::binary>> when p != 0 ->
         step([inner | rest], body, writes, report)
@@ -1658,9 +1798,8 @@ defmodule Benchtable.FixedRuntime do
         {v, report} = clamp_count(raw, cap, report)
 
         # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), over the USED UNITS and
-        # over nothing else: the slack carries no meaning, and reading a whole
-        # declared bound to check bytes that mean nothing is the cost this form
-        # exists to avoid.
+        # over nothing else: the slack carries no value, and that it is zero is
+        # the slack rule's check, dead/2, run before the plan.
         if text_ok?(flavour, binary_part(take, 0, v)) do
           step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
         else
@@ -2047,7 +2186,39 @@ defmodule Benchtable.FixedRuntime do
       end
 
     :persistent_term.put({module, :fixed_lineage, root}, List.to_tuple(lanes))
+
+    # THE WRITER'S SLACK CHECKS, one list per lineage entry, beside its lane:
+    # the identity lane's are this build's own layout's (§3.4).
+    dead =
+      for i <- 0..(tuple_size(known) - 1) do
+        lineage_dead_of(elem(known, i), own, mine, dst)
+      end
+
+    :persistent_term.put({module, :fixed_dead, root}, List.to_tuple(dead))
     :ok
+  end
+
+  defp lineage_dead_of(%{hash: h}, own, mine, dst) when h == own,
+    do: compile_dead(mine, mine, dst)
+
+  defp lineage_dead_of(k, _own, mine, dst) do
+    case parse_layout(k.layout) do
+      {:ok, theirs} -> compile_dead(theirs, mine, dst)
+      # the lane carries this entry's refusal, and no read gets past it
+      {:error, _why} -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  @doc """
+  The writer's slack checks the build laid down for lineage index i of root.
+  """
+  def lineage_dead(module, root, i) do
+    case :persistent_term.get({module, :fixed_dead, root}, nil) do
+      nil -> []
+      dead -> elem(dead, i)
+    end
   end
 
   defp lineage_lane_of(%{hash: h}, own, _mine, _dst, _capacity) when h == own, do: :identity

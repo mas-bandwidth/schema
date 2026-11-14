@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedCheckBody, FixedTableFixedDeadZero, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -489,6 +489,10 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     // NAME, never a guess and never damage: nothing is decoded, no counter moves.
     if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {
       report.refused = TableFixedRefusal.NoLayout; return -1;
+    }
+    if (lane === null && !FixedTableFixedDeadZero(srcView, at + 8)) {
+      stage.refused = TableFixedRefusal.WireDamaged;
+      return FixedTableFixedRefuseBatch(values, k, stage, report);
     }
     if (identity) {
       FixedTableFixedDecode(values[k], srcView, at + 8, stage);
