@@ -530,16 +530,18 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {\n")
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
-	g.pf("    if (identity) {\n")
 	if dead {
-		// EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): the record's slack
-		// is checked before the projection lands a value, and a stained span
-		// refuses the record whole.
-		g.pf("      if (!%sFixedDeadZero(srcView, at + 8)) {\n", st.Name)
-		g.pf("        stage.refused = TableFixedRefusal.WireDamaged;\n")
-		g.pf("        return %sFixedRefuseBatch(values, k, stage, report);\n", st.Name)
-		g.pf("      }\n")
+		// EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): a record under this
+		// build's own layout has its slack checked here, before either path
+		// lands a value, so the in-place door and the shared path refuse the
+		// same records. A compiled plan checks the WRITER's slack in its own
+		// entries (TableFixedOpZero).
+		g.pf("    if (lane === null && !%sFixedDeadZero(srcView, at + 8)) {\n", st.Name)
+		g.pf("      stage.refused = TableFixedRefusal.WireDamaged;\n")
+		g.pf("      return %sFixedRefuseBatch(values, k, stage, report);\n", st.Name)
+		g.pf("    }\n")
 	}
+	g.pf("    if (identity) {\n")
 	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
 	g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
 	g.pf("      at += recordBytes;\n")
