@@ -98,7 +98,8 @@ func init() {
 }
 
 type fixedEvolveEmit struct {
-	g *goose.Gen
+	g   *goose.Gen
+	typ string // the root's type, which a refusal inside a record resets values to
 }
 
 func (e *fixedEvolveEmit) p(format string, args ...any) {
@@ -291,13 +292,19 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        if pick == 0 {\n")
 	e.p("            let r = _%sFixedScan(data, body);\n", n)
 	e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
+	e.p("            let d = _%sFixedDead(data, body);\n", n)
+	e.p("            if d != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, d, false); }\n", typ)
 	e.p("            _%sFixedRead(data, body, values[k]);\n", n)
+	e.typ = typ
 	for i, plan := range plans {
 		e.p("        } else if pick == %d {\n", i+1)
+		// THE SLACK RULE over the WRITER's record (SPEC-TABLES §3.4): its dead
+		// bytes are zero, checked on the old bytes before any of them lands
+		seq := 0
+		e.emitNodes(plan.dead, "body", "", &seq)
 		e.p("            var def: %s = %s { .. };\n", typ, typ)
 		e.p("            var img: u8[>..] = [];\n")
 		e.p("            _%sFixedWrite(img, def);\n", n)
-		seq := 0
 		e.emitNodes(plan.nodes, "body", "", &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
@@ -514,8 +521,57 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 				addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth, n.arg)
 			e.emitNodes(n.body, oldBase, curBase, seq)
 			e.p("            }\n")
+		case nodeDeadOptional:
+			// an absent optional's payload is the writer's slack (§3.4)
+			v := *seq
+			*seq++
+			old := addExpr(oldBase, fmt.Sprintf("%d", n.oldOff))
+			e.p("            if data[%s] == 0 {\n", old)
+			e.deadRefuse(v, fmt.Sprintf("schema_rt::fixed_dead_zero(data, %s, %d)", addExpr(old, "1"), n.size))
+			if len(n.body) > 0 {
+				e.p("            } else {\n")
+				e.emitNodes(n.body, oldBase, curBase, seq)
+			}
+			e.p("            }\n")
+		case nodeDeadText:
+			// a text's or a byte buffer's bytes past its used length (§3.4)
+			v := *seq
+			*seq++
+			e.deadRefuse(v, fmt.Sprintf("schema_rt::fixed_dead_text(data, %s, %d)", addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size-4))
+		case nodeDeadTail:
+			// a counted array's elements past the writer's live count (§3.4)
+			v := *seq
+			*seq++
+			e.deadRefuse(v, fmt.Sprintf("schema_rt::fixed_dead_tail(data, %s, %d, %d)", addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.count, n.oldStride))
+		case nodeDeadUnion:
+			// under tag 0 every arm byte is slack; behind the writer's taken
+			// arm, the bytes up to its widest (§3.4)
+			v := *seq
+			*seq++
+			old := addExpr(oldBase, fmt.Sprintf("%d", n.oldOff))
+			e.p("            let du%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, old, n.tagWidth)
+			e.p("            if du%d == 0 {\n", v)
+			e.deadRefuse(*seq, fmt.Sprintf("schema_rt::fixed_dead_zero(data, %s, %d)", addExpr(old, fmt.Sprintf("%d", n.tagWidth)), n.size))
+			*seq++
+			e.p("            }\n")
+			for _, a := range n.arms {
+				e.p("            if du%d == %d {\n", v, a.tag)
+				if a.pad > 0 {
+					e.deadRefuse(*seq, fmt.Sprintf("schema_rt::fixed_dead_zero(data, %s, %d)", addExpr(old, fmt.Sprintf("%d", n.tagWidth+a.taken)), a.pad))
+					*seq++
+				}
+				e.emitNodes(a.body, oldBase, curBase, seq)
+				e.p("            }\n")
+			}
 		}
 	}
+}
+
+// deadRefuse emits one slack check: a refusal it answers is total, every
+// record before this one reset and nothing counted (§5.3).
+func (e *fixedEvolveEmit) deadRefuse(v int, check string) {
+	e.p("            let dz%d = %s;\n", v, check)
+	e.p("            if dz%d != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, dz%d, false); }\n", v, e.typ, v)
 }
 
 // evolveNode is one step of a compiled plan (docs/FIXED-FORM-ALGORITHM.md
@@ -537,6 +593,15 @@ type evolveNode struct {
 	remap                      []uint64
 	signed, float, widened     bool
 	body                       []evolveNode
+	arms                       []deadArm
+}
+
+// deadArm is one writer arm of a nodeDeadUnion: its tag, the bytes it takes,
+// the slack behind it up to the widest, and the checks inside it.
+type deadArm struct {
+	tag        uint64
+	taken, pad int64
+	body       []evolveNode
 }
 
 const (
@@ -549,13 +614,19 @@ const (
 	nodeCountGuard
 	nodeOrdinal
 	nodeForgedTag
+	nodeDeadOptional
+	nodeDeadText
+	nodeDeadTail
+	nodeDeadUnion
 )
 
 // evolvePlan is one older entry's compiled plan. The old bytes are laid over
 // the current-layout default image the prefill wrote (§4.3); the census is
-// ONCE PER FIELD PER PEER and lands only on a read that returns (§5.4).
+// ONCE PER FIELD PER PEER and lands only on a read that returns (§5.4). dead
+// is the slack checks over the writer's own record, run before the image.
 type evolvePlan struct {
 	nodes        []evolveNode
+	dead         []evolveNode
 	unknown      int
 	kindMismatch int
 	supported    bool
@@ -595,6 +666,7 @@ func evolveWidens(from, to int) bool {
 type evolveCompiler struct {
 	oldAll, curAll []rawEntry
 	counted        map[uint64]bool
+	deprecated     map[uint64]bool
 	armDefaults    map[uint64]string
 	plan           *evolvePlan
 	record         int64
@@ -872,6 +944,153 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 	return out
 }
 
+// dead compiles THE SLACK RULE over the WRITER's record (docs/SPEC-TABLES.md
+// §3.4; docs/rulings.json fixed-dead-bytes-zero), as the Go engine's lineage
+// read holds it: the slack is the writer's — under its absent flag, past its
+// count and its used length, under its tag 0 and behind its taken arm up to
+// its widest — and it is checked on the old bytes, never on the image. It
+// walks what the reader pairs: a writer field this reader does not name (the
+// unknown census) or keeps deprecated is not slack, and a field whose kind
+// moved is not walked.
+func (c *evolveCompiler) dead(oi, ci int, oldOff int64, depth int) []evolveNode {
+	if depth > 64 || oi < 0 || oi >= len(c.oldAll) || ci < 0 || ci >= len(c.curAll) {
+		return nil
+	}
+	te, me := c.oldAll[oi], c.curAll[ci]
+	if me.kind == 35 {
+		if te.kind == 35 {
+			body := c.dead(oi+1, ci+1, oldOff+1, depth+1)
+			return []evolveNode{{op: nodeDeadOptional, oldOff: oldOff, size: te.size - 1, body: body}}
+		}
+		// `T` read into `?T`: the writer carried no present byte
+		return c.dead(oi, ci+1, oldOff, depth+1)
+	}
+	if te.kind != me.kind {
+		return nil
+	}
+	switch te.kind {
+	case 13:
+		var out []evolveNode
+		oc, oat := oi+1, oldOff
+		for k := 0; k < te.children && oc < len(c.oldAll); k++ {
+			oe := c.oldAll[oc]
+			cc := ci + 1
+			for j := 0; j < me.children && cc < len(c.curAll); j++ {
+				if c.curAll[cc].id == oe.id {
+					if !c.deprecated[oe.id] {
+						out = append(out, c.dead(oc, cc, oat, depth+1)...)
+					}
+					break
+				}
+				cc += c.subtree(c.curAll, cc)
+			}
+			oat += oe.size
+			oc += c.subtree(c.oldAll, oc)
+		}
+		return out
+	case 12:
+		if te.size < 4 {
+			return nil
+		}
+		return []evolveNode{{op: nodeDeadText, oldOff: oldOff, size: te.size}}
+	case 14:
+		if te.children < 1 || oi+1 >= len(c.oldAll) || ci+1 >= len(c.curAll) || c.oldAll[oi+1].size <= 0 {
+			return nil
+		}
+		stride := c.oldAll[oi+1].size
+		head := int64(0)
+		if c.counted[te.id] || c.counted[me.id] {
+			head = 4
+		}
+		if te.size < head {
+			return nil
+		}
+		slots := (te.size - head) / stride
+		var out []evolveNode
+		if head == 4 {
+			out = append(out, evolveNode{op: nodeDeadTail, oldOff: oldOff, count: slots, oldStride: stride})
+		}
+		if body := c.dead(oi+1, ci+1, head, depth+1); len(body) > 0 && slots > 0 {
+			out = append(out, evolveNode{op: nodeLoop, oldOff: oldOff, count: slots, oldStride: stride, counted: head == 4, body: body})
+		}
+		return out
+	case 16:
+		// a keyed array: every slot is live, each slot's own slack is checked
+		oe, ce := oi+1+c.subtree(c.oldAll, oi+1), ci+1+c.subtree(c.curAll, ci+1)
+		if te.children < 2 || me.children < 2 || oe >= len(c.oldAll) || ce >= len(c.curAll) || c.oldAll[oe].size <= 0 {
+			return nil
+		}
+		stride := c.oldAll[oe].size
+		if body := c.dead(oe, ce, 0, depth+1); len(body) > 0 && te.size/stride > 0 {
+			return []evolveNode{{op: nodeLoop, oldOff: oldOff, count: te.size / stride, oldStride: stride, body: body}}
+		}
+		return nil
+	case 15:
+		var sizes []int64
+		var widest int64
+		oa := oi + 1
+		for j := 0; j < te.children && oa < len(c.oldAll); j++ {
+			sizes = append(sizes, c.oldAll[oa].size)
+			widest = max(widest, c.oldAll[oa].size)
+			oa += c.subtree(c.oldAll, oa)
+		}
+		tw := te.size - widest
+		if tw < 1 || tw > 8 {
+			return nil
+		}
+		node := evolveNode{op: nodeDeadUnion, oldOff: oldOff, tagWidth: tw, size: widest}
+		oa = oi + 1
+		for j, size := range sizes {
+			arm := deadArm{tag: uint64(j + 1), taken: size, pad: widest - size}
+			ca := ci + 1
+			for k := 0; k < me.children && ca < len(c.curAll); k++ {
+				if c.curAll[ca].id == c.oldAll[oa].id {
+					arm.body = c.dead(oa, ca, oldOff+tw, depth+1)
+					break
+				}
+				ca += c.subtree(c.curAll, ca)
+			}
+			if arm.pad > 0 || len(arm.body) > 0 {
+				node.arms = append(node.arms, arm)
+			}
+			oa += c.subtree(c.oldAll, oa)
+		}
+		return []evolveNode{node}
+	}
+	return nil
+}
+
+// collectDeprecated is the wire ids of the reader's deprecated fields, whose
+// slots are not slack (docs/SPEC-TABLES.md §3.4, DEPRECATED SLOT).
+func collectDeprecated(st *ir.Struct, seen map[string]bool, out map[uint64]bool) {
+	if st == nil || seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	var walk func(f *ir.Field)
+	walk = func(f *ir.Field) {
+		if f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			collectDeprecated(r, seen, out)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil {
+					walk(v.F)
+				}
+			}
+		}
+	}
+	for _, f := range st.Fields {
+		if f.Deprecated {
+			out[ir.TableFieldWireId(f)] = true
+		}
+		walk(f)
+	}
+}
+
 // compileEvolvePlan compiles one older entry against the current layout
 // (docs/FIXED-FORM-ALGORITHM.md §5.2's plan; docs/PORT-GOOSE.md, THE RUNTIME
 // LAYOUT). The plan is a tree because a layout is: structs and array elements
@@ -894,9 +1113,12 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 	}
 	arms := map[uint64]string{}
 	collectArmDefaults(st, map[string]bool{}, arms)
+	deprecated := map[uint64]bool{}
+	collectDeprecated(st, map[string]bool{}, deprecated)
 	plan := evolvePlan{supported: true}
-	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, armDefaults: arms, plan: &plan, record: oldAll[0].size}
+	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, deprecated: deprecated, armDefaults: arms, plan: &plan, record: oldAll[0].size}
 	plan.nodes = c.match(0, 0, 0, 0, true, 0)
+	plan.dead = c.dead(0, 0, 0, 0)
 	if c.tooLarge {
 		return evolvePlan{refuse: evolveRefuseLayoutRecordTooLarge}
 	}

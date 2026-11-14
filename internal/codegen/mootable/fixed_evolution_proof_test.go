@@ -970,8 +970,10 @@ func TestMooFixedEvolutionArrayBounds(t *testing.T) {
 // TestMooFixedEvolutionText is text (C3, C4, C5, R24): a length past the
 // field's capacity refuses length_over_bound; ill-formed UTF-8 or a zero in
 // the USED bytes, and an unpaired surrogate in a wstring's used units, refuse
-// text_ill_formed by name; a hostile byte in the slack past the used length is
-// not read and not a refusal. The negative control drops the UTF-8 check.
+// text_ill_formed by name; a byte other than zero in the slack past the used
+// length refuses the whole load wire_damaged (docs/SPEC-TABLES.md §3.4, THE
+// SLACK RULE: every dead byte is zero). The negative controls drop the UTF-8
+// check and the slack check.
 func TestMooFixedEvolutionText(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -989,7 +991,7 @@ func TestMooFixedEvolutionText(t *testing.T) {
 		{"C3 length 5 of 4", cut(func(b []byte) { b[body] = 5 }), refusedTotal("length_over_bound", false, "-")},
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), refusedTotal("text_ill_formed", false, "-")},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), refusedTotal("text_ill_formed", false, "-")},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 u0 k0 c0 w0 d0 -"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), refusedTotal("wire_damaged", true, "-")},
 	}
 	for _, c := range cases {
 		if got := evoLoad(t, g, "ProbeTable", "T", c.file, -1).head; got != c.want {
@@ -1002,6 +1004,11 @@ func TestMooFixedEvolutionText(t *testing.T) {
 	plant(t, g, "\tif not V.utf8(rec, at, length) then\n", "\tif false then\n")
 	if got := evoLoad(t, g, "ProbeTable", "T", cases[1].file, -1).head; got == cases[1].want {
 		t.Errorf("the negative control: ill-formed text still refuses")
+	}
+	gd := fixedUnit(t, u, nil)
+	plant(t, gd, "\t\tdeadStruct(plan.root, 0, rec)\n", "\t\tlocal _ = deadStruct\n")
+	if got := evoLoad(t, gd, "ProbeTable", "T", cases[3].file, -1).head; got == cases[3].want {
+		t.Errorf("the negative control: without the slack check a stained text tail still refuses")
 	}
 }
 
@@ -1185,18 +1192,48 @@ func TestMooFixedEvolutionNormalization(t *testing.T) {
 }
 
 // TestMooFixedEvolutionLiveExtents is live-extents (C14, W4, W9): the bounds
-// pass walks the LIVE extent only — out-of-range ordinals in a counted array's
-// slack and in an absent optional's payload are not read, clamped or counted —
-// and a field the writer never wrote lands the reader's declared default.
+// pass walks the LIVE extent only — the zero slack of a counted array of a
+// ranged int (min 1) and of an absent ranged optional is never held to the
+// range, so the record lands — while a byte other than zero in a counted
+// array's slack or in an absent optional's payload refuses the whole load
+// wire_damaged (docs/SPEC-TABLES.md §3.4, THE SLACK RULE: every dead byte is
+// zero, and slack is checked for zero and nothing else); a field the writer
+// never wrote lands the reader's declared default. The negative control drops
+// the slack check.
 func TestMooFixedEvolutionLiveExtents(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
-	g := fixedUnit(t, unitFromSource(t, "package probe\nenum Small { One, Two }\nfixed table T\n{\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n"), nil)
-	file := evoSave(t, g, "ProbeTable", "T", "local v = T.NewT()\nv.Arr[1] = 1\nv.ArrCount = 1\nvalues = { v }\n")
-	body := len(file) - 13
-	file[body+5], file[body+6], file[body+8] = 99, 99, 99
-	if got := evoLoad(t, g, "ProbeTable", "T", file, -1); got.head != "ok 1 u0 k0 c0 w0 d0 -" || got.dump["r0.arr_count"] != "1" || got.dump["r0.arr[0]"] != "1" || got.dump["r0.opt_present"] != "0" || got.dump["r0.tail"] != "77" {
-		t.Errorf("C14/W4: %s %v", got.head, got.dump)
+	u := unitFromSource(t, "package probe\nenum Small { One, Two }\nfixed table T\n{\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n    lo [..2]int32 | min = 1, max = 5\n    lopt ?int32 | min = 1, max = 5\n}\n")
+	g := fixedUnit(t, u, nil)
+	file := evoSave(t, g, "ProbeTable", "T", "local v = T.NewT()\nv.Arr[1] = 1\nv.ArrCount = 1\nv.Lo[1] = 3\nv.LoCount = 1\nvalues = { v }\n")
+	// the body: arr at 0 (count 4 + 3 ordinals), opt at 7 (present 1 + 1),
+	// tail at 9, lo at 13 (count 4 + 2 * 4), lopt at 25 (present 1 + 4)
+	body := len(file) - 30
+	if got := evoLoad(t, g, "ProbeTable", "T", file, -1); got.head != "ok 1 u0 k0 c0 w0 d0 -" || got.dump["r0.arr_count"] != "1" || got.dump["r0.arr[0]"] != "1" || got.dump["r0.opt_present"] != "0" || got.dump["r0.tail"] != "77" || got.dump["r0.lo_count"] != "1" || got.dump["r0.lopt_present"] != "0" {
+		t.Errorf("C14/W4: zero slack under a min = 1 range: %s %v", got.head, got.dump)
+	}
+	stained := []struct {
+		name string
+		at   int
+	}{
+		{"an ordinal in the counted array's slack", 5},
+		{"an ordinal under the absent optional", 8},
+		{"a value in range in the ranged array's slack", 21},
+		{"a value in range under the absent ranged optional", 26},
+	}
+	for _, c := range stained {
+		f := clone(file)
+		f[body+c.at] = 2
+		if got := evoLoad(t, g, "ProbeTable", "T", f, -1).head; got != refusedTotal("wire_damaged", true, "-") {
+			t.Errorf("C14/W4: %s: %s, want %s", c.name, got, refusedTotal("wire_damaged", true, "-"))
+		}
+	}
+	gc := fixedUnit(t, u, nil)
+	plant(t, gc, "\t\tdeadStruct(plan.root, 0, rec)\n", "\t\tlocal _ = deadStruct\n")
+	f := clone(file)
+	f[body+5] = 2
+	if got := evoLoad(t, gc, "ProbeTable", "T", f, -1).head; got != "ok 1 u0 k0 c0 w0 d0 -" {
+		t.Errorf("the negative control: without the slack check a stained tail: %s", got)
 	}
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_field_append"), readTestSchema(t, "VNEW_field_append")

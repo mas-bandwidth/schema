@@ -141,8 +141,9 @@ fn fixed_put(out: u8[>..]&, v: u64, w: i64) {
     }
 }
 
-// fixed_put_zeros is ZERO(p, n): declared slack, always zero on write
-// (docs/FIXED-FORM-ALGORITHM.md §3.1).
+// fixed_put_zeros is ZERO(p, n): declared slack, always zero on write, as
+// the reader requires it (docs/FIXED-FORM-ALGORITHM.md §3.1; SPEC-TABLES §3.4,
+// THE SLACK RULE).
 fn fixed_put_zeros(out: u8[>..]&, n: i64) {
     var i: i64 = 0;
     while i < n {
@@ -302,6 +303,35 @@ fn fixed_scan_text(b: const u8[:], at: i64, cap: i64, flavour: i64) -> i64 {
     if v < 0 || v > cap { return FixedRefuseLengthOverBound; }
     if flavour == 1 && !fixed_utf8_ok(b, at + 4, v) { return FixedRefuseTextIllFormed; }
     return 0;
+}
+
+// THE SLACK RULE (docs/SPEC-TABLES.md §3.4; docs/rulings.json
+// fixed-dead-bytes-zero): EVERY DEAD BYTE IS ZERO, or the record is refused
+// wire_damaged. fixed_dead_zero holds n bytes at `at` to zero: an absent
+// optional's payload, a union's arm bytes under tag 0 or behind a narrower
+// arm. fixed_dead_text holds a string(N)'s or a bytes(N)'s bytes past its used
+// length, and fixed_dead_tail a counted array's elements past its live count;
+// each refuses its word by name first when it is past its bound, so the span
+// it checks lies inside the value. Slack is checked for zero and nothing else.
+fn fixed_dead_zero(b: const u8[:], at: i64, n: i64) -> i64 {
+    var i: i64 = 0;
+    while i < n {
+        if b[at + i] != 0 { return FixedRefuseWireDamaged; }
+        i += 1;
+    }
+    return 0;
+}
+
+fn fixed_dead_text(b: const u8[:], at: i64, cap: i64) -> i64 {
+    let v: i64 = fixed_i32(b, at);
+    if v < 0 || v > cap { return FixedRefuseLengthOverBound; }
+    return fixed_dead_zero(b, at + 4 + v, cap - v);
+}
+
+fn fixed_dead_tail(b: const u8[:], at: i64, bound: i64, elem: i64) -> i64 {
+    let v: i64 = fixed_i32(b, at);
+    if v < 0 || v > bound { return FixedRefuseCountOverBound; }
+    return fixed_dead_zero(b, at + 4 + v * elem, (bound - v) * elem);
 }
 
 // fixed_refuse records a refusal by name; the framing-damage ones also set

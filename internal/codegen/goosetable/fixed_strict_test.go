@@ -203,15 +203,31 @@ fn main() {
     let n_p = probe::TFixedLoad(dst, bad_pres, rep);
     print("pres_dmg ", n_p, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].X);
 
-    // 8. Inactive optional payload (NotePresent = 0, Note = 9999) and counted-array slack (Leaves[1].Active = 255) are not live and succeed.
+    // 8. THE SLACK RULE (SPEC-TABLES §3.4): every dead byte is zero. An absent optional over a zero
+    // payload loads; an inactive optional payload (NotePresent = 0, Note = 9999) and counted-array
+    // slack (Leaves[1].Active = 255) are not live, are never held to a bool or range rule, and refuse
+    // wire_damaged because they are not zero.
     var slack: u8[>..] = [];
     copy_bytes(clean, slack);
     slack[rec1 + 15] = 0;
-    slack[rec1 + 16] = 0x0f; slack[rec1 + 17] = 0x27;
-    slack[rec1 + 25] = 255;
+    slack[rec1 + 16] = 0; slack[rec1 + 17] = 0; slack[rec1 + 18] = 0; slack[rec1 + 19] = 0;
     dst = [probe::T { .. }; 2];
     let n_sl = probe::TFixedLoad(dst, slack, rep);
     print("slack_ok ", n_sl, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", !dst[1].NotePresent, " ", dst[1].LeavesCount);
+
+    var dead_opt: u8[>..] = [];
+    copy_bytes(slack, dead_opt);
+    dead_opt[rec1 + 16] = 0x0f; dead_opt[rec1 + 17] = 0x27;
+    dst = [probe::T { .. }; 2];
+    let n_do = probe::TFixedLoad(dst, dead_opt, rep);
+    print("dead_opt ", n_do, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].X);
+
+    var dead_tail: u8[>..] = [];
+    copy_bytes(clean, dead_tail);
+    dead_tail[rec1 + 25] = 255;
+    dst = [probe::T { .. }; 2];
+    let n_dt = probe::TFixedLoad(dst, dead_tail, rep);
+    print("dead_tail ", n_dt, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].X);
 }
 `
 
@@ -224,7 +240,9 @@ float_oor -1 out_of_range 0 2
 bool_dmg -1 wire_damaged 0 2
 leaf_bool_dmg -1 wire_damaged 0 2
 pres_dmg -1 wire_damaged 0 2
-slack_ok 2 ok 0 true 1`
+slack_ok 2 ok 0 true 1
+dead_opt -1 wire_damaged 0 2
+dead_tail -1 wire_damaged 0 2`
 
 func runStrictLoadFiles(t *testing.T, files map[string][]byte) string {
 	t.Helper()

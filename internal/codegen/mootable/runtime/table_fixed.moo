@@ -15,7 +15,8 @@
 -- than 0 or 1 refuses wire_damaged; a ranged value, a bits(N) past its
 -- ceiling, an enum ordinal or a union tag past the writer's set refuses
 -- out_of_range; a count or length past its bound refuses by its name (§4.5,
--- §4.6).
+-- §4.6); a dead byte of the writer's record that is not zero refuses
+-- wire_damaged (§3.4, THE SLACK RULE).
 --
 -- THE PLAN (§4). moo's storage is not the wire's (a string(N) is a moo
 -- string, a union a table with a Type), so the plan is the RECORD-IMAGE shape
@@ -786,6 +787,101 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 end
 
 -- ---------------------------------------------------------------------------
+-- THE SLACK RULE (docs/SPEC-TABLES.md §3.4; docs/rulings.json
+-- fixed-dead-bytes-zero): EVERY DEAD BYTE IS ZERO, or the record is refused
+-- wire_damaged. The slack is the WRITER's, read off the plan's writer nodes:
+-- an absent optional's payload, a counted array's tail past its live count,
+-- a text's or a byte buffer's bytes past its used length, and a union's arm
+-- bytes under tag 0 or behind the taken arm up to the widest. The walk runs
+-- after the record's read has held every count, length and tag to its bound,
+-- so each span it checks lies inside the record. Slack is checked for zero
+-- and nothing else; a deprecated slot is not slack and keeps its own rule.
+
+-- deadZero refuses the record when any byte of rec in [from, to) is not zero
+local function deadZero(rec: buffer, from: number, to: number)
+	for at = from, to - 1 do
+		if buffer.readu8(rec, at) ~= 0 then
+			refuse("wire_damaged", true)
+		end
+	end
+end
+
+-- an element kind that carries no slack of its own anywhere inside it
+local function deadFree(e: any): boolean
+	local s = e.s
+	return s ~= "str" and s ~= "bytes" and s ~= "tab" and s ~= "union" and s ~= "arr"
+end
+
+local deadValue: (f: any, n: Node, dx: number, rec: buffer) -> ()
+
+local function deadStruct(n: Node, dx: number, rec: buffer)
+	for _, p in n.pairs :: { any } do
+		local f = p.f
+		if f.deprecated then
+			continue
+		end
+		if f.present ~= nil and not p.always and buffer.readu8(rec, p.n.off + dx) == 0 then
+			-- an absent optional: its whole payload is slack
+			deadZero(rec, p.n.off + dx + PRESENT, p.n.off + dx + p.n.size)
+			continue
+		end
+		deadValue(f, p.v, dx, rec)
+	end
+end
+
+deadValue = function(f: any, n: Node, dx: number, rec: buffer)
+	local s = f.s
+	local off = n.off + dx
+	if s == "str" or s == "bytes" then
+		-- the bytes past the used length, which the read held to the cap
+		deadZero(rec, off + COUNT + u32(rec, off), off + n.size)
+	elseif s == "tab" then
+		deadStruct(n, dx, rec)
+	elseif s == "union" then
+		local tagw = n.tagw :: number
+		local tag = ordinalAt(rec, off, tagw)
+		local hit = if tag == 0 then nil else (n.arms :: { [number]: any })[tag]
+		if hit == nil then
+			-- tag 0: no arm is taken, and every arm byte is slack
+			deadZero(rec, off + tagw, off + n.size)
+			return
+		end
+		local taken = if hit.node == nil then 0 else hit.node.size
+		deadZero(rec, off + tagw + taken, off + n.size)
+		if hit.node ~= nil then
+			deadValue(hit.arm, hit.node, dx, rec)
+		end
+	elseif s == "arr" then
+		local e = f.e
+		if f.array == "keyed" then
+			if deadFree(e) then
+				return
+			end
+			local c = n.children[2]
+			for k = 1, n.size // c.size do
+				deadValue(e, c, dx + (k - 1) * c.size, rec)
+			end
+			return
+		end
+		local c = n.children[1]
+		local count = n.size // c.size
+		local first = 0
+		if f.array == "counted" then
+			count = buffer.readi32(rec, off)
+			first = COUNT
+			-- the writer's tail past its live count
+			deadZero(rec, off + COUNT + count * c.size, off + n.size)
+		end
+		if deadFree(e) then
+			return
+		end
+		for i = 1, count do
+			deadValue(e, c, dx + first + (i - 1) * c.size, rec)
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------------
 -- THE WRITE (§3.1): this build's own layout, every field at its declared
 -- width at its constant offset, an absent optional's payload zero. A value
 -- outside its contract refuses the save by name and writes nothing.
@@ -1156,6 +1252,8 @@ local function loadAll(d: any, fixed: Fixed, file: buffer, report: any, capacity
 	for i = 0, count - 1 do
 		buffer.copy(rec, 0, file, at + i * stride + 8, entry.recordBytes)
 		out[i + 1] = readStruct(d, plan.root, 0, rec, rep)
+		-- every dead byte of the writer's record is zero (§3.4, THE SLACK RULE)
+		deadStruct(plan.root, 0, rec)
 	end
 	report.widened += rep.widened
 	return out

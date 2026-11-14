@@ -364,7 +364,8 @@ fixed table T {
     while i < clean.len { badUtf8.push(clean[i]); i += 1; }
     badUtf8[body + 4] = 0xff;
 
-    // R24: 0xff in slack past used length (at index 2 when length == 2) is NOT a refusal!
+    // R24: 0xff in slack past used length (at index 2 when length == 2) refuses
+    // wire_damaged: every dead byte is zero (SPEC-TABLES §3.4, THE SLACK RULE)
     var slackBytes: u8[>..] = [];
     i = 0;
     while i < clean.len { slackBytes.push(clean[i]); i += 1; }
@@ -381,7 +382,7 @@ fixed table T {
     print(n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3);
 }
 `, nil)
-	if got != "-1 length_over_bound -1 text_ill_formed 1 ok" {
+	if got != "-1 length_over_bound -1 text_ill_formed -1 wire_damaged" {
 		t.Fatalf("Text (C3/C4/C5/R24): got %q", got)
 	}
 }
@@ -489,7 +490,12 @@ fixed table T {
 	}
 }
 
-// 11. port/goose/fixed/live-extents (C14, W4, W9).
+// 11. port/goose/fixed/live-extents (C14, W4, W9). The bounds pass walks the
+// LIVE extent only: the zero slack of a counted array of a ranged int (min 1)
+// and of an absent ranged optional is never held to the range, so the record
+// lands. A byte other than zero in that slack refuses the whole load
+// wire_damaged (docs/SPEC-TABLES.md §3.4, THE SLACK RULE: every dead byte is
+// zero, and slack is checked for zero and nothing else).
 func TestGooseFixedProofLiveExtents(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -499,28 +505,44 @@ fixed table T {
     arr [..3]Small
     opt ?Small
     tail int32 = 77
+    lo [..2]int32 | min = 1, max = 5
+    lopt ?int32 | min = 1, max = 5
 }
 `
 	u := parseCheckUnit(t, schema)
-	got := runCustomFixedGoose(t, u, nil, `fn main() {
-    var v = probe::T { Arr: [1, 0, 0], ArrCount: 1, Opt: 0, OptPresent: false, Tail: 77 };
+	got := runCustomFixedGoose(t, u, nil, `fn stained(clean: const u8[:], at: i64) -> u8[>..] {
+    var d: u8[>..] = [];
+    var i: i64 = 0;
+    while i < clean.len { d.push(clean[i]); i += 1; }
+    d[at] = 2;
+    return d;
+}
+
+fn main() {
+    var v = probe::T { Arr: [1, 0, 0], ArrCount: 1, Opt: 0, OptPresent: false, Tail: 77, Lo: [3, 0], LoCount: 1, Lopt: 0, LoptPresent: false };
     var data: u8[>..] = [];
     let _ = probe::TFixedSave([v], data);
     let body = data.len - probe::TFixedBodyBytes;
-    // Body layout: ArrCount (4B at +0), Arr[0..3] (3B at +4..+7), OptPresent (1B at +7), Opt (1B at +8), Tail (4B at +9..+13).
-    // Forge out-of-range enum ordinals (99) into inactive Arr[1], Arr[2] and absent Opt!
-    // C14 & W4: bounds pass walks LIVE extent only; slack is not clamped or counted.
-    data[body + 5] = 99;
-    data[body + 6] = 99;
-    data[body + 8] = 99;
-
+    // Body layout: ArrCount (4B at +0), Arr[0..3] (3B at +4..+7), OptPresent (1B at +7), Opt (1B at +8),
+    // Tail (4B at +9..+13), LoCount (4B at +13), Lo[0..2] (8B at +17..+25), LoptPresent (1B at +25), Lopt (4B at +26..+30).
     var dst: probe::T[1] = [probe::T { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
     let n = probe::TFixedLoad(dst, data, rep);
-    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].ArrCount, " ", dst[0].Arr[0] as u64, " ", !dst[0].OptPresent, " ", dst[0].Tail);
+    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].ArrCount, " ", dst[0].Arr[0] as u64, " ", !dst[0].OptPresent, " ", dst[0].Tail, " ", dst[0].LoCount, " ", !dst[0].LoptPresent);
+    // C14 & W4: an ordinal in the counted array's slack, an ordinal under the absent optional,
+    // an in-range value in the ranged array's slack and under the absent ranged optional
+    let n1 = probe::TFixedLoad(dst, stained(data, body + 5), rep);
+    let r1 = schema_rt::fixed_refusal_name(rep.reason);
+    let n2 = probe::TFixedLoad(dst, stained(data, body + 8), rep);
+    let r2 = schema_rt::fixed_refusal_name(rep.reason);
+    let n3 = probe::TFixedLoad(dst, stained(data, body + 21), rep);
+    let r3 = schema_rt::fixed_refusal_name(rep.reason);
+    let n4 = probe::TFixedLoad(dst, stained(data, body + 26), rep);
+    let r4 = schema_rt::fixed_refusal_name(rep.reason);
+    print(" ", n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3, " ", n4, " ", r4);
 }
 `, nil)
-	if got != "1 ok 0 1 1 true 77" {
+	if got != "1 ok 0 1 1 true 77 1 true -1 wire_damaged -1 wire_damaged -1 wire_damaged -1 wire_damaged" {
 		t.Fatalf("LiveExtents (C14/W4/W9): got %q", got)
 	}
 }

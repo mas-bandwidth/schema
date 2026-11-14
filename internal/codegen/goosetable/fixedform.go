@@ -19,7 +19,8 @@
 // then a straight-line scatter — laid down at build time as one function per
 // type: <T>'s _<T>FixedRead (the run, every byte of the image landed), its
 // _<T>FixedScan (§4.5's refusals, run over the whole batch before the first
-// landing), its _<T>FixedClamp (§4.6's bounds pass over the live extent) and,
+// landing), its _<T>FixedDead (SPEC-TABLES §3.4's slack rule: every dead byte
+// zero, over the same batch before the first landing), its _<T>FixedClamp (§4.6's bounds pass over the live extent) and,
 // on the write side, _<T>FixedCheck (§3.1's contract) and _<T>FixedWrite (the
 // live extent onto zero). The lineage plans are
 // schema-goose-fixed-form-evolution's.
@@ -624,6 +625,112 @@ func (e *fixedEmit) scanElem(ind int, f *ir.Field, off string) {
 }
 
 // ---------------------------------------------------------------------------
+// THE SLACK RULE (docs/SPEC-TABLES.md §3.4; docs/rulings.json
+// fixed-dead-bytes-zero): EVERY DEAD BYTE IS ZERO, or the record is refused
+// wire_damaged — an absent optional's payload, a counted array's tail past
+// its live count, a text's or a byte buffer's bytes past its used length, and
+// a union's arm bytes under tag 0 or behind the taken arm up to the widest.
+// _<T>FixedDead walks a record the scan has passed (so every count, length
+// and present byte it reads is inside its bound) and checks each span for
+// zero and nothing else; slack nested in a live value is that value's own, and
+// slack inside slack is checked whole with its outer span. A deprecated slot is
+// not slack and keeps its own handling.
+// ---------------------------------------------------------------------------
+
+// hasDead answers whether a value (its array and optional wrappers on) holds
+// slack anywhere inside it.
+func hasDead(f *ir.Field, seen map[string]bool) bool {
+	if f.Type.Optional || f.Array == ir.ArrayCounted {
+		return true
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Union:
+			return true
+		case *ir.Struct:
+			if seen[r.Name] {
+				return false
+			}
+			seen[r.Name] = true
+			for _, sf := range r.Fields {
+				if !sf.Deprecated && hasDead(sf, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func elemHasDead(f *ir.Field) bool { return hasDead(f, map[string]bool{}) }
+
+func (e *fixedEmit) deadField(ind int, f *ir.Field, off string) {
+	if f.Type.Optional {
+		v := *f
+		v.Type.Optional = false
+		e.p(ind, "if b[%s] == 0 {", off)
+		e.p(ind+1, "r = schema_rt::fixed_dead_zero(b, %s + 1, %d);", off, payloadBytes(f))
+		e.p(ind+1, "if r != 0 { return r; }")
+		if elemHasDead(&v) {
+			e.p(ind, "} else {")
+			e.deadValue(ind+1, f, off+" + 1")
+		}
+		e.p(ind, "}")
+		return
+	}
+	e.deadValue(ind, f, off)
+}
+
+func (e *fixedEmit) deadValue(ind int, f *ir.Field, off string) {
+	el := elemOf(f)
+	switch {
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
+		if !elemHasDead(el) {
+			return
+		}
+		i := e.loopVar()
+		e.p(ind, "var %s: i64 = 0;", i)
+		e.p(ind, "while %s < %d {", i, slotCount(f))
+		e.deadElem(ind+1, el, offStep(off, i, ir.TableFixedElementBytes(f)))
+		e.p(ind+1, "%s += 1;", i)
+		e.p(ind, "}")
+	case f.Array == ir.ArrayCounted:
+		e.p(ind, "r = schema_rt::fixed_dead_tail(b, %s, %d, %d);", off, f.ArrayBound, ir.TableFixedElementBytes(f))
+		e.p(ind, "if r != 0 { return r; }")
+		if !elemHasDead(el) {
+			return
+		}
+		c := e.loopVar()
+		i := e.loopVar()
+		e.p(ind, "let %s: i64 = schema_rt::fixed_i32(b, %s);", c, off)
+		e.p(ind, "var %s: i64 = 0;", i)
+		e.p(ind, "while %s < %s {", i, c)
+		e.deadElem(ind+1, el, offStep(off+" + 4", i, ir.TableFixedElementBytes(f)))
+		e.p(ind+1, "%s += 1;", i)
+		e.p(ind, "}")
+	default:
+		e.deadElem(ind, el, off)
+	}
+}
+
+func (e *fixedEmit) deadElem(ind int, f *ir.Field, off string) {
+	switch e.kindOf(f) {
+	case kStr, kBytes:
+		e.p(ind, "r = schema_rt::fixed_dead_text(b, %s, %d);", off, f.Type.Size)
+		e.p(ind, "if r != 0 { return r; }")
+	case kStruct, kUnion:
+		if elemHasDead(f) {
+			e.home(f.Type.Name)
+			e.p(ind, "r = _%sFixedDead(b, %s);", f.Type.Name, off)
+			e.p(ind, "if r != 0 { return r; }")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // THE RUN (docs/FIXED-FORM-ALGORITHM.md §4.4, §4.5): every byte of the record
 // image lands in place — a bool and a present flag as `byte != 0`, a float's
 // bits through the one route, a text field's whole declared span — and a union
@@ -994,7 +1101,7 @@ func (e *fixedEmit) emitStruct(st *ir.Struct) error {
 	}
 	n := st.Name
 	typ := e.structType(st)
-	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
+	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedDead", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
 	e.p(0, "// ---- %s's record image, C = %d bytes (docs/FIXED-FORM-ALGORITHM.md §3) ----", n, ir.TableFixedTypeBytes(st))
 
 	e.loop = 0
@@ -1021,6 +1128,20 @@ func (e *fixedEmit) emitStruct(st *ir.Struct) error {
 	var off int64
 	for _, f := range st.Fields {
 		e.scanField(1, f, offAt("at", off))
+		off += ir.TableFixedFieldBytes(f)
+	}
+	e.p(1, "return r;")
+	e.p(0, "}\n")
+
+	e.loop = 0
+	e.p(0, "// _%sFixedDead holds every dead byte of a scanned record at `at` to zero (§3.4, THE SLACK RULE); 0 is none.", n)
+	e.p(0, "fn _%sFixedDead(b: const u8[:], at: i64) -> i64 {", n)
+	e.p(1, "var r: i64 = 0;")
+	off = 0
+	for _, f := range st.Fields {
+		if !f.Deprecated && elemHasDead(f) {
+			e.deadField(1, f, offAt("at", off))
+		}
 		off += ir.TableFixedFieldBytes(f)
 	}
 	e.p(1, "return r;")
@@ -1074,7 +1195,7 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 	typ := e.unionType(un)
 	tw := ir.TableFixedUnionTagBytes(un)
 	widest := ir.TableFixedUnionBytes(un) - tw
-	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
+	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedDead", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
 	e.p(0, "// ---- union %s's record image: a %d-byte tag, then %d bytes of arm (docs/FIXED-FORM-ALGORITHM.md §3) ----", n, tw, widest)
 	arms := func(fn func(ind int, tag int, v ir.UnionVariant)) {
 		first := true
@@ -1130,6 +1251,36 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 		}
 		e.p(1, "if tag == %d {", i+1)
 		e.scanField(2, armField(v), offAt("at", tw))
+		e.p(1, "}")
+	}
+	e.p(1, "return r;")
+	e.p(0, "}\n")
+
+	// THE SLACK RULE (§3.4): under tag 0 every arm byte is slack; behind the
+	// taken arm, the bytes up to the widest are (a payload-free arm takes 0).
+	// A tag past the set is the bounds pass's out_of_range, not slack.
+	e.loop = 0
+	e.p(0, "fn _%sFixedDead(b: const u8[:], at: i64) -> i64 {", n)
+	e.p(1, "var r: i64 = 0;")
+	e.p(1, "let tag = schema_rt::fixed_get(b, at, %d);", tw)
+	e.p(1, "if tag == 0 { return schema_rt::fixed_dead_zero(b, %s, %d); }", offAt("at", tw), widest)
+	for i, v := range un.Variants {
+		taken := int64(0)
+		if v.F != nil {
+			taken = ir.TableFixedFieldBytes(armField(v))
+		}
+		live := v.F != nil && elemHasDead(armField(v))
+		if taken >= widest && !live {
+			continue
+		}
+		e.p(1, "if tag == %d {", i+1)
+		if taken < widest {
+			e.p(2, "r = schema_rt::fixed_dead_zero(b, %s, %d);", offAt("at", tw+taken), widest-taken)
+			e.p(2, "if r != 0 { return r; }")
+		}
+		if live {
+			e.deadField(2, armField(v), offAt("at", tw))
+		}
 		e.p(1, "}")
 	}
 	e.p(1, "return r;")
@@ -1242,6 +1393,8 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "while k < n {")
 	e.p(2, "let r = _%sFixedScan(data, first + k * %sFixedRecordBytes);", n, n)
 	e.p(2, "if r != 0 { return schema_rt::fixed_refuse(report, r, false); }")
+	e.p(2, "let d = _%sFixedDead(data, first + k * %sFixedRecordBytes);", n, n)
+	e.p(2, "if d != 0 { return schema_rt::fixed_refuse(report, d, false); }")
 	e.p(2, "k += 1;")
 	e.p(1, "}")
 	e.p(1, "k = 0;")
