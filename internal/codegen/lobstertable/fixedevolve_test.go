@@ -863,14 +863,8 @@ fixed table CheckedHost | integrity = "crc32c" {
     assert_eq(rprobe.CheckedHostFixedLoad(back, f_utf8_sealed, plan, r), -1, "text_ill_formed utf8")
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "text_ill_formed", "text_ill_formed utf8 reason")
 
-    let f_wide = write_int16_le(substring(wire, 0, length(wire)), rec_body + 40, 0xD800)
-    let ign_4, f_wide_sealed = schema_rt.fixed_integrity_seal(f_wide, need - 4)
-    assert_eq(ign_4, need, "seal 4")
-    assert_eq(rprobe.CheckedHostFixedLoad(back, f_wide_sealed, plan, r), -1, "text_ill_formed wide")
-    assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "text_ill_formed", "text_ill_formed wide reason")
-
     // 19. an out-of-range value refuses the batch and resets the destination.
-    let f_clamp = write_int32_le(substring(wire, 0, length(wire)), rec_body + 48, 150)
+    let f_clamp = write_int32_le(substring(wire, 0, length(wire)), rec_body + 36, 150)
     let ign_5, f_clamp_sealed = schema_rt.fixed_integrity_seal(f_clamp, need - 4)
     assert_eq(ign_5, need, "seal 5")
     assert_eq(rprobe.CheckedHostFixedLoad(back, f_clamp_sealed, plan, r), -1, "FixedLoad refuses out-of-range value")

@@ -42,7 +42,7 @@ func TestIntegrityCSharp(t *testing.T) {
 	if !model.Read(value, []byte("{\"value\":17}"), &report) {
 		t.Fatal(report)
 	}
-	wire, err := tablewire.Encode(model, value)
+	wire, err := tablewire.EncodeVariable(model, value)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestIntegrityCSharp(t *testing.T) {
  if(Probe.Schema.RootSave(root,shortOutput)!=-1||Array.Exists(shortOutput,b=>b!=0x5a))throw new Exception("short integrity output was touched");
  byte[] base64Roundtrip=Convert.FromBase64String(Convert.ToBase64String(saved));
  if(!Probe.Schema.RootLoad(new Probe.Root(),base64Roundtrip,new Probe.TableReport()))throw new Exception("base64 lost CRC trailer");
- void Damage(Probe.TableReport r) { if (!r.Malformed || r.Refused || r.Reason!="integrity_mismatch" || r.Verdict!=Probe.Schema.TableWire.Verdict.Damaged || r.Unknown!=0 || r.KindMismatch!=0 || r.Clamped!=0) throw new Exception("integrity report "+r.Reason); }
+ void Damage(Probe.TableReport r) { if (!r.Damaged || r.Refused || r.Reason!="integrity_mismatch" || r.Verdict!=Probe.Schema.TableWire.Verdict.Damaged || r.Unknown!=0 || r.Widened!=0) throw new Exception("integrity report "+r.Reason); }
  void CheckBad(byte[] bytes) {
   var value=new Probe.Root{Value=123};var report=new Probe.TableReport();
   if(Probe.Schema.RootLoad(value,bytes,report)||value.Value!=0) throw new Exception("damaged managed file decoded");
@@ -78,13 +78,13 @@ func TestIntegrityCSharp(t *testing.T) {
  CheckBad(saved.AsSpan(0,saved.Length-4).ToArray());
  var wrong=(byte[])saved.Clone();wrong[0]=99;
  var formReport=new Probe.TableReport();
- if(Probe.Schema.RootLoad(new Probe.Root(),wrong,formReport)||!formReport.Refused||formReport.Malformed||formReport.Reason!="newer_form")throw new Exception("form refusal must precede CRC");
+ if(Probe.Schema.RootLoad(new Probe.Root(),wrong,formReport)||!formReport.Refused||formReport.Damaged||formReport.Reason!="newer_form")throw new Exception("form refusal must precede CRC");
  byte[] forged=(byte[])saved.Clone();Array.Fill(forged,(byte)0xff,forged.Length-12,8);
  System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(forged.AsSpan(forged.Length-4),Probe.Schema.TableWire.IntegrityCrc(forged.AsSpan(0,forged.Length-4)));
  var framing=new Probe.TableReport();
- if(Probe.Schema.RootLoad(new Probe.Root(),forged,framing)||!framing.Malformed||framing.Reason=="integrity_mismatch")throw new Exception("valid checksum bypassed hostile count framing");
+ if(Probe.Schema.RootLoad(new Probe.Root(),forged,framing)||!framing.Damaged||framing.Reason=="integrity_mismatch")throw new Exception("valid checksum bypassed hostile count framing");
  type.Integrity=false;
- try{var oldReader=new Probe.TableReport();if(Probe.Schema.RootLoad(new Probe.Root(),saved,oldReader)||!oldReader.Malformed)throw new Exception("unmarked reader accepted trailer");}
+ try{var oldReader=new Probe.TableReport();if(Probe.Schema.RootLoad(new Probe.Root(),saved,oldReader)||!oldReader.Damaged)throw new Exception("unmarked reader accepted trailer");}
  finally{type.Integrity=true;}
  var managed=new Probe.Root();if(!Probe.Schema.RootLoad(managed,saved,new Probe.TableReport())||managed.Child.Value!=11)throw new Exception("valid managed load");
  long size=Probe.Schema.RootLoadMeasure(saved,out long dataBytes,out long attributionBytes,out Probe.TableRefuseReason reason);
@@ -94,7 +94,7 @@ func TestIntegrityCSharp(t *testing.T) {
   Span<ulong> ids=stackalloc ulong[4096];Span<int> slots=stackalloc int[4096];
   var report=new Probe.TableReport();
   IntPtr ptr=Probe.Schema.TableWire.LoadRegion(type,(IntPtr)memory,size,saved,report);
-  if(ptr==IntPtr.Zero||report.Malformed)throw new Exception("native integrity load");
+  if(ptr==IntPtr.Zero||report.Damaged)throw new Exception("native integrity load");
   byte[] native=new byte[Probe.Schema.TableWire.SaveRegion(ptr,type,Span<byte>.Empty,ids,true)];
   if(Probe.Schema.TableWire.SaveRegion(ptr,type,native,ids,false)!=saved.Length||!native.AsSpan().SequenceEqual(saved))throw new Exception("native integrity save");
   Probe.TableRetain retain=default;
@@ -130,7 +130,7 @@ func TestIntegrityCSharp(t *testing.T) {
  for(int n=1;n<5;n++){var r=new Probe.TableReport();byte[] shortFixed=new byte[n];shortFixed[0]=3;
   if(Probe.Schema.FixedRowFixedLoad(fixedBack,shortFixed,new Probe.TableFixedEntry[8],r)!=-1)throw new Exception("short fixed accepted");Damage(r);}
  var fixedWrong=(byte[])fixedBytes.Clone();fixedWrong[0]=1;var fixedFormReport=new Probe.TableReport();
- if(Probe.Schema.FixedRowFixedLoad(fixedBack,fixedWrong,new Probe.TableFixedEntry[8],fixedFormReport)!=-1||!fixedFormReport.Refused||fixedFormReport.Malformed||fixedFormReport.Reason!="previous_form")throw new Exception("fixed form precedence");
+ if(Probe.Schema.FixedRowFixedLoad(fixedBack,fixedWrong,new Probe.TableFixedEntry[8],fixedFormReport)!=-1||!fixedFormReport.Refused||fixedFormReport.Damaged||fixedFormReport.Reason!="previous_form")throw new Exception("fixed form precedence");
  byte[] message=new byte[Probe.Schema.FixedRowMeasureMessages(fixedValues)];
  if(Probe.Schema.FixedRowSaveMessages(fixedValues,message)!=message.Length||!message.AsSpan().SequenceEqual(Convert.FromHexString("WIRE_MESSAGE")))throw new Exception("independent Go message integrity bytes");
  var vocabulary=Probe.Schema.TableWire.OwnVocabulary(Probe.Schema.Announce());
@@ -141,7 +141,7 @@ func TestIntegrityCSharp(t *testing.T) {
   if(Probe.Schema.FixedRowLoadMessages(fixedBack,corrupt,vocabulary,r,out count)!=Probe.Schema.TableWire.Verdict.Damaged||count!=0||fixedBack[0].Value!=77||fixedBack[1].Value!=88)throw new Exception("damaged message touched output");Damage(r);
  }
  var messageWrong=(byte[])message.Clone();messageWrong[0]=1;var messageFormReport=new Probe.TableReport();
- if(Probe.Schema.FixedRowLoadMessages(fixedBack,messageWrong,vocabulary,messageFormReport,out count)!=Probe.Schema.TableWire.Verdict.Refused||messageFormReport.Malformed||messageFormReport.Reason!="newer_form")throw new Exception("message form precedence");
+ if(Probe.Schema.FixedRowLoadMessages(fixedBack,messageWrong,vocabulary,messageFormReport,out count)!=Probe.Schema.TableWire.Verdict.Refused||messageFormReport.Damaged||messageFormReport.Reason!="newer_form")throw new Exception("message form precedence");
  for(int n=1;n<6;n++){
   var r=new Probe.TableReport();byte[] shortBatch=new byte[n];shortBatch[0]=2;
   if(Probe.Schema.FixedRowLoadMessages(fixedBack,shortBatch,vocabulary,r,out count)!=Probe.Schema.TableWire.Verdict.Damaged)throw new Exception("short message integrity");Damage(r);

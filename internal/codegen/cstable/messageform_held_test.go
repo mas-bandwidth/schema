@@ -454,15 +454,23 @@ static class Held
 
     // "damage anywhere in a form-2 batch refuses the whole batch, malformed
     // counts, and nothing the read produced is a value to use." M is three:
-    // body 1 empty, body 2's first reference 0xF above the announced entry
-    // count, body 3 empty. A reference is four bits, low bit first, so byte 0
-    // holds body 1's low nibble and body 2's high nibble.
+    // body 1 empty, body 2 opens with a reference to field a (an int32) and the
+    // batch ends inside its payload, so body 3 never arrives. A reference is
+    // the announced vocabulary's RefBits wide, low bit first, and the pair is
+    // built from that width: with three entries every reference a width of two
+    // bits can spell names one, so no reference past the count exists to forge.
     static void DamageInsideBody()
     {
         const string row = "damage_inside_body";
         var vocab = Open();
         if (!vocab.Announced) { Fail(row, "announce"); return; }
-        byte[] wire = new byte[]{2, 2, 0xF0, 0x00};
+        int bits = vocab.RefBits; ulong id = Schema.RootTableType().Fields[0].Id; int at = -1;
+        for (int i = 0; i < vocab.Count; i++) { if (vocab.Entries[i].Id == id) { at = i + 1; break; } }
+        if (at < 0) { Fail(row, "no announced entry for a"); return; }
+        ulong refs = (ulong)at << bits;
+        byte[] wire = new byte[2 + (2 * bits + 7) / 8];
+        wire[0] = 2; wire[1] = 2;
+        for (int i = 2; i < wire.Length; i++) { wire[i] = (byte)(refs >> (8 * (i - 2))); }
         Root[] storage = Bodies(3);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, wire, vocab, report, out int count);

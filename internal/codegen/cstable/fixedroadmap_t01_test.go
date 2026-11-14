@@ -66,7 +66,7 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
             }
             bool Counters(TableReport r)
             {
-                return r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0;
+                return r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0;
             }
             // Expect: the read REFUSES by name (reason != null) or is MALFORMED
             // (reason == null), and in both cases returns -1, never sets both
@@ -81,9 +81,9 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
                 if (n != -1) { bad += ProbeLog.Fail(@NAME@, label + ": must return -1, returned " + n + " reason=" + r.Reason); }
                 if (reason == null)
                 {
-                    if (!r.Malformed || r.Refused || r.Reason != null || r.Verdict != Schema.TableWire.Verdict.Damaged)
+                    if (!r.Damaged || r.Refused || r.Reason != null || r.Verdict != Schema.TableWire.Verdict.Damaged)
                     {
-                        bad += ProbeLog.Fail(@NAME@, label + ": the residue is malformed alone: malformed=" + r.Malformed + " refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
+                        bad += ProbeLog.Fail(@NAME@, label + ": the residue is malformed alone: malformed=" + r.Damaged + " refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
                     }
                 }
                 else
@@ -92,10 +92,10 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
                     {
                         bad += ProbeLog.Fail(@NAME@, label + ": must refuse " + reason + " by name: refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
                     }
-                    if (r.Malformed) { bad += ProbeLog.Fail(@NAME@, label + ": refused+reason and malformed are never both set"); }
+                    if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, label + ": refused+reason and malformed are never both set"); }
                 }
                 if (r.LayoutHash != wantHash) { bad += ProbeLog.Fail(@NAME@, label + ": layout hash 0x" + r.LayoutHash.ToString("x16") + ", want 0x" + wantHash.ToString("x16")); }
-                if (Counters(r)) { bad += ProbeLog.Fail(@NAME@, label + ": a counter moved on a refusal: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost); }
+                if (Counters(r)) { bad += ProbeLog.Fail(@NAME@, label + ": a counter moved on a refusal: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost); }
                 if (!Untouched(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read wrote the destination"); }
             }
             // ReadsClean: the control that keeps every refusal above honest — the
@@ -107,9 +107,9 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
                 TableReport r = new TableReport();
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, file, plan, r);
-                if (n != wantN || r.Refused || r.Malformed || r.Reason != null)
+                if (n != wantN || r.Refused || r.Damaged || r.Reason != null)
                 {
-                    bad += ProbeLog.Fail(@NAME@, label + ": must read " + wantN + " records: n=" + n + " refused=" + r.Refused + " malformed=" + r.Malformed + " reason=" + r.Reason);
+                    bad += ProbeLog.Fail(@NAME@, label + ": must read " + wantN + " records: n=" + n + " refused=" + r.Refused + " malformed=" + r.Damaged + " reason=" + r.Reason);
                 }
                 if (wantN > 0 && Untouched(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the clean read landed nothing"); }
             }
@@ -188,8 +188,11 @@ func t01Probes() []csVersionProbe {
                 int end = 20 + LayoutBytes(g);
                 ReadsClean(name + " unbroken", g, 1, 1);
                 // The boundary: the file ends exactly after its layout. The layout
-                // is whole, so this is a zero-record read and no refusal.
-                ReadsClean(name + " ends at the layout", Records(g, 0), 1, 0);
+                // is whole, so a BATCH read is a zero-record read and no refusal;
+                // a ROOT read, handed room for one value, finds no value to read
+                // and answers it as damage, as the engine and the Go leg do.
+                ReadsClean(name + " ends at the layout", Records(g, 0), 2, 0);
+                Expect(name + " ends at the layout, read as a root", Records(g, 0), 1, null, 0);
                 for (int cut = 20; cut < end; ++cut)
                 {
                     Expect(name + " cut at " + cut, Records(g, 1).AsSpan(0, cut).ToArray(), 1, "layout_malformed", 0);

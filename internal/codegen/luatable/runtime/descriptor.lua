@@ -282,6 +282,140 @@ function D.refuse_deprecated(T, name, v)
   return "invalid_value: " .. hit .. " holds a deprecated enum variant"
 end
 
+-- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): utf8.len is strict in Lua 5.4,
+-- refusing an overlong form, a surrogate and anything past U+10FFFF, as the
+-- fixed reader's check_utf8 relies on. zero_ok admits a zero byte, which the
+-- text writer spells \u0000 (docs/SPEC-TABLES.md §16.3) and every binary
+-- writer refuses.
+function D.text_ok(s, zero_ok)
+  if not zero_ok and string.find(s, "\0", 1, true) then return false end
+  return utf8.len(s) ~= nil
+end
+
+-- THE WRITE CONTRACT (docs/SPEC.md §5.1). Lua has no assert idiom, so every
+-- writer refuses, in every build, a value its declaration does not admit:
+-- a ranged integer or fixed-point raw value off its min/max (row 1), a bits(N)
+-- value wider than N bits (row 2), a counted array's count past its bound or
+-- below its min (row 3), a string(N) or bytes(N) longer than N (row 4), an
+-- enum that names no variant (row 5), a union tag outside its arm set (row 6),
+-- ill-formed text, a string blob's included (row 8) and a ranged float off
+-- its range (row 10). Row 7, a NaN or an infinity, is the encoders' own
+-- refusal (D.refuse_non_finite names it). A value no writer carries (an
+-- optional not present, a field under a false guard) is not walked: it is
+-- elided whatever its storage holds.
+local invalid_in
+
+-- signed or unsigned order of two 64-bit Lua integers
+local function int_less(signed, a, b)
+  if signed then return a < b end
+  return math.ult(a, b)
+end
+
+-- the same over two { lo, hi } halves, the high half carrying the sign
+local function wide_less(signed, a, b)
+  if a.hi ~= b.hi then return int_less(signed, a.hi, b.hi) end
+  return math.ult(a.lo, b.lo)
+end
+
+local function invalid_value(T, d, val, where, seen, zero_ok)
+  if val == nil or d == nil then return nil end
+  local s = d.shape
+  if s == "int" then
+    -- a float where an integer belongs is a named refusal, never a silent
+    -- coercion (docs/PORT-LUA.md, THE TYPE MAPPING)
+    if math.type(val) ~= "integer" then return where end
+    if d.lo ~= nil and (int_less(d.signed, val, d.lo) or int_less(d.signed, d.hi, val)) then return where end
+    if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < 64 and math.ult((1 << d.bits) - 1, val) then
+      return where
+    end
+  elseif s == "wide" then
+    if type(val) ~= "table" or math.type(val.lo) ~= "integer" or math.type(val.hi) ~= "integer" then return where end
+    if d.lo ~= nil and (wide_less(d.signed, val, d.lo) or wide_less(d.signed, d.hi, val)) then return where end
+  elseif s == "float" then
+    if type(val) ~= "number" then return where end
+    -- a NaN compares false both ways and is row 7's, named by its own walk
+    if d.fmin ~= nil and (val < d.fmin or val > d.fmax) then return where end
+  elseif s == "string" or s == "bytes" then
+    if val == false then return nil end
+    if type(val) ~= "string" then return where end
+    if d.bound ~= nil and d.bound > 0 and #val > d.bound then return where end
+    if s == "string" and not D.text_ok(val, zero_ok) then return where end
+  elseif s == "string_blob" then
+    -- a blob is unbounded; its box (a table holding .value) or its bare
+    -- string is the node the numbering owns, and its text is row 8's
+    local body = type(val) == "table" and val.value or val
+    if type(body) == "string" and not D.text_ok(body, zero_ok) then return where end
+  elseif s == "enum" then
+    -- None is nil, and false in a sequence
+    if val == false then return nil end
+    if type(val) ~= "string" then return where end
+    for _, var in ipairs(d.variants or {}) do
+      if var[1] == val then return nil end
+    end
+    return where
+  elseif s == "array" then
+    if type(val) ~= "table" then return where end
+    if not d.fixed and not d.keyed and not d.list then
+      if #val > d.bound or #val < (d.min or 0) then return where end
+    end
+    for _, x in ipairs(val) do
+      local hit = invalid_value(T, d.elem, x, where, seen, zero_ok)
+      if hit then return hit end
+    end
+  elseif s == "map" then
+    if type(val) ~= "table" then return where end
+    for k, x in pairs(val) do
+      local hit = invalid_value(T, d.key_field, k, where, seen, zero_ok)
+        or invalid_value(T, d.value_field, x, where, seen, zero_ok)
+      if hit then return hit end
+    end
+  elseif s == "table" or s == "pointer" then
+    if val == false then return nil end
+    local desc = T.Tables[d.target]
+    if desc ~= nil and type(val) == "table" then return invalid_in(T, desc, val, seen, zero_ok) end
+  elseif s == "union" then
+    local u = T.Unions[d.target]
+    if u == nil or type(val) ~= "table" then return nil end
+    local tag = val.tag or 0
+    if math.type(tag) ~= "integer" or tag < 0 or tag > #u.arms then return where end
+    local arm = u.arms[tag]
+    if tag ~= 0 and arm ~= nil and arm.field ~= nil then
+      return invalid_value(T, arm.field, val[arm.slot], u.name .. "." .. arm.name, seen, zero_ok)
+    end
+  end
+  return nil
+end
+
+invalid_in = function(T, desc, v, seen, zero_ok)
+  if seen[v] then return nil end
+  seen[v] = true
+  for _, fd in ipairs(desc.fields) do
+    local rides = D.guard_holds(fd, v) and (not fd.optional or v[fd.name .. "_present"] == true)
+    if rides then
+      local hit = invalid_value(T, fd, v[fd.name], desc.name .. "." .. fd.name, seen, zero_ok)
+      if hit then return hit end
+    end
+  end
+  return nil
+end
+
+-- D.refuse_invalid is the write contract's refusal text,
+-- "invalid_value: <Owner>.<field>", or nil when v breaks no row of it. zero_ok
+-- is the text writer's: a zero byte in text is written as \u0000.
+function D.refuse_invalid(T, name, v, zero_ok)
+  local desc = T.Tables[name]
+  if desc == nil or type(v) ~= "table" then return nil end
+  local hit = invalid_in(T, desc, v, {}, zero_ok)
+  if hit == nil then return nil end
+  return "invalid_value: " .. hit
+end
+
+-- D.refuse_write is every writer's refusal before its first byte: a retired
+-- variant (§2.15), then the write contract (docs/SPEC.md §5.1).
+function D.refuse_write(T, name, v, zero_ok)
+  return D.refuse_deprecated(T, name, v) or D.refuse_invalid(T, name, v, zero_ok)
+end
+
 -- THE FINITE RULE ON WRITE (docs/SPEC-TABLES.md §3.3):
 -- every writer refuses a
 -- float holding a NaN or an infinity, and the encoders test each float as they
