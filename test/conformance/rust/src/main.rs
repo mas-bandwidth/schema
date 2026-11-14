@@ -1571,10 +1571,10 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
         }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
-            let Some(mut v) = load(&data, &mut report) else {
+            let Some(v) = load(&data, &mut report) else {
                 fail(&format!("{}: load refused {}", f[1], f[4]));
             };
-            match damage_text(&mut v, &f[5]) {
+            match damage_text(&f[5]) {
                 Damage::Placed => Some(match to_json(&v) {
                     Some(text) => text.into_bytes(),
                     None => b"refused\n".to_vec(),
@@ -1606,8 +1606,9 @@ enum Damage {
 // damage_text puts into a fixed root's top-level text field what no read
 // delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
 // bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
-// The field is reached by the root's concrete type.
-fn damage_text(value: &mut dyn std::any::Any, damage: &str) -> Damage {
+// A narrow field is a Rust String, which cannot hold 61 FF 62, so no damage
+// this leg is asked for reaches the value and the value is not taken.
+fn damage_text(damage: &str) -> Damage {
     if damage == "none" {
         return Damage::Placed;
     }
