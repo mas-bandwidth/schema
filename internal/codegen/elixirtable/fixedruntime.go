@@ -1777,8 +1777,8 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp step([{:present, src, inner} | rest], body, writes, report) do
-    # AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
-    # held to a bound either.
+    # AN ABSENT OPTIONAL'S PAYLOAD IS SLACK (§3.4): no value rule and no bound
+    # runs on it, and that it is zero is dead/2's check, run before the plan.
     case body do
       <<_::binary-size(^src), p, _::binary>> when p != 0 ->
         step([inner | rest], body, writes, report)
@@ -1836,9 +1836,8 @@ const fixedRuntimeBody = `  @moduledoc """
         {v, report} = clamp_count(raw, cap, report)
 
         # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), over the USED UNITS and
-        # over nothing else: the slack carries no meaning, and reading a whole
-        # declared bound to check bytes that mean nothing is the cost this form
-        # exists to avoid.
+        # over nothing else: the slack carries no value, and that it is zero is
+        # the slack rule's check, dead/2, run before the plan.
         if text_ok?(flavour, binary_part(take, 0, v)) do
           step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
         else

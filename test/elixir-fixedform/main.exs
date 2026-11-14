@@ -1132,9 +1132,18 @@ Leg.retired(
 _ = compiled_enum_past_the_last_variant
 
 # ORDINAL 0 IS None AND IS NOT A CLAMP, which is what keeps the counter honest.
-{:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(0, 0)))
+# Under tag 0 every arm byte is slack, and slack is zero (docs/SPEC-TABLES.md
+# §3.4, THE SLACK RULE), so the None record carries a zero arm.
+none_body = <<0::unsigned-8, 0::unsigned-8, 0::little-signed-32, 99::little-signed-32>>
+{:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(none_body))
 Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect}, {:none, nil})
 Leg.eq("so nothing is counted", none_report.unknown, 0)
+
+Leg.eq(
+  "a stained arm under tag 0 is slack that is not zero, and refuses",
+  Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(0, 0))),
+  {:error, :wire_damaged, Tblfe1.FixedRuntime.report()}
+)
 
 # THE 64-BIT TEMPORARY (schema#876 C6): a width-8 ordinal is read WHOLE through
 # a 64-bit temporary, never truncated to a narrower one. A 32-bit temp reads the

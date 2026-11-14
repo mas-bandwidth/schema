@@ -695,8 +695,9 @@ func (g *fixedGen) emitLines(lines []string) {
 // IT WALKS ONLY WHAT A READ CAN HAVE WRITTEN, which is the reference's rule
 // (internal/codegen/cpptable/fixedform.go): a counted array's LIVE elements
 // and never its slack, a union's named arm and no other, an optional's payload
-// only when its present byte says so. Slack is unspecified on read and moves
-// no counter (docs/SPEC-TABLES.md §3.4).
+// only when its present byte says so. Slack moves no counter and no value rule
+// runs on it; that it is zero is the slack rule's check (docs/SPEC-TABLES.md
+// §3.4), R.dead/2 over the record body before the plan runs.
 
 // rseg is one type's decode: the MATCH segments consuming its image, the
 // STATEMENTS that turn what they bound into terms and move the count, and the

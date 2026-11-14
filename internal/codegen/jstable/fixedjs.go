@@ -1039,10 +1039,11 @@ func (g *fixedGen) emitDeadElement(f *ir.Field, base string, at int64, ind strin
 // be reading a number where the wire states a flag.
 //
 // AN ABSENT FIELD'S PAYLOAD IS NEVER PROJECTED. The bytes behind a zero flag
-// are whatever the writer's storage happened to hold; they are not the value,
-// and a reader that landed them would be handing the consumer a value the
-// writer said was not there. The field takes its DECLARED DEFAULT instead,
-// which is what the prefill already says an absent field reads as.
+// are slack: they are not the value, and the slack rule (docs/SPEC-TABLES.md
+// §3.4) holds them zero in <S>FixedDeadZero before this decode runs, so a
+// stained payload has already refused the read. The field takes its DECLARED
+// DEFAULT instead, which is what the prefill already says an absent field reads
+// as.
 func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
 		name := js.MemberName(f.Name)

@@ -6,7 +6,7 @@ package jstable
 // docs/FIXED-FORM-ALGORITHM.md §3.1 (the write: a template then stores, the
 // slack rule, A union writes the tag and the taken arm only, write-side checks
 // are DEBUG only), §4.6 (the bounds pass walks only what a read can have
-// written), docs/SPEC-TABLES.md §3.4 (slack is unspecified on read), and the
+// written), docs/SPEC-TABLES.md §3.4 (the slack rule: slack is zero on read), and the
 // fixed-form runtime this leg emits. One subtest per task id, each clause read
 // off the JavaScript this leg emits.
 //
@@ -145,11 +145,12 @@ func t07C14(t *testing.T) {
 	}
 }
 
-// t07W4: W4 [weak] "read slack unspecified" (§3.1: "Slack is UNSPECIFIED on
-// read and not a refusal: a reader validates the USED UNITS only, and non-zero
-// slack is not malformed, not a refusal, and moves no counter."). The emitted
-// decode never looks past the used units: the range refusal is inside the live
-// loop and no content check sets malformed.
+// t07W4: W4 [weak] "read slack unspecified" (§3.1), superseded by THE SLACK
+// RULE (docs/SPEC-TABLES.md §3.4; owner, 2026-11-10: "Every dead byte"):
+// slack is zero, or the read refuses wire_damaged, and slack is checked for
+// zero and nothing else. The emitted decode still never runs a value rule past
+// the used units: the range refusal is inside the live loop and no content
+// check sets malformed. The zero check is TFixedDeadZero's.
 func t07W4(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
@@ -160,6 +161,7 @@ func t07W4(t *testing.T) {
 	if strings.Contains(dec, "malformed") {
 		t.Error("W4: the decode refuses on body content; non-zero slack is not malformed")
 	}
+	t02Has(t, t02Norm(src), "export function TFixedDeadZero(view, at) {", "W4 the slack is held zero apart from the decode")
 }
 
 // t07W9: W9 [verify] "prefill unwritten ranges only" (§3.1's reader: the
