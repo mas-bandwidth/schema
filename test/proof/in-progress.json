@@ -14,6 +14,16 @@
       "slug": "relax/proof-cook-write-java"
     },
     {
+      "row": "surface cook-write",
+      "lang": "elixir",
+      "slug": "relax/proof-blob-shared-elixir"
+    },
+    {
+      "row": "cases blobdemo",
+      "lang": "elixir",
+      "slug": "relax/proof-blob-shared-elixir"
+    },
+    {
       "row": "porting I15",
       "lang": "elixir",
       "slug": "relax/proof-i15-elixir"
