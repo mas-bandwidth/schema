@@ -405,11 +405,23 @@ tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus
 # else. One workspace and ONE cargo invocation is the two-minute rule — fifty
 # separate `cargo run`s would serialize on the target directory's build lock and
 # compile `serialize-official` behind each of them.
-.PHONY: tables-rust-versioning
-tables-rust-versioning: tables-fixedform-corpus
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
-		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning|TestFixedRoadmapRustT12FramingText'
+#
+# TWO HALVES, so the per-commit lane runs them as two parallel jobs under the
+# fleet's two-minute cap (.github/workflows/ci-fast.yml): -probes is the probe
+# workspace's one cargo run (TestFixedVersioning), -t12 the framing-text rows,
+# which drive `make tables-rust-fixedform` themselves. tables-rust-versioning
+# is both, as before, for `make test` and ci-full.yml.
+.PHONY: tables-rust-versioning tables-rust-versioning-probes tables-rust-versioning-t12
+tables-rust-versioning: tables-rust-versioning-probes tables-rust-versioning-t12
 	@echo 'tables Rust versioning: §5 read both columns of every row against the C++ reference bytes'
+
+tables-rust-versioning-probes: tables-fixedform-corpus
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+
+tables-rust-versioning-t12: tables-fixedform-corpus
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedRoadmapRustT12FramingText'
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
