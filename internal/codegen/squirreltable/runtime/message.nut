@@ -642,14 +642,14 @@ local readScalar = function(r, T, v, fd, shape) {
       if (typeof x != "array") x = [x, 0];
       x = u128add(x, shape.Base);
     } else if (typeof x == "array") {
-      // a narrower peer's base is one lane; carry it into the low half
+      // a narrower writer's base is one lane; carry it into the low half
       x = u128add(x, [shape.Base, (fd.signed && shape.Base < 0) ? 0xffffffffffffffff : 0]);
     } else x += shape.Base;
   }
   else {
     if (shape.Kind>=2 && shape.Kind<=5) {local sw=8<<(shape.Kind-2);if(sw<64 && (x&(1<<(sw-1)))!=0)x-=(1<<sw);}
   }
-  // A NARROWER PEER WIDENED INTO A 128-BIT DECLARATION is extended to the
+  // A NARROWER WRITER WIDENED INTO A 128-BIT DECLARATION is extended to the
   // declaration's signedness, exactly as the Go engine's sixteen-byte widening
   if (wideField && typeof x != "array") x = [x, (fd.signed && x < 0) ? 0xffffffffffffffff : 0];
   // A VALUE OUTSIDE THE READER'S RANGE REFUSES out_of_range (docs/SPEC-TABLES.md
@@ -664,7 +664,7 @@ local readScalar = function(r, T, v, fd, shape) {
     } else if (x < fd.lo || x > fd.hi) { refuseRead(r, "out_of_range"); return 0; }
   }
   // A plain integer has the domain of its declared kind even when the
-  // announcing peer supplies a wider ranged packing (§3.3). The sender's
+  // announcing writer supplies a wider ranged packing (§3.3). The sender's
   // base and offset cannot widen the receiver's storage type.
   if (fd.shape == "int") {
     if ((fd.kind == 2 && (x < -128 || x > 127)) ||
