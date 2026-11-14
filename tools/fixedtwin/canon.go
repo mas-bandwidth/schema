@@ -395,6 +395,7 @@ func normalizeSyntax(s string) string {
 		{"inline int TableFixedKnownKind", "inline bool TableFixedKnownKind"},
 		{"inline int TableFixedParseLayout", "inline bool TableFixedParseLayout"},
 		{"inline int TableFixedRefuseScan", "inline bool TableFixedRefuseScan"},
+		{"inline int TableFixedDead", "inline bool TableFixedDead"},
 		{"const TableFixedEntry * p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry & p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry * e", "const TableFixedEntry REF e"},
@@ -424,6 +425,8 @@ func normalizeSyntax(s string) string {
 		{"int want_guarded;", "bool want_guarded;"},
 		{"int overflow;", "bool overflow;"},
 		{"int hostile;", "bool hostile;"},
+		{"int no_dead;", "bool no_dead;"},
+		{"const int saved_no_dead", "const bool saved_no_dead"},
 		{"int skip_clamp;", "bool skip_clamp;"},
 		{"int named;", "bool named;"},
 		{"int kids_are_variants;", "bool kids_are_variants;"},
@@ -437,6 +440,7 @@ func normalizeSyntax(s string) string {
 		{"want_guarded = 1", "want_guarded = true"},
 		{"overflow = 1", "overflow = true"},
 		{"hostile = 1", "hostile = true"},
+		{"no_dead = 1", "no_dead = true"},
 		{"skip_clamp = 1", "skip_clamp = true"},
 		{"skip_clamp = 0", "skip_clamp = false"},
 		{"named = 1", "named = true"},
@@ -488,6 +492,7 @@ func normalizeSyntax(s string) string {
 		"inline bool TableFixedKnownKind",
 		"inline bool TableFixedParseLayout",
 		"inline bool TableFixedRefuseScan",
+		"inline bool TableFixedDead",
 	} {
 		s = rewriteReturnsInFunc(s, fn)
 	}
@@ -855,10 +860,19 @@ var (
 	// compared on everything else, and this rule goes when both legs refuse in
 	// the check pass.
 	reOwedBoolByte = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*out_of_range\)\+\+;\s*\}`)
+	// THE SLACK RULE IS ANSWERED IN EACH LEG'S OWN REFUSAL PASS
+	// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): C counts a non-zero dead byte
+	// as damaged inside Apply, beside the bool byte, and C++ refuses it
+	// wire_damaged in TableFixedRefuseScan before a byte lands, beside the
+	// count and length bounds — the scan this map already strips. The span
+	// itself is TableFixedDead, spelled the same in both runtimes and compared
+	// line for line; only C's Apply case that calls it is stripped here.
+	reDeadApplyCase = regexp.MustCompile(`case kTableFixedDead:\s*\{\s*if\s*\(\s*table_fixed_dead\(\s*p,\s*src\s*\)\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}\s*break;\s*\}`)
 )
 
 func rewriteCCounter(s string) string {
 	s = reOwedBoolByte.ReplaceAllString(s, "")
+	s = reDeadApplyCase.ReplaceAllString(s, "")
 	s = reCCounterParam.ReplaceAllString(s, "int32_t & oor_count, int32_t & widened")
 	s = reCCounterInc.ReplaceAllString(s, "oor_count++")
 	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened )")

@@ -774,6 +774,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	if older > 0 {
 		stride := ir.TableFixedLeafCount(g.unit, st)*2 + len(entries)*2 + 128
+		// THE SLACK CHECKS RIDE THE SAME STORAGE (§3.4, THE SLACK RULE): a
+		// compiled plan lays one per optional, counted array, text and arm the
+		// identity plan does, against the WRITER'S arms, so twice the identity
+		// plan's count holds a writer whose union carries more arms than ours.
+		for _, e := range plan {
+			if e.Op == ir.TableFixedOpDead {
+				stride += 2
+			}
+		}
 		// THE GUARD CHAINS RIDE THE SAME STORAGE (§5.8 row 6): a compiled
 		// plan lays each path's chain once per union on it, growing by one
 		// link a level, so a chain of k links costs at most k(k+1)/2 links
@@ -1093,6 +1102,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedText"
 	case ir.TableFixedOpBool:
 		return "kTableFixedBool"
+	case ir.TableFixedOpDead:
+		return "kTableFixedDead"
 	}
 	return "kTableFixedCopy"
 }
@@ -1115,7 +1126,11 @@ func (g *tableGen) fixedDstRow(e ir.TableFixedLayoutEntry) string {
 		// and the tag leads that storage, so the two offsets are the same byte
 		aux = dst + g.fixedTerms(d.Aux)
 	}
-	return fmt.Sprintf("{ %d, %d, %d, %d, %d }", dst, stride, aux, d.Counted, d.Meta)
+	deprecated := 0
+	if d.Deprecated {
+		deprecated = 1
+	}
+	return fmt.Sprintf("{ %d, %d, %d, %d, %d, %d }", dst, stride, aux, d.Counted, d.Meta, deprecated)
 }
 
 // fixedTerms sums a destination's offsetof terms.
@@ -1227,9 +1242,9 @@ func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
 	}
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Optional {
-		/* AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
-		   held to a bound either: what rides there is zero from the template
-		   and nobody wrote it. */
+		/* AN ABSENT OPTIONAL'S PAYLOAD IS SLACK (§3.4, THE SLACK RULE): the read
+		   loop refused it unless every byte is zero, and slack is checked for
+		   zero and for nothing else, so it is not held to a bound. */
 		g.pf("%sif ( %s%s_present )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampPayload(f, val, indent+4)
 		g.pf("%s}\n", ind)
@@ -1292,7 +1307,9 @@ emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), the C
 	with no zero among them, checked over the USED LENGTH and nothing else. A payload
 	that is not text is a REFUSAL BY NAME, not damage: the `damaged` flag the
 	root's clamp turns into `refused` + `text_ill_formed`, nothing decoded and
-	no counter moved (§4.5, fix 11). The slack is unspecified and not judged.
+	no counter moved (§4.5, fix 11). The slack is the read loop's: it is zero or
+	the read was refused wire_damaged (§3.4, THE SLACK RULE), and no content
+	rule ever reads it.
 */
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s%s_length )", val, f.Name, val, f.Name)

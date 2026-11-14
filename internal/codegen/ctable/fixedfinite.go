@@ -76,7 +76,8 @@ func (g *tableGen) emitFixedFiniteField(f *ir.Field, val string, indent int) {
 	}
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Optional {
-		// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS SLACK (§3.4): the read refused it
+		// unless it is zero, and a zero is no value to ask a rule of
 		g.pf("%sif ( %s%s_present )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedFinitePayload(f, val, indent+4)
 		g.pf("%s}\n", ind)

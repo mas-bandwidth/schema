@@ -3464,7 +3464,22 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
-    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload reads as the declared default)
+    kTableFixedDead = 10, // slack: lands nothing, and a byte other than zero in it refuses wire_damaged (§3.4, THE SLACK RULE)
+};
+
+// meta on a kTableFixedDead entry: WHICH SPAN OF SLACK it holds to zero
+// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/rulings.json
+// fixed-dead-bytes-zero). A SPAN is size bytes at src, always — a union's arm
+// bytes behind the taken arm or under tag 0, under that tag's guard. A TAIL is
+// the units past a live count or used length: src is the word, size one
+// unit's bytes and aux the bound in units. An ABSENT payload is the size bytes
+// behind a present byte of 0 at src.
+enum : uint8_t
+{
+    kTableFixedDeadSpan = 0,
+    kTableFixedDeadTail = 1,
+    kTableFixedDeadAbsent = 2,
 };
 
 // meta on a kTableFixedText entry
@@ -3759,6 +3774,42 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// ---- THE SLACK RULE --------------------------------------------------------
+//
+// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; the owner,
+// 2026-11-10: "Every dead byte", "Be strict"). A conforming writer leaves
+// zeros in every byte of slack, so a byte other than zero there is a record no
+// conforming writer produced, and the read refuses it as wire_damaged. The
+// span is the WIRE'S — the writer's count, length, arm and present byte — and
+// it is checked for zero and for nothing else: no bool, range, ordinal or text
+// rule ever reads slack. The scan ORs the span together rather than branching
+// per byte, so it costs a pass over the slack and nothing over live data.
+inline bool TableFixedDead( const TableFixedEntry & p, const uint8_t * src )
+{
+    const uint8_t * s = src + p.src;
+    uint64_t from = 0;
+    uint64_t to = p.size;
+    uint8_t any = 0;
+    if ( p.meta == kTableFixedDeadTail )
+    {
+        // THE WORD IS HELD TO ITS BOUND HERE ONLY TO STAY INSIDE THE RECORD: a
+        // count or length past it is refused by its own op
+        int32_t v = (int32_t) TableFixedGet32( s );
+        if ( v < 0 ) { v = 0; }
+        if ( (uint32_t) v > p.aux ) { v = (int32_t) p.aux; }
+        from = 4u + (uint64_t) v * p.size;
+        to = 4u + (uint64_t) p.aux * p.size;
+    }
+    else if ( p.meta == kTableFixedDeadAbsent )
+    {
+        if ( s[0] != 0 ) { return false; }
+        from = 1u;
+        to = 1u + (uint64_t) p.size;
+    }
+    for ( ; from < to; ++from ) { any = (uint8_t) ( any | s[from] ); }
+    return any != 0;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3899,8 +3950,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         {
             // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
             // the payload copy above laid the wire's bytes down; when the flag
-            // is 0 those bytes are slack and never a value, so the reader
-            // overwrites them with the caller's own Reset image. Aux is the
+            // is 0 those bytes are slack — zero, or the pre-scan refused the
+            // read — and never a value, so the reader overwrites them with the
+            // caller's own Reset image. Aux is the
             // payload's storage offset and Size its storage bytes.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
@@ -3975,6 +4027,9 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
 // §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): count_over_bound for a count,
 // length_over_bound for a text length, checked before any destination byte is
 // written — the count or length lying about the wire and not about the slack.
+// AND EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): a kTableFixedDead entry
+// whose span holds a byte other than zero refuses wire_damaged here, before
+// any destination byte is written, under the same guards.
 // REFUSE is total: no counter moves, nothing is decoded, and not one destination
 // byte is written. It walks each entry under its own guards, reads only the
 // source and writes nothing. It answers true with the refusal in why; false
@@ -4038,6 +4093,11 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
                 why = length_over_bound;
                 return true;
             }
+        }
+        else if ( p.op == kTableFixedDead && TableFixedDead( p, src ) )
+        {
+            why = wire_damaged;
+            return true;
         }
     }
     return false;
@@ -4105,6 +4165,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
             break;
         }
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
+        case kTableFixedDead: break; // slack lands nothing
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
         case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
@@ -4631,6 +4692,7 @@ struct TableFixedDst
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
     uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
+    uint8_t deprecated = 0; // the top entry of a deprecated field: its slot is not slack (§3.4)
 };
 
 struct TableFixedCompiler
@@ -4644,6 +4706,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    bool no_dead = false; // inside a DEPRECATED field: its slot is not slack (§3.4), so no slack check is laid
     uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
     TableReport * report = NULL;
 };
@@ -4659,6 +4722,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // entry in the second half unconditionally.
     const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
     if ( second_half != c.want_guarded ) { return; }
+    if ( e.op == kTableFixedDead && c.no_dead ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -4672,7 +4736,12 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
                                    ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
                 ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+        // A SLACK CHECK REACHES ITS WHOLE SPAN: the word and the bound's units
+        // behind it for a tail, the present byte and the payload for an
+        // absent optional.
+        if ( e.op == kTableFixedDead && e.meta == kTableFixedDeadTail ) { reach = (uint64_t) e.src + 4ull + (uint64_t) e.aux * e.size; }
+        if ( e.op == kTableFixedDead && e.meta == kTableFixedDeadAbsent ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.size; }
         if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
@@ -4766,7 +4835,12 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
             const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
             if ( tc.id == mc.id )
             {
+                // A DEPRECATED FIELD'S SLOT IS NOT SLACK (§3.4): no slack check
+                // is laid anywhere under it
+                const bool saved_no_dead = c.no_dead;
+                if ( dst[my_child].deprecated ) { c.no_dead = true; }
                 TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
+                c.no_dead = saved_no_dead;
                 break;
             }
             their_off += tc.size;
@@ -4864,8 +4938,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
             // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
-            // when it is 0, the DECLARED DEFAULTS over the payload's slack
-            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // when it is 0, the DECLARED DEFAULTS over the payload's storage
+            // (§3.4: an absent optional reads as its declared default). The
             // payload's storage starts at the child's own destination and runs
             // to the present companion, which the reader's layout puts after it.
             const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
@@ -4880,6 +4954,15 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
+            // THE WRITER'S PAYLOAD UNDER A PRESENT BYTE OF 0 IS SLACK (§3.4)
+            TableFixedEntry dead;
+            dead.src = their_at;
+            dead.size = te.size - 1u;
+            dead.guard = guard;
+            dead.arg = arg;
+            dead.op = kTableFixedDead;
+            dead.meta = kTableFixedDeadAbsent;
+            TableFixedPush( c, dead );
             break;
         }
         case 13: // a nested table: match its fields
@@ -4915,6 +4998,16 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 e.op = kTableFixedCount;
                 e.arg = arg;
                 TableFixedPush( c, e );
+                // THE WRITER'S TAIL PAST ITS LIVE COUNT IS SLACK (§3.4)
+                TableFixedEntry dead;
+                dead.src = their_at;
+                dead.size = tel.size;
+                dead.aux = their_n;
+                dead.guard = guard;
+                dead.arg = arg;
+                dead.op = kTableFixedDead;
+                dead.meta = kTableFixedDeadTail;
+                TableFixedPush( c, dead );
             }
             for ( uint32_t i = 0; i < n; ++i )
             {
@@ -5006,6 +5099,34 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                     their_arm += TableFixedSubtree( theirs, their_arm );
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
+            }
+            // THE WRITER'S ARM BYTES ARE SLACK UNDER TAG 0, and behind its
+            // taken arm up to its widest (§3.4): one check per writer ordinal,
+            // under THEIR tag's guard, whichever arms this build names. A
+            // payload-free arm takes none of them.
+            {
+                const uint32_t widest = te.size - their_tag;
+                int32_t their_arm = ti + 1;
+                for ( uint32_t j = 0; j <= te.children; ++j )
+                {
+                    uint32_t taken = 0;
+                    if ( j > 0 )
+                    {
+                        const TableFixedLayoutEntry ta = TableFixedEntryAt( theirs, their_arm );
+                        taken = ta.kind == 32 ? 0u : ta.size;
+                        their_arm += TableFixedSubtree( theirs, their_arm );
+                    }
+                    if ( taken >= widest ) { continue; }
+                    TableFixedEntry dead;
+                    dead.src = their_at + their_tag + taken;
+                    dead.size = widest - taken;
+                    dead.guard = their_at;
+                    dead.arg = (uint64_t) j;
+                    dead.argw = c.argw;
+                    dead.op = kTableFixedDead;
+                    dead.meta = kTableFixedDeadSpan;
+                    TableFixedPush( c, dead );
+                }
             }
             // Nested: an arm inside an arm answers to the OUTER tag TOO — the
             // one that decides whether any of those bytes are there at all —
@@ -5099,6 +5220,16 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.arg = arg;
             e.meta = d.meta;
             TableFixedPush( c, e );
+            // THE WRITER'S BYTES PAST THE USED LENGTH ARE SLACK (§3.4)
+            TableFixedEntry dead;
+            dead.src = their_at;
+            dead.size = 1u;
+            dead.aux = te.size - 4u;
+            dead.guard = guard;
+            dead.arg = arg;
+            dead.op = kTableFixedDead;
+            dead.meta = kTableFixedDeadTail;
+            TableFixedPush( c, dead );
             break;
         }
         default:
@@ -16137,94 +16268,94 @@ constexpr int64_t TableEntityFixedLayoutBytes = (int64_t) sizeof( TableEntityFix
 // layout lands values through.
 constexpr TableFixedDst TableEntityFixedDst[] = {
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // TableEntity
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // entity_id
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // pos_x
     {
-        8, 0, 0, 0, 0
+        8, 0, 0, 0, 0, 0
     }, // pos_y
     {
-        12, 0, 0, 0, 0
+        12, 0, 0, 0, 0, 0
     }, // pos_z
     {
-        16, 0, 0, 0, 0
+        16, 0, 0, 0, 0, 0
     }, // yaw
     {
-        20, 0, 0, 0, 0
+        20, 0, 0, 0, 0, 0
     }, // pitch
     {
-        24, 0, 0, 0, 0
+        24, 0, 0, 0, 0, 0
     }, // vel_x
     {
-        28, 0, 0, 0, 0
+        28, 0, 0, 0, 0, 0
     }, // vel_y
     {
-        32, 0, 0, 0, 0
+        32, 0, 0, 0, 0, 0
     }, // vel_z
     {
-        36, 0, 0, 0, 0
+        36, 0, 0, 0, 0, 0
     }, // health
     {
-        40, 0, 0, 0, 0
+        40, 0, 0, 0, 0, 0
     }, // weapon
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Fists
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Pistol
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Shotgun
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Rifle
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Sniper
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Smg
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Rocket
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Grenade
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Plasma
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Railgun
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Flamer
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Mine
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Turret
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Drone
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Repair
     {
-        48, 0, 0, 0, 0
+        48, 0, 0, 0, 0, 0
     }, // damage
     {
-        56, 0, 0, 0, 0
+        56, 0, 0, 0, 0, 0
     }, // moving
     {
-        57, 0, 0, 0, 0
+        57, 0, 0, 0, 0, 0
     }, // firing
 };
 
@@ -16710,13 +16841,13 @@ constexpr int64_t TableStatFixedLayoutBytes = (int64_t) sizeof( TableStatFixedLa
 // layout lands values through.
 constexpr TableFixedDst TableStatFixedDst[] = {
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // TableStat
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // stat_id
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // delta
 };
 
@@ -17240,229 +17371,229 @@ constexpr int64_t TableMixedFixedLayoutBytes = (int64_t) sizeof( TableMixedFixed
 // layout lands values through.
 constexpr TableFixedDst TableMixedFixedDst[] = {
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // TableMixed
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // protocol_magic
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // sequence
     {
-        8, 0, 0, 0, 0
+        8, 0, 0, 0, 0, 0
     }, // ack_sequence
     {
-        12, 0, 0, 0, 0
+        12, 0, 0, 0, 0, 0
     }, // ack_bits
     {
-        16, 0, 0, 0, 0
+        16, 0, 0, 0, 0, 0
     }, // session_id
     {
-        24, 0, 0, 0, 0
+        24, 0, 0, 0, 0, 0
     }, // client_id
     {
-        32, 0, 0, 0, 0
+        32, 0, 0, 0, 0, 0
     }, // nonce
     {
-        40, 0, 0, 0, 0
+        40, 0, 0, 0, 0, 0
     }, // world_time
     {
-        48, 0, 0, 0, 0
+        48, 0, 0, 0, 0, 0
     }, // frame_tick
     {
-        56, 0, 0, 0, 0
+        56, 0, 0, 0, 0, 0
     }, // server_time
     {
-        64, 64, 576, 1, 0
+        64, 64, 576, 1, 0, 0
     }, // entities
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // element
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // entity_id
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // pos_x
     {
-        8, 0, 0, 0, 0
+        8, 0, 0, 0, 0, 0
     }, // pos_y
     {
-        12, 0, 0, 0, 0
+        12, 0, 0, 0, 0, 0
     }, // pos_z
     {
-        16, 0, 0, 0, 0
+        16, 0, 0, 0, 0, 0
     }, // yaw
     {
-        20, 0, 0, 0, 0
+        20, 0, 0, 0, 0, 0
     }, // pitch
     {
-        24, 0, 0, 0, 0
+        24, 0, 0, 0, 0, 0
     }, // vel_x
     {
-        28, 0, 0, 0, 0
+        28, 0, 0, 0, 0, 0
     }, // vel_y
     {
-        32, 0, 0, 0, 0
+        32, 0, 0, 0, 0, 0
     }, // vel_z
     {
-        36, 0, 0, 0, 0
+        36, 0, 0, 0, 0, 0
     }, // health
     {
-        40, 0, 0, 0, 0
+        40, 0, 0, 0, 0, 0
     }, // weapon
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Fists
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Pistol
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Shotgun
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Rifle
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Sniper
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Smg
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Rocket
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Grenade
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Plasma
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Railgun
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Flamer
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Mine
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Turret
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Drone
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // Repair
     {
-        48, 0, 0, 0, 0
+        48, 0, 0, 0, 0, 0
     }, // damage
     {
-        56, 0, 0, 0, 0
+        56, 0, 0, 0, 0, 0
     }, // moving
     {
-        57, 0, 0, 0, 0
+        57, 0, 0, 0, 0, 0
     }, // firing
     {
-        580, 8, 1220, 1, 0
+        580, 8, 1220, 1, 0, 0
     }, // stats
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // element
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // stat_id
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // delta
     {
-        1224, 0, 1224, 0, 0
+        1224, 0, 1224, 0, 0, 0
     }, // game_event
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // hit
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // target_id
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // damage
     {
-        8, 0, 0, 0, 0
+        8, 0, 0, 0, 0, 0
     }, // hit_kind
     {
-        12, 0, 0, 0, 0
+        12, 0, 0, 0, 0, 0
     }, // crit
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // chat
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // channel
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // speaker
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // pickup
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // item_id
     {
-        4, 0, 0, 0, 0
+        4, 0, 0, 0, 0, 0
     }, // amount
     {
-        1244, 1, 0, 0, 0
+        1244, 1, 0, 0, 0, 0
     }, // loadout
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // element
     {
-        1264, 0, 1248, 0, 1
+        1264, 0, 1248, 0, 1, 0
     }, // player_name
     {
-        1268, 1, 1284, 1, 3
+        1268, 1, 1284, 1, 3, 0
     }, // payload
     {
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0, 0
     }, // u8
     {
-        1288, 0, 0, 0, 0
+        1288, 0, 0, 0, 0, 0
     }, // aim_x
     {
-        1292, 0, 0, 0, 0
+        1292, 0, 0, 0, 0, 0
     }, // aim_y
     {
-        1296, 0, 0, 0, 0
+        1296, 0, 0, 0, 0, 0
     }, // aim_z
     {
-        1300, 0, 0, 0, 0
+        1300, 0, 0, 0, 0, 0
     }, // recoil
     {
-        1304, 0, 0, 0, 0
+        1304, 0, 0, 0, 0, 0
     }, // drift
     {
-        1312, 0, 0, 0, 0
+        1312, 0, 0, 0, 0, 0
     }, // wide_key
     {
-        1320, 0, 0, 0, 0
+        1320, 0, 0, 0, 0, 0
     }, // flux
     {
-        1328, 0, 0, 0, 0
+        1328, 0, 0, 0, 0, 0
     }, // ping
     {
-        1332, 0, 0, 0, 0
+        1332, 0, 0, 0, 0, 0
     }, // crc_hint
     {
-        1336, 0, 0, 0, 0
+        1336, 0, 0, 0, 0, 0
     }, // has_extra
     {
-        1340, 0, 0, 0, 0
+        1340, 0, 0, 0, 0, 0
     }, // extra
     {
-        1344, 0, 0, 0, 0
+        1344, 0, 0, 0, 0, 0
     }, // idle_ticks
 };
 
@@ -17513,21 +17644,29 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 1167u, 1288u, 48u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // aim_x
     { 1215u, 1336u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_extra
     { 1216u, 1340u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // extra
-    { 1111u, 1228u, 12u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // target_id
-    { 1123u, 1240u, 1u, 0u, 1110u, kTableFixedBool, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // crit
-    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // channel
-    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // item_id
+    { 54u, 0u, 51u, 8u, kTableFixedNoGuard, kTableFixedDead, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // entities slack
+    { 466u, 0u, 8u, 80u, kTableFixedNoGuard, kTableFixedDead, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // stats slack
+    { 1128u, 0u, 1u, 15u, kTableFixedNoGuard, kTableFixedDead, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // player_name slack
+    { 1147u, 0u, 1u, 16u, kTableFixedNoGuard, kTableFixedDead, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // payload slack
+    { 1111u, 1228u, 12u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // target_id
+    { 1123u, 1240u, 1u, 0u, 1110u, kTableFixedBool, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // crit
+    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // channel
+    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ) }, // item_id
+    { 1111u, 0u, 13u, 0u, 1110u, kTableFixedDead, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // game_event none slack
+    { 1119u, 0u, 5u, 0u, 1110u, kTableFixedDead, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // game_event.chat slack
+    { 1119u, 0u, 5u, 0u, 1110u, kTableFixedDead, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ) }, // game_event.pickup slack
 };
-constexpr int32_t TableMixedFixedPlanCount = 41;
-constexpr int32_t TableMixedFixedPlanGuarded = 37;
+constexpr int32_t TableMixedFixedPlanCount = 48;
+constexpr int32_t TableMixedFixedPlanGuarded = 41;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink TableMixedFixedGuards[] = {
+    { 1110u, 0u, 1 },
     { 1110u, 1u, 1 },
     { 1110u, 2u, 1 },
     { 1110u, 3u, 1 },
 };
-constexpr int32_t TableMixedFixedGuardCount = 3;
+constexpr int32_t TableMixedFixedGuardCount = 4;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between

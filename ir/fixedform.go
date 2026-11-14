@@ -216,7 +216,7 @@ func TableFixedElementBytes(f *Field) int64 {
 
 // TableFixedUnionBytes is C(union): the TAG at the width its variant count
 // derives, then the WIDEST ARM. The slack behind a narrower arm is zero on
-// write and ignored on read (§3.4).
+// write, and a reader refuses a record where it is not (§3.4, THE SLACK RULE).
 func TableFixedUnionBytes(un *Union) int64 {
 	widest := int64(0)
 	for _, v := range un.Variants {
@@ -447,6 +447,11 @@ type TableFixedDstSpec struct {
 	// field's flavour. It is named for the plan entry's meta lane, which is
 	// where it ends up, and it is not the guard's tag — that lane is arg's.
 	Meta int
+	// Deprecated marks the top entry of a `| deprecated` field. Its slot is
+	// not slack (§3.4, DEPRECATED SLOT), so a plan compiled from another
+	// writer's layout lays no slack check anywhere under it, as the identity
+	// plan lays none.
+	Deprecated bool
 }
 
 // TableFixedLayoutEntry is one seventeen-byte entry: an id, a kind, a constant
@@ -487,6 +492,12 @@ func TableFixedWalkRoot(st *Struct) []TableFixedLayoutEntry {
 }
 
 func tableFixedWalkField(w *tableFixedWalk, owner string, f *Field) {
+	at := len(w.entries)
+	defer func() {
+		if f.Deprecated && len(w.entries) > at {
+			w.entries[at].Dst.Deprecated = true
+		}
+	}()
 	id := TableFieldWireId(f)
 	size := TableFixedFieldBytes(f)
 	if f.Type.Optional {
@@ -920,13 +931,44 @@ const TableFixedNoGuard = int64(-1)
 // the C++ reference asks for this walk; Src is the flag on the wire, Dst the
 // flag in storage, Aux the payload's storage offset and Size the payload's
 // storage bytes.
+//
+// TableFixedOpDead is THE SLACK RULE (docs/SPEC-TABLES.md §3.4, the owner's
+// "Every dead byte", 2026-11-10; docs/rulings.json fixed-dead-bytes-zero): it
+// lands nothing and reads only the source, and a byte other than zero in the
+// span it names refuses the whole read as wire_damaged. Meta says which span:
+//
+//   - TableFixedDeadSpan: Size bytes at Src, always (a union's arm bytes
+//     behind the taken arm, or under tag 0, ride under that tag's guard).
+//   - TableFixedDeadTail: the units past a live count or used length. Src is
+//     the count or length word, Size one unit's bytes and Aux the bound in
+//     units, so the span is Src+4+v*Size .. Src+4+Aux*Size for the word's v.
+//   - TableFixedDeadAbsent: an optional's payload under a present byte of 0.
+//     Src is the present byte and Size the payload's bytes behind it.
+//
+// Slack is checked for zero and for nothing else: no bool, range, ordinal or
+// text rule ever reads it.
 const (
 	TableFixedOpCopy            = 0
 	TableFixedOpCount           = 1
 	TableFixedOpText            = 2
 	TableFixedOpBool            = 8
 	TableFixedOpPresentDefaults = 9
+	TableFixedOpDead            = 10
 )
+
+// The meta of a TableFixedOpDead entry: which span of slack it holds to zero.
+const (
+	TableFixedDeadSpan   = 0
+	TableFixedDeadTail   = 1
+	TableFixedDeadAbsent = 2
+)
+
+// tableFixedDeadLeaf is one slack check, unguarded until a union's walk stamps
+// its arm's guard onto it.
+func tableFixedDeadLeaf(src, size, aux int64, meta int, note string) TableFixedLeaf {
+	return TableFixedLeaf{Src: src, Size: size, Aux: aux, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard,
+		Op: TableFixedOpDead, Meta: meta, Note: note + " slack"}
+}
 
 // TableFixedGuardLink is one link of a guard chain: the byte offset of the tag
 // this condition reads, the ordinal it must hold, and the width it is compared
@@ -990,7 +1032,19 @@ type TableFixedLeaf struct {
 func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
 	off := int64(0)
 	for _, f := range st.Fields {
+		at := len(*out)
 		tableFixedFieldLeaves(u, st, f, src+off, dst, normaliseBool, presentDefaults, out)
+		if f.Deprecated {
+			// A DEPRECATED SLOT IS NOT SLACK (§3.4, DEPRECATED SLOT): its
+			// handling is its own, so the slack rule lays no check inside it.
+			kept := (*out)[:at]
+			for _, e := range (*out)[at:] {
+				if e.Op != TableFixedOpDead {
+					kept = append(kept, e)
+				}
+			}
+			*out = kept
+		}
 		off += TableFixedFieldBytes(f)
 	}
 }
@@ -1024,12 +1078,19 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normal
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_count"),
 			Size: f.ArrayBound, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
 		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, normaliseBool, presentDefaults, out)
+		*out = append(*out, tableFixedDeadLeaf(base, TableFixedElementBytes(f), f.ArrayBound, TableFixedDeadTail, f.Name))
 	case f.Type.Kind == TString:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 1, out)
+		*out = append(*out, tableFixedDeadLeaf(base, 1, f.Type.Size, TableFixedDeadTail, f.Name))
 	case f.Type.Kind == TBytes:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 3, out)
+		*out = append(*out, tableFixedDeadLeaf(base, 1, f.Type.Size, TableFixedDeadTail, f.Name))
 	default:
 		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, normaliseBool, presentDefaults, out)
+	}
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS SLACK, and slack is zero (§3.4).
+		*out = append(*out, tableFixedDeadLeaf(presentSrc, TableFixedFieldBytes(f)-TableFixedPresentBytes, 0, TableFixedDeadAbsent, f.Name))
 	}
 	if f.Type.Optional && presentDefaults {
 		// THE PRESENT FLAG AND THE ABSENT PAYLOAD IN ONE ENTRY, laid AFTER the
@@ -1101,12 +1162,15 @@ func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, n
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Size: f.ArrayBound,
 			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: note + " count"})
 		tableFixedElementLoopAt(u, f, src+TableFixedCountBytes, dst+valueOff, f.ArrayBound, normaliseBool, presentDefaults, out)
+		*out = append(*out, tableFixedDeadLeaf(src, TableFixedElementBytes(f), f.ArrayBound, TableFixedDeadTail, note))
 	case f.Type.Kind == TString:
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
 			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 1, Note: note})
+		*out = append(*out, tableFixedDeadLeaf(src, 1, f.Type.Size, TableFixedDeadTail, note))
 	case f.Type.Kind == TBytes:
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
 			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 3, Note: note})
+		*out = append(*out, tableFixedDeadLeaf(src, 1, f.Type.Size, TableFixedDeadTail, note))
 	default:
 		tableFixedElementLeavesAt(u, f, src, dst+valueOff, note, normaliseBool, presentDefaults, out)
 	}
@@ -1142,6 +1206,14 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, n
 			arms := TableFixedUnionArmOffset(u, r)
 			*out = append(*out, TableFixedLeaf{Src: src, Dst: dst, Size: tag,
 				Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note + " tag"})
+			// UNDER TAG 0 EVERY ARM BYTE IS SLACK, and slack is zero (§3.4): one
+			// check, under the tag's own guard at ordinal 0.
+			widest := TableFixedUnionBytes(r) - tag
+			if widest > 0 {
+				none := tableFixedDeadLeaf(src+tag, widest, 0, TableFixedDeadSpan, note+" none")
+				none.GuardLinks = []TableFixedGuardLink{{Guard: src, Arg: 0, ArgW: int(tag)}}
+				*out = append(*out, none)
+			}
 			for i, v := range r.Variants {
 				// THE GUARD IS STAMPED ON AFTERWARDS, over everything the arm
 				// wrote: an arm nested inside an arm answers to the OUTER tag,
@@ -1156,6 +1228,15 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, n
 				// only bound is the layout's 64 ([TableFixedMaxDepth]).
 				at := len(*out)
 				tableFixedArmLeaves(u, v, src+tag, dst+arms, note+"."+v.Name, normaliseBool, presentDefaults, out)
+				// THE BYTES BEHIND THE TAKEN ARM, up to the widest, are slack
+				// (§3.4); a payload-free arm takes none, so all of them are.
+				taken := int64(0)
+				if v.F != nil {
+					taken = TableFixedFieldBytes(v.F)
+				}
+				if widest > taken {
+					*out = append(*out, tableFixedDeadLeaf(src+tag+taken, widest-taken, 0, TableFixedDeadSpan, note+"."+v.Name))
+				}
 				for q := at; q < len(*out); q++ {
 					(*out)[q].GuardLinks = append((*out)[q].GuardLinks, TableFixedGuardLink{Guard: src, Arg: i + 1, ArgW: int(tag)})
 				}
@@ -1345,26 +1426,41 @@ func tableFixedGuardKey(links []TableFixedGuardLink) string {
 }
 
 func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded int) {
-	// THREE PASSES, NOT TWO. An UNGUARDED present-defaults entry must run after
+	// MORE PASSES THAN HALVES. An UNGUARDED present-defaults entry must run after
 	// the guarded entries of the payload it overwrites, or an absent optional
 	// whose payload holds a union would read the wire's residue back over the
 	// defaults: the guarded arm entries live in the second half, and a plain
 	// unguarded entry in the first half runs before them. So unguarded
-	// present-defaults entries are deferred to a third pass, after both halves;
+	// present-defaults entries are deferred to a last pass, after both halves;
 	// a GUARDED one (an optional inside a union arm) stays in the guarded half,
 	// where the walk already lays it after its own payload's guarded leaves.
-	for pass := range 3 {
+	//
+	// THE SLACK CHECKS RIDE AT THE END OF THEIR OWN HALF. They land nothing, so
+	// their place in the plan is free, and laid inline they would sit between
+	// two copies the coalescer otherwise folds into one (an array's elements and
+	// the field behind it). So each half lays its copies first and its
+	// TableFixedOpDead entries after them.
+	dead := func(e TableFixedLeaf) bool { return e.Op == TableFixedOpDead }
+	for pass := range 5 {
 		for _, e := range raw {
 			switch pass {
 			case 0:
-				if e.Guard != TableFixedNoGuard || e.Op == TableFixedOpPresentDefaults {
+				if e.Guard != TableFixedNoGuard || e.Op == TableFixedOpPresentDefaults || dead(e) {
 					continue
 				}
 			case 1:
-				if e.Guard == TableFixedNoGuard {
+				if e.Guard != TableFixedNoGuard || !dead(e) {
 					continue
 				}
 			case 2:
+				if e.Guard == TableFixedNoGuard || dead(e) {
+					continue
+				}
+			case 3:
+				if e.Guard == TableFixedNoGuard || !dead(e) {
+					continue
+				}
+			case 4:
 				if e.Op != TableFixedOpPresentDefaults || e.Guard != TableFixedNoGuard {
 					continue
 				}
@@ -1382,7 +1478,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			}
 			plan = append(plan, e)
 		}
-		if pass == 0 {
+		if pass == 1 {
 			guarded = len(plan)
 		}
 	}

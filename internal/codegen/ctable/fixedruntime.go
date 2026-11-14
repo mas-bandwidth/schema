@@ -75,7 +75,22 @@ enum
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
     kTableFixedPresent = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    kTableFixedBool    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    kTableFixedBool    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    kTableFixedDead    = 10 /* slack: lands nothing, and a byte other than zero in it refuses wire_damaged (§3.4, THE SLACK RULE) */
+};
+
+/* meta on a kTableFixedDead entry: WHICH SPAN OF SLACK it holds to zero
+   (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/rulings.json
+   fixed-dead-bytes-zero). A SPAN is size bytes at src, always — a union's arm
+   bytes behind the taken arm or under tag 0, under that tag's guard. A TAIL is
+   the units past a live count or used length: src is the word, size one
+   unit's bytes and aux the bound in units. An ABSENT payload is the size bytes
+   behind a present byte of 0 at src. */
+enum
+{
+    kTableFixedDeadSpan   = 0,
+    kTableFixedDeadTail   = 1,
+    kTableFixedDeadAbsent = 2
 };
 
 /* meta on a kTableFixedText entry */
@@ -494,6 +509,42 @@ static SCHEMA_UNUSED void table_fixed_store_native( uint8_t * dst, uint64_t v, u
     }
 }
 
+/* ---- THE SLACK RULE --------------------------------------------------------
+
+   EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; the owner,
+   2026-11-10: "Every dead byte", "Be strict"). A conforming writer leaves
+   zeros in every byte of slack, so a byte other than zero there is a record no
+   conforming writer produced, and the read refuses it as wire_damaged. The
+   span is the WIRE'S — the writer's count, length, arm and present byte — and
+   it is checked for zero and for nothing else: no bool, range, ordinal or text
+   rule ever reads slack. The scan ORs the span together rather than branching
+   per byte, so it costs a pass over the slack and nothing over live data. */
+static SCHEMA_UNUSED int table_fixed_dead( const TableFixedEntry * p, const uint8_t * src )
+{
+    const uint8_t * s = src + p->src;
+    uint64_t from = 0;
+    uint64_t to = p->size;
+    uint8_t any = 0;
+    if ( p->meta == kTableFixedDeadTail )
+    {
+        /* THE WORD IS HELD TO ITS BOUND HERE ONLY TO STAY INSIDE THE RECORD: a
+           count or length past it is refused by its own op */
+        int32_t v = (int32_t) table_fixed_get32( s );
+        if ( v < 0 ) { v = 0; }
+        if ( (uint32_t) v > p->aux ) { v = (int32_t) p->aux; }
+        from = 4u + (uint64_t) v * p->size;
+        to = 4u + (uint64_t) p->aux * p->size;
+    }
+    else if ( p->meta == kTableFixedDeadAbsent )
+    {
+        if ( s[0] != 0 ) { return 0; }
+        from = 1u;
+        to = 1u + (uint64_t) p->size;
+    }
+    for ( ; from < to; ++from ) { any = (uint8_t) ( any | s[from] ); }
+    return any != 0;
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -633,6 +684,14 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
         case kTableFixedPresent:
         {
             dst[p->dst] = 1;
+            break;
+        }
+        /* SLACK LANDS NOTHING AND IS ZERO (§3.4, THE SLACK RULE): a byte other
+           than zero is wire damage, which table_fixed_run turns into the
+           wire_damaged refusal, and the load resets every record. */
+        case kTableFixedDead:
+        {
+            if ( table_fixed_dead( p, src ) ) { (*damaged)++; }
             break;
         }
         default: break;
@@ -779,6 +838,7 @@ static SCHEMA_UNUSED void table_fixed_entry_lands( const TableFixedEntry * e, ui
             break;
         }
         case kTableFixedWidenF: lands[1] = e->dst + 8u; break;
+        case kTableFixedDead: break; /* slack lands nothing */
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e->dst + e->dstsize; break;
         default: lands[1] = e->dst + e->size; break; /* copy, const */
@@ -1196,6 +1256,7 @@ typedef struct TableFixedDst
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
     uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
+    uint8_t deprecated; /* the top entry of a deprecated field: its slot is not slack (§3.4) */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1213,6 +1274,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    int no_dead;       /* inside a DEPRECATED field: its slot is not slack (§3.4), so no slack check is laid */
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     TableReport * report;
 } TableFixedCompiler;
@@ -1232,6 +1294,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
        plan comes out partitioned without a second array to partition it in. */
     if ( ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+    if ( e.op == kTableFixedDead && c->no_dead ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -1245,7 +1308,12 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+        /* A SLACK CHECK REACHES ITS WHOLE SPAN: the word and the bound's units
+           behind it for a tail, the present byte and the payload for an
+           absent optional. */
+        if ( e.op == kTableFixedDead && e.meta == kTableFixedDeadTail ) { reach = (uint64_t) e.src + 4ull + (uint64_t) e.aux * e.size; }
+        if ( e.op == kTableFixedDead && e.meta == kTableFixedDeadAbsent ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.size; }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -1329,7 +1397,12 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
             const TableFixedLayoutEntry tc = table_fixed_entry_at( theirs, their_child );
             if ( tc.id == mc.id )
             {
+                /* A DEPRECATED FIELD'S SLOT IS NOT SLACK (§3.4): no slack check
+                   is laid anywhere under it */
+                const int saved_no_dead = c->no_dead;
+                if ( dst[my_child].deprecated ) { c->no_dead = 1; }
                 table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
+                c->no_dead = saved_no_dead;
                 break;
             }
             their_off += tc.size;
@@ -1411,6 +1484,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
                 table_fixed_push( c, e );
                 table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                /* THE WRITER'S PAYLOAD UNDER A PRESENT BYTE OF 0 IS SLACK (§3.4) */
+                TableFixedEntry dead = table_fixed_entry_zero();
+                dead.src = their_at; dead.size = te.size - 1u; dead.guard = guard; dead.arg = arg;
+                dead.op = kTableFixedDead; dead.meta = kTableFixedDeadAbsent;
+                table_fixed_push( c, dead );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -1446,6 +1524,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     TableFixedEntry e = table_fixed_entry_zero();
                     e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                     table_fixed_push( c, e );
+                    /* THE WRITER'S TAIL PAST ITS LIVE COUNT IS SLACK (§3.4) */
+                    TableFixedEntry dead = table_fixed_entry_zero();
+                    dead.src = their_at; dead.size = tel.size; dead.aux = their_n; dead.guard = guard; dead.arg = arg;
+                    dead.op = kTableFixedDead; dead.meta = kTableFixedDeadTail;
+                    table_fixed_push( c, dead );
                 }
                 for ( i = 0; i < n; ++i )
                 {
@@ -1532,6 +1615,31 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     }
                     my_arm += table_fixed_subtree( mine, my_arm );
                 }
+                /* THE WRITER'S ARM BYTES ARE SLACK UNDER TAG 0, and behind its
+                   taken arm up to its widest (§3.4): one check per writer
+                   ordinal, under THEIR tag's guard, whichever arms this build
+                   names. A payload-free arm takes none of them. */
+                {
+                    const uint32_t widest = te.size - their_tag;
+                    int32_t their_arm = ti + 1;
+                    uint32_t j;
+                    for ( j = 0; j <= te.children; ++j )
+                    {
+                        uint32_t taken = 0;
+                        if ( j > 0 )
+                        {
+                            const TableFixedLayoutEntry ta = table_fixed_entry_at( theirs, their_arm );
+                            taken = ta.kind == 32 ? 0u : ta.size;
+                            their_arm += table_fixed_subtree( theirs, their_arm );
+                        }
+                        if ( taken >= widest ) { continue; }
+                        TableFixedEntry dead = table_fixed_entry_zero();
+                        dead.src = their_at + their_tag + taken; dead.size = widest - taken;
+                        dead.guard = their_at; dead.arg = (uint64_t) j; dead.argw = c->argw;
+                        dead.op = kTableFixedDead; dead.meta = kTableFixedDeadSpan;
+                        table_fixed_push( c, dead );
+                    }
+                }
                 /* Nested: an arm inside an arm answers to the OUTER tag TOO — the
                    one that decides whether any of those bytes are there at all —
                    and its OWN arm selection must survive that (§4.1). So the two
@@ -1600,6 +1708,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
                 e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
+                /* THE WRITER'S BYTES PAST THE USED LENGTH ARE SLACK (§3.4) */
+                TableFixedEntry dead = table_fixed_entry_zero();
+                dead.src = their_at; dead.size = 1u; dead.aux = te.size - 4u; dead.guard = guard; dead.arg = arg;
+                dead.op = kTableFixedDead; dead.meta = kTableFixedDeadTail;
+                table_fixed_push( c, dead );
                 break;
             }
             default:

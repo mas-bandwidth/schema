@@ -61,7 +61,11 @@ func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 		// and the tag leads that storage, so the two offsets are the same byte
 		aux = dst + g.fixedTerms(d.Aux)
 	}
-	return fmt.Sprintf("{\n        %[1]d, %[2]d, %[3]d, %[4]d, %[5]d\n    }", dst, stride, aux, d.Counted, d.Meta)
+	deprecated := 0
+	if d.Deprecated {
+		deprecated = 1
+	}
+	return fmt.Sprintf("{\n        %[1]d, %[2]d, %[3]d, %[4]d, %[5]d, %[6]d\n    }", dst, stride, aux, d.Counted, d.Meta, deprecated)
 }
 
 // fixedTerms sums a destination's offsetof terms numerically, the same answer
@@ -1048,6 +1052,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedBool"
 	case ir.TableFixedOpPresentDefaults:
 		return "kTableFixedPresentDefaults"
+	case ir.TableFixedOpDead:
+		return "kTableFixedDead"
 	}
 	return "kTableFixedCopy"
 }
@@ -1161,9 +1167,9 @@ func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
 	}
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Optional {
-		// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
-		// held to a bound either: what rides there is zero from the template
-		// and nobody wrote it.
+		// AN ABSENT OPTIONAL'S PAYLOAD IS SLACK (§3.4, THE SLACK RULE): the
+		// pre-scan refused it unless every byte is zero, and slack is checked
+		// for zero and for nothing else, so it is not held to a bound.
 		g.pf("%sif ( %s.%s_present )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampPayload(f, val, indent+4)
 		g.pf("%s}\n", ind)
@@ -1185,8 +1191,8 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
-		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
-		// and a zero nobody wrote is not a value to hold to a range.
+		// THE LIVE COUNT AND NOT THE BOUND: the slack is zero or the pre-scan
+		// refused it (§3.4), and slack is never a value to hold to a range.
 		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
@@ -1200,15 +1206,15 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this
 // form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
 // among them; the check runs over the USED LENGTH and over nothing else, because the
-// slack carries no meaning and reading it would be the cost this form exists to
-// avoid.
+// slack carries no value: the pre-scan holds it to zero (§3.4, THE SLACK RULE).
 //
 // A PAYLOAD THAT IS NOT TEXT IS A REFUSAL BY NAME AND NOT DAMAGE: the
 // `damaged` flag the root's clamp turns into `refused` + `TableMessageReason::text_ill_formed`,
 // nothing decoded and no counter moved. It is the verdict the packet reader
 // gives (SPEC.md §4.7), where the whole read refuses; the clamp this file emits
 // is where that verdict lands on the fixed form (docs/FIXED-FORM-ALGORITHM.md
-// §4.5, fix 11). The slack is unspecified on read and never judged.
+// §4.5, fix 11). The slack is zero or the read was refused wire_damaged (§3.4,
+// THE SLACK RULE), and no content rule ever reads it.
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	if g.fixedCheck {

@@ -843,7 +843,22 @@ enum
     BENCH_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     BENCH_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BENCH_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    BENCH_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BENCH_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BENCH_K_TABLE_FIXED_DEAD    = 10 /* slack: lands nothing, and a byte other than zero in it refuses wire_damaged (§3.4, THE SLACK RULE) */
+};
+
+/* meta on a kTableFixedDead entry: WHICH SPAN OF SLACK it holds to zero
+   (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/rulings.json
+   fixed-dead-bytes-zero). A SPAN is size bytes at src, always — a union's arm
+   bytes behind the taken arm or under tag 0, under that tag's guard. A TAIL is
+   the units past a live count or used length: src is the word, size one
+   unit's bytes and aux the bound in units. An ABSENT payload is the size bytes
+   behind a present byte of 0 at src. */
+enum
+{
+    BENCH_K_TABLE_FIXED_DEAD_SPAN   = 0,
+    BENCH_K_TABLE_FIXED_DEAD_TAIL   = 1,
+    BENCH_K_TABLE_FIXED_DEAD_ABSENT = 2
 };
 
 /* meta on a kTableFixedText entry */
@@ -1262,6 +1277,42 @@ static SCHEMA_UNUSED void bench_table_fixed_store_native( uint8_t * dst, uint64_
     }
 }
 
+/* ---- THE SLACK RULE --------------------------------------------------------
+
+   EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; the owner,
+   2026-11-10: "Every dead byte", "Be strict"). A conforming writer leaves
+   zeros in every byte of slack, so a byte other than zero there is a record no
+   conforming writer produced, and the read refuses it as wire_damaged. The
+   span is the WIRE'S — the writer's count, length, arm and present byte — and
+   it is checked for zero and for nothing else: no bool, range, ordinal or text
+   rule ever reads slack. The scan ORs the span together rather than branching
+   per byte, so it costs a pass over the slack and nothing over live data. */
+static SCHEMA_UNUSED int bench_table_fixed_dead( const bench_table_fixed_entry_t * p, const uint8_t * src )
+{
+    const uint8_t * s = src + p->src;
+    uint64_t from = 0;
+    uint64_t to = p->size;
+    uint8_t any = 0;
+    if ( p->meta == BENCH_K_TABLE_FIXED_DEAD_TAIL )
+    {
+        /* THE WORD IS HELD TO ITS BOUND HERE ONLY TO STAY INSIDE THE RECORD: a
+           count or length past it is refused by its own op */
+        int32_t v = (int32_t) bench_table_fixed_get32( s );
+        if ( v < 0 ) { v = 0; }
+        if ( (uint32_t) v > p->aux ) { v = (int32_t) p->aux; }
+        from = 4u + (uint64_t) v * p->size;
+        to = 4u + (uint64_t) p->aux * p->size;
+    }
+    else if ( p->meta == BENCH_K_TABLE_FIXED_DEAD_ABSENT )
+    {
+        if ( s[0] != 0 ) { return 0; }
+        from = 1u;
+        to = 1u + (uint64_t) p->size;
+    }
+    for ( ; from < to; ++from ) { any = (uint8_t) ( any | s[from] ); }
+    return any != 0;
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1401,6 +1452,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_fixed_apply( con
         case BENCH_K_TABLE_FIXED_PRESENT:
         {
             dst[p->dst] = 1;
+            break;
+        }
+        /* SLACK LANDS NOTHING AND IS ZERO (§3.4, THE SLACK RULE): a byte other
+           than zero is wire damage, which table_fixed_run turns into the
+           wire_damaged refusal, and the load resets every record. */
+        case BENCH_K_TABLE_FIXED_DEAD:
+        {
+            if ( bench_table_fixed_dead( p, src ) ) { (*damaged)++; }
             break;
         }
         default: break;
@@ -1547,6 +1606,7 @@ static SCHEMA_UNUSED void bench_table_fixed_entry_lands( const bench_table_fixed
             break;
         }
         case BENCH_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
+        case BENCH_K_TABLE_FIXED_DEAD: break; /* slack lands nothing */
         case BENCH_K_TABLE_FIXED_WIDEN:
         case BENCH_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
         default: lands[1] = e->dst + e->size; break; /* copy, const */
@@ -1964,6 +2024,7 @@ typedef struct bench_table_fixed_dst_t
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
     uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
+    uint8_t deprecated; /* the top entry of a deprecated field: its slot is not slack (§3.4) */
 } bench_table_fixed_dst_t;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1981,6 +2042,7 @@ typedef struct bench_table_fixed_compiler_t
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    int no_dead;       /* inside a DEPRECATED field: its slot is not slack (§3.4), so no slack check is laid */
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     bench_table_report_t * report;
 } bench_table_fixed_compiler_t;
@@ -2000,6 +2062,7 @@ static SCHEMA_UNUSED void bench_table_fixed_push( bench_table_fixed_compiler_t *
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
        plan comes out partitioned without a second array to partition it in. */
     if ( ( e.guard != SCHEMA_BENCH_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+    if ( e.op == BENCH_K_TABLE_FIXED_DEAD && c->no_dead ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2013,7 +2076,12 @@ static SCHEMA_UNUSED void bench_table_fixed_push( bench_table_fixed_compiler_t *
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_BENCH_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == BENCH_K_TABLE_FIXED_TEXT || e.op == BENCH_K_TABLE_FIXED_COUNT ) ? 4ull : 0ull );
+        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == BENCH_K_TABLE_FIXED_TEXT || e.op == BENCH_K_TABLE_FIXED_COUNT ) ? 4ull : 0ull );
+        /* A SLACK CHECK REACHES ITS WHOLE SPAN: the word and the bound's units
+           behind it for a tail, the present byte and the payload for an
+           absent optional. */
+        if ( e.op == BENCH_K_TABLE_FIXED_DEAD && e.meta == BENCH_K_TABLE_FIXED_DEAD_TAIL ) { reach = (uint64_t) e.src + 4ull + (uint64_t) e.aux * e.size; }
+        if ( e.op == BENCH_K_TABLE_FIXED_DEAD && e.meta == BENCH_K_TABLE_FIXED_DEAD_ABSENT ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.size; }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -2097,7 +2165,12 @@ static SCHEMA_UNUSED void bench_table_fixed_match_children( bench_table_fixed_co
             const bench_table_fixed_layout_entry_t tc = bench_table_fixed_entry_at( theirs, their_child );
             if ( tc.id == mc.id )
             {
+                /* A DEPRECATED FIELD'S SLOT IS NOT SLACK (§3.4): no slack check
+                   is laid anywhere under it */
+                const int saved_no_dead = c->no_dead;
+                if ( dst[my_child].deprecated ) { c->no_dead = 1; }
                 bench_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
+                c->no_dead = saved_no_dead;
                 break;
             }
             their_off += tc.size;
@@ -2179,6 +2252,11 @@ static SCHEMA_UNUSED void bench_table_fixed_compile_entry( bench_table_fixed_com
                 e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = BENCH_K_TABLE_FIXED_BOOL; e.arg = arg;
                 bench_table_fixed_push( c, e );
                 bench_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                /* THE WRITER'S PAYLOAD UNDER A PRESENT BYTE OF 0 IS SLACK (§3.4) */
+                bench_table_fixed_entry_t dead = bench_table_fixed_entry_zero();
+                dead.src = their_at; dead.size = te.size - 1u; dead.guard = guard; dead.arg = arg;
+                dead.op = BENCH_K_TABLE_FIXED_DEAD; dead.meta = BENCH_K_TABLE_FIXED_DEAD_ABSENT;
+                bench_table_fixed_push( c, dead );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -2214,6 +2292,11 @@ static SCHEMA_UNUSED void bench_table_fixed_compile_entry( bench_table_fixed_com
                     bench_table_fixed_entry_t e = bench_table_fixed_entry_zero();
                     e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = BENCH_K_TABLE_FIXED_COUNT; e.arg = arg;
                     bench_table_fixed_push( c, e );
+                    /* THE WRITER'S TAIL PAST ITS LIVE COUNT IS SLACK (§3.4) */
+                    bench_table_fixed_entry_t dead = bench_table_fixed_entry_zero();
+                    dead.src = their_at; dead.size = tel.size; dead.aux = their_n; dead.guard = guard; dead.arg = arg;
+                    dead.op = BENCH_K_TABLE_FIXED_DEAD; dead.meta = BENCH_K_TABLE_FIXED_DEAD_TAIL;
+                    bench_table_fixed_push( c, dead );
                 }
                 for ( i = 0; i < n; ++i )
                 {
@@ -2300,6 +2383,31 @@ static SCHEMA_UNUSED void bench_table_fixed_compile_entry( bench_table_fixed_com
                     }
                     my_arm += bench_table_fixed_subtree( mine, my_arm );
                 }
+                /* THE WRITER'S ARM BYTES ARE SLACK UNDER TAG 0, and behind its
+                   taken arm up to its widest (§3.4): one check per writer
+                   ordinal, under THEIR tag's guard, whichever arms this build
+                   names. A payload-free arm takes none of them. */
+                {
+                    const uint32_t widest = te.size - their_tag;
+                    int32_t their_arm = ti + 1;
+                    uint32_t j;
+                    for ( j = 0; j <= te.children; ++j )
+                    {
+                        uint32_t taken = 0;
+                        if ( j > 0 )
+                        {
+                            const bench_table_fixed_layout_entry_t ta = bench_table_fixed_entry_at( theirs, their_arm );
+                            taken = ta.kind == 32 ? 0u : ta.size;
+                            their_arm += bench_table_fixed_subtree( theirs, their_arm );
+                        }
+                        if ( taken >= widest ) { continue; }
+                        bench_table_fixed_entry_t dead = bench_table_fixed_entry_zero();
+                        dead.src = their_at + their_tag + taken; dead.size = widest - taken;
+                        dead.guard = their_at; dead.arg = (uint64_t) j; dead.argw = c->argw;
+                        dead.op = BENCH_K_TABLE_FIXED_DEAD; dead.meta = BENCH_K_TABLE_FIXED_DEAD_SPAN;
+                        bench_table_fixed_push( c, dead );
+                    }
+                }
                 /* Nested: an arm inside an arm answers to the OUTER tag TOO — the
                    one that decides whether any of those bytes are there at all —
                    and its OWN arm selection must survive that (§4.1). So the two
@@ -2368,6 +2476,11 @@ static SCHEMA_UNUSED void bench_table_fixed_compile_entry( bench_table_fixed_com
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
                 e.op = BENCH_K_TABLE_FIXED_TEXT; e.arg = arg; e.meta = d->meta;
                 bench_table_fixed_push( c, e );
+                /* THE WRITER'S BYTES PAST THE USED LENGTH ARE SLACK (§3.4) */
+                bench_table_fixed_entry_t dead = bench_table_fixed_entry_zero();
+                dead.src = their_at; dead.size = 1u; dead.aux = te.size - 4u; dead.guard = guard; dead.arg = arg;
+                dead.op = BENCH_K_TABLE_FIXED_DEAD; dead.meta = BENCH_K_TABLE_FIXED_DEAD_TAIL;
+                bench_table_fixed_push( c, dead );
                 break;
             }
             default:
@@ -3880,81 +3993,81 @@ static SCHEMA_UNUSED const int64_t bench_fixed_table_fixed_layout_bytes = (int64
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const bench_table_fixed_dst_t bench_fixed_table_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* FixedTable */
-    { 0, 0, 0, 0, 0 }, /* value */
-    { 0, 0, 0, 0, 0 }, /* sequence */
-    { 4, 0, 0, 0, 0 }, /* ack_sequence */
-    { 8, 0, 0, 0, 0 }, /* ack_bits */
-    { 16, 0, 0, 0, 0 }, /* session_id */
-    { 24, 0, 0, 0, 0 }, /* client_id */
-    { 32, 0, 0, 0, 0 }, /* nonce */
-    { 40, 0, 0, 0, 0 }, /* world_time */
-    { 48, 0, 0, 0, 0 }, /* frame_tick */
-    { 56, 0, 0, 0, 0 }, /* server_time */
-    { 64, 64, 576, 1, 0 }, /* entities */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 0, 0, 0 }, /* entity_id */
-    { 4, 0, 0, 0, 0 }, /* pos_x */
-    { 8, 0, 0, 0, 0 }, /* pos_y */
-    { 12, 0, 0, 0, 0 }, /* pos_z */
-    { 16, 0, 0, 0, 0 }, /* yaw */
-    { 20, 0, 0, 0, 0 }, /* pitch */
-    { 24, 0, 0, 0, 0 }, /* vel_x */
-    { 28, 0, 0, 0, 0 }, /* vel_y */
-    { 32, 0, 0, 0, 0 }, /* vel_z */
-    { 36, 0, 0, 0, 0 }, /* health */
-    { 40, 0, 0, 0, 0 }, /* weapon */
-    { 0, 0, 0, 0, 0 }, /* Fists */
-    { 0, 0, 0, 0, 0 }, /* Pistol */
-    { 0, 0, 0, 0, 0 }, /* Shotgun */
-    { 0, 0, 0, 0, 0 }, /* Rifle */
-    { 0, 0, 0, 0, 0 }, /* Sniper */
-    { 0, 0, 0, 0, 0 }, /* Smg */
-    { 0, 0, 0, 0, 0 }, /* Rocket */
-    { 0, 0, 0, 0, 0 }, /* Grenade */
-    { 0, 0, 0, 0, 0 }, /* Plasma */
-    { 0, 0, 0, 0, 0 }, /* Railgun */
-    { 0, 0, 0, 0, 0 }, /* Flamer */
-    { 0, 0, 0, 0, 0 }, /* Mine */
-    { 0, 0, 0, 0, 0 }, /* Turret */
-    { 0, 0, 0, 0, 0 }, /* Drone */
-    { 0, 0, 0, 0, 0 }, /* Repair */
-    { 48, 0, 0, 0, 0 }, /* damage */
-    { 56, 0, 0, 0, 0 }, /* moving */
-    { 57, 0, 0, 0, 0 }, /* firing */
-    { 580, 8, 1220, 1, 0 }, /* stats */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 0, 0, 0 }, /* stat_id */
-    { 4, 0, 0, 0, 0 }, /* delta */
-    { 1224, 0, 1224, 0, 0 }, /* game_event */
-    { 4, 0, 0, 0, 0 }, /* hit */
-    { 0, 0, 0, 0, 0 }, /* target_id */
-    { 4, 0, 0, 0, 0 }, /* damage */
-    { 8, 0, 0, 0, 0 }, /* hit_kind */
-    { 12, 0, 0, 0, 0 }, /* crit */
-    { 4, 0, 0, 0, 0 }, /* chat */
-    { 0, 0, 0, 0, 0 }, /* channel */
-    { 4, 0, 0, 0, 0 }, /* speaker */
-    { 4, 0, 0, 0, 0 }, /* pickup */
-    { 0, 0, 0, 0, 0 }, /* item_id */
-    { 4, 0, 0, 0, 0 }, /* amount */
-    { 1244, 1, 0, 0, 0 }, /* loadout */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 1264, 0, 1248, 0, 1 }, /* player_name */
-    { 1268, 1, 1284, 1, 3 }, /* payload */
-    { 0, 0, 0, 0, 0 }, /* u8 */
-    { 1288, 0, 0, 0, 0 }, /* aim_x */
-    { 1292, 0, 0, 0, 0 }, /* aim_y */
-    { 1296, 0, 0, 0, 0 }, /* aim_z */
-    { 1300, 0, 0, 0, 0 }, /* recoil */
-    { 1304, 0, 0, 0, 0 }, /* drift */
-    { 1312, 0, 0, 0, 0 }, /* wide_key */
-    { 1328, 0, 0, 0, 0 }, /* flux */
-    { 1344, 0, 0, 0, 0 }, /* ping */
-    { 1348, 0, 0, 0, 0 }, /* crc_hint */
-    { 1352, 0, 0, 0, 0 }, /* has_extra */
-    { 1356, 0, 0, 0, 0 }, /* extra */
-    { 1360, 0, 0, 0, 0 }, /* idle_ticks */
+    { 0, 0, 0, 0, 0, 0 }, /* FixedTable */
+    { 0, 0, 0, 0, 0, 0 }, /* value */
+    { 0, 0, 0, 0, 0, 0 }, /* sequence */
+    { 4, 0, 0, 0, 0, 0 }, /* ack_sequence */
+    { 8, 0, 0, 0, 0, 0 }, /* ack_bits */
+    { 16, 0, 0, 0, 0, 0 }, /* session_id */
+    { 24, 0, 0, 0, 0, 0 }, /* client_id */
+    { 32, 0, 0, 0, 0, 0 }, /* nonce */
+    { 40, 0, 0, 0, 0, 0 }, /* world_time */
+    { 48, 0, 0, 0, 0, 0 }, /* frame_tick */
+    { 56, 0, 0, 0, 0, 0 }, /* server_time */
+    { 64, 64, 576, 1, 0, 0 }, /* entities */
+    { 0, 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0 }, /* entity_id */
+    { 4, 0, 0, 0, 0, 0 }, /* pos_x */
+    { 8, 0, 0, 0, 0, 0 }, /* pos_y */
+    { 12, 0, 0, 0, 0, 0 }, /* pos_z */
+    { 16, 0, 0, 0, 0, 0 }, /* yaw */
+    { 20, 0, 0, 0, 0, 0 }, /* pitch */
+    { 24, 0, 0, 0, 0, 0 }, /* vel_x */
+    { 28, 0, 0, 0, 0, 0 }, /* vel_y */
+    { 32, 0, 0, 0, 0, 0 }, /* vel_z */
+    { 36, 0, 0, 0, 0, 0 }, /* health */
+    { 40, 0, 0, 0, 0, 0 }, /* weapon */
+    { 0, 0, 0, 0, 0, 0 }, /* Fists */
+    { 0, 0, 0, 0, 0, 0 }, /* Pistol */
+    { 0, 0, 0, 0, 0, 0 }, /* Shotgun */
+    { 0, 0, 0, 0, 0, 0 }, /* Rifle */
+    { 0, 0, 0, 0, 0, 0 }, /* Sniper */
+    { 0, 0, 0, 0, 0, 0 }, /* Smg */
+    { 0, 0, 0, 0, 0, 0 }, /* Rocket */
+    { 0, 0, 0, 0, 0, 0 }, /* Grenade */
+    { 0, 0, 0, 0, 0, 0 }, /* Plasma */
+    { 0, 0, 0, 0, 0, 0 }, /* Railgun */
+    { 0, 0, 0, 0, 0, 0 }, /* Flamer */
+    { 0, 0, 0, 0, 0, 0 }, /* Mine */
+    { 0, 0, 0, 0, 0, 0 }, /* Turret */
+    { 0, 0, 0, 0, 0, 0 }, /* Drone */
+    { 0, 0, 0, 0, 0, 0 }, /* Repair */
+    { 48, 0, 0, 0, 0, 0 }, /* damage */
+    { 56, 0, 0, 0, 0, 0 }, /* moving */
+    { 57, 0, 0, 0, 0, 0 }, /* firing */
+    { 580, 8, 1220, 1, 0, 0 }, /* stats */
+    { 0, 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0 }, /* stat_id */
+    { 4, 0, 0, 0, 0, 0 }, /* delta */
+    { 1224, 0, 1224, 0, 0, 0 }, /* game_event */
+    { 4, 0, 0, 0, 0, 0 }, /* hit */
+    { 0, 0, 0, 0, 0, 0 }, /* target_id */
+    { 4, 0, 0, 0, 0, 0 }, /* damage */
+    { 8, 0, 0, 0, 0, 0 }, /* hit_kind */
+    { 12, 0, 0, 0, 0, 0 }, /* crit */
+    { 4, 0, 0, 0, 0, 0 }, /* chat */
+    { 0, 0, 0, 0, 0, 0 }, /* channel */
+    { 4, 0, 0, 0, 0, 0 }, /* speaker */
+    { 4, 0, 0, 0, 0, 0 }, /* pickup */
+    { 0, 0, 0, 0, 0, 0 }, /* item_id */
+    { 4, 0, 0, 0, 0, 0 }, /* amount */
+    { 1244, 1, 0, 0, 0, 0 }, /* loadout */
+    { 0, 0, 0, 0, 0, 0 }, /* element */
+    { 1264, 0, 1248, 0, 1, 0 }, /* player_name */
+    { 1268, 1, 1284, 1, 3, 0 }, /* payload */
+    { 0, 0, 0, 0, 0, 0 }, /* u8 */
+    { 1288, 0, 0, 0, 0, 0 }, /* aim_x */
+    { 1292, 0, 0, 0, 0, 0 }, /* aim_y */
+    { 1296, 0, 0, 0, 0, 0 }, /* aim_z */
+    { 1300, 0, 0, 0, 0, 0 }, /* recoil */
+    { 1304, 0, 0, 0, 0, 0 }, /* drift */
+    { 1312, 0, 0, 0, 0, 0 }, /* wide_key */
+    { 1328, 0, 0, 0, 0, 0 }, /* flux */
+    { 1344, 0, 0, 0, 0, 0 }, /* ping */
+    { 1348, 0, 0, 0, 0, 0 }, /* crc_hint */
+    { 1352, 0, 0, 0, 0, 0 }, /* has_extra */
+    { 1356, 0, 0, 0, 0, 0 }, /* extra */
+    { 1360, 0, 0, 0, 0, 0 }, /* idle_ticks */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 148 leaves by the schema compiler —
@@ -4261,19 +4374,27 @@ static SCHEMA_UNUSED const bench_table_fixed_entry_t bench_fixed_table_fixed_pla
     { 1227u, 1352u, 1u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* has_extra */
     { 1228u, 1356u, 4u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* extra */
     { 1232u, 1360u, 4u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* extra */
-    { 1109u, 1228u, 12u, 0u, 1108u, BENCH_K_TABLE_FIXED_COPY, 1, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* target_id */
-    { 1121u, 1240u, 1u, 0u, 1108u, BENCH_K_TABLE_FIXED_BOOL, 1, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* crit */
-    { 1109u, 1228u, 8u, 0u, 1108u, BENCH_K_TABLE_FIXED_COPY, 2, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* channel */
-    { 1109u, 1228u, 8u, 0u, 1108u, BENCH_K_TABLE_FIXED_COPY, 3, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* item_id */
+    { 52u, 0u, 51u, 8u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_DEAD, 0, 1, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* entities slack */
+    { 464u, 0u, 8u, 80u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_DEAD, 0, 1, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* stats slack */
+    { 1126u, 0u, 1u, 15u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_DEAD, 0, 1, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* player_name slack */
+    { 1145u, 0u, 1u, 16u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_DEAD, 0, 1, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* payload slack */
+    { 1109u, 1228u, 12u, 0u, 1108u, BENCH_K_TABLE_FIXED_COPY, 1, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* target_id */
+    { 1121u, 1240u, 1u, 0u, 1108u, BENCH_K_TABLE_FIXED_BOOL, 1, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* crit */
+    { 1109u, 1228u, 8u, 0u, 1108u, BENCH_K_TABLE_FIXED_COPY, 2, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* channel */
+    { 1109u, 1228u, 8u, 0u, 1108u, BENCH_K_TABLE_FIXED_COPY, 3, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 3 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* item_id */
+    { 1109u, 0u, 13u, 0u, 1108u, BENCH_K_TABLE_FIXED_DEAD, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* game_event none slack */
+    { 1117u, 0u, 5u, 0u, 1108u, BENCH_K_TABLE_FIXED_DEAD, 2, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* game_event.chat slack */
+    { 1117u, 0u, 5u, 0u, 1108u, BENCH_K_TABLE_FIXED_DEAD, 3, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 1, 3 * (int) sizeof( bench_table_fixed_guard_link_t ), 0 }, /* game_event.pickup slack */
 };
-static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_plan_count = 298;
-static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_plan_guarded = 294;
+static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_plan_count = 305;
+static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_plan_guarded = 298;
 static SCHEMA_UNUSED const bench_table_fixed_guard_link_t bench_fixed_table_fixed_guards[] = {
+    { 1108u, 0u, 1 },
     { 1108u, 1u, 1 },
     { 1108u, 2u, 1 },
     { 1108u, 3u, 1 },
 };
-static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_guard_count = 3;
+static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_guard_count = 4;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
