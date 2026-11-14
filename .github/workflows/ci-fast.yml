@@ -871,7 +871,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, wire-fuzz, packages, gates ]
+        part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -909,12 +909,14 @@ jobs:
           set -euo pipefail
           a="conformance-negative-control-lobster conformance-negative-control-lobster-walk"
           b="conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle"
+          c="conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-message"
           w="tables-lobster-wire-fuzz"
           p="test-lobster-packages"
           nightly="tables-lobster-fuzz tables-lobster-fuzz-negative-control"
           case "$PART" in
             conformance-a) make toolchain-lobster $a ;;
             conformance-b) make toolchain-lobster $b ;;
+            conformance-c) make toolchain-lobster $c ;;
             wire-fuzz)     make toolchain-lobster $w ;;
             packages)      make $p ;;
             gates)
@@ -924,7 +926,7 @@ jobs:
               [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
               rest=""
               for t in $all; do
-                case " $a $b $w $p $nightly " in *" $t "*) continue ;; esac
+                case " $a $b $c $w $p $nightly " in *" $t "*) continue ;; esac
                 rest="$rest $t"
               done
               echo "gates:$rest"
