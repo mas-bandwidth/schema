@@ -147,25 +147,17 @@ func TeamConfigMeasureBody(value *TeamConfig, ids *TableIds) int64 {
 }
 
 func TeamConfigMeasure(value *TeamConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !TeamConfigSaveBody(&w, value) {
+	if !TeamConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TeamConfigFixedMeasure(1)
 }
 
 func TeamConfigMeasureReason(value *TeamConfig) (int64, error) {
-	size := TeamConfigMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TeamConfigFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TeamConfigMeasure(value), nil
 }
 func TeamConfigSaveBody(w *TableWriter, value *TeamConfig) bool {
 	if !TeamConfigSaveBodyFields(w, value) {
@@ -240,17 +232,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 }
 
 func TeamConfigSave(value *TeamConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TeamConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TeamConfigFixedSave([]TeamConfig{*value}, buffer)
 }
 
 func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
@@ -363,9 +345,8 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 }
 
 // TeamConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TeamConfigFixedLoad reads form 3.
+// so this Load reads that form through TeamConfigFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TeamConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -382,6 +363,15 @@ func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		TeamConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TeamConfig
+		if TeamConfigFixedLoad(fixed[:], data, tableFixedReadPlanTeamConfig, read) != 1 {
+			TeamConfigReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TeamConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -630,20 +620,17 @@ func GunnerConfigMeasureBody(value *GunnerConfig, ids *TableIds) int64 {
 }
 
 func GunnerConfigMeasure(value *GunnerConfig) int64 {
-	var ids TableIds
-	body := GunnerConfigMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !GunnerConfigFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return GunnerConfigFixedMeasure(1)
 }
 
 func GunnerConfigMeasureReason(value *GunnerConfig) (int64, error) {
-	size := GunnerConfigMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !GunnerConfigFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return GunnerConfigMeasure(value), nil
 }
 func GunnerConfigSaveBody(w *TableWriter, value *GunnerConfig) bool {
 	if !GunnerConfigSaveBodyFields(w, value) {
@@ -680,17 +667,7 @@ func GunnerConfigSaveBodyFields(w *TableWriter, value *GunnerConfig) bool {
 }
 
 func GunnerConfigSave(value *GunnerConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !GunnerConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return GunnerConfigFixedSave([]GunnerConfig{*value}, buffer)
 }
 
 func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
@@ -788,9 +765,8 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 }
 
 // GunnerConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// GunnerConfigFixedLoad reads form 3.
+// so this Load reads that form through GunnerConfigFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // GunnerConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -807,6 +783,15 @@ func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) boo
 		read.Refuse(TableRefusePreviousForm, "")
 		GunnerConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]GunnerConfig
+		if GunnerConfigFixedLoad(fixed[:], data, tableFixedReadPlanGunnerConfig, read) != 1 {
+			GunnerConfigReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GunnerConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -995,25 +980,17 @@ func TurretConfigMeasureBody(value *TurretConfig, ids *TableIds) int64 {
 }
 
 func TurretConfigMeasure(value *TurretConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !TurretConfigSaveBody(&w, value) {
+	if !TurretConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TurretConfigFixedMeasure(1)
 }
 
 func TurretConfigMeasureReason(value *TurretConfig) (int64, error) {
-	size := TurretConfigMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TurretConfigFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TurretConfigMeasure(value), nil
 }
 func TurretConfigSaveBody(w *TableWriter, value *TurretConfig) bool {
 	if !TurretConfigSaveBodyFields(w, value) {
@@ -1078,17 +1055,7 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 }
 
 func TurretConfigSave(value *TurretConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TurretConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TurretConfigFixedSave([]TurretConfig{*value}, buffer)
 }
 
 func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
@@ -1212,9 +1179,8 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 }
 
 // TurretConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TurretConfigFixedLoad reads form 3.
+// so this Load reads that form through TurretConfigFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TurretConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -1231,6 +1197,15 @@ func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) boo
 		read.Refuse(TableRefusePreviousForm, "")
 		TurretConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TurretConfig
+		if TurretConfigFixedLoad(fixed[:], data, tableFixedReadPlanTurretConfig, read) != 1 {
+			TurretConfigReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TurretConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -1515,25 +1490,17 @@ func HullConfigMeasureBody(value *HullConfig, ids *TableIds) int64 {
 }
 
 func HullConfigMeasure(value *HullConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !HullConfigSaveBody(&w, value) {
+	if !HullConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return HullConfigFixedMeasure(1)
 }
 
 func HullConfigMeasureReason(value *HullConfig) (int64, error) {
-	size := HullConfigMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !HullConfigFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return HullConfigMeasure(value), nil
 }
 func HullConfigSaveBody(w *TableWriter, value *HullConfig) bool {
 	if !HullConfigSaveBodyFields(w, value) {
@@ -1778,17 +1745,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 }
 
 func HullConfigSave(value *HullConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !HullConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return HullConfigFixedSave([]HullConfig{*value}, buffer)
 }
 
 func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
@@ -1975,9 +1932,8 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 }
 
 // HullConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// HullConfigFixedLoad reads form 3.
+// so this Load reads that form through HullConfigFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // HullConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -1994,6 +1950,15 @@ func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		HullConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]HullConfig
+		if HullConfigFixedLoad(fixed[:], data, tableFixedReadPlanHullConfig, read) != 1 {
+			HullConfigReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !HullConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2526,25 +2491,17 @@ func KeyedConfigMeasureBody(value *KeyedConfig, ids *TableIds) int64 {
 }
 
 func KeyedConfigMeasure(value *KeyedConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !KeyedConfigSaveBody(&w, value) {
+	if !KeyedConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return KeyedConfigFixedMeasure(1)
 }
 
 func KeyedConfigMeasureReason(value *KeyedConfig) (int64, error) {
-	size := KeyedConfigMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !KeyedConfigFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return KeyedConfigMeasure(value), nil
 }
 func KeyedConfigSaveBody(w *TableWriter, value *KeyedConfig) bool {
 	if !KeyedConfigSaveBodyFields(w, value) {
@@ -3003,17 +2960,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 }
 
 func KeyedConfigSave(value *KeyedConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !KeyedConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return KeyedConfigFixedSave([]KeyedConfig{*value}, buffer)
 }
 
 func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
@@ -3268,9 +3215,8 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 }
 
 // KeyedConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// KeyedConfigFixedLoad reads form 3.
+// so this Load reads that form through KeyedConfigFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // KeyedConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -3287,6 +3233,15 @@ func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool 
 		read.Refuse(TableRefusePreviousForm, "")
 		KeyedConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]KeyedConfig
+		if KeyedConfigFixedLoad(fixed[:], data, tableFixedReadPlanKeyedConfig, read) != 1 {
+			KeyedConfigReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !KeyedConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -5487,6 +5442,8 @@ var TeamConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
+var tableFixedReadPlanTeamConfig = make([]TableFixedEntry, int(TeamConfigFixedPlanMax))
+
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TeamConfigFixedMeasure(count int64) int64 {
@@ -5726,6 +5683,8 @@ var GunnerConfigFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanGunnerConfig = make([]TableFixedEntry, int(GunnerConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5978,6 +5937,8 @@ var TurretConfigFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanTurretConfig = make([]TableFixedEntry, int(TurretConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -6256,6 +6217,8 @@ var HullConfigFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanHullConfig = make([]TableFixedEntry, int(HullConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -6613,6 +6576,8 @@ var KeyedConfigFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanKeyedConfig = make([]TableFixedEntry, int(KeyedConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

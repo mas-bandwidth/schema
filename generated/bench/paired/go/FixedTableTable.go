@@ -31,25 +31,17 @@ func FixedTableMeasureBody(value *FixedTable, ids *TableIds) int64 {
 }
 
 func FixedTableMeasure(value *FixedTable) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !FixedTableSaveBody(&w, value) {
+	if !FixedTableFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return FixedTableFixedMeasure(1)
 }
 
 func FixedTableMeasureReason(value *FixedTable) (int64, error) {
-	size := FixedTableMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !FixedTableFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return FixedTableMeasure(value), nil
 }
 func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 	{
@@ -84,17 +76,7 @@ func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 }
 
 func FixedTableSave(value *FixedTable, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !FixedTableSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return FixedTableFixedSave([]FixedTable{*value}, buffer)
 }
 
 func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
@@ -177,9 +159,8 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 }
 
 // FixedTable is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// FixedTableFixedLoad reads form 3.
+// so this Load reads that form through FixedTableFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // FixedTableLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -196,6 +177,15 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		FixedTableReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]FixedTable
+		if FixedTableFixedLoad(fixed[:], data, tableFixedReadPlanFixedTable, read) != 1 {
+			FixedTableReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !FixedTableLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -582,6 +572,8 @@ var FixedTableFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanFixedTable = make([]TableFixedEntry, int(FixedTableFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

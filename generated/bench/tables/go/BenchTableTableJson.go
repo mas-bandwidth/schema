@@ -3638,7 +3638,7 @@ func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error)
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TableEntity
@@ -3729,7 +3729,7 @@ func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TableStat
@@ -3820,7 +3820,7 @@ func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TableMixed

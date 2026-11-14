@@ -177,10 +177,10 @@ func TestStrict(t *testing.T) {
  if rootForm1(&d, wire, &report) || report.Verdict != TableOpenDamaged || report.Refusal.Error() != "wire_damaged" {
   t.Fatalf("damage must refuse with the TableOpenDamaged verdict: %+v", report)
  }
- // a fixed-form file is not this variable entry point's file
+ // form 3 is this fixed root's own file; a one-byte one is truncated.
  report = TableReport{}
- if RootLoad(&d, []byte{3}, &report) || report.Verdict != TableOpenRefused || report.Reason != "newer_form" {
-  t.Fatalf("a form-3 file must be refused by the variable Load: %+v", report)
+ if RootLoad(&d, []byte{TableFixedForm}, &report) || report.Err() == nil {
+  t.Fatalf("a form-3 file must be read as the fixed form: %+v", report)
  }
 }
 func hash(s string) uint64 { h := fnv.New64a(); h.Write([]byte(s)); return h.Sum64() }
@@ -262,6 +262,34 @@ fixed table Root { value Value
 `
 		src := `package probe
 import("testing";"encoding/binary";"hash/fnv")
+func unionForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func unionForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	if len(data) > 0 && data[0] == 1 {
 		var gate TableReport
@@ -297,8 +325,8 @@ func TestStrict(t *testing.T) {
  if !RootFromJSON(&good, []byte("{\"value\":{\"tally\":32},\"pinned\":[{\"n\":7}]}"), &r) || r.Err()!=nil {
   t.Fatalf("json: %+v", r)
  }
- n:=RootMeasure(&good); b:=make([]byte,n)
- if RootSave(&good,b)!=n || !rootForm1(&good,b,&r) || r.Err()!=nil {
+ n:=unionForm1Measure(&good); b:=make([]byte,n)
+ if unionForm1Save(&good,b)!=n || !rootForm1(&good,b,&r) || r.Err()!=nil {
   t.Fatalf("single union reads whole: %+v", r)
  }
 }

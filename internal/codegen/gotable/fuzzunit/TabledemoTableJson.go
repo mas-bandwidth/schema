@@ -3840,7 +3840,7 @@ func TeamConfigLoadText(text string, report *TableReport) (*TeamConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TeamConfig
@@ -3931,7 +3931,7 @@ func GunnerConfigLoadText(text string, report *TableReport) (*GunnerConfig, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v GunnerConfig
@@ -4022,7 +4022,7 @@ func TurretConfigLoadText(text string, report *TableReport) (*TurretConfig, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TurretConfig
@@ -4113,7 +4113,7 @@ func HullConfigLoadText(text string, report *TableReport) (*HullConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v HullConfig
@@ -4204,7 +4204,7 @@ func KeyedConfigLoadText(text string, report *TableReport) (*KeyedConfig, error)
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v KeyedConfig
@@ -4386,7 +4386,7 @@ func ArchiveConfigLoadText(text string, report *TableReport) (*ArchiveConfig, er
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v ArchiveConfig
@@ -4477,7 +4477,7 @@ func GunnerSettingsLoadText(text string, report *TableReport) (*GunnerSettings, 
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v GunnerSettings
@@ -4568,7 +4568,7 @@ func ShipEntryLoadText(text string, report *TableReport) (*ShipEntry, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v ShipEntry
@@ -4659,7 +4659,7 @@ func GlobalSettingsLoadText(text string, report *TableReport) (*GlobalSettings, 
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v GlobalSettings
@@ -4750,7 +4750,7 @@ func PackConfigLoadText(text string, report *TableReport) (*PackConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v PackConfig
@@ -4841,7 +4841,7 @@ func RangedSignedLoadText(text string, report *TableReport) (*RangedSigned, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RangedSigned
@@ -4932,7 +4932,7 @@ func RangedUnsignedLoadText(text string, report *TableReport) (*RangedUnsigned, 
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RangedUnsigned
@@ -5023,7 +5023,7 @@ func RangedWidthsLoadText(text string, report *TableReport) (*RangedWidths, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RangedWidths
@@ -5114,7 +5114,7 @@ func RootConfigLoadText(text string, report *TableReport) (*RootConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RootConfig
@@ -5205,7 +5205,7 @@ func WeaponConfigLoadText(text string, report *TableReport) (*WeaponConfig, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v WeaponConfig
@@ -5296,7 +5296,7 @@ func LoadoutConfigLoadText(text string, report *TableReport) (*LoadoutConfig, er
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v LoadoutConfig
@@ -5387,7 +5387,7 @@ func ProfileConfigLoadText(text string, report *TableReport) (*ProfileConfig, er
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v ProfileConfig

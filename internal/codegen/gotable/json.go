@@ -169,7 +169,14 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
 			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
 			fmt.Fprintf(&b, "\t}\n")
-			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			if (&tableGen{unit: u}).hasFixedForm(st) && st.FixedDeclared {
+				// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4):
+				// the text carrier keeps the form byte, so it carries both the
+				// variable byte its Load still names previous_form and form 3.
+				fmt.Fprintf(&b, "\tif len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			} else {
+				fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			}
 			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
 			fmt.Fprintf(&b, "\tok := %sLoad(&v, wire, &read)\n", n)
