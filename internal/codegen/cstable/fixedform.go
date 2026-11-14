@@ -1470,6 +1470,10 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE WRITE CHECK, the same walk with the text content rule (§5.1).
+	for _, st := range bodies {
+		g.emitFixedWriteCheckBodyFn(st)
+	}
 	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
 	// runs it before the bounds pass and the writer before its first byte.
 	for _, st := range bodies {
@@ -1477,6 +1481,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
+		g.emitFixedWriteAdmits(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -1986,6 +1991,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
 	}
+	if g.fixedWriteAdmits(st) != "" {
+		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
+		g.emitFixedWriteAssert(st, "values[k]", "        ")
+		g.pf("    }\n")
+	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
 	g.pf("    BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), %sFixedHash);\n", name)
@@ -2411,6 +2421,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Const:\n                {\n")
+	// THE UNION'S None CONST HOLDS THE WRITER'S ARM SET (§4.6), the twin of
+	// TableFixedWire.Run's Const case.
+	g.pf("                    if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return \"out_of_range\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")

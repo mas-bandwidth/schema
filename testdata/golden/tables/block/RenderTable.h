@@ -3606,6 +3606,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -3671,6 +3678,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -3773,6 +3800,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3786,7 +3873,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -3830,7 +3917,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3847,7 +3936,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -3859,13 +3948,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -3874,14 +3963,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3893,13 +3987,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -3915,10 +4009,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -5126,6 +5224,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -5187,7 +5286,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -7658,6 +7757,8 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
     return bytes;
 }
 
+inline bool RenderShipFixedWriteAdmits( const RenderShip & value );
+
 inline int64_t RenderShipMeasure( const RenderShip & value )
 {
     TableIds ids;
@@ -8919,6 +9020,7 @@ inline int64_t RenderShipMeasureMessages( const RenderShip * values, int64_t cou
     {
         const int64_t body = RenderShipMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderShipFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8937,6 +9039,7 @@ inline int64_t RenderShipSaveMessages( const RenderShip * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderShipSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderShipFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderShipMeasureMessages( values, count, report )
@@ -9013,6 +9116,8 @@ inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & val
     if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
     return bytes;
 }
+
+inline bool RenderTurretFixedWriteAdmits( const RenderTurret & value );
 
 inline int64_t RenderTurretMeasure( const RenderTurret & value )
 {
@@ -10166,6 +10271,7 @@ inline int64_t RenderTurretMeasureMessages( const RenderTurret * values, int64_t
     {
         const int64_t body = RenderTurretMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderTurretFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10184,6 +10290,7 @@ inline int64_t RenderTurretSaveMessages( const RenderTurret * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderTurretSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderTurretFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderTurretMeasureMessages( values, count, report )
@@ -10272,6 +10379,8 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
     }
     return bytes;
 }
+
+inline bool RenderMissileFixedWriteAdmits( const RenderMissile & value );
 
 inline int64_t RenderMissileMeasure( const RenderMissile & value )
 {
@@ -11187,6 +11296,7 @@ inline int64_t RenderMissileMeasureMessages( const RenderMissile * values, int64
     {
         const int64_t body = RenderMissileMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderMissileFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11205,6 +11315,7 @@ inline int64_t RenderMissileSaveMessages( const RenderMissile * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderMissileSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderMissileFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderMissileMeasureMessages( values, count, report )
@@ -11293,6 +11404,8 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
     }
     return bytes;
 }
+
+inline bool RenderDynamicPropFixedWriteAdmits( const RenderDynamicProp & value );
 
 inline int64_t RenderDynamicPropMeasure( const RenderDynamicProp & value )
 {
@@ -12208,6 +12321,7 @@ inline int64_t RenderDynamicPropMeasureMessages( const RenderDynamicProp * value
     {
         const int64_t body = RenderDynamicPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12226,6 +12340,7 @@ inline int64_t RenderDynamicPropSaveMessages( const RenderDynamicProp * values, 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderDynamicPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderDynamicPropMeasureMessages( values, count, report )
@@ -12315,6 +12430,8 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
     }
     return bytes;
 }
+
+inline bool RenderStaticPropFixedWriteAdmits( const RenderStaticProp & value );
 
 inline int64_t RenderStaticPropMeasure( const RenderStaticProp & value )
 {
@@ -13277,6 +13394,7 @@ inline int64_t RenderStaticPropMeasureMessages( const RenderStaticProp * values,
     {
         const int64_t body = RenderStaticPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13295,6 +13413,7 @@ inline int64_t RenderStaticPropSaveMessages( const RenderStaticProp * values, in
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderStaticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderStaticPropMeasureMessages( values, count, report )
@@ -13385,6 +13504,8 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
     }
     return bytes;
 }
+
+inline bool RenderCosmeticPropFixedWriteAdmits( const RenderCosmeticProp & value );
 
 inline int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp & value )
 {
@@ -14423,6 +14544,7 @@ inline int64_t RenderCosmeticPropMeasureMessages( const RenderCosmeticProp * val
     {
         const int64_t body = RenderCosmeticPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14441,6 +14563,7 @@ inline int64_t RenderCosmeticPropSaveMessages( const RenderCosmeticProp * values
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderCosmeticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderCosmeticPropMeasureMessages( values, count, report )
@@ -14529,6 +14652,8 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
     }
     return bytes;
 }
+
+inline bool RenderLaserFixedWriteAdmits( const RenderLaser & value );
 
 inline int64_t RenderLaserMeasure( const RenderLaser & value )
 {
@@ -15388,6 +15513,7 @@ inline int64_t RenderLaserMeasureMessages( const RenderLaser * values, int64_t c
     {
         const int64_t body = RenderLaserMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderLaserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -15406,6 +15532,7 @@ inline int64_t RenderLaserSaveMessages( const RenderLaser * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderLaserSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderLaserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderLaserMeasureMessages( values, count, report )
@@ -15495,6 +15622,8 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
     }
     return bytes;
 }
+
+inline bool RenderExplosionFixedWriteAdmits( const RenderExplosion & value );
 
 inline int64_t RenderExplosionMeasure( const RenderExplosion & value )
 {
@@ -16469,6 +16598,7 @@ inline int64_t RenderExplosionMeasureMessages( const RenderExplosion * values, i
     {
         const int64_t body = RenderExplosionMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderExplosionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -16487,6 +16617,7 @@ inline int64_t RenderExplosionSaveMessages( const RenderExplosion * values, int6
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderExplosionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderExplosionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderExplosionMeasureMessages( values, count, report )
@@ -20664,6 +20795,17 @@ TABLE_FIXED_INLINE bool RenderShipFixedInRange( const RenderShip & value )
     return bad == 0;
 }
 
+// RenderShip's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderShipFixedWriteAdmits( const RenderShip & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.ship_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderShip's read-side bounds.
 inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20684,6 +20826,16 @@ TABLE_FIXED_INLINE bool RenderTurretFixedInRange( const RenderTurret & value )
     return bad == 0;
 }
 
+// RenderTurret's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderTurretFixedWriteAdmits( const RenderTurret & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderTurret's read-side bounds.
 inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20696,6 +20848,17 @@ inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CL
 // RenderMissile's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderMissileFixedInRange( const RenderMissile & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.missile_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderMissile's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderMissileFixedWriteAdmits( const RenderMissile & value )
 {
     (void) value;
     int bad = 0;
@@ -20725,6 +20888,17 @@ TABLE_FIXED_INLINE bool RenderDynamicPropFixedInRange( const RenderDynamicProp &
     return bad == 0;
 }
 
+// RenderDynamicProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderDynamicPropFixedWriteAdmits( const RenderDynamicProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderDynamicProp's read-side bounds.
 inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20738,6 +20912,17 @@ inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t 
 // RenderStaticProp's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderStaticPropFixedInRange( const RenderStaticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderStaticProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderStaticPropFixedWriteAdmits( const RenderStaticProp & value )
 {
     (void) value;
     int bad = 0;
@@ -20767,6 +20952,17 @@ TABLE_FIXED_INLINE bool RenderCosmeticPropFixedInRange( const RenderCosmeticProp
     return bad == 0;
 }
 
+// RenderCosmeticProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderCosmeticPropFixedWriteAdmits( const RenderCosmeticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderCosmeticProp's read-side bounds.
 inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20788,6 +20984,17 @@ TABLE_FIXED_INLINE bool RenderLaserFixedInRange( const RenderLaser & value )
     return bad == 0;
 }
 
+// RenderLaser's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderLaserFixedWriteAdmits( const RenderLaser & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.laser_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderLaser's read-side bounds.
 inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20801,6 +21008,17 @@ inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAM
 // RenderExplosion's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderExplosionFixedInRange( const RenderExplosion & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.explosion_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderExplosion's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderExplosionFixedWriteAdmits( const RenderExplosion & value )
 {
     (void) value;
     int bad = 0;
@@ -21015,10 +21233,20 @@ constexpr TableFixedDst RenderCameraFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderCameraFixedPlan[] = {
-    { 0u, 0u, 72u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 60u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
 };
-constexpr int32_t RenderCameraFixedPlanCount = 1;
-constexpr int32_t RenderCameraFixedPlanGuarded = 1;
+constexpr int32_t RenderCameraFixedPlanCount = 11;
+constexpr int32_t RenderCameraFixedPlanGuarded = 11;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderCameraFixedGuards[] = {
@@ -21570,11 +21798,24 @@ constexpr TableFixedDst RenderShipFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderShipFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
-    { 79u, 79u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_target_lock
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 72u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 76u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 77u, 77u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 78u, 78u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 79u, 79u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // has_target_lock
 };
-constexpr int32_t RenderShipFixedPlanCount = 2;
-constexpr int32_t RenderShipFixedPlanGuarded = 2;
+constexpr int32_t RenderShipFixedPlanCount = 15;
+constexpr int32_t RenderShipFixedPlanGuarded = 15;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderShipFixedGuards[] = {
@@ -21658,6 +21899,10 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
 {
     const int64_t need = RenderShipFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderShipFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderShipFixedHash );
@@ -22115,11 +22360,21 @@ constexpr TableFixedDst RenderTurretFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderTurretFixedPlan[] = {
-    { 0u, 0u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
-    { 58u, 58u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_target_lock
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 44u, 44u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 48u, 48u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 52u, 52u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 56u, 56u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 57u, 57u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 58u, 58u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // has_target_lock
 };
-constexpr int32_t RenderTurretFixedPlanCount = 2;
-constexpr int32_t RenderTurretFixedPlanGuarded = 2;
+constexpr int32_t RenderTurretFixedPlanCount = 12;
+constexpr int32_t RenderTurretFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderTurretFixedGuards[] = {
@@ -22195,6 +22450,10 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
 {
     const int64_t need = RenderTurretFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderTurretFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderTurretFixedHash );
@@ -22664,10 +22923,21 @@ constexpr TableFixedDst RenderMissileFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderMissileFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 69u, 69u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 70u, 70u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderMissileFixedPlanCount = 1;
-constexpr int32_t RenderMissileFixedPlanGuarded = 1;
+constexpr int32_t RenderMissileFixedPlanCount = 12;
+constexpr int32_t RenderMissileFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderMissileFixedGuards[] = {
@@ -22746,6 +23016,10 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
 {
     const int64_t need = RenderMissileFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderMissileFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderMissileFixedHash );
@@ -23219,10 +23493,21 @@ constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderDynamicPropFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 69u, 69u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 70u, 70u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderDynamicPropFixedPlanCount = 1;
-constexpr int32_t RenderDynamicPropFixedPlanGuarded = 1;
+constexpr int32_t RenderDynamicPropFixedPlanCount = 12;
+constexpr int32_t RenderDynamicPropFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderDynamicPropFixedGuards[] = {
@@ -23302,6 +23587,10 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
 {
     const int64_t need = RenderDynamicPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderDynamicPropFixedHash );
@@ -23775,10 +24064,21 @@ constexpr TableFixedDst RenderStaticPropFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderStaticPropFixedPlan[] = {
-    { 0u, 0u, 78u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 72u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 76u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 77u, 77u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderStaticPropFixedPlanCount = 1;
-constexpr int32_t RenderStaticPropFixedPlanGuarded = 1;
+constexpr int32_t RenderStaticPropFixedPlanCount = 12;
+constexpr int32_t RenderStaticPropFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderStaticPropFixedGuards[] = {
@@ -23858,6 +24158,10 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
 {
     const int64_t need = RenderStaticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderStaticPropFixedHash );
@@ -24335,10 +24639,22 @@ constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderCosmeticPropFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 72u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 76u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 77u, 77u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 78u, 78u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderCosmeticPropFixedPlanCount = 1;
-constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 1;
+constexpr int32_t RenderCosmeticPropFixedPlanCount = 13;
+constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 13;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderCosmeticPropFixedGuards[] = {
@@ -24419,6 +24735,10 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
 {
     const int64_t need = RenderCosmeticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCosmeticPropFixedHash );
@@ -24880,10 +25200,19 @@ constexpr TableFixedDst RenderLaserFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderLaserFixedPlan[] = {
-    { 0u, 0u, 62u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 60u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 61u, 61u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderLaserFixedPlanCount = 1;
-constexpr int32_t RenderLaserFixedPlanGuarded = 1;
+constexpr int32_t RenderLaserFixedPlanCount = 10;
+constexpr int32_t RenderLaserFixedPlanGuarded = 10;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderLaserFixedGuards[] = {
@@ -24960,6 +25289,10 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
 {
     const int64_t need = RenderLaserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderLaserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderLaserFixedHash );
@@ -25429,10 +25762,21 @@ constexpr TableFixedDst RenderExplosionFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderExplosionFixedPlan[] = {
-    { 0u, 0u, 74u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 72u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 73u, 73u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderExplosionFixedPlanCount = 1;
-constexpr int32_t RenderExplosionFixedPlanGuarded = 1;
+constexpr int32_t RenderExplosionFixedPlanCount = 12;
+constexpr int32_t RenderExplosionFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderExplosionFixedGuards[] = {
@@ -25511,6 +25855,10 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
 {
     const int64_t need = RenderExplosionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderExplosionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderExplosionFixedHash );

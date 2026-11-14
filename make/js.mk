@@ -980,13 +980,22 @@ tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp 
 # case is TestJSFixedVersioningUnionArmText (UT1 writes arm b at ordinal 2, UT2
 # reads it at ordinal 3 with UT1's entry as its lock); the sabotage must red it,
 # and the whole versioning gate runs here so the red lands where CI looks.
+#
+# THE PLANT HAS TWO HALVES, because the guard value reaches the lane in two
+# steps: the compile hands the flavour to the push as arg, and the push then
+# writes the guard chain's innermost value over arg for every entry under an
+# arm (§4.1, e14e21348). Patching the call alone is overwritten by the chain,
+# and the read half that once consulted the lane (the wide flavour) was retired
+# with wstring (9e5e56bb5), so the sabotage also keeps the flavour through the
+# chain's write: the read then compares the writer's tag against a flavour.
 .PHONY: tables-js-union-arm-text-negative-control
 tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
-	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
+	@sed -e 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
+		-e 's|^    e\[b + TableFixedLaneArg\] = c\[inner + 1\];$$|    e[b + TableFixedLaneArg] = op === TableFixedOpText ? arg : c[inner + 1]; // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
-	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 1 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not put the flavour in the guard's lane"; exit 1; }
+	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not put the flavour in the guard's lane (both halves)"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
 	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
@@ -1395,6 +1404,25 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 
 test-js: conformance-negative-control-js-walk
 
+# THE WRITE CONTRACT's controls on the JavaScript leg (docs/SPEC.md §5.1):
+# JavaScript refuses in every build, so each removes one refusal from a COPY of
+# the generated writers and requires its write-refusal surface red while the
+# wire (or message) surface stays green — the fixed preflight's ranged
+# penetration check (write-refusal), its bits-width channel check
+# (write-refusal-fixed), and StorePurchase's message preflight in
+# MeasureMessages and SaveMessages (write-refusal-message).
+.PHONY: conformance-negative-control-js-write-refusal conformance-negative-control-js-write-refusal-fixed conformance-negative-control-js-write-refusal-message
+conformance-negative-control-js-write-refusal: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal
+
+conformance-negative-control-js-write-refusal-fixed: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal-fixed
+
+conformance-negative-control-js-write-refusal-message: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal-message
+
+test-js: conformance-negative-control-js-write-refusal conformance-negative-control-js-write-refusal-fixed conformance-negative-control-js-write-refusal-message
+
 # THE JAVASCRIPT LEG's FRAMING NEGATIVE CONTROL (docs/LAYERS/1-framing.md): one
 # framing rule of the generated variable reader is dropped in a COPY of
 # build/tables-generated-js, and the framing surface must go red on exactly the
@@ -1638,6 +1666,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 	@rm -rf build/$@ && mkdir -p build/$@
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
 	@cp test/conformance/js/fixed.mjs build/$@/fixed.mjs
+	@cp test/conformance/js/writerefusal.mjs build/$@/writerefusal.mjs
 	@[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" = "$$(grep -c 'writeFileSync(join(outDir.*\.absent"' test/conformance/js/main.mjs)" ] && \
 		[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" -gt 0 ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
@@ -1646,7 +1675,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the JavaScript leg's absences wrote nothing and the run stayed green"; cat build/$@/log; exit 1; \
 	fi
-	@grep -qF 'the driver wrote nothing' build/$@/log || \
+	@grep -qF 'driver wrote nothing' build/$@/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
 	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
 
@@ -1656,6 +1685,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 conformance-negative-control-js-fixed: build/conformance-harness build/tables-generated-js/.stamp
 	@rm -rf build/$@ && mkdir -p build/$@
 	@cp test/conformance/js/main.mjs build/$@/main.mjs
+	@cp test/conformance/js/writerefusal.mjs build/$@/writerefusal.mjs
 	@sed 's/  if (row === undefined) { return codec; }/  if (row !== null) { return codec; }/' test/conformance/js/fixed.mjs > build/$@/fixed.mjs
 	@! cmp -s test/conformance/js/fixed.mjs build/$@/fixed.mjs || { echo "NEGATIVE CONTROL FAILED: the sabotage changed nothing"; exit 1; }
 	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver

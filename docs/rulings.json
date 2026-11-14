@@ -2,6 +2,24 @@
   "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes the maintainer verbatim, with the date it was said and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from the maintainer's own words.",
   "rulings": [
     {
+      "id": "ruby-pure-ruby",
+      "date": "2026-11-14",
+      "quotes": [
+        "i want it to be pure ruby.",
+        "I mean we can do performance work, *within the constraints of pure ruby*",
+        "As fast as ruby can be, but no faster."
+      ],
+      "source": "relayed by the coordinator from the live session, ruling the Ruby port's decision D1 (docs/PORT-RUBY.md THE DECISIONS): option (a), pure Ruby, standard library only. No C extension is built, shipped or benchmarked. Performance work stays within pure Ruby: R4 measures the two pure-Ruby code shapes (straight-line and descriptor walk) against each other with YJIT on and off on the same byte-checked workload and keeps the faster. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "ruby-port-decisions",
+      "date": "2026-11-14",
+      "quotes": [
+        "ruled 2026-11-14: the Ruby port's decisions D2-D8 stand as recommended in docs/PORT-RUBY.md: D2 a floor and a current pin; D3 ruby-lang.org source tarballs pinned by sha256 into dist/, analyzers from a hash-locked list installed offline; D4 serialize.rb, a serialize-family sibling at format 2.0; D5 the runtime ships beside the generated code, require_relative only; D6 a read raises Refused, a write raises InvalidValue; D7 a port of the engine's JSON reader; D8 Ruby does not block v3.0.0"
+      ],
+      "source": "Rowan's ruling, not the maintainer's words: the maintainer's standing principles applied by Rowan (pinned toolchains built from source, the serialize-family sibling per leg, strict wins where the standard is lenient, and for D8 the maintainer's rule of 2026-10-28 that v3.0.0 waits on the 15 existing ports). This ruling makes nothing not-applicable."
+    },
+    {
       "id": "json-flags-name-once",
       "date": "2026-11-10",
       "quotes": [

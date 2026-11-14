@@ -15,7 +15,7 @@ import (
 // (the appended nested Vec.w = 88 is the one nonzero prefill) when record 0's
 // per-record hash word — its first eight bytes, bitwise inverted — fails the
 // hash check; the header's hash stays untouched, so the OLD lineage entry is
-// still selected. Verdict: n == -1, no_layout by name, malformed false, every
+// still selected. Verdict: n == -1, no_layout by name, the refused verdict, every
 // counter zero, and a destination poisoned to 0x5A stays 0x5A in every field.
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
@@ -64,17 +64,17 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "the refusal is no_layout by name: reason=" + r.Reason + " refused=" + r.Refused);
             }
-            if (r.Malformed)
+            if (r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too (§5.3): malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "the refusal's verdict is refused (§5.3): verdict=" + r.Verdict);
             }
             if (r.LayoutHash != 0)
             {
                 bad += ProbeLog.Fail(@NAME@, "no_layout publishes no hash: 0x" + r.LayoutHash.ToString("x16"));
             }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " widened=" + r.Widened + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }
             if (back[0].V.X != 0x5A5A5A5A || back[0].V.Y != 0x5A5A5A5A || back[0].V.Z != 0x5A5A5A5A || back[0].V.W != 0x5A5A5A5A || back[0].Seq != 0x5A5A5A5A)
             {

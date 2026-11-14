@@ -87,8 +87,8 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 // gates one of these steps, delete its line here; the gate fails on a stale
 // exemption so the list cannot outlive the steps it names.
 var setupBeamExemptSteps = map[string][]int{
-	"leg.yml":     {130},
-	"certify.yml": {177, 414, 584, 868},
+	"leg.yml":     {132},
+	"certify.yml": {179, 418, 590, 876},
 }
 
 // nonExemptSetupBeamErrorsFrom drops only the errors naming an exempt
@@ -171,7 +171,7 @@ func TestEverySetupBeamIsHostedOnly(t *testing.T) {
 func TestSetupBeamExemptionIsStepScoped(t *testing.T) {
 	t.Parallel()
 	errs := []string{
-		"leg.yml:130: erlef/setup-beam runs without",
+		"leg.yml:132: erlef/setup-beam runs without",
 		"leg.yml:999: erlef/setup-beam runs without",
 		"brand-new.yml:12: erlef/setup-beam runs without",
 	}

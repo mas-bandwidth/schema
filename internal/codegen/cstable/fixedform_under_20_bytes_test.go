@@ -43,9 +43,9 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
             TableReport rf = new TableReport();
             TableFixedEntry[] planf = new TableFixedEntry[8192];
             long nf = Schema.@TABLE@FixedLoad(full, data, planf, rf);
-            if (nf != 1 || rf.Refused || rf.Malformed || rf.Reason != null)
+            if (nf != 1 || rf.Refused || rf.Damaged || rf.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "the fixture does not read cleanly at its full length: n=" + nf + " refused=" + rf.Refused + " malformed=" + rf.Malformed + " reason=" + rf.Reason);
+                bad += ProbeLog.Fail(@NAME@, "the fixture does not read cleanly at its full length: n=" + nf + " refused=" + rf.Refused + " malformed=" + rf.Damaged + " reason=" + rf.Reason);
             }
             // data.AsSpan(0, k) is the whole truncation: k runs over every
             // length below TableFixedWire.HeaderBytes + 4 (twenty bytes), the
@@ -69,12 +69,12 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
                 long n = Schema.@TABLE@FixedLoad(back, data.AsSpan(0, k), plan, r);
                 if (n != -1)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a file shorter than the header must be malformed and return -1: k=" + k + " n=" + n + " malformed=" + r.Malformed + " refused=" + r.Refused);
+                    bad += ProbeLog.Fail(@NAME@, "a file shorter than the header must be malformed and return -1: k=" + k + " n=" + n + " malformed=" + r.Damaged + " refused=" + r.Refused);
                     continue;
                 }
-                if (!r.Malformed)
+                if (!r.Damaged)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a short file is malformed, never clean: k=" + k + " malformed=" + r.Malformed);
+                    bad += ProbeLog.Fail(@NAME@, "a short file is malformed, never clean: k=" + k + " malformed=" + r.Damaged);
                 }
                 if (r.Refused)
                 {
@@ -88,9 +88,9 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
                 {
                     bad += ProbeLog.Fail(@NAME@, "this leg answers Verdict.Damaged alongside Malformed: k=" + k + " verdict=" + r.Verdict);
                 }
-                if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+                if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a malformed read: k=" + k + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a malformed read: k=" + k + " unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
                 }
                 if (r.LayoutHash != 0)
                 {

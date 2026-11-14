@@ -1362,7 +1362,8 @@ namespace Bench
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
+                    // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
+                    // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -2216,6 +2217,10 @@ namespace Bench
                 input.Pos++; // the opening bracket
                 bool first = true;
                 Span<byte> key = stackalloc byte[MaxKey];
+                // a skipped object's keys are held to the layer's rule too: a repeated
+                // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
+                // §16.12), the objects this walk skips included
+                System.Collections.Generic.HashSet<string> keys = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2226,6 +2231,8 @@ namespace Bench
                         if (!ScanString(text, ref input, key, true, out int used)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
+                        keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                        if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
                         if (used > 0 && key[0] == '&' && input.Labels != null)
                         {
                             if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
@@ -2420,6 +2427,8 @@ namespace Bench
                             {
                                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)bit)))
                                 {
+                                    // A KNOWN FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+                                    if ((bits & (1ul << bit)) != 0) { return RefuseText(ref input, "duplicate"); }
                                     bits |= 1ul << bit;
                                     found = true;
                                     break;
@@ -6524,7 +6533,14 @@ namespace Bench
                             // OWN guard and ordinal — unguarded at top level, guarded
                             // under an outer arm — which is one rule and not two
                             // (§5.9 #13).
-                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
+                            //
+                            // IT ALSO HOLDS THE WRITER'S ARM SET (§4.6): DstSize carries
+                            // THE WRITER'S ARM COUNT and Meta the writer's tag width, and
+                            // the run refuses a raw tag past that count out_of_range, so
+                            // the compiled plan refuses what the identity plan's bounds
+                            // pass refuses. A count past a byte carries 0: no check.
+                            byte their_arms = (te.Children >= 1u && te.Children <= 255u) ? (byte)te.Children : (byte)0;
+                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, their_arms, meta: c.ArgW));
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -6943,9 +6959,10 @@ namespace Bench
                 if (e.Op == Const)
                 {
                     // a constant reads no source at all, EXCEPT the union's None
-                    // const, which reads the writer's raw tag to count a clamp
-                    // past DstSize arms — it has a source reach.
-                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
+                    // const, which reads the writer's raw tag, at the writer's tag
+                    // width in Meta, to refuse a tag past DstSize arms — it has a
+                    // source reach.
+                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + ArgWidth(e.Meta) : 0u;
                 }
                 else if (e.Op == Count)
                 {
@@ -7222,6 +7239,10 @@ namespace Bench
                             }
                         case Const:
                             {
+                                // THE UNION'S None CONST HOLDS THE WRITER'S ARM SET
+                                // (§4.6): a raw tag past DstSize arms names nothing the
+                                // writer wrote, and the load refuses it out_of_range.
+                                if (p.Aux == 0 && p.DstSize != 0 && TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {
                                     slots[(int)p.Dst].SetRaw(dst, p.Aux);
@@ -8912,6 +8933,120 @@ namespace Bench
             if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
             if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
             if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
+            if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { clamped++; }
+            if (value.Ping > 64000) { clamped++; }
+            // bits(24) width clamp
+            if (value.CrcHint > 16777215) { clamped++; }
+            if (value.Extra < 0 || value.Extra > 255) { clamped++; }
+            if (value.IdleTicks < 0 || value.IdleTicks > 15) { clamped++; }
+        }
+
+        // MixedEntity's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void MixedEntityFixedWriteCheckBody(MixedEntity value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.EntityId > 4095) { clamped++; }
+            if (value.PosX < -16383 || value.PosX > 16383) { clamped++; }
+            if (value.PosY < -16383 || value.PosY > 16383) { clamped++; }
+            if (value.PosZ < -16383 || value.PosZ > 16383) { clamped++; }
+            // bits(9) width clamp
+            if (value.Yaw > 511) { clamped++; }
+            // bits(9) width clamp
+            if (value.Pitch > 511) { clamped++; }
+            if (value.VelX < -2048 || value.VelX > 2047) { clamped++; }
+            if (value.VelY < -2048 || value.VelY > 2047) { clamped++; }
+            if (value.VelZ < -2048 || value.VelZ > 2047) { clamped++; }
+            if (value.Health < 0 || value.Health > 1000) { clamped++; }
+            if ((ulong)value.Weapon > 15) { clamped++; }
+        }
+
+        // MixedStat's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void MixedStatFixedWriteCheckBody(MixedStat value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(8) width clamp
+            if (value.StatId > 255) { clamped++; }
+            if (value.Delta < -512 || value.Delta > 511) { clamped++; }
+        }
+
+        // MixedHitEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void MixedHitEventFixedWriteCheckBody(MixedHitEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.TargetId > 4095) { clamped++; }
+            if (value.Damage < 0 || value.Damage > 4095) { clamped++; }
+            if (value.HitKind < 0 || value.HitKind > 7) { clamped++; }
+        }
+
+        // MixedChatEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void MixedChatEventFixedWriteCheckBody(MixedChatEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Channel < 0 || value.Channel > 3) { clamped++; }
+            // bits(12) width clamp
+            if (value.Speaker > 4095) { clamped++; }
+        }
+
+        // MixedPickupEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void MixedPickupEventFixedWriteCheckBody(MixedPickupEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(10) width clamp
+            if (value.ItemId > 1023) { clamped++; }
+            if (value.Amount < 0 || value.Amount > 255) { clamped++; }
+        }
+
+        // BenchMixed's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void BenchMixedFixedWriteCheckBody(BenchMixed value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(16) width clamp
+            if (value.Sequence > 65535) { clamped++; }
+            if (value.AckSequence < 0 || value.AckSequence > 65535) { clamped++; }
+            if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) { clamped++; }
+            // bits(48) width clamp
+            if (value.FrameTick > 281474976710655ul) { clamped++; }
+            if (value.ServerTime < 0 || value.ServerTime > 16776960) { clamped++; }
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
+                {
+                    MixedEntityFixedWriteCheckBody(value.Entities[i], ref clamped);
+                }
+            }
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < value.StatsCount && i < value.Stats.Length; ++i)
+                {
+                    MixedStatFixedWriteCheckBody(value.Stats[i], ref clamped);
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                if ((ulong)value.GameEvent.Type > 3) { clamped++; }
+                switch (value.GameEvent.Type)
+                {
+                    case MixedEventType.Hit:
+                        {
+                            MixedHitEventFixedWriteCheckBody(value.GameEvent.Hit, ref clamped);
+                            break;
+                        }
+                    case MixedEventType.Chat:
+                        {
+                            MixedChatEventFixedWriteCheckBody(value.GameEvent.Chat, ref clamped);
+                            break;
+                        }
+                    case MixedEventType.Pickup:
+                        {
+                            MixedPickupEventFixedWriteCheckBody(value.GameEvent.Pickup, ref clamped);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            if (value.PlayerName != null && value.PlayerNameLength >= 0 && value.PlayerNameLength <= value.PlayerName.Length && !TableWire.TextValid(value.PlayerName.AsSpan(0, value.PlayerNameLength))) { clamped++; }
             if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { clamped++; }
             if (value.Ping > 64000) { clamped++; }
             // bits(24) width clamp

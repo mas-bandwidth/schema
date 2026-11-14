@@ -4331,6 +4331,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -4396,6 +4403,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -4498,6 +4525,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -4511,7 +4598,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -4555,7 +4642,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -4572,7 +4661,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -4584,13 +4673,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -4599,14 +4688,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -4618,13 +4712,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -4640,10 +4734,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -5851,6 +5949,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -5912,7 +6011,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -9580,6 +9679,8 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
     return bytes;
 }
 
+inline bool GunnerSettingsFixedWriteAdmits( const GunnerSettings & value );
+
 inline int64_t GunnerSettingsMeasure( const GunnerSettings & value )
 {
     TableIds ids;
@@ -10129,6 +10230,7 @@ inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int
     {
         const int64_t body = GunnerSettingsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( GunnerSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10147,6 +10249,7 @@ inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !GunnerSettingsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( GunnerSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == GunnerSettingsMeasureMessages( values, count, report )
@@ -10222,6 +10325,8 @@ inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
     }
     return bytes;
 }
+
+inline bool ShipEntryFixedWriteAdmits( const ShipEntry & value );
 
 inline int64_t ShipEntryMeasure( const ShipEntry & value )
 {
@@ -11207,6 +11312,7 @@ inline int64_t ShipEntryMeasureMessages( const ShipEntry * values, int64_t count
     {
         const int64_t body = ShipEntryMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ShipEntryFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11225,6 +11331,7 @@ inline int64_t ShipEntrySaveMessages( const ShipEntry * values, int64_t count, u
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ShipEntrySaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ShipEntryFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ShipEntryMeasureMessages( values, count, report )
@@ -11305,6 +11412,8 @@ inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings &
     }
     return bytes;
 }
+
+inline bool GlobalSettingsFixedWriteAdmits( const GlobalSettings & value );
 
 inline int64_t GlobalSettingsMeasure( const GlobalSettings & value )
 {
@@ -12145,6 +12254,7 @@ inline int64_t GlobalSettingsMeasureMessages( const GlobalSettings * values, int
     {
         const int64_t body = GlobalSettingsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( GlobalSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12163,6 +12273,7 @@ inline int64_t GlobalSettingsSaveMessages( const GlobalSettings * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !GlobalSettingsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( GlobalSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == GlobalSettingsMeasureMessages( values, count, report )
@@ -12284,6 +12395,8 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
     }
     return bytes;
 }
+
+inline bool PackConfigFixedWriteAdmits( const PackConfig & value );
 
 inline int64_t PackConfigMeasure( const PackConfig & value )
 {
@@ -13536,6 +13649,7 @@ inline int64_t PackConfigMeasureMessages( const PackConfig * values, int64_t cou
     {
         const int64_t body = PackConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( PackConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13554,6 +13668,7 @@ inline int64_t PackConfigSaveMessages( const PackConfig * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !PackConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( PackConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == PackConfigMeasureMessages( values, count, report )
@@ -13730,6 +13845,16 @@ TABLE_FIXED_INLINE bool GunnerSettingsFixedInRange( const GunnerSettings & value
     return bad == 0;
 }
 
+// GunnerSettings's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool GunnerSettingsFixedWriteAdmits( const GunnerSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.callsign_length >= 0 && value.callsign_length <= 24 && !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) );
+    return bad == 0;
+}
+
 // GunnerSettings's read-side bounds.
 inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -13756,6 +13881,24 @@ TABLE_FIXED_INLINE bool ShipEntryFixedInRange( const ShipEntry & value )
     if ( value.gunner_present )
     {
         bad |= (int) !GunnerSettingsFixedInRange( value.gunner );
+    }
+    return bad == 0;
+}
+
+// ShipEntry's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ShipEntryFixedWriteAdmits( const ShipEntry & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.display_name_length >= 0 && value.display_name_length <= 32 && !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) );
+    for ( int64_t i = 0; i < ( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ? (int64_t) value.hardpoints_count : 0 ); ++i )
+    {
+        bad |= (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+    }
+    if ( value.gunner_present )
+    {
+        bad |= (int) !GunnerSettingsFixedWriteAdmits( value.gunner );
     }
     return bad == 0;
 }
@@ -13793,6 +13936,18 @@ TABLE_FIXED_INLINE bool GlobalSettingsFixedInRange( const GlobalSettings & value
     return bad == 0;
 }
 
+// GlobalSettings's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool GlobalSettingsFixedWriteAdmits( const GlobalSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    bad |= (int) ( (uint64_t) value.difficulty > 3u );
+    bad |= (int) ( value.build_note_length >= 0 && value.build_note_length <= 48 && !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) );
+    return bad == 0;
+}
+
 // GlobalSettings's read-side bounds.
 inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -13826,6 +13981,28 @@ TABLE_FIXED_INLINE bool PackConfigFixedInRange( const PackConfig & value )
     for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
     {
         bad |= (int) !ShipEntryFixedInRange( value.reserves[i] );
+    }
+    return bad == 0;
+}
+
+// PackConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool PackConfigFixedWriteAdmits( const PackConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !GlobalSettingsFixedWriteAdmits( value.settings );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !ShipEntryFixedWriteAdmits( value.ships.slots[i] );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+    }
+    for ( int64_t i = 0; i < ( value.reserves_count >= 0 && value.reserves_count <= 3 ? (int64_t) value.reserves_count : 0 ); ++i )
+    {
+        bad |= (int) !ShipEntryFixedWriteAdmits( value.reserves[i] );
     }
     return bad == 0;
 }
@@ -13976,9 +14153,9 @@ constexpr TableFixedDst GunnerSettingsFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry GunnerSettingsFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
 };
 constexpr int32_t GunnerSettingsFixedPlanCount = 3;
 constexpr int32_t GunnerSettingsFixedPlanGuarded = 3;
@@ -14043,6 +14220,10 @@ inline int64_t GunnerSettingsFixedSave( const GunnerSettings * values, int64_t c
 {
     const int64_t need = GunnerSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( GunnerSettingsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GunnerSettingsFixedHash );
@@ -14471,17 +14652,21 @@ constexpr TableFixedDst ShipEntryFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry ShipEntryFixedPlan[] = {
-    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 48u, 48u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 69u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 64u, 104u, 36u, 68u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 36u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 40u, 44u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 48u, 48u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 52u, 52u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 56u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 60u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 69u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 64u, 104u, 36u, 68u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
 };
-constexpr int32_t ShipEntryFixedPlanCount = 8;
-constexpr int32_t ShipEntryFixedPlanGuarded = 7;
+constexpr int32_t ShipEntryFixedPlanCount = 12;
+constexpr int32_t ShipEntryFixedPlanGuarded = 11;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink ShipEntryFixedGuards[] = {
@@ -14551,6 +14736,10 @@ inline int64_t ShipEntryFixedSave( const ShipEntry * values, int64_t count, uint
 {
     const int64_t need = ShipEntryFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ShipEntryFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ShipEntryFixedHash );
@@ -14968,12 +15157,15 @@ constexpr TableFixedDst GlobalSettingsFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry GlobalSettingsFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tick_rate
-    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // build_note
-    { 57u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_delays, whole
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // tick_rate
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // tick_rate
+    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // build_note
+    { 57u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 61u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
 };
-constexpr int32_t GlobalSettingsFixedPlanCount = 3;
-constexpr int32_t GlobalSettingsFixedPlanGuarded = 3;
+constexpr int32_t GlobalSettingsFixedPlanCount = 6;
+constexpr int32_t GlobalSettingsFixedPlanGuarded = 6;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink GlobalSettingsFixedGuards[] = {
@@ -15040,6 +15232,10 @@ inline int64_t GlobalSettingsFixedSave( const GlobalSettings * values, int64_t c
 {
     const int64_t need = GlobalSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( GlobalSettingsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GlobalSettingsFixedHash );
@@ -15607,62 +15803,92 @@ constexpr TableFixedDst PackConfigFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry PackConfigFixedPlan[] = {
-    { 0u, 0u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // version
-    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // build_note
-    { 61u, 64u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_delays, whole
-    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 109u, 116u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 121u, 124u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 138u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 142u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 207u, 224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 219u, 232u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 236u, 252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 240u, 256u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 305u, 332u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 317u, 340u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 334u, 360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 338u, 364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 367u, 400u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thresholds, whole
-    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reserves count
-    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 419u, 452u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 431u, 460u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 448u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 452u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 517u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 529u, 568u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 546u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 550u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 615u, 668u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 627u, 676u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 644u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 648u, 700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 137u, 180u, 36u, 144u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 235u, 288u, 36u, 252u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 333u, 396u, 36u, 360u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 447u, 516u, 36u, 480u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 545u, 624u, 36u, 588u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 643u, 732u, 36u, 696u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // version
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // version
+    { 8u, 8u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // version
+    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // build_note
+    { 61u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 69u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 109u, 116u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 113u, 120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 121u, 124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 125u, 128u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 129u, 132u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 133u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 138u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 142u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 207u, 224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 211u, 228u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 219u, 232u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 223u, 236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 227u, 240u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 231u, 244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 236u, 252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 240u, 256u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 305u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 309u, 336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 317u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 321u, 344u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 325u, 348u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 329u, 352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 334u, 360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 338u, 364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 367u, 400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // thresholds, whole
+    { 371u, 404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // thresholds, whole
+    { 375u, 408u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // thresholds, whole
+    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // reserves count
+    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 419u, 452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 423u, 456u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 431u, 460u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 435u, 464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 439u, 468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 443u, 472u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 448u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 452u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 517u, 560u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 521u, 564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 529u, 568u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 533u, 572u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 537u, 576u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 541u, 580u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 546u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 550u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 615u, 668u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 619u, 672u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 627u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 631u, 680u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 635u, 684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 639u, 688u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 644u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 648u, 700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 137u, 180u, 36u, 144u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 235u, 288u, 36u, 252u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 333u, 396u, 36u, 360u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 447u, 516u, 36u, 480u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 545u, 624u, 36u, 588u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 643u, 732u, 36u, 696u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
 };
-constexpr int32_t PackConfigFixedPlanCount = 53;
-constexpr int32_t PackConfigFixedPlanGuarded = 47;
+constexpr int32_t PackConfigFixedPlanCount = 83;
+constexpr int32_t PackConfigFixedPlanGuarded = 77;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink PackConfigFixedGuards[] = {
@@ -15786,6 +16012,10 @@ inline int64_t PackConfigFixedSave( const PackConfig * values, int64_t count, ui
 {
     const int64_t need = PackConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( PackConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PackConfigFixedHash );

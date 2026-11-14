@@ -25,7 +25,9 @@ printf 'cs %s/%s/driver\n' "$PWD" "$dir" > "$dir/drivers.txt"
 if build/conformance-harness run --drivers "$dir/drivers.txt" --work "$dir/work" > "$dir/log" 2>&1; then
     cat "$dir/log"; echo "NEGATIVE CONTROL FAILED: the sabotaged writer left conformance green"; exit 1
 fi
-grep -E "^ *$red *FAIL" "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $red did not go red"; exit 1; }
+# The FAILURES lines, not the table: a relaxed case (test/conformance/relaxed.txt)
+# still prints FAIL in the table and must not stand in for the sabotage's red.
+grep "^  cs / $red: " "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $red did not go red"; exit 1; }
 grep -Eq "^ *$green *pass" "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $green did not stay green"; exit 1; }
 if grep -Eq 'driver exited|driver wrote nothing' "$dir/log"; then
     cat "$dir/log"; echo "NEGATIVE CONTROL: the sabotaged driver crashed rather than answering"; exit 1

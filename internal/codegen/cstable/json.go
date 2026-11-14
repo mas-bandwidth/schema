@@ -741,7 +741,8 @@ public static class TableJson
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)
         {
-            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
+            // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
+            // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
@@ -1267,6 +1268,10 @@ public static class TableJson
         input.Pos++; // the opening bracket
         bool first = true;
         Span<byte> key = stackalloc byte[MaxKey];
+        // a skipped object's keys are held to the layer's rule too: a repeated
+        // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
+        // §16.12), the objects this walk skips included
+        System.Collections.Generic.HashSet<string> keys = null;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1277,6 +1282,8 @@ public static class TableJson
                 if (!ScanString(text, ref input, key, true, out int used)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
+                keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
                 if (used > 0 && key[0] == '&' && input.Labels != null)
                 {
                     if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
@@ -1471,6 +1478,8 @@ public static class TableJson
                     {
                         if (Same(name.Slice(0, nameLength), f.EnumName((ulong)bit)))
                         {
+                            // A KNOWN FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+                            if ((bits & (1ul << bit)) != 0) { return RefuseText(ref input, "duplicate"); }
                             bits |= 1ul << bit;
                             found = true;
                             break;

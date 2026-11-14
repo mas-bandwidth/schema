@@ -122,6 +122,9 @@ type tableGen struct {
 	schema    strings.Builder
 	indent    string // extra per-line indent while emitting inside a branch guard
 	loopDepth int    // fixed-form element loops open around the current emit (fixedLoopVar)
+	// fixedWriteCheck is set while the bounds walk is emitted as the WRITE
+	// check (fixedbounds.go): the same numbers, plus the text content rule.
+	fixedWriteCheck bool
 	// messageS and messageU cache the unit's message closure (messageClosure).
 	messageS, messageU map[string]bool
 }

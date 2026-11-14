@@ -229,7 +229,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
 		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
@@ -603,6 +603,12 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 				b.WriteString(lines[i])
 			}
 			continue
+		}
+		// The blank line after a dropped item stays when the text before it
+		// does not already end in one: a one-line clause directly above the
+		// dropped item keeps the blank line mix format wants before the next.
+		if out := b.String(); lines[k-1] == "\n" && out != "" && !strings.HasSuffix(out, "\n\n") && !strings.HasSuffix(out, " do\n") {
+			b.WriteString("\n")
 		}
 		i = k
 	}
@@ -1701,10 +1707,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
          true <- byte_size(r2) >= len do
       bytes = binary_part(r2, 0, len)
 
+      # A RECORD THIS READER CANNOT NAME keeps its body ({:unknown, body}):
+      # the value reads it as nothing, but the reach walk still reads its
+      # pointer payloads, as every record's are (§3.1, §4)
       node =
         case resolve(ids, sref) do
           :error ->
-            :unknown
+            {:unknown, bytes}
 
           @string_id ->
             # a *string blob this reader can name is its UTF-8 bytes; a record
@@ -1713,7 +1722,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             if is_map(allowed) and allowed.string_blob do
               if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
             else
-              :unknown
+              {:unknown, :blob}
             end
 
           tid ->
@@ -1721,15 +1730,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               {:ok, :bytes} ->
                 if is_map(allowed) and allowed.bytes_blob,
                   do: {:blob, :bytes, bytes},
-                  else: :unknown
+                  else: {:unknown, :blob}
 
               {:ok, name} ->
                 if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
                   do: {:table, name, bytes},
-                  else: :unknown
+                  else: {:unknown, bytes}
 
               :error ->
-                :unknown
+                {:unknown, bytes}
             end
         end
 
@@ -1893,11 +1902,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           # body was read (directory_report), so this is never taken
           :null
 
-        _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+        {:unknown, _body} ->
+          # A NODE WHOSE TYPE ID THIS READER CANNOT NAME is skipped by its
+          # length, counted unknown, keeps its index, and every pointer
+          # naming it reads null (docs/SPEC-TABLES.md §3.1), as the
+          # retaining read and Go's oracle (internal/tablewire) already do
+          :null
       end
     end
   end
@@ -1906,7 +1916,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
+      {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
@@ -1915,7 +1925,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp directory_report(nodes, report, retaining) do
     if :malformed in nodes, do: throw(:wire_damaged)
 
-    unknown = Enum.count(nodes, &(&1 == :unknown))
+    unknown = Enum.count(nodes, &match?({:unknown, _}, &1))
 
     %{
       report
@@ -2298,11 +2308,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {n, bytes} when actual == 6 ->
             if n > f.size, do: throw(:wire_damaged)
 
-            keep = min(n, f.size)
-            report = report
-
-            if byte_size(bytes) >= keep do
-              {:cont, binary_part(bytes, 0, keep), report}
+            # a count the body cannot cover, and bytes left inside the L after
+            # the count's bytes, are both damage (§3, §4)
+            if byte_size(bytes) == n do
+              {:cont, bytes, report}
             else
               {:cont, bytes, throw(:wire_damaged)}
             end
@@ -2405,7 +2414,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+              reader = %{f | elem_kind: elem_kind}
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -2656,7 +2665,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4): every slot is framed by its own L, so no widening leaves any.
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -2806,12 +2821,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
-    # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and the rest of the L
-    # is the writer's wider slots, skipped with the body (§2.9, §4).
-    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
-      do: throw(:wire_damaged)
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
+    # Bytes left inside an array's L after its elements are damage (§3, §4),
+    # a widened element kind's too: its elements read at the wire kind's
+    # width and fill the L exactly, as Go's oracle holds (internal/tablewire).
+    if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
   end
@@ -3107,17 +3121,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp field_active?(_f, _desc, _value), do: true
 
-  defp validate_record(desc, value) do
+  # zero_ok is THE TEXT WRITER'S CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md
+  # §5.1): well-formed text, a zero byte included, which the text spells
+  # \u0000. The binary writers refuse a zero byte, because their readers do.
+  defp validate_record(desc, value), do: validate_record(desc, value, false)
+
+  defp validate_record(desc, value, zero_ok) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default))
+        validate_text_list(f, Map.get(value, f.name, f.default), zero_ok)
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
         end
       end
 
@@ -3125,7 +3144,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
         end
       end
 
@@ -3474,7 +3493,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements) do
+  defp validate_text_list(f, elements, zero_ok) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -3485,7 +3504,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or
+        if not is_binary(value) or not text_valid?(value, zero_ok) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -3516,6 +3535,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
+
+  defp text_valid?(raw, true), do: String.valid?(raw)
+  defp text_valid?(raw, false), do: utf8_valid?(raw)
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
@@ -3614,9 +3636,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
@@ -3729,12 +3756,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -3830,7 +3857,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1))
+    Enum.each(pairs, &validate_record(entry_desc, &1, true))
 
     if pairs == [] do
       "{}"
@@ -5125,10 +5152,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
   # ---- objects, arrays, strings with escapes, numbers, booleans and null
 
-  defp json_value(_bin, depth) when depth > 128, do: :error
-
+  # THE DEPTH CAP COUNTS CONTAINERS (docs/SPEC-TABLES.md §16.2): the root
+  # container sits at depth 0 and a container past depth 128 is refused, so a
+  # scalar member of a depth-128 object (graph_chain_text's deepest node) reads.
   defp json_value(bin, depth) do
     case json_skip(bin) do
+      <<c, _::binary>> when c in [?{, ?[] and depth > 128 -> :error
       <<"{", rest::binary>> -> json_object_p(rest, depth)
       <<"[", rest::binary>> -> json_array_p(rest, depth)
       <<"\"", rest::binary>> -> json_string(rest, [])
@@ -6975,8 +7004,13 @@ const variableRetainSource = `
     end
   end
 
-  defp read_keyed_retain(_f, _bin, 0, _nodes, _ids, acc, report, retain, _path),
-    do: {:cont, acc, report, retain}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4), as on the plain read.
+  defp read_keyed_retain(_f, bin, 0, _nodes, _ids, acc, report, retain, _path) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report, retain}
+  end
 
   defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
     with {kref, r1} <- leb(bin),
@@ -7089,7 +7123,9 @@ const variableRetainSource = `
     value =
       case node_value(nodes, idx, ids, f) do
         {:value, :wrong_type} ->
-          if Enum.at(nodes, idx - 2) in [:unknown, :malformed],
+          node = Enum.at(nodes, idx - 2)
+
+          if match?({:unknown, _}, node) or node == :malformed,
             do: :null,
             else: {:value, :wrong_type}
 

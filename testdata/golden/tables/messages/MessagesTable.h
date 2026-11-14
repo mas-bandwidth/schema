@@ -3263,6 +3263,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -3328,6 +3335,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -3430,6 +3457,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3443,7 +3530,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -3487,7 +3574,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3504,7 +3593,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -3516,13 +3605,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -3531,14 +3620,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3550,13 +3644,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -3572,10 +3666,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -4783,6 +4881,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -4844,7 +4943,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -5962,6 +6061,8 @@ inline int64_t UserMeasureBody( TableIds & ids, const User & value )
     return bytes;
 }
 
+inline bool UserFixedWriteAdmits( const User & value );
+
 inline int64_t UserMeasure( const User & value )
 {
     TableIds ids;
@@ -6345,6 +6446,7 @@ inline int64_t UserMeasureMessages( const User * values, int64_t count, TableRep
     {
         const int64_t body = UserMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( UserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -6363,6 +6465,7 @@ inline int64_t UserSaveMessages( const User * values, int64_t count, uint8_t * b
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !UserSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( UserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == UserMeasureMessages( values, count, report )
@@ -6419,6 +6522,8 @@ inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
     if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
     return bytes;
 }
+
+inline bool ScriptFixedWriteAdmits( const Script & value );
 
 inline int64_t ScriptMeasure( const Script & value )
 {
@@ -6918,6 +7023,7 @@ inline int64_t ScriptMeasureMessages( const Script * values, int64_t count, Tabl
     {
         const int64_t body = ScriptMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ScriptFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -6936,6 +7042,7 @@ inline int64_t ScriptSaveMessages( const Script * values, int64_t count, uint8_t
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ScriptSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ScriptFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ScriptMeasureMessages( values, count, report )
@@ -7652,6 +7759,8 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
     }
     return bytes;
 }
+
+inline bool InsertTextFixedWriteAdmits( const InsertText & value );
 
 inline int64_t InsertTextMeasure( const InsertText & value )
 {
@@ -9501,6 +9610,7 @@ inline int64_t InsertTextMeasureMessages( const InsertText * values, int64_t cou
     {
         const int64_t body = InsertTextMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( InsertTextFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9519,6 +9629,7 @@ inline int64_t InsertTextSaveMessages( const InsertText * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !InsertTextSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( InsertTextFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == InsertTextMeasureMessages( values, count, report )
@@ -10082,6 +10193,8 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
     }
     return bytes;
 }
+
+inline bool EditFixedWriteAdmits( const Edit & value );
 
 inline int64_t EditMeasure( const Edit & value )
 {
@@ -11328,6 +11441,7 @@ inline int64_t EditMeasureMessages( const Edit * values, int64_t count, TableRep
     {
         const int64_t body = EditMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( EditFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11346,6 +11460,7 @@ inline int64_t EditSaveMessages( const Edit * values, int64_t count, uint8_t * b
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !EditSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( EditFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == EditMeasureMessages( values, count, report )
@@ -11417,6 +11532,8 @@ inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & val
     }
     return bytes;
 }
+
+inline bool OpenDocumentFixedWriteAdmits( const OpenDocument & value );
 
 inline int64_t OpenDocumentMeasure( const OpenDocument & value )
 {
@@ -11974,6 +12091,7 @@ inline int64_t OpenDocumentMeasureMessages( const OpenDocument * values, int64_t
     {
         const int64_t body = OpenDocumentMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( OpenDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11992,6 +12110,7 @@ inline int64_t OpenDocumentSaveMessages( const OpenDocument * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !OpenDocumentSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( OpenDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == OpenDocumentMeasureMessages( values, count, report )
@@ -12048,6 +12167,8 @@ inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & val
     if ( value.force != false ) { bytes += TableLebBytes( ids.ref_at( 50, 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
     return bytes;
 }
+
+inline bool SaveDocumentFixedWriteAdmits( const SaveDocument & value );
 
 inline int64_t SaveDocumentMeasure( const SaveDocument & value )
 {
@@ -12498,6 +12619,7 @@ inline int64_t SaveDocumentMeasureMessages( const SaveDocument * values, int64_t
     {
         const int64_t body = SaveDocumentMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( SaveDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12516,6 +12638,7 @@ inline int64_t SaveDocumentSaveMessages( const SaveDocument * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !SaveDocumentSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( SaveDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == SaveDocumentMeasureMessages( values, count, report )
@@ -12692,6 +12815,8 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
     }
     return bytes;
 }
+
+inline bool TransactionFixedWriteAdmits( const Transaction & value );
 
 inline int64_t TransactionMeasure( const Transaction & value )
 {
@@ -14722,6 +14847,7 @@ inline int64_t TransactionMeasureMessages( const Transaction * values, int64_t c
     {
         const int64_t body = TransactionMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TransactionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14740,6 +14866,7 @@ inline int64_t TransactionSaveMessages( const Transaction * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TransactionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TransactionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TransactionMeasureMessages( values, count, report )
@@ -15110,6 +15237,8 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
     }
     return bytes;
 }
+
+inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value );
 
 inline int64_t ToolMessageMeasure( const ToolMessage & value )
 {
@@ -18753,6 +18882,7 @@ inline int64_t ToolMessageMeasureMessages( const ToolMessage * values, int64_t c
     {
         const int64_t body = ToolMessageMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ToolMessageFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -18771,6 +18901,7 @@ inline int64_t ToolMessageSaveMessages( const ToolMessage * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ToolMessageSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ToolMessageFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ToolMessageMeasureMessages( values, count, report )
@@ -20438,6 +20569,16 @@ TABLE_FIXED_INLINE bool UserFixedInRange( const User & value )
     return bad == 0;
 }
 
+// User's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool UserFixedWriteAdmits( const User & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.name_length >= 0 && value.name_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) );
+    return bad == 0;
+}
+
 // User's read-side bounds.
 inline void UserFixedClampBody( User & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20457,6 +20598,16 @@ TABLE_FIXED_INLINE bool ScriptFixedInRange( const Script & value )
     (void) value;
     int bad = 0;
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
+// Script's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ScriptFixedWriteAdmits( const Script & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.path_length >= 0 && value.path_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) );
     return bad == 0;
 }
 
@@ -20533,6 +20684,74 @@ TABLE_FIXED_INLINE bool InsertTextFixedInRange( const InsertText & value )
     if ( value.modes_present )
     {
         for ( int64_t i = 0; i < (int64_t) value.modes_count; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.modes[i] > 2u );
+        }
+    }
+    return bad == 0;
+}
+
+// InsertText's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool InsertTextFixedWriteAdmits( const InsertText & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.text_length >= 0 && value.text_length <= 32 && !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) );
+    bad |= (int) ( (uint64_t) value.origin.type > 4u );
+    switch ( value.origin.type )
+    {
+        case OriginType::User:
+        {
+            bad |= (int) !UserFixedWriteAdmits( value.origin.user );
+            break;
+        }
+        case OriginType::Script:
+        {
+            bad |= (int) !ScriptFixedWriteAdmits( value.origin.script );
+            break;
+        }
+        case OriginType::Pid:
+        {
+            bad |= (int) ( value.origin.pid > 1000 );
+            break;
+        }
+        case OriginType::Note:
+        {
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < ( value.origins_count >= 0 && value.origins_count <= 2 ? (int64_t) value.origins_count : 0 ); ++i )
+    {
+        bad |= (int) ( (uint64_t) value.origins[i].type > 4u );
+        switch ( value.origins[i].type )
+        {
+            case OriginType::User:
+            {
+                bad |= (int) !UserFixedWriteAdmits( value.origins[i].user );
+                break;
+            }
+            case OriginType::Script:
+            {
+                bad |= (int) !ScriptFixedWriteAdmits( value.origins[i].script );
+                break;
+            }
+            case OriginType::Pid:
+            {
+                bad |= (int) ( value.origins[i].pid > 1000 );
+                break;
+            }
+            case OriginType::Note:
+            {
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.modes_present )
+    {
+        for ( int64_t i = 0; i < ( value.modes_count >= 0 && value.modes_count <= 2 ? (int64_t) value.modes_count : 0 ); ++i )
         {
             bad |= (int) ( (uint64_t) value.modes[i] > 2u );
         }
@@ -20641,6 +20860,35 @@ TABLE_FIXED_INLINE bool EditFixedInRange( const Edit & value )
     return bad == 0;
 }
 
+// Edit's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool EditFixedWriteAdmits( const Edit & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.body.type > 6u );
+    switch ( value.body.type )
+    {
+        case EditBodyType::Insert:
+        {
+            bad |= (int) !InsertTextFixedWriteAdmits( value.body.insert );
+            break;
+        }
+        case EditBodyType::Tally:
+        {
+            bad |= (int) ( value.body.tally < 0 ) | (int) ( value.body.tally > 100 );
+            break;
+        }
+        case EditBodyType::Mode:
+        {
+            bad |= (int) ( (uint64_t) value.body.mode > 2u );
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
 // Edit's read-side bounds.
 inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20681,6 +20929,17 @@ TABLE_FIXED_INLINE bool OpenDocumentFixedInRange( const OpenDocument & value )
     return bad == 0;
 }
 
+// OpenDocument's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool OpenDocumentFixedWriteAdmits( const OpenDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.path_length >= 0 && value.path_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) );
+    bad |= (int) ( (uint64_t) value.mode > 2u );
+    return bad == 0;
+}
+
 // OpenDocument's read-side bounds.
 inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20701,6 +20960,16 @@ TABLE_FIXED_INLINE bool SaveDocumentFixedInRange( const SaveDocument & value )
     (void) value;
     int bad = 0;
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
+// SaveDocument's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool SaveDocumentFixedWriteAdmits( const SaveDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.path_length >= 0 && value.path_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) );
     return bad == 0;
 }
 
@@ -20735,6 +21004,43 @@ TABLE_FIXED_INLINE bool TransactionFixedInRange( const Transaction & value )
             case EditBodyType::Insert:
             {
                 bad |= (int) !InsertTextFixedInRange( value.pending[i].insert );
+                break;
+            }
+            case EditBodyType::Tally:
+            {
+                bad |= (int) ( value.pending[i].tally < 0 ) | (int) ( value.pending[i].tally > 100 );
+                break;
+            }
+            case EditBodyType::Mode:
+            {
+                bad |= (int) ( (uint64_t) value.pending[i].mode > 2u );
+                break;
+            }
+            default: break;
+        }
+    }
+    return bad == 0;
+}
+
+// Transaction's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TransactionFixedWriteAdmits( const Transaction & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.reason_length >= 0 && value.reason_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) );
+    for ( int64_t i = 0; i < ( value.edits_count >= 0 && value.edits_count <= 3 ? (int64_t) value.edits_count : 0 ); ++i )
+    {
+        bad |= (int) !EditFixedWriteAdmits( value.edits[i] );
+    }
+    for ( int64_t i = 0; i < 2; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.pending[i].type > 6u );
+        switch ( value.pending[i].type )
+        {
+            case EditBodyType::Insert:
+            {
+                bad |= (int) !InsertTextFixedWriteAdmits( value.pending[i].insert );
                 break;
             }
             case EditBodyType::Tally:
@@ -20903,6 +21209,128 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
         for ( int64_t i = 0; i < (int64_t) value.trace_count; ++i )
         {
             bad |= (int) !ScriptFixedInRange( value.trace[i] );
+        }
+    }
+    if ( value.marks_present )
+    {
+        for ( int64_t i = 0; i < 2; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.marks[i] > 2u );
+        }
+    }
+    return bad == 0;
+}
+
+// ToolMessage's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.body.type > 8u );
+    switch ( value.body.type )
+    {
+        case ToolBodyType::Open:
+        {
+            bad |= (int) !OpenDocumentFixedWriteAdmits( value.body.open );
+            break;
+        }
+        case ToolBodyType::Save:
+        {
+            bad |= (int) !SaveDocumentFixedWriteAdmits( value.body.save );
+            break;
+        }
+        case ToolBodyType::Transact:
+        {
+            bad |= (int) !TransactionFixedWriteAdmits( value.body.transact );
+            break;
+        }
+        case ToolBodyType::Origin:
+        {
+            bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
+            switch ( value.body.origin.type )
+            {
+                case OriginType::User:
+                {
+                    bad |= (int) !UserFixedWriteAdmits( value.body.origin.user );
+                    break;
+                }
+                case OriginType::Script:
+                {
+                    bad |= (int) !ScriptFixedWriteAdmits( value.body.origin.script );
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    bad |= (int) ( value.body.origin.pid > 1000 );
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    break;
+                }
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < ( value.history_count >= 0 && value.history_count <= 2 ? (int64_t) value.history_count : 0 ); ++i )
+    {
+        bad |= (int) ( (uint64_t) value.history[i].type > 8u );
+        switch ( value.history[i].type )
+        {
+            case ToolBodyType::Open:
+            {
+                bad |= (int) !OpenDocumentFixedWriteAdmits( value.history[i].open );
+                break;
+            }
+            case ToolBodyType::Save:
+            {
+                bad |= (int) !SaveDocumentFixedWriteAdmits( value.history[i].save );
+                break;
+            }
+            case ToolBodyType::Transact:
+            {
+                bad |= (int) !TransactionFixedWriteAdmits( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                bad |= (int) ( (uint64_t) value.history[i].origin.type > 4u );
+                switch ( value.history[i].origin.type )
+                {
+                    case OriginType::User:
+                    {
+                        bad |= (int) !UserFixedWriteAdmits( value.history[i].origin.user );
+                        break;
+                    }
+                    case OriginType::Script:
+                    {
+                        bad |= (int) !ScriptFixedWriteAdmits( value.history[i].origin.script );
+                        break;
+                    }
+                    case OriginType::Pid:
+                    {
+                        bad |= (int) ( value.history[i].origin.pid > 1000 );
+                        break;
+                    }
+                    case OriginType::Note:
+                    {
+                        break;
+                    }
+                    default: break;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.trace_present )
+    {
+        for ( int64_t i = 0; i < ( value.trace_count >= 0 && value.trace_count <= 3 ? (int64_t) value.trace_count : 0 ); ++i )
+        {
+            bad |= (int) !ScriptFixedWriteAdmits( value.trace[i] );
         }
     }
     if ( value.marks_present )
@@ -21106,7 +21534,7 @@ constexpr TableFixedDst UserFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry UserFixedPlan[] = {
-    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // name
+    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // name
 };
 constexpr int32_t UserFixedPlanCount = 1;
 constexpr int32_t UserFixedPlanGuarded = 1;
@@ -21169,6 +21597,10 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( UserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, UserFixedHash );
@@ -21557,8 +21989,8 @@ constexpr TableFixedDst ScriptFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry ScriptFixedPlan[] = {
-    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // path
-    { 68u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
+    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // path
+    { 68u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
 };
 constexpr int32_t ScriptFixedPlanCount = 2;
 constexpr int32_t ScriptFixedPlanGuarded = 2;
@@ -21622,6 +22054,10 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ScriptFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ScriptFixedHash );
@@ -21998,10 +22434,13 @@ constexpr TableFixedDst SelectionFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry SelectionFixedPlan[] = {
-    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 8u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
 };
-constexpr int32_t SelectionFixedPlanCount = 1;
-constexpr int32_t SelectionFixedPlanGuarded = 1;
+constexpr int32_t SelectionFixedPlanCount = 4;
+constexpr int32_t SelectionFixedPlanGuarded = 4;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink SelectionFixedGuards[] = {
@@ -22541,33 +22980,35 @@ constexpr TableFixedDst InsertTextFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry InsertTextFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
-    { 8u, 44u, 32u, 8u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // text
-    { 44u, 48u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // origin tag
-    { 117u, 288u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // origins count
-    { 121u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // origins[0] tag
-    { 194u, 208u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // origins[1] tag
-    { 268u, 296u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // modes count
-    { 272u, 292u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // modes[0]
-    { 45u, 72u, 16u, 52u, 44u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 45u, 120u, 64u, 52u, 44u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 113u, 124u, 4u, 0u, 44u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 45u, 52u, 4u, 0u, 44u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 45u, 80u, 24u, 52u, 44u, kTableFixedText, 4, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 122u, 152u, 16u, 132u, 121u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 4 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 122u, 200u, 64u, 132u, 121u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 190u, 204u, 4u, 0u, 121u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 122u, 132u, 4u, 0u, 121u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 6 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 122u, 160u, 24u, 132u, 121u, kTableFixedText, 4, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 7 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 195u, 232u, 16u, 212u, 194u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 8 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 195u, 280u, 64u, 212u, 194u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 9 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 263u, 284u, 4u, 0u, 194u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 9 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 195u, 212u, 4u, 0u, 194u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 10 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 195u, 240u, 24u, 212u, 194u, kTableFixedText, 4, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 11 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 267u, 300u, 8u, 292u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // modes present, absent payload defaults
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 8u, 44u, 32u, 8u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // text
+    { 44u, 48u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // origin tag
+    { 117u, 288u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // origins count
+    { 121u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // origins[0] tag
+    { 194u, 208u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // origins[1] tag
+    { 268u, 296u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // modes count
+    { 272u, 292u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // modes[0]
+    { 273u, 293u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // modes[0]
+    { 45u, 72u, 16u, 52u, 44u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 45u, 120u, 64u, 52u, 44u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 113u, 124u, 4u, 0u, 44u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 45u, 52u, 4u, 0u, 44u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 45u, 80u, 24u, 52u, 44u, kTableFixedText, 4, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 122u, 152u, 16u, 132u, 121u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 4 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 122u, 200u, 64u, 132u, 121u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 190u, 204u, 4u, 0u, 121u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 5 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 122u, 132u, 4u, 0u, 121u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 6 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 122u, 160u, 24u, 132u, 121u, kTableFixedText, 4, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 7 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 195u, 232u, 16u, 212u, 194u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 8 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 195u, 280u, 64u, 212u, 194u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 9 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 263u, 284u, 4u, 0u, 194u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 9 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 195u, 212u, 4u, 0u, 194u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 10 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 195u, 240u, 24u, 212u, 194u, kTableFixedText, 4, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 11 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 267u, 300u, 8u, 292u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // modes present, absent payload defaults
 };
-constexpr int32_t InsertTextFixedPlanCount = 24;
-constexpr int32_t InsertTextFixedPlanGuarded = 8;
+constexpr int32_t InsertTextFixedPlanCount = 26;
+constexpr int32_t InsertTextFixedPlanGuarded = 10;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink InsertTextFixedGuards[] = {
@@ -22671,6 +23112,10 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 {
     const int64_t need = InsertTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( InsertTextFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, InsertTextFixedHash );
@@ -23048,10 +23493,13 @@ constexpr TableFixedDst RemoveTextFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RemoveTextFixedPlan[] = {
-    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 8u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
 };
-constexpr int32_t RemoveTextFixedPlanCount = 1;
-constexpr int32_t RemoveTextFixedPlanGuarded = 1;
+constexpr int32_t RemoveTextFixedPlanCount = 4;
+constexpr int32_t RemoveTextFixedPlanGuarded = 4;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RemoveTextFixedGuards[] = {
@@ -23670,40 +24118,42 @@ constexpr TableFixedDst EditFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry EditFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // revision
-    { 5u, 8u, 8u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 13u, 52u, 32u, 16u, 4u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 49u, 56u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 50u, 80u, 16u, 60u, 49u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 1, 1, 2, 1 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 50u, 128u, 64u, 60u, 49u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 118u, 132u, 4u, 0u, 49u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 50u, 60u, 4u, 0u, 49u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 1, 1, 2, 5 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 50u, 88u, 24u, 60u, 49u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 1, 1, 2, 7 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 122u, 296u, 2u, 0u, 4u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 126u, 136u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 127u, 160u, 16u, 140u, 126u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 1, 1, 2, 9 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 127u, 208u, 64u, 140u, 126u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 195u, 212u, 4u, 0u, 126u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 127u, 140u, 4u, 0u, 126u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 1, 1, 2, 13 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 127u, 168u, 24u, 140u, 126u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 1, 1, 2, 15 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 199u, 216u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 200u, 240u, 16u, 220u, 199u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 1, 1, 2, 17 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 200u, 288u, 64u, 220u, 199u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 268u, 292u, 4u, 0u, 199u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 200u, 220u, 4u, 0u, 199u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 1, 1, 2, 21 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 200u, 248u, 24u, 220u, 199u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 1, 1, 2, 23 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 273u, 304u, 2u, 0u, 4u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 277u, 300u, 2u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 272u, 308u, 8u, 300u, 4u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 5u, 8u, 16u, 0u, 4u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 25 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 5u, 8u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 26 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 5u, 16u, 3u, 0u, 4u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 9u, 8u, 6u, 0u, 4u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 5u, 12u, 4u, 8u, 4u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 28 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 5u, 8u, 1u, 0u, 4u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 29 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // revision
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // revision
+    { 5u, 8u, 8u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 13u, 52u, 32u, 16u, 4u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 49u, 56u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 50u, 80u, 16u, 60u, 49u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 1, 1, 2, 1 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 50u, 128u, 64u, 60u, 49u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 118u, 132u, 4u, 0u, 49u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 50u, 60u, 4u, 0u, 49u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 1, 1, 2, 5 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 50u, 88u, 24u, 60u, 49u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 1, 1, 2, 7 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 122u, 296u, 2u, 0u, 4u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 126u, 136u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 127u, 160u, 16u, 140u, 126u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 1, 1, 2, 9 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 127u, 208u, 64u, 140u, 126u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 195u, 212u, 4u, 0u, 126u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 127u, 140u, 4u, 0u, 126u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 1, 1, 2, 13 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 127u, 168u, 24u, 140u, 126u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 1, 1, 2, 15 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 199u, 216u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 200u, 240u, 16u, 220u, 199u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 1, 1, 2, 17 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 200u, 288u, 64u, 220u, 199u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 268u, 292u, 4u, 0u, 199u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 200u, 220u, 4u, 0u, 199u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 1, 1, 2, 21 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 200u, 248u, 24u, 220u, 199u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 1, 1, 2, 23 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 273u, 304u, 2u, 0u, 4u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 277u, 300u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 278u, 301u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 272u, 308u, 8u, 300u, 4u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 5u, 8u, 16u, 0u, 4u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 25 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 5u, 8u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 26 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 5u, 16u, 3u, 0u, 4u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 9u, 8u, 6u, 0u, 4u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 5u, 12u, 4u, 8u, 4u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 28 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 5u, 8u, 1u, 0u, 4u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 29 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
 };
-constexpr int32_t EditFixedPlanCount = 31;
-constexpr int32_t EditFixedPlanGuarded = 1;
+constexpr int32_t EditFixedPlanCount = 33;
+constexpr int32_t EditFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink EditFixedGuards[] = {
@@ -23847,6 +24297,10 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 {
     const int64_t need = EditFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( EditFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, EditFixedHash );
@@ -24252,12 +24706,13 @@ constexpr TableFixedDst OpenDocumentFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry OpenDocumentFixedPlan[] = {
-    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // path
-    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // mode
-    { 69u, 76u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
+    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // path
+    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // mode
+    { 69u, 76u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 73u, 80u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
 };
-constexpr int32_t OpenDocumentFixedPlanCount = 3;
-constexpr int32_t OpenDocumentFixedPlanGuarded = 3;
+constexpr int32_t OpenDocumentFixedPlanCount = 4;
+constexpr int32_t OpenDocumentFixedPlanGuarded = 4;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink OpenDocumentFixedGuards[] = {
@@ -24324,6 +24779,10 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( OpenDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, OpenDocumentFixedHash );
@@ -24712,8 +25171,8 @@ constexpr TableFixedDst SaveDocumentFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry SaveDocumentFixedPlan[] = {
-    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // path
-    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // force
+    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // path
+    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // force
 };
 constexpr int32_t SaveDocumentFixedPlanCount = 2;
 constexpr int32_t SaveDocumentFixedPlanGuarded = 2;
@@ -24777,6 +25236,10 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( SaveDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SaveDocumentFixedHash );
@@ -25583,170 +26046,186 @@ constexpr TableFixedDst TransactionFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry TransactionFixedPlan[] = {
-    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reason
-    { 20u, 960u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // edits count
-    { 24u, 24u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // revision
-    { 303u, 336u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // revision
-    { 582u, 648u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // revision
-    { 861u, 964u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // pending[0] tag
-    { 1136u, 1272u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // pending[1] tag
-    { 1412u, 1580u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // checkpoints[0]
-    { 1421u, 1592u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
-    { 29u, 32u, 8u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 37u, 76u, 32u, 40u, 28u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 73u, 80u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 74u, 104u, 16u, 84u, 73u, kTableFixedText, 1, 1, 0, 0, 1, 28u, 1, 1, 2, 1 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 74u, 152u, 64u, 84u, 73u, kTableFixedText, 2, 1, 0, 0, 1, 28u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 142u, 156u, 4u, 0u, 73u, kTableFixedCopy, 2, 0, 0, 0, 1, 28u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 74u, 84u, 4u, 0u, 73u, kTableFixedCopy, 3, 0, 0, 0, 1, 28u, 1, 1, 2, 5 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 74u, 112u, 24u, 84u, 73u, kTableFixedText, 4, 1, 0, 0, 1, 28u, 1, 1, 2, 7 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 146u, 320u, 2u, 0u, 28u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 150u, 160u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 151u, 184u, 16u, 164u, 150u, kTableFixedText, 1, 1, 0, 0, 1, 28u, 1, 1, 2, 9 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 151u, 232u, 64u, 164u, 150u, kTableFixedText, 2, 1, 0, 0, 1, 28u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 219u, 236u, 4u, 0u, 150u, kTableFixedCopy, 2, 0, 0, 0, 1, 28u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 151u, 164u, 4u, 0u, 150u, kTableFixedCopy, 3, 0, 0, 0, 1, 28u, 1, 1, 2, 13 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 151u, 192u, 24u, 164u, 150u, kTableFixedText, 4, 1, 0, 0, 1, 28u, 1, 1, 2, 15 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 223u, 240u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 224u, 264u, 16u, 244u, 223u, kTableFixedText, 1, 1, 0, 0, 1, 28u, 1, 1, 2, 17 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 224u, 312u, 64u, 244u, 223u, kTableFixedText, 2, 1, 0, 0, 1, 28u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 292u, 316u, 4u, 0u, 223u, kTableFixedCopy, 2, 0, 0, 0, 1, 28u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 224u, 244u, 4u, 0u, 223u, kTableFixedCopy, 3, 0, 0, 0, 1, 28u, 1, 1, 2, 21 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 224u, 272u, 24u, 244u, 223u, kTableFixedText, 4, 1, 0, 0, 1, 28u, 1, 1, 2, 23 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 297u, 328u, 2u, 0u, 28u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 301u, 324u, 2u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 296u, 332u, 8u, 324u, 28u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 29u, 32u, 16u, 0u, 28u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 25 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 29u, 32u, 4u, 0u, 28u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 26 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 29u, 40u, 3u, 0u, 28u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 33u, 32u, 6u, 0u, 28u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 29u, 36u, 4u, 32u, 28u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 28 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 29u, 32u, 1u, 0u, 28u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 29 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 308u, 344u, 8u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 316u, 388u, 32u, 352u, 307u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 352u, 392u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 353u, 416u, 16u, 396u, 352u, kTableFixedText, 1, 1, 0, 0, 1, 307u, 1, 1, 2, 31 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 353u, 464u, 64u, 396u, 352u, kTableFixedText, 2, 1, 0, 0, 1, 307u, 1, 1, 2, 33 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 421u, 468u, 4u, 0u, 352u, kTableFixedCopy, 2, 0, 0, 0, 1, 307u, 1, 1, 2, 33 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 353u, 396u, 4u, 0u, 352u, kTableFixedCopy, 3, 0, 0, 0, 1, 307u, 1, 1, 2, 35 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 353u, 424u, 24u, 396u, 352u, kTableFixedText, 4, 1, 0, 0, 1, 307u, 1, 1, 2, 37 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 425u, 632u, 2u, 0u, 307u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 429u, 472u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 430u, 496u, 16u, 476u, 429u, kTableFixedText, 1, 1, 0, 0, 1, 307u, 1, 1, 2, 39 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 430u, 544u, 64u, 476u, 429u, kTableFixedText, 2, 1, 0, 0, 1, 307u, 1, 1, 2, 41 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 498u, 548u, 4u, 0u, 429u, kTableFixedCopy, 2, 0, 0, 0, 1, 307u, 1, 1, 2, 41 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 430u, 476u, 4u, 0u, 429u, kTableFixedCopy, 3, 0, 0, 0, 1, 307u, 1, 1, 2, 43 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 430u, 504u, 24u, 476u, 429u, kTableFixedText, 4, 1, 0, 0, 1, 307u, 1, 1, 2, 45 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 502u, 552u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 503u, 576u, 16u, 556u, 502u, kTableFixedText, 1, 1, 0, 0, 1, 307u, 1, 1, 2, 47 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 503u, 624u, 64u, 556u, 502u, kTableFixedText, 2, 1, 0, 0, 1, 307u, 1, 1, 2, 49 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 571u, 628u, 4u, 0u, 502u, kTableFixedCopy, 2, 0, 0, 0, 1, 307u, 1, 1, 2, 49 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 503u, 556u, 4u, 0u, 502u, kTableFixedCopy, 3, 0, 0, 0, 1, 307u, 1, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 503u, 584u, 24u, 556u, 502u, kTableFixedText, 4, 1, 0, 0, 1, 307u, 1, 1, 2, 53 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 576u, 640u, 2u, 0u, 307u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 580u, 636u, 2u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 575u, 644u, 8u, 636u, 307u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 308u, 344u, 16u, 0u, 307u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 55 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 308u, 344u, 4u, 0u, 307u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 56 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 308u, 352u, 3u, 0u, 307u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 57 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 312u, 344u, 6u, 0u, 307u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 57 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 308u, 348u, 4u, 344u, 307u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 58 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 308u, 344u, 1u, 0u, 307u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 59 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 587u, 656u, 8u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 595u, 700u, 32u, 664u, 586u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 631u, 704u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 632u, 728u, 16u, 708u, 631u, kTableFixedText, 1, 1, 0, 0, 1, 586u, 1, 1, 2, 61 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 632u, 776u, 64u, 708u, 631u, kTableFixedText, 2, 1, 0, 0, 1, 586u, 1, 1, 2, 63 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 700u, 780u, 4u, 0u, 631u, kTableFixedCopy, 2, 0, 0, 0, 1, 586u, 1, 1, 2, 63 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 632u, 708u, 4u, 0u, 631u, kTableFixedCopy, 3, 0, 0, 0, 1, 586u, 1, 1, 2, 65 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 632u, 736u, 24u, 708u, 631u, kTableFixedText, 4, 1, 0, 0, 1, 586u, 1, 1, 2, 67 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 704u, 944u, 2u, 0u, 586u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 708u, 784u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 709u, 808u, 16u, 788u, 708u, kTableFixedText, 1, 1, 0, 0, 1, 586u, 1, 1, 2, 69 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 709u, 856u, 64u, 788u, 708u, kTableFixedText, 2, 1, 0, 0, 1, 586u, 1, 1, 2, 71 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 777u, 860u, 4u, 0u, 708u, kTableFixedCopy, 2, 0, 0, 0, 1, 586u, 1, 1, 2, 71 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 709u, 788u, 4u, 0u, 708u, kTableFixedCopy, 3, 0, 0, 0, 1, 586u, 1, 1, 2, 73 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 709u, 816u, 24u, 788u, 708u, kTableFixedText, 4, 1, 0, 0, 1, 586u, 1, 1, 2, 75 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 781u, 864u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 782u, 888u, 16u, 868u, 781u, kTableFixedText, 1, 1, 0, 0, 1, 586u, 1, 1, 2, 77 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 782u, 936u, 64u, 868u, 781u, kTableFixedText, 2, 1, 0, 0, 1, 586u, 1, 1, 2, 79 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 850u, 940u, 4u, 0u, 781u, kTableFixedCopy, 2, 0, 0, 0, 1, 586u, 1, 1, 2, 79 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 782u, 868u, 4u, 0u, 781u, kTableFixedCopy, 3, 0, 0, 0, 1, 586u, 1, 1, 2, 81 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 782u, 896u, 24u, 868u, 781u, kTableFixedText, 4, 1, 0, 0, 1, 586u, 1, 1, 2, 83 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 855u, 952u, 2u, 0u, 586u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 859u, 948u, 2u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 854u, 956u, 8u, 948u, 586u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 587u, 656u, 16u, 0u, 586u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 85 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 587u, 656u, 4u, 0u, 586u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 86 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 587u, 664u, 3u, 0u, 586u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 87 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 591u, 656u, 6u, 0u, 586u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 87 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 587u, 660u, 4u, 656u, 586u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 88 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 587u, 656u, 1u, 0u, 586u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 89 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 862u, 968u, 8u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 870u, 1012u, 32u, 976u, 861u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 906u, 1016u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 907u, 1040u, 16u, 1020u, 906u, kTableFixedText, 1, 1, 0, 0, 1, 861u, 1, 1, 2, 91 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 907u, 1088u, 64u, 1020u, 906u, kTableFixedText, 2, 1, 0, 0, 1, 861u, 1, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 975u, 1092u, 4u, 0u, 906u, kTableFixedCopy, 2, 0, 0, 0, 1, 861u, 1, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 907u, 1020u, 4u, 0u, 906u, kTableFixedCopy, 3, 0, 0, 0, 1, 861u, 1, 1, 2, 95 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 907u, 1048u, 24u, 1020u, 906u, kTableFixedText, 4, 1, 0, 0, 1, 861u, 1, 1, 2, 97 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 979u, 1256u, 2u, 0u, 861u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 983u, 1096u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 984u, 1120u, 16u, 1100u, 983u, kTableFixedText, 1, 1, 0, 0, 1, 861u, 1, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 984u, 1168u, 64u, 1100u, 983u, kTableFixedText, 2, 1, 0, 0, 1, 861u, 1, 1, 2, 101 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1052u, 1172u, 4u, 0u, 983u, kTableFixedCopy, 2, 0, 0, 0, 1, 861u, 1, 1, 2, 101 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 984u, 1100u, 4u, 0u, 983u, kTableFixedCopy, 3, 0, 0, 0, 1, 861u, 1, 1, 2, 103 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 984u, 1128u, 24u, 1100u, 983u, kTableFixedText, 4, 1, 0, 0, 1, 861u, 1, 1, 2, 105 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 1056u, 1176u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 1057u, 1200u, 16u, 1180u, 1056u, kTableFixedText, 1, 1, 0, 0, 1, 861u, 1, 1, 2, 107 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1057u, 1248u, 64u, 1180u, 1056u, kTableFixedText, 2, 1, 0, 0, 1, 861u, 1, 1, 2, 109 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1125u, 1252u, 4u, 0u, 1056u, kTableFixedCopy, 2, 0, 0, 0, 1, 861u, 1, 1, 2, 109 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1057u, 1180u, 4u, 0u, 1056u, kTableFixedCopy, 3, 0, 0, 0, 1, 861u, 1, 1, 2, 111 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 1057u, 1208u, 24u, 1180u, 1056u, kTableFixedText, 4, 1, 0, 0, 1, 861u, 1, 1, 2, 113 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 1130u, 1264u, 2u, 0u, 861u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 1134u, 1260u, 2u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 1129u, 1268u, 8u, 1260u, 861u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 862u, 968u, 16u, 0u, 861u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 115 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 862u, 968u, 4u, 0u, 861u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 116 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].tally
-    { 862u, 976u, 3u, 0u, 861u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 117 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].marks count
-    { 866u, 968u, 6u, 0u, 861u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 117 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 862u, 972u, 4u, 968u, 861u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 118 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].blob
-    { 862u, 968u, 1u, 0u, 861u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 119 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].mode
-    { 1137u, 1276u, 8u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1145u, 1320u, 32u, 1284u, 1136u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 1181u, 1324u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 1182u, 1348u, 16u, 1328u, 1181u, kTableFixedText, 1, 1, 0, 0, 1, 1136u, 1, 1, 2, 121 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1182u, 1396u, 64u, 1328u, 1181u, kTableFixedText, 2, 1, 0, 0, 1, 1136u, 1, 1, 2, 123 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1250u, 1400u, 4u, 0u, 1181u, kTableFixedCopy, 2, 0, 0, 0, 1, 1136u, 1, 1, 2, 123 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1182u, 1328u, 4u, 0u, 1181u, kTableFixedCopy, 3, 0, 0, 0, 1, 1136u, 1, 1, 2, 125 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 1182u, 1356u, 24u, 1328u, 1181u, kTableFixedText, 4, 1, 0, 0, 1, 1136u, 1, 1, 2, 127 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 1254u, 1564u, 2u, 0u, 1136u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 1258u, 1404u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 1259u, 1428u, 16u, 1408u, 1258u, kTableFixedText, 1, 1, 0, 0, 1, 1136u, 1, 1, 2, 129 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1259u, 1476u, 64u, 1408u, 1258u, kTableFixedText, 2, 1, 0, 0, 1, 1136u, 1, 1, 2, 131 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1327u, 1480u, 4u, 0u, 1258u, kTableFixedCopy, 2, 0, 0, 0, 1, 1136u, 1, 1, 2, 131 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1259u, 1408u, 4u, 0u, 1258u, kTableFixedCopy, 3, 0, 0, 0, 1, 1136u, 1, 1, 2, 133 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 1259u, 1436u, 24u, 1408u, 1258u, kTableFixedText, 4, 1, 0, 0, 1, 1136u, 1, 1, 2, 135 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 1331u, 1484u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 1332u, 1508u, 16u, 1488u, 1331u, kTableFixedText, 1, 1, 0, 0, 1, 1136u, 1, 1, 2, 137 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1332u, 1556u, 64u, 1488u, 1331u, kTableFixedText, 2, 1, 0, 0, 1, 1136u, 1, 1, 2, 139 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1400u, 1560u, 4u, 0u, 1331u, kTableFixedCopy, 2, 0, 0, 0, 1, 1136u, 1, 1, 2, 139 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1332u, 1488u, 4u, 0u, 1331u, kTableFixedCopy, 3, 0, 0, 0, 1, 1136u, 1, 1, 2, 141 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 1332u, 1516u, 24u, 1488u, 1331u, kTableFixedText, 4, 1, 0, 0, 1, 1136u, 1, 1, 2, 143 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 1405u, 1572u, 2u, 0u, 1136u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 1409u, 1568u, 2u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 1404u, 1576u, 8u, 1568u, 1136u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 1137u, 1276u, 16u, 0u, 1136u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 145 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1137u, 1276u, 4u, 0u, 1136u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 146 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].tally
-    { 1137u, 1284u, 3u, 0u, 1136u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 147 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].marks count
-    { 1141u, 1276u, 6u, 0u, 1136u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 147 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 1137u, 1280u, 4u, 1276u, 1136u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 148 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].blob
-    { 1137u, 1276u, 1u, 0u, 1136u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 149 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].mode
-    { 1411u, 1588u, 8u, 1580u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // checkpoints present, absent payload defaults
-    { 1420u, 1624u, 32u, 1592u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // snapshots present, absent payload defaults
+    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // reason
+    { 20u, 960u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // edits count
+    { 24u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // revision
+    { 28u, 28u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // revision
+    { 303u, 336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // revision
+    { 307u, 340u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // revision
+    { 582u, 648u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // revision
+    { 586u, 652u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // revision
+    { 861u, 964u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // pending[0] tag
+    { 1136u, 1272u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // pending[1] tag
+    { 1412u, 1580u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // checkpoints[0]
+    { 1416u, 1584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // checkpoints[0]
+    { 1421u, 1592u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1425u, 1596u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1429u, 1600u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1433u, 1604u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1437u, 1608u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1441u, 1612u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1445u, 1616u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 1449u, 1620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 29u, 32u, 8u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 37u, 76u, 32u, 40u, 28u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 73u, 80u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 74u, 104u, 16u, 84u, 73u, kTableFixedText, 1, 1, 0, 0, 1, 28u, 1, 1, 2, 1 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 74u, 152u, 64u, 84u, 73u, kTableFixedText, 2, 1, 0, 0, 1, 28u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 142u, 156u, 4u, 0u, 73u, kTableFixedCopy, 2, 0, 0, 0, 1, 28u, 1, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 74u, 84u, 4u, 0u, 73u, kTableFixedCopy, 3, 0, 0, 0, 1, 28u, 1, 1, 2, 5 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 74u, 112u, 24u, 84u, 73u, kTableFixedText, 4, 1, 0, 0, 1, 28u, 1, 1, 2, 7 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 146u, 320u, 2u, 0u, 28u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 150u, 160u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 151u, 184u, 16u, 164u, 150u, kTableFixedText, 1, 1, 0, 0, 1, 28u, 1, 1, 2, 9 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 151u, 232u, 64u, 164u, 150u, kTableFixedText, 2, 1, 0, 0, 1, 28u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 219u, 236u, 4u, 0u, 150u, kTableFixedCopy, 2, 0, 0, 0, 1, 28u, 1, 1, 2, 11 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 151u, 164u, 4u, 0u, 150u, kTableFixedCopy, 3, 0, 0, 0, 1, 28u, 1, 1, 2, 13 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 151u, 192u, 24u, 164u, 150u, kTableFixedText, 4, 1, 0, 0, 1, 28u, 1, 1, 2, 15 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 223u, 240u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 224u, 264u, 16u, 244u, 223u, kTableFixedText, 1, 1, 0, 0, 1, 28u, 1, 1, 2, 17 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 224u, 312u, 64u, 244u, 223u, kTableFixedText, 2, 1, 0, 0, 1, 28u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 292u, 316u, 4u, 0u, 223u, kTableFixedCopy, 2, 0, 0, 0, 1, 28u, 1, 1, 2, 19 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 224u, 244u, 4u, 0u, 223u, kTableFixedCopy, 3, 0, 0, 0, 1, 28u, 1, 1, 2, 21 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 224u, 272u, 24u, 244u, 223u, kTableFixedText, 4, 1, 0, 0, 1, 28u, 1, 1, 2, 23 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 297u, 328u, 2u, 0u, 28u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 301u, 324u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 302u, 325u, 1u, 0u, 28u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 296u, 332u, 8u, 324u, 28u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 29u, 32u, 16u, 0u, 28u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 25 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 29u, 32u, 4u, 0u, 28u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 26 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 29u, 40u, 3u, 0u, 28u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 33u, 32u, 6u, 0u, 28u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 27 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 29u, 36u, 4u, 32u, 28u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 28 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 29u, 32u, 1u, 0u, 28u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 29 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 308u, 344u, 8u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 316u, 388u, 32u, 352u, 307u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 352u, 392u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 353u, 416u, 16u, 396u, 352u, kTableFixedText, 1, 1, 0, 0, 1, 307u, 1, 1, 2, 31 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 353u, 464u, 64u, 396u, 352u, kTableFixedText, 2, 1, 0, 0, 1, 307u, 1, 1, 2, 33 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 421u, 468u, 4u, 0u, 352u, kTableFixedCopy, 2, 0, 0, 0, 1, 307u, 1, 1, 2, 33 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 353u, 396u, 4u, 0u, 352u, kTableFixedCopy, 3, 0, 0, 0, 1, 307u, 1, 1, 2, 35 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 353u, 424u, 24u, 396u, 352u, kTableFixedText, 4, 1, 0, 0, 1, 307u, 1, 1, 2, 37 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 425u, 632u, 2u, 0u, 307u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 429u, 472u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 430u, 496u, 16u, 476u, 429u, kTableFixedText, 1, 1, 0, 0, 1, 307u, 1, 1, 2, 39 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 430u, 544u, 64u, 476u, 429u, kTableFixedText, 2, 1, 0, 0, 1, 307u, 1, 1, 2, 41 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 498u, 548u, 4u, 0u, 429u, kTableFixedCopy, 2, 0, 0, 0, 1, 307u, 1, 1, 2, 41 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 430u, 476u, 4u, 0u, 429u, kTableFixedCopy, 3, 0, 0, 0, 1, 307u, 1, 1, 2, 43 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 430u, 504u, 24u, 476u, 429u, kTableFixedText, 4, 1, 0, 0, 1, 307u, 1, 1, 2, 45 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 502u, 552u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 503u, 576u, 16u, 556u, 502u, kTableFixedText, 1, 1, 0, 0, 1, 307u, 1, 1, 2, 47 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 503u, 624u, 64u, 556u, 502u, kTableFixedText, 2, 1, 0, 0, 1, 307u, 1, 1, 2, 49 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 571u, 628u, 4u, 0u, 502u, kTableFixedCopy, 2, 0, 0, 0, 1, 307u, 1, 1, 2, 49 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 503u, 556u, 4u, 0u, 502u, kTableFixedCopy, 3, 0, 0, 0, 1, 307u, 1, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 503u, 584u, 24u, 556u, 502u, kTableFixedText, 4, 1, 0, 0, 1, 307u, 1, 1, 2, 53 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 576u, 640u, 2u, 0u, 307u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 580u, 636u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 581u, 637u, 1u, 0u, 307u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 575u, 644u, 8u, 636u, 307u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 30 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 308u, 344u, 16u, 0u, 307u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 55 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 308u, 344u, 4u, 0u, 307u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 56 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 308u, 352u, 3u, 0u, 307u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 57 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 312u, 344u, 6u, 0u, 307u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 57 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 308u, 348u, 4u, 344u, 307u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 58 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 308u, 344u, 1u, 0u, 307u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 59 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 587u, 656u, 8u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 595u, 700u, 32u, 664u, 586u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 631u, 704u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 632u, 728u, 16u, 708u, 631u, kTableFixedText, 1, 1, 0, 0, 1, 586u, 1, 1, 2, 61 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 632u, 776u, 64u, 708u, 631u, kTableFixedText, 2, 1, 0, 0, 1, 586u, 1, 1, 2, 63 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 700u, 780u, 4u, 0u, 631u, kTableFixedCopy, 2, 0, 0, 0, 1, 586u, 1, 1, 2, 63 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 632u, 708u, 4u, 0u, 631u, kTableFixedCopy, 3, 0, 0, 0, 1, 586u, 1, 1, 2, 65 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 632u, 736u, 24u, 708u, 631u, kTableFixedText, 4, 1, 0, 0, 1, 586u, 1, 1, 2, 67 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 704u, 944u, 2u, 0u, 586u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 708u, 784u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 709u, 808u, 16u, 788u, 708u, kTableFixedText, 1, 1, 0, 0, 1, 586u, 1, 1, 2, 69 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 709u, 856u, 64u, 788u, 708u, kTableFixedText, 2, 1, 0, 0, 1, 586u, 1, 1, 2, 71 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 777u, 860u, 4u, 0u, 708u, kTableFixedCopy, 2, 0, 0, 0, 1, 586u, 1, 1, 2, 71 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 709u, 788u, 4u, 0u, 708u, kTableFixedCopy, 3, 0, 0, 0, 1, 586u, 1, 1, 2, 73 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 709u, 816u, 24u, 788u, 708u, kTableFixedText, 4, 1, 0, 0, 1, 586u, 1, 1, 2, 75 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 781u, 864u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 782u, 888u, 16u, 868u, 781u, kTableFixedText, 1, 1, 0, 0, 1, 586u, 1, 1, 2, 77 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 782u, 936u, 64u, 868u, 781u, kTableFixedText, 2, 1, 0, 0, 1, 586u, 1, 1, 2, 79 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 850u, 940u, 4u, 0u, 781u, kTableFixedCopy, 2, 0, 0, 0, 1, 586u, 1, 1, 2, 79 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 782u, 868u, 4u, 0u, 781u, kTableFixedCopy, 3, 0, 0, 0, 1, 586u, 1, 1, 2, 81 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 782u, 896u, 24u, 868u, 781u, kTableFixedText, 4, 1, 0, 0, 1, 586u, 1, 1, 2, 83 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 855u, 952u, 2u, 0u, 586u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 859u, 948u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 860u, 949u, 1u, 0u, 586u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 854u, 956u, 8u, 948u, 586u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 60 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 587u, 656u, 16u, 0u, 586u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 85 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 587u, 656u, 4u, 0u, 586u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 86 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 587u, 664u, 3u, 0u, 586u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 87 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 591u, 656u, 6u, 0u, 586u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 87 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 587u, 660u, 4u, 656u, 586u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 88 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 587u, 656u, 1u, 0u, 586u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 89 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 862u, 968u, 8u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 870u, 1012u, 32u, 976u, 861u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 906u, 1016u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 907u, 1040u, 16u, 1020u, 906u, kTableFixedText, 1, 1, 0, 0, 1, 861u, 1, 1, 2, 91 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 907u, 1088u, 64u, 1020u, 906u, kTableFixedText, 2, 1, 0, 0, 1, 861u, 1, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 975u, 1092u, 4u, 0u, 906u, kTableFixedCopy, 2, 0, 0, 0, 1, 861u, 1, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 907u, 1020u, 4u, 0u, 906u, kTableFixedCopy, 3, 0, 0, 0, 1, 861u, 1, 1, 2, 95 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 907u, 1048u, 24u, 1020u, 906u, kTableFixedText, 4, 1, 0, 0, 1, 861u, 1, 1, 2, 97 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 979u, 1256u, 2u, 0u, 861u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 983u, 1096u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 984u, 1120u, 16u, 1100u, 983u, kTableFixedText, 1, 1, 0, 0, 1, 861u, 1, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 984u, 1168u, 64u, 1100u, 983u, kTableFixedText, 2, 1, 0, 0, 1, 861u, 1, 1, 2, 101 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1052u, 1172u, 4u, 0u, 983u, kTableFixedCopy, 2, 0, 0, 0, 1, 861u, 1, 1, 2, 101 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 984u, 1100u, 4u, 0u, 983u, kTableFixedCopy, 3, 0, 0, 0, 1, 861u, 1, 1, 2, 103 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 984u, 1128u, 24u, 1100u, 983u, kTableFixedText, 4, 1, 0, 0, 1, 861u, 1, 1, 2, 105 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 1056u, 1176u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 1057u, 1200u, 16u, 1180u, 1056u, kTableFixedText, 1, 1, 0, 0, 1, 861u, 1, 1, 2, 107 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1057u, 1248u, 64u, 1180u, 1056u, kTableFixedText, 2, 1, 0, 0, 1, 861u, 1, 1, 2, 109 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1125u, 1252u, 4u, 0u, 1056u, kTableFixedCopy, 2, 0, 0, 0, 1, 861u, 1, 1, 2, 109 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1057u, 1180u, 4u, 0u, 1056u, kTableFixedCopy, 3, 0, 0, 0, 1, 861u, 1, 1, 2, 111 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 1057u, 1208u, 24u, 1180u, 1056u, kTableFixedText, 4, 1, 0, 0, 1, 861u, 1, 1, 2, 113 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 1130u, 1264u, 2u, 0u, 861u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 1134u, 1260u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1135u, 1261u, 1u, 0u, 861u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1129u, 1268u, 8u, 1260u, 861u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 90 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 862u, 968u, 16u, 0u, 861u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 115 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 862u, 968u, 4u, 0u, 861u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 116 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].tally
+    { 862u, 976u, 3u, 0u, 861u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 117 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].marks count
+    { 866u, 968u, 6u, 0u, 861u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 117 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 862u, 972u, 4u, 968u, 861u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 118 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].blob
+    { 862u, 968u, 1u, 0u, 861u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 119 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].mode
+    { 1137u, 1276u, 8u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1145u, 1320u, 32u, 1284u, 1136u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 1181u, 1324u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 1182u, 1348u, 16u, 1328u, 1181u, kTableFixedText, 1, 1, 0, 0, 1, 1136u, 1, 1, 2, 121 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1182u, 1396u, 64u, 1328u, 1181u, kTableFixedText, 2, 1, 0, 0, 1, 1136u, 1, 1, 2, 123 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1250u, 1400u, 4u, 0u, 1181u, kTableFixedCopy, 2, 0, 0, 0, 1, 1136u, 1, 1, 2, 123 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1182u, 1328u, 4u, 0u, 1181u, kTableFixedCopy, 3, 0, 0, 0, 1, 1136u, 1, 1, 2, 125 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 1182u, 1356u, 24u, 1328u, 1181u, kTableFixedText, 4, 1, 0, 0, 1, 1136u, 1, 1, 2, 127 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 1254u, 1564u, 2u, 0u, 1136u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 1258u, 1404u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 1259u, 1428u, 16u, 1408u, 1258u, kTableFixedText, 1, 1, 0, 0, 1, 1136u, 1, 1, 2, 129 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1259u, 1476u, 64u, 1408u, 1258u, kTableFixedText, 2, 1, 0, 0, 1, 1136u, 1, 1, 2, 131 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1327u, 1480u, 4u, 0u, 1258u, kTableFixedCopy, 2, 0, 0, 0, 1, 1136u, 1, 1, 2, 131 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1259u, 1408u, 4u, 0u, 1258u, kTableFixedCopy, 3, 0, 0, 0, 1, 1136u, 1, 1, 2, 133 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 1259u, 1436u, 24u, 1408u, 1258u, kTableFixedText, 4, 1, 0, 0, 1, 1136u, 1, 1, 2, 135 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 1331u, 1484u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 1332u, 1508u, 16u, 1488u, 1331u, kTableFixedText, 1, 1, 0, 0, 1, 1136u, 1, 1, 2, 137 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1332u, 1556u, 64u, 1488u, 1331u, kTableFixedText, 2, 1, 0, 0, 1, 1136u, 1, 1, 2, 139 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1400u, 1560u, 4u, 0u, 1331u, kTableFixedCopy, 2, 0, 0, 0, 1, 1136u, 1, 1, 2, 139 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1332u, 1488u, 4u, 0u, 1331u, kTableFixedCopy, 3, 0, 0, 0, 1, 1136u, 1, 1, 2, 141 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 1332u, 1516u, 24u, 1488u, 1331u, kTableFixedText, 4, 1, 0, 0, 1, 1136u, 1, 1, 2, 143 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 1405u, 1572u, 2u, 0u, 1136u, kTableFixedCount, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 1409u, 1568u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1410u, 1569u, 1u, 0u, 1136u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1404u, 1576u, 8u, 1568u, 1136u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 120 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 1137u, 1276u, 16u, 0u, 1136u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 145 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1137u, 1276u, 4u, 0u, 1136u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 146 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].tally
+    { 1137u, 1284u, 3u, 0u, 1136u, kTableFixedCount, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].marks count
+    { 1141u, 1276u, 6u, 0u, 1136u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 1137u, 1280u, 4u, 1276u, 1136u, kTableFixedText, 5, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 148 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].blob
+    { 1137u, 1276u, 1u, 0u, 1136u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 149 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].mode
+    { 1411u, 1588u, 8u, 1580u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // checkpoints present, absent payload defaults
+    { 1420u, 1624u, 32u, 1592u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // snapshots present, absent payload defaults
 };
-constexpr int32_t TransactionFixedPlanCount = 161;
-constexpr int32_t TransactionFixedPlanGuarded = 9;
+constexpr int32_t TransactionFixedPlanCount = 177;
+constexpr int32_t TransactionFixedPlanGuarded = 20;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink TransactionFixedGuards[] = {
@@ -26116,6 +26595,10 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 {
     const int64_t need = TransactionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TransactionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TransactionFixedHash );
@@ -27614,549 +28097,595 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry ToolMessageFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // sequence
-    { 4u, 8u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // body tag
-    { 1458u, 4928u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // history count
-    { 1462u, 1648u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // history[0] tag
-    { 2916u, 3288u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // history[1] tag
-    { 4371u, 5160u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // trace count
-    { 4375u, 5000u, 64u, 4932u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // path
-    { 4443u, 5004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
-    { 4447u, 5076u, 64u, 5008u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // path
-    { 4515u, 5080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
-    { 4519u, 5152u, 64u, 5084u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // path
-    { 4587u, 5156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // line
-    { 4592u, 5165u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // marks[0]
-    { 5u, 84u, 64u, 16u, 4u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 73u, 88u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // mode
-    { 74u, 92u, 8u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 5u, 84u, 64u, 16u, 4u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 73u, 88u, 1u, 0u, 4u, kTableFixedBool, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ) }, // force
-    { 5u, 36u, 16u, 16u, 4u, kTableFixedText, 3, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // reason
-    { 25u, 976u, 3u, 0u, 4u, kTableFixedCount, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // edits count
-    { 29u, 40u, 5u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 34u, 48u, 8u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 42u, 92u, 32u, 56u, 33u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 78u, 96u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 79u, 120u, 16u, 100u, 78u, kTableFixedText, 1, 1, 0, 0, 1, 33u, 1, 1, 3, 5 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 79u, 168u, 64u, 100u, 78u, kTableFixedText, 2, 1, 0, 0, 1, 33u, 1, 1, 3, 8 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 147u, 172u, 4u, 0u, 78u, kTableFixedCopy, 2, 0, 0, 0, 1, 33u, 1, 1, 3, 8 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 79u, 100u, 4u, 0u, 78u, kTableFixedCopy, 3, 0, 0, 0, 1, 33u, 1, 1, 3, 11 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 79u, 128u, 24u, 100u, 78u, kTableFixedText, 4, 1, 0, 0, 1, 33u, 1, 1, 3, 14 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 151u, 336u, 2u, 0u, 33u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 155u, 176u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 156u, 200u, 16u, 180u, 155u, kTableFixedText, 1, 1, 0, 0, 1, 33u, 1, 1, 3, 17 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 156u, 248u, 64u, 180u, 155u, kTableFixedText, 2, 1, 0, 0, 1, 33u, 1, 1, 3, 20 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 224u, 252u, 4u, 0u, 155u, kTableFixedCopy, 2, 0, 0, 0, 1, 33u, 1, 1, 3, 20 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 156u, 180u, 4u, 0u, 155u, kTableFixedCopy, 3, 0, 0, 0, 1, 33u, 1, 1, 3, 23 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 156u, 208u, 24u, 180u, 155u, kTableFixedText, 4, 1, 0, 0, 1, 33u, 1, 1, 3, 26 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 228u, 256u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 229u, 280u, 16u, 260u, 228u, kTableFixedText, 1, 1, 0, 0, 1, 33u, 1, 1, 3, 29 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 229u, 328u, 64u, 260u, 228u, kTableFixedText, 2, 1, 0, 0, 1, 33u, 1, 1, 3, 32 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 297u, 332u, 4u, 0u, 228u, kTableFixedCopy, 2, 0, 0, 0, 1, 33u, 1, 1, 3, 32 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 229u, 260u, 4u, 0u, 228u, kTableFixedCopy, 3, 0, 0, 0, 1, 33u, 1, 1, 3, 35 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 229u, 288u, 24u, 260u, 228u, kTableFixedText, 4, 1, 0, 0, 1, 33u, 1, 1, 3, 38 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 302u, 344u, 2u, 0u, 33u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 306u, 340u, 2u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 301u, 348u, 8u, 340u, 33u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 34u, 48u, 16u, 0u, 33u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 41 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 34u, 48u, 4u, 0u, 33u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 43 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 34u, 56u, 3u, 0u, 33u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 45 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 38u, 48u, 6u, 0u, 33u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 45 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 34u, 52u, 4u, 48u, 33u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 47 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 34u, 48u, 1u, 0u, 33u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 49 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 308u, 352u, 5u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 313u, 360u, 8u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 321u, 404u, 32u, 368u, 312u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 357u, 408u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 358u, 432u, 16u, 412u, 357u, kTableFixedText, 1, 1, 0, 0, 1, 312u, 1, 1, 3, 53 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 358u, 480u, 64u, 412u, 357u, kTableFixedText, 2, 1, 0, 0, 1, 312u, 1, 1, 3, 56 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 426u, 484u, 4u, 0u, 357u, kTableFixedCopy, 2, 0, 0, 0, 1, 312u, 1, 1, 3, 56 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 358u, 412u, 4u, 0u, 357u, kTableFixedCopy, 3, 0, 0, 0, 1, 312u, 1, 1, 3, 59 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 358u, 440u, 24u, 412u, 357u, kTableFixedText, 4, 1, 0, 0, 1, 312u, 1, 1, 3, 62 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 430u, 648u, 2u, 0u, 312u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 434u, 488u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 435u, 512u, 16u, 492u, 434u, kTableFixedText, 1, 1, 0, 0, 1, 312u, 1, 1, 3, 65 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 435u, 560u, 64u, 492u, 434u, kTableFixedText, 2, 1, 0, 0, 1, 312u, 1, 1, 3, 68 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 503u, 564u, 4u, 0u, 434u, kTableFixedCopy, 2, 0, 0, 0, 1, 312u, 1, 1, 3, 68 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 435u, 492u, 4u, 0u, 434u, kTableFixedCopy, 3, 0, 0, 0, 1, 312u, 1, 1, 3, 71 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 435u, 520u, 24u, 492u, 434u, kTableFixedText, 4, 1, 0, 0, 1, 312u, 1, 1, 3, 74 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 507u, 568u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 508u, 592u, 16u, 572u, 507u, kTableFixedText, 1, 1, 0, 0, 1, 312u, 1, 1, 3, 77 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 508u, 640u, 64u, 572u, 507u, kTableFixedText, 2, 1, 0, 0, 1, 312u, 1, 1, 3, 80 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 576u, 644u, 4u, 0u, 507u, kTableFixedCopy, 2, 0, 0, 0, 1, 312u, 1, 1, 3, 80 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 508u, 572u, 4u, 0u, 507u, kTableFixedCopy, 3, 0, 0, 0, 1, 312u, 1, 1, 3, 83 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 508u, 600u, 24u, 572u, 507u, kTableFixedText, 4, 1, 0, 0, 1, 312u, 1, 1, 3, 86 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 581u, 656u, 2u, 0u, 312u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 585u, 652u, 2u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 580u, 660u, 8u, 652u, 312u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 313u, 360u, 16u, 0u, 312u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 89 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 313u, 360u, 4u, 0u, 312u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 91 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 313u, 368u, 3u, 0u, 312u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 317u, 360u, 6u, 0u, 312u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 313u, 364u, 4u, 360u, 312u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 95 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 313u, 360u, 1u, 0u, 312u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 97 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 587u, 664u, 5u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 592u, 672u, 8u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 600u, 716u, 32u, 680u, 591u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 636u, 720u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 637u, 744u, 16u, 724u, 636u, kTableFixedText, 1, 1, 0, 0, 1, 591u, 1, 1, 3, 101 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 637u, 792u, 64u, 724u, 636u, kTableFixedText, 2, 1, 0, 0, 1, 591u, 1, 1, 3, 104 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 705u, 796u, 4u, 0u, 636u, kTableFixedCopy, 2, 0, 0, 0, 1, 591u, 1, 1, 3, 104 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 637u, 724u, 4u, 0u, 636u, kTableFixedCopy, 3, 0, 0, 0, 1, 591u, 1, 1, 3, 107 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 637u, 752u, 24u, 724u, 636u, kTableFixedText, 4, 1, 0, 0, 1, 591u, 1, 1, 3, 110 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 709u, 960u, 2u, 0u, 591u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 713u, 800u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 714u, 824u, 16u, 804u, 713u, kTableFixedText, 1, 1, 0, 0, 1, 591u, 1, 1, 3, 113 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 714u, 872u, 64u, 804u, 713u, kTableFixedText, 2, 1, 0, 0, 1, 591u, 1, 1, 3, 116 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 782u, 876u, 4u, 0u, 713u, kTableFixedCopy, 2, 0, 0, 0, 1, 591u, 1, 1, 3, 116 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 714u, 804u, 4u, 0u, 713u, kTableFixedCopy, 3, 0, 0, 0, 1, 591u, 1, 1, 3, 119 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 714u, 832u, 24u, 804u, 713u, kTableFixedText, 4, 1, 0, 0, 1, 591u, 1, 1, 3, 122 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 786u, 880u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 787u, 904u, 16u, 884u, 786u, kTableFixedText, 1, 1, 0, 0, 1, 591u, 1, 1, 3, 125 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 787u, 952u, 64u, 884u, 786u, kTableFixedText, 2, 1, 0, 0, 1, 591u, 1, 1, 3, 128 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 855u, 956u, 4u, 0u, 786u, kTableFixedCopy, 2, 0, 0, 0, 1, 591u, 1, 1, 3, 128 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 787u, 884u, 4u, 0u, 786u, kTableFixedCopy, 3, 0, 0, 0, 1, 591u, 1, 1, 3, 131 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 787u, 912u, 24u, 884u, 786u, kTableFixedText, 4, 1, 0, 0, 1, 591u, 1, 1, 3, 134 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 860u, 968u, 2u, 0u, 591u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 864u, 964u, 2u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 859u, 972u, 8u, 964u, 591u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 592u, 672u, 16u, 0u, 591u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 137 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 592u, 672u, 4u, 0u, 591u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 139 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 592u, 680u, 3u, 0u, 591u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 141 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 596u, 672u, 6u, 0u, 591u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 141 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 592u, 676u, 4u, 672u, 591u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 143 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 592u, 672u, 1u, 0u, 591u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 145 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 866u, 980u, 1u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // pending[0] tag
-    { 867u, 984u, 8u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 875u, 1028u, 32u, 992u, 866u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 911u, 1032u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 912u, 1056u, 16u, 1036u, 911u, kTableFixedText, 1, 1, 0, 0, 1, 866u, 1, 1, 3, 149 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 912u, 1104u, 64u, 1036u, 911u, kTableFixedText, 2, 1, 0, 0, 1, 866u, 1, 1, 3, 152 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 980u, 1108u, 4u, 0u, 911u, kTableFixedCopy, 2, 0, 0, 0, 1, 866u, 1, 1, 3, 152 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 912u, 1036u, 4u, 0u, 911u, kTableFixedCopy, 3, 0, 0, 0, 1, 866u, 1, 1, 3, 155 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 912u, 1064u, 24u, 1036u, 911u, kTableFixedText, 4, 1, 0, 0, 1, 866u, 1, 1, 3, 158 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 984u, 1272u, 2u, 0u, 866u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 988u, 1112u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 989u, 1136u, 16u, 1116u, 988u, kTableFixedText, 1, 1, 0, 0, 1, 866u, 1, 1, 3, 161 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 989u, 1184u, 64u, 1116u, 988u, kTableFixedText, 2, 1, 0, 0, 1, 866u, 1, 1, 3, 164 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1057u, 1188u, 4u, 0u, 988u, kTableFixedCopy, 2, 0, 0, 0, 1, 866u, 1, 1, 3, 164 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 989u, 1116u, 4u, 0u, 988u, kTableFixedCopy, 3, 0, 0, 0, 1, 866u, 1, 1, 3, 167 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 989u, 1144u, 24u, 1116u, 988u, kTableFixedText, 4, 1, 0, 0, 1, 866u, 1, 1, 3, 170 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 1061u, 1192u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 1062u, 1216u, 16u, 1196u, 1061u, kTableFixedText, 1, 1, 0, 0, 1, 866u, 1, 1, 3, 173 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1062u, 1264u, 64u, 1196u, 1061u, kTableFixedText, 2, 1, 0, 0, 1, 866u, 1, 1, 3, 176 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1130u, 1268u, 4u, 0u, 1061u, kTableFixedCopy, 2, 0, 0, 0, 1, 866u, 1, 1, 3, 176 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1062u, 1196u, 4u, 0u, 1061u, kTableFixedCopy, 3, 0, 0, 0, 1, 866u, 1, 1, 3, 179 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 1062u, 1224u, 24u, 1196u, 1061u, kTableFixedText, 4, 1, 0, 0, 1, 866u, 1, 1, 3, 182 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 1135u, 1280u, 2u, 0u, 866u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 1139u, 1276u, 2u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 1134u, 1284u, 8u, 1276u, 866u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 867u, 984u, 16u, 0u, 866u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 185 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 867u, 984u, 4u, 0u, 866u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 187 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].tally
-    { 867u, 992u, 3u, 0u, 866u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 189 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].marks count
-    { 871u, 984u, 6u, 0u, 866u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 189 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 867u, 988u, 4u, 984u, 866u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 191 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].blob
-    { 867u, 984u, 1u, 0u, 866u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 193 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].mode
-    { 1141u, 1288u, 1u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // pending[1] tag
-    { 1142u, 1292u, 8u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1150u, 1336u, 32u, 1300u, 1141u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 1186u, 1340u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 1187u, 1364u, 16u, 1344u, 1186u, kTableFixedText, 1, 1, 0, 0, 1, 1141u, 1, 1, 3, 197 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1187u, 1412u, 64u, 1344u, 1186u, kTableFixedText, 2, 1, 0, 0, 1, 1141u, 1, 1, 3, 200 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1255u, 1416u, 4u, 0u, 1186u, kTableFixedCopy, 2, 0, 0, 0, 1, 1141u, 1, 1, 3, 200 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1187u, 1344u, 4u, 0u, 1186u, kTableFixedCopy, 3, 0, 0, 0, 1, 1141u, 1, 1, 3, 203 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 1187u, 1372u, 24u, 1344u, 1186u, kTableFixedText, 4, 1, 0, 0, 1, 1141u, 1, 1, 3, 206 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 1259u, 1580u, 2u, 0u, 1141u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 1263u, 1420u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 1264u, 1444u, 16u, 1424u, 1263u, kTableFixedText, 1, 1, 0, 0, 1, 1141u, 1, 1, 3, 209 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1264u, 1492u, 64u, 1424u, 1263u, kTableFixedText, 2, 1, 0, 0, 1, 1141u, 1, 1, 3, 212 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1332u, 1496u, 4u, 0u, 1263u, kTableFixedCopy, 2, 0, 0, 0, 1, 1141u, 1, 1, 3, 212 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1264u, 1424u, 4u, 0u, 1263u, kTableFixedCopy, 3, 0, 0, 0, 1, 1141u, 1, 1, 3, 215 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 1264u, 1452u, 24u, 1424u, 1263u, kTableFixedText, 4, 1, 0, 0, 1, 1141u, 1, 1, 3, 218 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 1336u, 1500u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 1337u, 1524u, 16u, 1504u, 1336u, kTableFixedText, 1, 1, 0, 0, 1, 1141u, 1, 1, 3, 221 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1337u, 1572u, 64u, 1504u, 1336u, kTableFixedText, 2, 1, 0, 0, 1, 1141u, 1, 1, 3, 224 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1405u, 1576u, 4u, 0u, 1336u, kTableFixedCopy, 2, 0, 0, 0, 1, 1141u, 1, 1, 3, 224 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1337u, 1504u, 4u, 0u, 1336u, kTableFixedCopy, 3, 0, 0, 0, 1, 1141u, 1, 1, 3, 227 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 1337u, 1532u, 24u, 1504u, 1336u, kTableFixedText, 4, 1, 0, 0, 1, 1141u, 1, 1, 3, 230 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 1410u, 1588u, 2u, 0u, 1141u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 1414u, 1584u, 2u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 1409u, 1592u, 8u, 1584u, 1141u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 1142u, 1292u, 16u, 0u, 1141u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 233 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1142u, 1292u, 4u, 0u, 1141u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 235 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].tally
-    { 1142u, 1300u, 3u, 0u, 1141u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 237 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].marks count
-    { 1146u, 1292u, 6u, 0u, 1141u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 237 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 1142u, 1296u, 4u, 1292u, 1141u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 239 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].blob
-    { 1142u, 1292u, 1u, 0u, 1141u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 241 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].mode
-    { 1417u, 1596u, 8u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // checkpoints[0]
-    { 1416u, 1604u, 8u, 1596u, 4u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // checkpoints present, absent payload defaults
-    { 1426u, 1608u, 32u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1425u, 1640u, 32u, 1608u, 4u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ) }, // snapshots present, absent payload defaults
-    { 5u, 16u, 4u, 0u, 4u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 243 * (int) sizeof( TableFixedGuardLink ) }, // nonce
-    { 5u, 16u, 8u, 0u, 4u, kTableFixedCopy, 5, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 244 * (int) sizeof( TableFixedGuardLink ) }, // body.caps
-    { 5u, 16u, 8u, 0u, 4u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 245 * (int) sizeof( TableFixedGuardLink ) }, // spans, whole
-    { 5u, 16u, 1u, 0u, 4u, kTableFixedCopy, 7, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 246 * (int) sizeof( TableFixedGuardLink ) }, // body.origin tag
-    { 6u, 40u, 16u, 20u, 5u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 7, 1, 2, 247 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 6u, 88u, 64u, 20u, 5u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 7, 1, 2, 249 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 74u, 92u, 4u, 0u, 5u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 7, 1, 2, 249 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 6u, 20u, 4u, 0u, 5u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 7, 1, 2, 251 * (int) sizeof( TableFixedGuardLink ) }, // body.origin.pid
-    { 6u, 48u, 24u, 20u, 5u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 7, 1, 2, 253 * (int) sizeof( TableFixedGuardLink ) }, // body.origin.note
-    { 1463u, 1724u, 64u, 1656u, 1462u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 255 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1531u, 1728u, 1u, 0u, 1462u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 255 * (int) sizeof( TableFixedGuardLink ) }, // mode
-    { 1532u, 1732u, 8u, 0u, 1462u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 255 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1463u, 1724u, 64u, 1656u, 1462u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 256 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1531u, 1728u, 1u, 0u, 1462u, kTableFixedBool, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 256 * (int) sizeof( TableFixedGuardLink ) }, // force
-    { 1463u, 1676u, 16u, 1656u, 1462u, kTableFixedText, 3, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // reason
-    { 1483u, 2616u, 3u, 0u, 1462u, kTableFixedCount, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // edits count
-    { 1487u, 1680u, 5u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 1492u, 1688u, 8u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1500u, 1732u, 32u, 1696u, 1491u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 1536u, 1736u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 1537u, 1760u, 16u, 1740u, 1536u, kTableFixedText, 1, 1, 0, 0, 1, 1491u, 1, 1, 3, 260 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1537u, 1808u, 64u, 1740u, 1536u, kTableFixedText, 2, 1, 0, 0, 1, 1491u, 1, 1, 3, 263 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1605u, 1812u, 4u, 0u, 1536u, kTableFixedCopy, 2, 0, 0, 0, 1, 1491u, 1, 1, 3, 263 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1537u, 1740u, 4u, 0u, 1536u, kTableFixedCopy, 3, 0, 0, 0, 1, 1491u, 1, 1, 3, 266 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 1537u, 1768u, 24u, 1740u, 1536u, kTableFixedText, 4, 1, 0, 0, 1, 1491u, 1, 1, 3, 269 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 1609u, 1976u, 2u, 0u, 1491u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 1613u, 1816u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 1614u, 1840u, 16u, 1820u, 1613u, kTableFixedText, 1, 1, 0, 0, 1, 1491u, 1, 1, 3, 272 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1614u, 1888u, 64u, 1820u, 1613u, kTableFixedText, 2, 1, 0, 0, 1, 1491u, 1, 1, 3, 275 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1682u, 1892u, 4u, 0u, 1613u, kTableFixedCopy, 2, 0, 0, 0, 1, 1491u, 1, 1, 3, 275 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1614u, 1820u, 4u, 0u, 1613u, kTableFixedCopy, 3, 0, 0, 0, 1, 1491u, 1, 1, 3, 278 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 1614u, 1848u, 24u, 1820u, 1613u, kTableFixedText, 4, 1, 0, 0, 1, 1491u, 1, 1, 3, 281 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 1686u, 1896u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 1687u, 1920u, 16u, 1900u, 1686u, kTableFixedText, 1, 1, 0, 0, 1, 1491u, 1, 1, 3, 284 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1687u, 1968u, 64u, 1900u, 1686u, kTableFixedText, 2, 1, 0, 0, 1, 1491u, 1, 1, 3, 287 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1755u, 1972u, 4u, 0u, 1686u, kTableFixedCopy, 2, 0, 0, 0, 1, 1491u, 1, 1, 3, 287 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1687u, 1900u, 4u, 0u, 1686u, kTableFixedCopy, 3, 0, 0, 0, 1, 1491u, 1, 1, 3, 290 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 1687u, 1928u, 24u, 1900u, 1686u, kTableFixedText, 4, 1, 0, 0, 1, 1491u, 1, 1, 3, 293 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 1760u, 1984u, 2u, 0u, 1491u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 1764u, 1980u, 2u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 1759u, 1988u, 8u, 1980u, 1491u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 1492u, 1688u, 16u, 0u, 1491u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 296 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1492u, 1688u, 4u, 0u, 1491u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 298 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 1492u, 1696u, 3u, 0u, 1491u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 300 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 1496u, 1688u, 6u, 0u, 1491u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 300 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 1492u, 1692u, 4u, 1688u, 1491u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 302 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 1492u, 1688u, 1u, 0u, 1491u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 304 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 1766u, 1992u, 5u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 1771u, 2000u, 8u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1779u, 2044u, 32u, 2008u, 1770u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 1815u, 2048u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 1816u, 2072u, 16u, 2052u, 1815u, kTableFixedText, 1, 1, 0, 0, 1, 1770u, 1, 1, 3, 308 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1816u, 2120u, 64u, 2052u, 1815u, kTableFixedText, 2, 1, 0, 0, 1, 1770u, 1, 1, 3, 311 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1884u, 2124u, 4u, 0u, 1815u, kTableFixedCopy, 2, 0, 0, 0, 1, 1770u, 1, 1, 3, 311 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1816u, 2052u, 4u, 0u, 1815u, kTableFixedCopy, 3, 0, 0, 0, 1, 1770u, 1, 1, 3, 314 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 1816u, 2080u, 24u, 2052u, 1815u, kTableFixedText, 4, 1, 0, 0, 1, 1770u, 1, 1, 3, 317 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 1888u, 2288u, 2u, 0u, 1770u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 1892u, 2128u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 1893u, 2152u, 16u, 2132u, 1892u, kTableFixedText, 1, 1, 0, 0, 1, 1770u, 1, 1, 3, 320 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1893u, 2200u, 64u, 2132u, 1892u, kTableFixedText, 2, 1, 0, 0, 1, 1770u, 1, 1, 3, 323 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1961u, 2204u, 4u, 0u, 1892u, kTableFixedCopy, 2, 0, 0, 0, 1, 1770u, 1, 1, 3, 323 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1893u, 2132u, 4u, 0u, 1892u, kTableFixedCopy, 3, 0, 0, 0, 1, 1770u, 1, 1, 3, 326 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 1893u, 2160u, 24u, 2132u, 1892u, kTableFixedText, 4, 1, 0, 0, 1, 1770u, 1, 1, 3, 329 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 1965u, 2208u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 1966u, 2232u, 16u, 2212u, 1965u, kTableFixedText, 1, 1, 0, 0, 1, 1770u, 1, 1, 3, 332 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1966u, 2280u, 64u, 2212u, 1965u, kTableFixedText, 2, 1, 0, 0, 1, 1770u, 1, 1, 3, 335 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2034u, 2284u, 4u, 0u, 1965u, kTableFixedCopy, 2, 0, 0, 0, 1, 1770u, 1, 1, 3, 335 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1966u, 2212u, 4u, 0u, 1965u, kTableFixedCopy, 3, 0, 0, 0, 1, 1770u, 1, 1, 3, 338 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 1966u, 2240u, 24u, 2212u, 1965u, kTableFixedText, 4, 1, 0, 0, 1, 1770u, 1, 1, 3, 341 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 2039u, 2296u, 2u, 0u, 1770u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 2043u, 2292u, 2u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 2038u, 2300u, 8u, 2292u, 1770u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 1771u, 2000u, 16u, 0u, 1770u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 344 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1771u, 2000u, 4u, 0u, 1770u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 346 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 1771u, 2008u, 3u, 0u, 1770u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 348 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 1775u, 2000u, 6u, 0u, 1770u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 348 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 1771u, 2004u, 4u, 2000u, 1770u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 350 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 1771u, 2000u, 1u, 0u, 1770u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 352 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 2045u, 2304u, 5u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 2050u, 2312u, 8u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2058u, 2356u, 32u, 2320u, 2049u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 2094u, 2360u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 2095u, 2384u, 16u, 2364u, 2094u, kTableFixedText, 1, 1, 0, 0, 1, 2049u, 1, 1, 3, 356 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2095u, 2432u, 64u, 2364u, 2094u, kTableFixedText, 2, 1, 0, 0, 1, 2049u, 1, 1, 3, 359 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2163u, 2436u, 4u, 0u, 2094u, kTableFixedCopy, 2, 0, 0, 0, 1, 2049u, 1, 1, 3, 359 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2095u, 2364u, 4u, 0u, 2094u, kTableFixedCopy, 3, 0, 0, 0, 1, 2049u, 1, 1, 3, 362 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 2095u, 2392u, 24u, 2364u, 2094u, kTableFixedText, 4, 1, 0, 0, 1, 2049u, 1, 1, 3, 365 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 2167u, 2600u, 2u, 0u, 2049u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 2171u, 2440u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 2172u, 2464u, 16u, 2444u, 2171u, kTableFixedText, 1, 1, 0, 0, 1, 2049u, 1, 1, 3, 368 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2172u, 2512u, 64u, 2444u, 2171u, kTableFixedText, 2, 1, 0, 0, 1, 2049u, 1, 1, 3, 371 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2240u, 2516u, 4u, 0u, 2171u, kTableFixedCopy, 2, 0, 0, 0, 1, 2049u, 1, 1, 3, 371 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2172u, 2444u, 4u, 0u, 2171u, kTableFixedCopy, 3, 0, 0, 0, 1, 2049u, 1, 1, 3, 374 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 2172u, 2472u, 24u, 2444u, 2171u, kTableFixedText, 4, 1, 0, 0, 1, 2049u, 1, 1, 3, 377 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 2244u, 2520u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 2245u, 2544u, 16u, 2524u, 2244u, kTableFixedText, 1, 1, 0, 0, 1, 2049u, 1, 1, 3, 380 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2245u, 2592u, 64u, 2524u, 2244u, kTableFixedText, 2, 1, 0, 0, 1, 2049u, 1, 1, 3, 383 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2313u, 2596u, 4u, 0u, 2244u, kTableFixedCopy, 2, 0, 0, 0, 1, 2049u, 1, 1, 3, 383 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2245u, 2524u, 4u, 0u, 2244u, kTableFixedCopy, 3, 0, 0, 0, 1, 2049u, 1, 1, 3, 386 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 2245u, 2552u, 24u, 2524u, 2244u, kTableFixedText, 4, 1, 0, 0, 1, 2049u, 1, 1, 3, 389 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 2318u, 2608u, 2u, 0u, 2049u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 2322u, 2604u, 2u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 2317u, 2612u, 8u, 2604u, 2049u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 2050u, 2312u, 16u, 0u, 2049u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 392 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2050u, 2312u, 4u, 0u, 2049u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 394 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 2050u, 2320u, 3u, 0u, 2049u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 396 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 2054u, 2312u, 6u, 0u, 2049u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 396 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 2050u, 2316u, 4u, 2312u, 2049u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 398 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 2050u, 2312u, 1u, 0u, 2049u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 400 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 2324u, 2620u, 1u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // pending[0] tag
-    { 2325u, 2624u, 8u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2333u, 2668u, 32u, 2632u, 2324u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 2369u, 2672u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 2370u, 2696u, 16u, 2676u, 2369u, kTableFixedText, 1, 1, 0, 0, 1, 2324u, 1, 1, 3, 404 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2370u, 2744u, 64u, 2676u, 2369u, kTableFixedText, 2, 1, 0, 0, 1, 2324u, 1, 1, 3, 407 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2438u, 2748u, 4u, 0u, 2369u, kTableFixedCopy, 2, 0, 0, 0, 1, 2324u, 1, 1, 3, 407 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2370u, 2676u, 4u, 0u, 2369u, kTableFixedCopy, 3, 0, 0, 0, 1, 2324u, 1, 1, 3, 410 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 2370u, 2704u, 24u, 2676u, 2369u, kTableFixedText, 4, 1, 0, 0, 1, 2324u, 1, 1, 3, 413 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 2442u, 2912u, 2u, 0u, 2324u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 2446u, 2752u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 2447u, 2776u, 16u, 2756u, 2446u, kTableFixedText, 1, 1, 0, 0, 1, 2324u, 1, 1, 3, 416 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2447u, 2824u, 64u, 2756u, 2446u, kTableFixedText, 2, 1, 0, 0, 1, 2324u, 1, 1, 3, 419 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2515u, 2828u, 4u, 0u, 2446u, kTableFixedCopy, 2, 0, 0, 0, 1, 2324u, 1, 1, 3, 419 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2447u, 2756u, 4u, 0u, 2446u, kTableFixedCopy, 3, 0, 0, 0, 1, 2324u, 1, 1, 3, 422 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 2447u, 2784u, 24u, 2756u, 2446u, kTableFixedText, 4, 1, 0, 0, 1, 2324u, 1, 1, 3, 425 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 2519u, 2832u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 2520u, 2856u, 16u, 2836u, 2519u, kTableFixedText, 1, 1, 0, 0, 1, 2324u, 1, 1, 3, 428 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2520u, 2904u, 64u, 2836u, 2519u, kTableFixedText, 2, 1, 0, 0, 1, 2324u, 1, 1, 3, 431 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2588u, 2908u, 4u, 0u, 2519u, kTableFixedCopy, 2, 0, 0, 0, 1, 2324u, 1, 1, 3, 431 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2520u, 2836u, 4u, 0u, 2519u, kTableFixedCopy, 3, 0, 0, 0, 1, 2324u, 1, 1, 3, 434 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 2520u, 2864u, 24u, 2836u, 2519u, kTableFixedText, 4, 1, 0, 0, 1, 2324u, 1, 1, 3, 437 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 2593u, 2920u, 2u, 0u, 2324u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 2597u, 2916u, 2u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 2592u, 2924u, 8u, 2916u, 2324u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 2325u, 2624u, 16u, 0u, 2324u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 440 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2325u, 2624u, 4u, 0u, 2324u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 442 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].tally
-    { 2325u, 2632u, 3u, 0u, 2324u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 444 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].marks count
-    { 2329u, 2624u, 6u, 0u, 2324u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 444 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 2325u, 2628u, 4u, 2624u, 2324u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 446 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].blob
-    { 2325u, 2624u, 1u, 0u, 2324u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 448 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].mode
-    { 2599u, 2928u, 1u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // pending[1] tag
-    { 2600u, 2932u, 8u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2608u, 2976u, 32u, 2940u, 2599u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 2644u, 2980u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 2645u, 3004u, 16u, 2984u, 2644u, kTableFixedText, 1, 1, 0, 0, 1, 2599u, 1, 1, 3, 452 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2645u, 3052u, 64u, 2984u, 2644u, kTableFixedText, 2, 1, 0, 0, 1, 2599u, 1, 1, 3, 455 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2713u, 3056u, 4u, 0u, 2644u, kTableFixedCopy, 2, 0, 0, 0, 1, 2599u, 1, 1, 3, 455 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2645u, 2984u, 4u, 0u, 2644u, kTableFixedCopy, 3, 0, 0, 0, 1, 2599u, 1, 1, 3, 458 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 2645u, 3012u, 24u, 2984u, 2644u, kTableFixedText, 4, 1, 0, 0, 1, 2599u, 1, 1, 3, 461 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 2717u, 3220u, 2u, 0u, 2599u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 2721u, 3060u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 2722u, 3084u, 16u, 3064u, 2721u, kTableFixedText, 1, 1, 0, 0, 1, 2599u, 1, 1, 3, 464 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2722u, 3132u, 64u, 3064u, 2721u, kTableFixedText, 2, 1, 0, 0, 1, 2599u, 1, 1, 3, 467 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2790u, 3136u, 4u, 0u, 2721u, kTableFixedCopy, 2, 0, 0, 0, 1, 2599u, 1, 1, 3, 467 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2722u, 3064u, 4u, 0u, 2721u, kTableFixedCopy, 3, 0, 0, 0, 1, 2599u, 1, 1, 3, 470 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 2722u, 3092u, 24u, 3064u, 2721u, kTableFixedText, 4, 1, 0, 0, 1, 2599u, 1, 1, 3, 473 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 2794u, 3140u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 2795u, 3164u, 16u, 3144u, 2794u, kTableFixedText, 1, 1, 0, 0, 1, 2599u, 1, 1, 3, 476 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2795u, 3212u, 64u, 3144u, 2794u, kTableFixedText, 2, 1, 0, 0, 1, 2599u, 1, 1, 3, 479 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2863u, 3216u, 4u, 0u, 2794u, kTableFixedCopy, 2, 0, 0, 0, 1, 2599u, 1, 1, 3, 479 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2795u, 3144u, 4u, 0u, 2794u, kTableFixedCopy, 3, 0, 0, 0, 1, 2599u, 1, 1, 3, 482 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 2795u, 3172u, 24u, 3144u, 2794u, kTableFixedText, 4, 1, 0, 0, 1, 2599u, 1, 1, 3, 485 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 2868u, 3228u, 2u, 0u, 2599u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 2872u, 3224u, 2u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 2867u, 3232u, 8u, 3224u, 2599u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 2600u, 2932u, 16u, 0u, 2599u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 488 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2600u, 2932u, 4u, 0u, 2599u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 490 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].tally
-    { 2600u, 2940u, 3u, 0u, 2599u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 492 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].marks count
-    { 2604u, 2932u, 6u, 0u, 2599u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 492 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 2600u, 2936u, 4u, 2932u, 2599u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 494 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].blob
-    { 2600u, 2932u, 1u, 0u, 2599u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 496 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].mode
-    { 2875u, 3236u, 8u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // checkpoints[0]
-    { 2874u, 3244u, 8u, 3236u, 1462u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // checkpoints present, absent payload defaults
-    { 2884u, 3248u, 32u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2883u, 3280u, 32u, 3248u, 1462u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ) }, // snapshots present, absent payload defaults
-    { 1463u, 1656u, 4u, 0u, 1462u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 498 * (int) sizeof( TableFixedGuardLink ) }, // nonce
-    { 1463u, 1656u, 8u, 0u, 1462u, kTableFixedCopy, 5, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 499 * (int) sizeof( TableFixedGuardLink ) }, // history[0].caps
-    { 1463u, 1656u, 8u, 0u, 1462u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 500 * (int) sizeof( TableFixedGuardLink ) }, // spans, whole
-    { 1463u, 1656u, 1u, 0u, 1462u, kTableFixedCopy, 7, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 501 * (int) sizeof( TableFixedGuardLink ) }, // history[0].origin tag
-    { 1464u, 1680u, 16u, 1660u, 1463u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 7, 1, 2, 502 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 1464u, 1728u, 64u, 1660u, 1463u, kTableFixedText, 2, 1, 0, 0, 1, 1462u, 7, 1, 2, 504 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 1532u, 1732u, 4u, 0u, 1463u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 7, 1, 2, 504 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 1464u, 1660u, 4u, 0u, 1463u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 7, 1, 2, 506 * (int) sizeof( TableFixedGuardLink ) }, // history[0].origin.pid
-    { 1464u, 1688u, 24u, 1660u, 1463u, kTableFixedText, 4, 1, 0, 0, 1, 1462u, 7, 1, 2, 508 * (int) sizeof( TableFixedGuardLink ) }, // history[0].origin.note
-    { 2917u, 3364u, 64u, 3296u, 2916u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 510 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2985u, 3368u, 1u, 0u, 2916u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 510 * (int) sizeof( TableFixedGuardLink ) }, // mode
-    { 2986u, 3372u, 8u, 0u, 2916u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 510 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2917u, 3364u, 64u, 3296u, 2916u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 511 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2985u, 3368u, 1u, 0u, 2916u, kTableFixedBool, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 511 * (int) sizeof( TableFixedGuardLink ) }, // force
-    { 2917u, 3316u, 16u, 3296u, 2916u, kTableFixedText, 3, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // reason
-    { 2937u, 4256u, 3u, 0u, 2916u, kTableFixedCount, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // edits count
-    { 2941u, 3320u, 5u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 2946u, 3328u, 8u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2954u, 3372u, 32u, 3336u, 2945u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 2990u, 3376u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 2991u, 3400u, 16u, 3380u, 2990u, kTableFixedText, 1, 1, 0, 0, 1, 2945u, 1, 1, 3, 515 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2991u, 3448u, 64u, 3380u, 2990u, kTableFixedText, 2, 1, 0, 0, 1, 2945u, 1, 1, 3, 518 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3059u, 3452u, 4u, 0u, 2990u, kTableFixedCopy, 2, 0, 0, 0, 1, 2945u, 1, 1, 3, 518 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2991u, 3380u, 4u, 0u, 2990u, kTableFixedCopy, 3, 0, 0, 0, 1, 2945u, 1, 1, 3, 521 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 2991u, 3408u, 24u, 3380u, 2990u, kTableFixedText, 4, 1, 0, 0, 1, 2945u, 1, 1, 3, 524 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 3063u, 3616u, 2u, 0u, 2945u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 3067u, 3456u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 3068u, 3480u, 16u, 3460u, 3067u, kTableFixedText, 1, 1, 0, 0, 1, 2945u, 1, 1, 3, 527 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3068u, 3528u, 64u, 3460u, 3067u, kTableFixedText, 2, 1, 0, 0, 1, 2945u, 1, 1, 3, 530 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3136u, 3532u, 4u, 0u, 3067u, kTableFixedCopy, 2, 0, 0, 0, 1, 2945u, 1, 1, 3, 530 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3068u, 3460u, 4u, 0u, 3067u, kTableFixedCopy, 3, 0, 0, 0, 1, 2945u, 1, 1, 3, 533 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 3068u, 3488u, 24u, 3460u, 3067u, kTableFixedText, 4, 1, 0, 0, 1, 2945u, 1, 1, 3, 536 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 3140u, 3536u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 3141u, 3560u, 16u, 3540u, 3140u, kTableFixedText, 1, 1, 0, 0, 1, 2945u, 1, 1, 3, 539 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3141u, 3608u, 64u, 3540u, 3140u, kTableFixedText, 2, 1, 0, 0, 1, 2945u, 1, 1, 3, 542 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3209u, 3612u, 4u, 0u, 3140u, kTableFixedCopy, 2, 0, 0, 0, 1, 2945u, 1, 1, 3, 542 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3141u, 3540u, 4u, 0u, 3140u, kTableFixedCopy, 3, 0, 0, 0, 1, 2945u, 1, 1, 3, 545 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 3141u, 3568u, 24u, 3540u, 3140u, kTableFixedText, 4, 1, 0, 0, 1, 2945u, 1, 1, 3, 548 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 3214u, 3624u, 2u, 0u, 2945u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 3218u, 3620u, 2u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 3213u, 3628u, 8u, 3620u, 2945u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 2946u, 3328u, 16u, 0u, 2945u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 551 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2946u, 3328u, 4u, 0u, 2945u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 553 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 2946u, 3336u, 3u, 0u, 2945u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 555 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 2950u, 3328u, 6u, 0u, 2945u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 555 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 2946u, 3332u, 4u, 3328u, 2945u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 557 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 2946u, 3328u, 1u, 0u, 2945u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 559 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 3220u, 3632u, 5u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 3225u, 3640u, 8u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3233u, 3684u, 32u, 3648u, 3224u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 3269u, 3688u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 3270u, 3712u, 16u, 3692u, 3269u, kTableFixedText, 1, 1, 0, 0, 1, 3224u, 1, 1, 3, 563 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3270u, 3760u, 64u, 3692u, 3269u, kTableFixedText, 2, 1, 0, 0, 1, 3224u, 1, 1, 3, 566 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3338u, 3764u, 4u, 0u, 3269u, kTableFixedCopy, 2, 0, 0, 0, 1, 3224u, 1, 1, 3, 566 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3270u, 3692u, 4u, 0u, 3269u, kTableFixedCopy, 3, 0, 0, 0, 1, 3224u, 1, 1, 3, 569 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 3270u, 3720u, 24u, 3692u, 3269u, kTableFixedText, 4, 1, 0, 0, 1, 3224u, 1, 1, 3, 572 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 3342u, 3928u, 2u, 0u, 3224u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 3346u, 3768u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 3347u, 3792u, 16u, 3772u, 3346u, kTableFixedText, 1, 1, 0, 0, 1, 3224u, 1, 1, 3, 575 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3347u, 3840u, 64u, 3772u, 3346u, kTableFixedText, 2, 1, 0, 0, 1, 3224u, 1, 1, 3, 578 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3415u, 3844u, 4u, 0u, 3346u, kTableFixedCopy, 2, 0, 0, 0, 1, 3224u, 1, 1, 3, 578 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3347u, 3772u, 4u, 0u, 3346u, kTableFixedCopy, 3, 0, 0, 0, 1, 3224u, 1, 1, 3, 581 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 3347u, 3800u, 24u, 3772u, 3346u, kTableFixedText, 4, 1, 0, 0, 1, 3224u, 1, 1, 3, 584 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 3419u, 3848u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 3420u, 3872u, 16u, 3852u, 3419u, kTableFixedText, 1, 1, 0, 0, 1, 3224u, 1, 1, 3, 587 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3420u, 3920u, 64u, 3852u, 3419u, kTableFixedText, 2, 1, 0, 0, 1, 3224u, 1, 1, 3, 590 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3488u, 3924u, 4u, 0u, 3419u, kTableFixedCopy, 2, 0, 0, 0, 1, 3224u, 1, 1, 3, 590 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3420u, 3852u, 4u, 0u, 3419u, kTableFixedCopy, 3, 0, 0, 0, 1, 3224u, 1, 1, 3, 593 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 3420u, 3880u, 24u, 3852u, 3419u, kTableFixedText, 4, 1, 0, 0, 1, 3224u, 1, 1, 3, 596 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 3493u, 3936u, 2u, 0u, 3224u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 3497u, 3932u, 2u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 3492u, 3940u, 8u, 3932u, 3224u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 3225u, 3640u, 16u, 0u, 3224u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 599 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3225u, 3640u, 4u, 0u, 3224u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 601 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 3225u, 3648u, 3u, 0u, 3224u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 603 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 3229u, 3640u, 6u, 0u, 3224u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 603 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 3225u, 3644u, 4u, 3640u, 3224u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 605 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 3225u, 3640u, 1u, 0u, 3224u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 607 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 3499u, 3944u, 5u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // revision
-    { 3504u, 3952u, 8u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3512u, 3996u, 32u, 3960u, 3503u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 3548u, 4000u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 3549u, 4024u, 16u, 4004u, 3548u, kTableFixedText, 1, 1, 0, 0, 1, 3503u, 1, 1, 3, 611 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3549u, 4072u, 64u, 4004u, 3548u, kTableFixedText, 2, 1, 0, 0, 1, 3503u, 1, 1, 3, 614 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3617u, 4076u, 4u, 0u, 3548u, kTableFixedCopy, 2, 0, 0, 0, 1, 3503u, 1, 1, 3, 614 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3549u, 4004u, 4u, 0u, 3548u, kTableFixedCopy, 3, 0, 0, 0, 1, 3503u, 1, 1, 3, 617 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 3549u, 4032u, 24u, 4004u, 3548u, kTableFixedText, 4, 1, 0, 0, 1, 3503u, 1, 1, 3, 620 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 3621u, 4240u, 2u, 0u, 3503u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 3625u, 4080u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 3626u, 4104u, 16u, 4084u, 3625u, kTableFixedText, 1, 1, 0, 0, 1, 3503u, 1, 1, 3, 623 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3626u, 4152u, 64u, 4084u, 3625u, kTableFixedText, 2, 1, 0, 0, 1, 3503u, 1, 1, 3, 626 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3694u, 4156u, 4u, 0u, 3625u, kTableFixedCopy, 2, 0, 0, 0, 1, 3503u, 1, 1, 3, 626 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3626u, 4084u, 4u, 0u, 3625u, kTableFixedCopy, 3, 0, 0, 0, 1, 3503u, 1, 1, 3, 629 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 3626u, 4112u, 24u, 4084u, 3625u, kTableFixedText, 4, 1, 0, 0, 1, 3503u, 1, 1, 3, 632 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 3698u, 4160u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 3699u, 4184u, 16u, 4164u, 3698u, kTableFixedText, 1, 1, 0, 0, 1, 3503u, 1, 1, 3, 635 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3699u, 4232u, 64u, 4164u, 3698u, kTableFixedText, 2, 1, 0, 0, 1, 3503u, 1, 1, 3, 638 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3767u, 4236u, 4u, 0u, 3698u, kTableFixedCopy, 2, 0, 0, 0, 1, 3503u, 1, 1, 3, 638 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3699u, 4164u, 4u, 0u, 3698u, kTableFixedCopy, 3, 0, 0, 0, 1, 3503u, 1, 1, 3, 641 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 3699u, 4192u, 24u, 4164u, 3698u, kTableFixedText, 4, 1, 0, 0, 1, 3503u, 1, 1, 3, 644 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 3772u, 4248u, 2u, 0u, 3503u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 3776u, 4244u, 2u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 3771u, 4252u, 8u, 4244u, 3503u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 3504u, 3952u, 16u, 0u, 3503u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 647 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3504u, 3952u, 4u, 0u, 3503u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 649 * (int) sizeof( TableFixedGuardLink ) }, // body.tally
-    { 3504u, 3960u, 3u, 0u, 3503u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 651 * (int) sizeof( TableFixedGuardLink ) }, // body.marks count
-    { 3508u, 3952u, 6u, 0u, 3503u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 651 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 3504u, 3956u, 4u, 3952u, 3503u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 653 * (int) sizeof( TableFixedGuardLink ) }, // body.blob
-    { 3504u, 3952u, 1u, 0u, 3503u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 655 * (int) sizeof( TableFixedGuardLink ) }, // body.mode
-    { 3778u, 4260u, 1u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // pending[0] tag
-    { 3779u, 4264u, 8u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3787u, 4308u, 32u, 4272u, 3778u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 3823u, 4312u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 3824u, 4336u, 16u, 4316u, 3823u, kTableFixedText, 1, 1, 0, 0, 1, 3778u, 1, 1, 3, 659 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3824u, 4384u, 64u, 4316u, 3823u, kTableFixedText, 2, 1, 0, 0, 1, 3778u, 1, 1, 3, 662 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3892u, 4388u, 4u, 0u, 3823u, kTableFixedCopy, 2, 0, 0, 0, 1, 3778u, 1, 1, 3, 662 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3824u, 4316u, 4u, 0u, 3823u, kTableFixedCopy, 3, 0, 0, 0, 1, 3778u, 1, 1, 3, 665 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 3824u, 4344u, 24u, 4316u, 3823u, kTableFixedText, 4, 1, 0, 0, 1, 3778u, 1, 1, 3, 668 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 3896u, 4552u, 2u, 0u, 3778u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 3900u, 4392u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 3901u, 4416u, 16u, 4396u, 3900u, kTableFixedText, 1, 1, 0, 0, 1, 3778u, 1, 1, 3, 671 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3901u, 4464u, 64u, 4396u, 3900u, kTableFixedText, 2, 1, 0, 0, 1, 3778u, 1, 1, 3, 674 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 3969u, 4468u, 4u, 0u, 3900u, kTableFixedCopy, 2, 0, 0, 0, 1, 3778u, 1, 1, 3, 674 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3901u, 4396u, 4u, 0u, 3900u, kTableFixedCopy, 3, 0, 0, 0, 1, 3778u, 1, 1, 3, 677 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 3901u, 4424u, 24u, 4396u, 3900u, kTableFixedText, 4, 1, 0, 0, 1, 3778u, 1, 1, 3, 680 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 3973u, 4472u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 3974u, 4496u, 16u, 4476u, 3973u, kTableFixedText, 1, 1, 0, 0, 1, 3778u, 1, 1, 3, 683 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 3974u, 4544u, 64u, 4476u, 3973u, kTableFixedText, 2, 1, 0, 0, 1, 3778u, 1, 1, 3, 686 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 4042u, 4548u, 4u, 0u, 3973u, kTableFixedCopy, 2, 0, 0, 0, 1, 3778u, 1, 1, 3, 686 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3974u, 4476u, 4u, 0u, 3973u, kTableFixedCopy, 3, 0, 0, 0, 1, 3778u, 1, 1, 3, 689 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 3974u, 4504u, 24u, 4476u, 3973u, kTableFixedText, 4, 1, 0, 0, 1, 3778u, 1, 1, 3, 692 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 4047u, 4560u, 2u, 0u, 3778u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 4051u, 4556u, 2u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 4046u, 4564u, 8u, 4556u, 3778u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 3779u, 4264u, 16u, 0u, 3778u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 695 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 3779u, 4264u, 4u, 0u, 3778u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 697 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].tally
-    { 3779u, 4272u, 3u, 0u, 3778u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 699 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].marks count
-    { 3783u, 4264u, 6u, 0u, 3778u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 699 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 3779u, 4268u, 4u, 4264u, 3778u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 701 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].blob
-    { 3779u, 4264u, 1u, 0u, 3778u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 703 * (int) sizeof( TableFixedGuardLink ) }, // pending[0].mode
-    { 4053u, 4568u, 1u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // pending[1] tag
-    { 4054u, 4572u, 8u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 4062u, 4616u, 32u, 4580u, 4053u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // text
-    { 4098u, 4620u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // origin tag
-    { 4099u, 4644u, 16u, 4624u, 4098u, kTableFixedText, 1, 1, 0, 0, 1, 4053u, 1, 1, 3, 707 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 4099u, 4692u, 64u, 4624u, 4098u, kTableFixedText, 2, 1, 0, 0, 1, 4053u, 1, 1, 3, 710 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 4167u, 4696u, 4u, 0u, 4098u, kTableFixedCopy, 2, 0, 0, 0, 1, 4053u, 1, 1, 3, 710 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 4099u, 4624u, 4u, 0u, 4098u, kTableFixedCopy, 3, 0, 0, 0, 1, 4053u, 1, 1, 3, 713 * (int) sizeof( TableFixedGuardLink ) }, // origin.pid
-    { 4099u, 4652u, 24u, 4624u, 4098u, kTableFixedText, 4, 1, 0, 0, 1, 4053u, 1, 1, 3, 716 * (int) sizeof( TableFixedGuardLink ) }, // origin.note
-    { 4171u, 4860u, 2u, 0u, 4053u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // origins count
-    { 4175u, 4700u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // origins[0] tag
-    { 4176u, 4724u, 16u, 4704u, 4175u, kTableFixedText, 1, 1, 0, 0, 1, 4053u, 1, 1, 3, 719 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 4176u, 4772u, 64u, 4704u, 4175u, kTableFixedText, 2, 1, 0, 0, 1, 4053u, 1, 1, 3, 722 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 4244u, 4776u, 4u, 0u, 4175u, kTableFixedCopy, 2, 0, 0, 0, 1, 4053u, 1, 1, 3, 722 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 4176u, 4704u, 4u, 0u, 4175u, kTableFixedCopy, 3, 0, 0, 0, 1, 4053u, 1, 1, 3, 725 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].pid
-    { 4176u, 4732u, 24u, 4704u, 4175u, kTableFixedText, 4, 1, 0, 0, 1, 4053u, 1, 1, 3, 728 * (int) sizeof( TableFixedGuardLink ) }, // origins[0].note
-    { 4248u, 4780u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // origins[1] tag
-    { 4249u, 4804u, 16u, 4784u, 4248u, kTableFixedText, 1, 1, 0, 0, 1, 4053u, 1, 1, 3, 731 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 4249u, 4852u, 64u, 4784u, 4248u, kTableFixedText, 2, 1, 0, 0, 1, 4053u, 1, 1, 3, 734 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 4317u, 4856u, 4u, 0u, 4248u, kTableFixedCopy, 2, 0, 0, 0, 1, 4053u, 1, 1, 3, 734 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 4249u, 4784u, 4u, 0u, 4248u, kTableFixedCopy, 3, 0, 0, 0, 1, 4053u, 1, 1, 3, 737 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].pid
-    { 4249u, 4812u, 24u, 4784u, 4248u, kTableFixedText, 4, 1, 0, 0, 1, 4053u, 1, 1, 3, 740 * (int) sizeof( TableFixedGuardLink ) }, // origins[1].note
-    { 4322u, 4868u, 2u, 0u, 4053u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // modes count
-    { 4326u, 4864u, 2u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // modes[0]
-    { 4321u, 4872u, 8u, 4864u, 4053u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ) }, // modes present, absent payload defaults
-    { 4054u, 4572u, 16u, 0u, 4053u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 743 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 4054u, 4572u, 4u, 0u, 4053u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 745 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].tally
-    { 4054u, 4580u, 3u, 0u, 4053u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 747 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].marks count
-    { 4058u, 4572u, 6u, 0u, 4053u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 747 * (int) sizeof( TableFixedGuardLink ) }, // marks, whole
-    { 4054u, 4576u, 4u, 4572u, 4053u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 749 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].blob
-    { 4054u, 4572u, 1u, 0u, 4053u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 751 * (int) sizeof( TableFixedGuardLink ) }, // pending[1].mode
-    { 4329u, 4876u, 8u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // checkpoints[0]
-    { 4328u, 4884u, 8u, 4876u, 2916u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // checkpoints present, absent payload defaults
-    { 4338u, 4888u, 32u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 4337u, 4920u, 32u, 4888u, 2916u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ) }, // snapshots present, absent payload defaults
-    { 2917u, 3296u, 4u, 0u, 2916u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 753 * (int) sizeof( TableFixedGuardLink ) }, // nonce
-    { 2917u, 3296u, 8u, 0u, 2916u, kTableFixedCopy, 5, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 754 * (int) sizeof( TableFixedGuardLink ) }, // history[1].caps
-    { 2917u, 3296u, 8u, 0u, 2916u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 755 * (int) sizeof( TableFixedGuardLink ) }, // spans, whole
-    { 2917u, 3296u, 1u, 0u, 2916u, kTableFixedCopy, 7, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 756 * (int) sizeof( TableFixedGuardLink ) }, // history[1].origin tag
-    { 2918u, 3320u, 16u, 3300u, 2917u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 7, 1, 2, 757 * (int) sizeof( TableFixedGuardLink ) }, // name
-    { 2918u, 3368u, 64u, 3300u, 2917u, kTableFixedText, 2, 1, 0, 0, 1, 2916u, 7, 1, 2, 759 * (int) sizeof( TableFixedGuardLink ) }, // path
-    { 2986u, 3372u, 4u, 0u, 2917u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 7, 1, 2, 759 * (int) sizeof( TableFixedGuardLink ) }, // line
-    { 2918u, 3300u, 4u, 0u, 2917u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 7, 1, 2, 761 * (int) sizeof( TableFixedGuardLink ) }, // history[1].origin.pid
-    { 2918u, 3328u, 24u, 3300u, 2917u, kTableFixedText, 4, 1, 0, 0, 1, 2916u, 7, 1, 2, 763 * (int) sizeof( TableFixedGuardLink ) }, // history[1].origin.note
-    { 4370u, 5164u, 232u, 4932u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // trace present, absent payload defaults
-    { 4591u, 5167u, 2u, 5165u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // marks present, absent payload defaults
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // sequence
+    { 4u, 8u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // body tag
+    { 1458u, 4928u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // history count
+    { 1462u, 1648u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // history[0] tag
+    { 2916u, 3288u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // history[1] tag
+    { 4371u, 5160u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // trace count
+    { 4375u, 5000u, 64u, 4932u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // path
+    { 4443u, 5004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 4447u, 5076u, 64u, 5008u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // path
+    { 4515u, 5080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 4519u, 5152u, 64u, 5084u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // path
+    { 4587u, 5156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // line
+    { 4592u, 5165u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // marks[0]
+    { 4593u, 5166u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // marks[0]
+    { 5u, 84u, 64u, 16u, 4u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 73u, 88u, 1u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // mode
+    { 74u, 92u, 8u, 0u, 4u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 5u, 84u, 64u, 16u, 4u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 73u, 88u, 1u, 0u, 4u, kTableFixedBool, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 0 }, // force
+    { 5u, 36u, 16u, 16u, 4u, kTableFixedText, 3, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // reason
+    { 25u, 976u, 3u, 0u, 4u, kTableFixedCount, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // edits count
+    { 29u, 40u, 5u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // revision
+    { 34u, 48u, 8u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 42u, 92u, 32u, 56u, 33u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 78u, 96u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin tag
+    { 79u, 120u, 16u, 100u, 78u, kTableFixedText, 1, 1, 0, 0, 1, 33u, 1, 1, 3, 5 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 79u, 168u, 64u, 100u, 78u, kTableFixedText, 2, 1, 0, 0, 1, 33u, 1, 1, 3, 8 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 147u, 172u, 4u, 0u, 78u, kTableFixedCopy, 2, 0, 0, 0, 1, 33u, 1, 1, 3, 8 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 79u, 100u, 4u, 0u, 78u, kTableFixedCopy, 3, 0, 0, 0, 1, 33u, 1, 1, 3, 11 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 79u, 128u, 24u, 100u, 78u, kTableFixedText, 4, 1, 0, 0, 1, 33u, 1, 1, 3, 14 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 151u, 336u, 2u, 0u, 33u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 155u, 176u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 156u, 200u, 16u, 180u, 155u, kTableFixedText, 1, 1, 0, 0, 1, 33u, 1, 1, 3, 17 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 156u, 248u, 64u, 180u, 155u, kTableFixedText, 2, 1, 0, 0, 1, 33u, 1, 1, 3, 20 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 224u, 252u, 4u, 0u, 155u, kTableFixedCopy, 2, 0, 0, 0, 1, 33u, 1, 1, 3, 20 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 156u, 180u, 4u, 0u, 155u, kTableFixedCopy, 3, 0, 0, 0, 1, 33u, 1, 1, 3, 23 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 156u, 208u, 24u, 180u, 155u, kTableFixedText, 4, 1, 0, 0, 1, 33u, 1, 1, 3, 26 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 228u, 256u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 229u, 280u, 16u, 260u, 228u, kTableFixedText, 1, 1, 0, 0, 1, 33u, 1, 1, 3, 29 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 229u, 328u, 64u, 260u, 228u, kTableFixedText, 2, 1, 0, 0, 1, 33u, 1, 1, 3, 32 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 297u, 332u, 4u, 0u, 228u, kTableFixedCopy, 2, 0, 0, 0, 1, 33u, 1, 1, 3, 32 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 229u, 260u, 4u, 0u, 228u, kTableFixedCopy, 3, 0, 0, 0, 1, 33u, 1, 1, 3, 35 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 229u, 288u, 24u, 260u, 228u, kTableFixedText, 4, 1, 0, 0, 1, 33u, 1, 1, 3, 38 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 302u, 344u, 2u, 0u, 33u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 306u, 340u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 307u, 341u, 1u, 0u, 33u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 301u, 348u, 8u, 340u, 33u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 3 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 34u, 48u, 16u, 0u, 33u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 41 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 34u, 48u, 4u, 0u, 33u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 43 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 34u, 56u, 3u, 0u, 33u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 45 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 38u, 48u, 6u, 0u, 33u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 45 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 34u, 52u, 4u, 48u, 33u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 47 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 34u, 48u, 1u, 0u, 33u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 49 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 308u, 352u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // revision
+    { 312u, 356u, 1u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 1 }, // revision
+    { 313u, 360u, 8u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 321u, 404u, 32u, 368u, 312u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 357u, 408u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 358u, 432u, 16u, 412u, 357u, kTableFixedText, 1, 1, 0, 0, 1, 312u, 1, 1, 3, 53 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 358u, 480u, 64u, 412u, 357u, kTableFixedText, 2, 1, 0, 0, 1, 312u, 1, 1, 3, 56 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 426u, 484u, 4u, 0u, 357u, kTableFixedCopy, 2, 0, 0, 0, 1, 312u, 1, 1, 3, 56 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 358u, 412u, 4u, 0u, 357u, kTableFixedCopy, 3, 0, 0, 0, 1, 312u, 1, 1, 3, 59 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 358u, 440u, 24u, 412u, 357u, kTableFixedText, 4, 1, 0, 0, 1, 312u, 1, 1, 3, 62 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 430u, 648u, 2u, 0u, 312u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 434u, 488u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 435u, 512u, 16u, 492u, 434u, kTableFixedText, 1, 1, 0, 0, 1, 312u, 1, 1, 3, 65 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 435u, 560u, 64u, 492u, 434u, kTableFixedText, 2, 1, 0, 0, 1, 312u, 1, 1, 3, 68 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 503u, 564u, 4u, 0u, 434u, kTableFixedCopy, 2, 0, 0, 0, 1, 312u, 1, 1, 3, 68 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 435u, 492u, 4u, 0u, 434u, kTableFixedCopy, 3, 0, 0, 0, 1, 312u, 1, 1, 3, 71 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 435u, 520u, 24u, 492u, 434u, kTableFixedText, 4, 1, 0, 0, 1, 312u, 1, 1, 3, 74 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 507u, 568u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 508u, 592u, 16u, 572u, 507u, kTableFixedText, 1, 1, 0, 0, 1, 312u, 1, 1, 3, 77 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 508u, 640u, 64u, 572u, 507u, kTableFixedText, 2, 1, 0, 0, 1, 312u, 1, 1, 3, 80 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 576u, 644u, 4u, 0u, 507u, kTableFixedCopy, 2, 0, 0, 0, 1, 312u, 1, 1, 3, 80 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 508u, 572u, 4u, 0u, 507u, kTableFixedCopy, 3, 0, 0, 0, 1, 312u, 1, 1, 3, 83 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 508u, 600u, 24u, 572u, 507u, kTableFixedText, 4, 1, 0, 0, 1, 312u, 1, 1, 3, 86 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 581u, 656u, 2u, 0u, 312u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 585u, 652u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 586u, 653u, 1u, 0u, 312u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 580u, 660u, 8u, 652u, 312u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 51 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 313u, 360u, 16u, 0u, 312u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 89 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 313u, 360u, 4u, 0u, 312u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 91 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 313u, 368u, 3u, 0u, 312u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 317u, 360u, 6u, 0u, 312u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 93 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 313u, 364u, 4u, 360u, 312u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 95 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 313u, 360u, 1u, 0u, 312u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 97 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 587u, 664u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // revision
+    { 591u, 668u, 1u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 1 }, // revision
+    { 592u, 672u, 8u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 600u, 716u, 32u, 680u, 591u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 636u, 720u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 637u, 744u, 16u, 724u, 636u, kTableFixedText, 1, 1, 0, 0, 1, 591u, 1, 1, 3, 101 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 637u, 792u, 64u, 724u, 636u, kTableFixedText, 2, 1, 0, 0, 1, 591u, 1, 1, 3, 104 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 705u, 796u, 4u, 0u, 636u, kTableFixedCopy, 2, 0, 0, 0, 1, 591u, 1, 1, 3, 104 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 637u, 724u, 4u, 0u, 636u, kTableFixedCopy, 3, 0, 0, 0, 1, 591u, 1, 1, 3, 107 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 637u, 752u, 24u, 724u, 636u, kTableFixedText, 4, 1, 0, 0, 1, 591u, 1, 1, 3, 110 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 709u, 960u, 2u, 0u, 591u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 713u, 800u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 714u, 824u, 16u, 804u, 713u, kTableFixedText, 1, 1, 0, 0, 1, 591u, 1, 1, 3, 113 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 714u, 872u, 64u, 804u, 713u, kTableFixedText, 2, 1, 0, 0, 1, 591u, 1, 1, 3, 116 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 782u, 876u, 4u, 0u, 713u, kTableFixedCopy, 2, 0, 0, 0, 1, 591u, 1, 1, 3, 116 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 714u, 804u, 4u, 0u, 713u, kTableFixedCopy, 3, 0, 0, 0, 1, 591u, 1, 1, 3, 119 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 714u, 832u, 24u, 804u, 713u, kTableFixedText, 4, 1, 0, 0, 1, 591u, 1, 1, 3, 122 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 786u, 880u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 787u, 904u, 16u, 884u, 786u, kTableFixedText, 1, 1, 0, 0, 1, 591u, 1, 1, 3, 125 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 787u, 952u, 64u, 884u, 786u, kTableFixedText, 2, 1, 0, 0, 1, 591u, 1, 1, 3, 128 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 855u, 956u, 4u, 0u, 786u, kTableFixedCopy, 2, 0, 0, 0, 1, 591u, 1, 1, 3, 128 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 787u, 884u, 4u, 0u, 786u, kTableFixedCopy, 3, 0, 0, 0, 1, 591u, 1, 1, 3, 131 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 787u, 912u, 24u, 884u, 786u, kTableFixedText, 4, 1, 0, 0, 1, 591u, 1, 1, 3, 134 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 860u, 968u, 2u, 0u, 591u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 864u, 964u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 865u, 965u, 1u, 0u, 591u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 859u, 972u, 8u, 964u, 591u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 99 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 592u, 672u, 16u, 0u, 591u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 137 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 592u, 672u, 4u, 0u, 591u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 139 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 592u, 680u, 3u, 0u, 591u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 141 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 596u, 672u, 6u, 0u, 591u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 141 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 592u, 676u, 4u, 672u, 591u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 143 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 592u, 672u, 1u, 0u, 591u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 145 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 866u, 980u, 1u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 1 }, // pending[0] tag
+    { 867u, 984u, 8u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 875u, 1028u, 32u, 992u, 866u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 911u, 1032u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 912u, 1056u, 16u, 1036u, 911u, kTableFixedText, 1, 1, 0, 0, 1, 866u, 1, 1, 3, 149 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 912u, 1104u, 64u, 1036u, 911u, kTableFixedText, 2, 1, 0, 0, 1, 866u, 1, 1, 3, 152 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 980u, 1108u, 4u, 0u, 911u, kTableFixedCopy, 2, 0, 0, 0, 1, 866u, 1, 1, 3, 152 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 912u, 1036u, 4u, 0u, 911u, kTableFixedCopy, 3, 0, 0, 0, 1, 866u, 1, 1, 3, 155 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 912u, 1064u, 24u, 1036u, 911u, kTableFixedText, 4, 1, 0, 0, 1, 866u, 1, 1, 3, 158 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 984u, 1272u, 2u, 0u, 866u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 988u, 1112u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 989u, 1136u, 16u, 1116u, 988u, kTableFixedText, 1, 1, 0, 0, 1, 866u, 1, 1, 3, 161 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 989u, 1184u, 64u, 1116u, 988u, kTableFixedText, 2, 1, 0, 0, 1, 866u, 1, 1, 3, 164 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1057u, 1188u, 4u, 0u, 988u, kTableFixedCopy, 2, 0, 0, 0, 1, 866u, 1, 1, 3, 164 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 989u, 1116u, 4u, 0u, 988u, kTableFixedCopy, 3, 0, 0, 0, 1, 866u, 1, 1, 3, 167 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 989u, 1144u, 24u, 1116u, 988u, kTableFixedText, 4, 1, 0, 0, 1, 866u, 1, 1, 3, 170 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 1061u, 1192u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 1062u, 1216u, 16u, 1196u, 1061u, kTableFixedText, 1, 1, 0, 0, 1, 866u, 1, 1, 3, 173 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1062u, 1264u, 64u, 1196u, 1061u, kTableFixedText, 2, 1, 0, 0, 1, 866u, 1, 1, 3, 176 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1130u, 1268u, 4u, 0u, 1061u, kTableFixedCopy, 2, 0, 0, 0, 1, 866u, 1, 1, 3, 176 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1062u, 1196u, 4u, 0u, 1061u, kTableFixedCopy, 3, 0, 0, 0, 1, 866u, 1, 1, 3, 179 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 1062u, 1224u, 24u, 1196u, 1061u, kTableFixedText, 4, 1, 0, 0, 1, 866u, 1, 1, 3, 182 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 1135u, 1280u, 2u, 0u, 866u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 1139u, 1276u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1140u, 1277u, 1u, 0u, 866u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1134u, 1284u, 8u, 1276u, 866u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 147 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 867u, 984u, 16u, 0u, 866u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 185 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 867u, 984u, 4u, 0u, 866u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 187 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].tally
+    { 867u, 992u, 3u, 0u, 866u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 189 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].marks count
+    { 871u, 984u, 6u, 0u, 866u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 189 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 867u, 988u, 4u, 984u, 866u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 191 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].blob
+    { 867u, 984u, 1u, 0u, 866u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 193 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].mode
+    { 1141u, 1288u, 1u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 1 }, // pending[1] tag
+    { 1142u, 1292u, 8u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1150u, 1336u, 32u, 1300u, 1141u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 1186u, 1340u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 1187u, 1364u, 16u, 1344u, 1186u, kTableFixedText, 1, 1, 0, 0, 1, 1141u, 1, 1, 3, 197 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1187u, 1412u, 64u, 1344u, 1186u, kTableFixedText, 2, 1, 0, 0, 1, 1141u, 1, 1, 3, 200 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1255u, 1416u, 4u, 0u, 1186u, kTableFixedCopy, 2, 0, 0, 0, 1, 1141u, 1, 1, 3, 200 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1187u, 1344u, 4u, 0u, 1186u, kTableFixedCopy, 3, 0, 0, 0, 1, 1141u, 1, 1, 3, 203 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 1187u, 1372u, 24u, 1344u, 1186u, kTableFixedText, 4, 1, 0, 0, 1, 1141u, 1, 1, 3, 206 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 1259u, 1580u, 2u, 0u, 1141u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 1263u, 1420u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 1264u, 1444u, 16u, 1424u, 1263u, kTableFixedText, 1, 1, 0, 0, 1, 1141u, 1, 1, 3, 209 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1264u, 1492u, 64u, 1424u, 1263u, kTableFixedText, 2, 1, 0, 0, 1, 1141u, 1, 1, 3, 212 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1332u, 1496u, 4u, 0u, 1263u, kTableFixedCopy, 2, 0, 0, 0, 1, 1141u, 1, 1, 3, 212 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1264u, 1424u, 4u, 0u, 1263u, kTableFixedCopy, 3, 0, 0, 0, 1, 1141u, 1, 1, 3, 215 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 1264u, 1452u, 24u, 1424u, 1263u, kTableFixedText, 4, 1, 0, 0, 1, 1141u, 1, 1, 3, 218 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 1336u, 1500u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 1337u, 1524u, 16u, 1504u, 1336u, kTableFixedText, 1, 1, 0, 0, 1, 1141u, 1, 1, 3, 221 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1337u, 1572u, 64u, 1504u, 1336u, kTableFixedText, 2, 1, 0, 0, 1, 1141u, 1, 1, 3, 224 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1405u, 1576u, 4u, 0u, 1336u, kTableFixedCopy, 2, 0, 0, 0, 1, 1141u, 1, 1, 3, 224 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1337u, 1504u, 4u, 0u, 1336u, kTableFixedCopy, 3, 0, 0, 0, 1, 1141u, 1, 1, 3, 227 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 1337u, 1532u, 24u, 1504u, 1336u, kTableFixedText, 4, 1, 0, 0, 1, 1141u, 1, 1, 3, 230 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 1410u, 1588u, 2u, 0u, 1141u, kTableFixedCount, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 1414u, 1584u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1415u, 1585u, 1u, 0u, 1141u, kTableFixedCopy, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1409u, 1592u, 8u, 1584u, 1141u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 4u, 3, 1, 2, 195 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 1142u, 1292u, 16u, 0u, 1141u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 3, 1, 2, 233 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1142u, 1292u, 4u, 0u, 1141u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 3, 1, 2, 235 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].tally
+    { 1142u, 1300u, 3u, 0u, 1141u, kTableFixedCount, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 237 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].marks count
+    { 1146u, 1292u, 6u, 0u, 1141u, kTableFixedCopy, 4, 0, 0, 0, 1, 4u, 3, 1, 2, 237 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 1142u, 1296u, 4u, 1292u, 1141u, kTableFixedText, 5, 3, 0, 0, 1, 4u, 3, 1, 2, 239 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].blob
+    { 1142u, 1292u, 1u, 0u, 1141u, kTableFixedCopy, 6, 0, 0, 0, 1, 4u, 3, 1, 2, 241 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].mode
+    { 1417u, 1596u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // checkpoints[0]
+    { 1421u, 1600u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // checkpoints[0]
+    { 1416u, 1604u, 8u, 1596u, 4u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // checkpoints present, absent payload defaults
+    { 1426u, 1608u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1430u, 1612u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1434u, 1616u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1438u, 1620u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1442u, 1624u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1446u, 1628u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1450u, 1632u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1454u, 1636u, 4u, 0u, 4u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1425u, 1640u, 32u, 1608u, 4u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // snapshots present, absent payload defaults
+    { 5u, 16u, 4u, 0u, 4u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 243 * (int) sizeof( TableFixedGuardLink ), 0 }, // nonce
+    { 5u, 16u, 8u, 0u, 4u, kTableFixedCopy, 5, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 244 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.caps
+    { 5u, 16u, 8u, 0u, 4u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 245 * (int) sizeof( TableFixedGuardLink ), 0 }, // spans, whole
+    { 5u, 16u, 1u, 0u, 4u, kTableFixedCopy, 7, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 246 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.origin tag
+    { 6u, 40u, 16u, 20u, 5u, kTableFixedText, 1, 1, 0, 0, 1, 4u, 7, 1, 2, 247 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 6u, 88u, 64u, 20u, 5u, kTableFixedText, 2, 1, 0, 0, 1, 4u, 7, 1, 2, 249 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 74u, 92u, 4u, 0u, 5u, kTableFixedCopy, 2, 0, 0, 0, 1, 4u, 7, 1, 2, 249 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 6u, 20u, 4u, 0u, 5u, kTableFixedCopy, 3, 0, 0, 0, 1, 4u, 7, 1, 2, 251 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.origin.pid
+    { 6u, 48u, 24u, 20u, 5u, kTableFixedText, 4, 1, 0, 0, 1, 4u, 7, 1, 2, 253 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.origin.note
+    { 1463u, 1724u, 64u, 1656u, 1462u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 255 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1531u, 1728u, 1u, 0u, 1462u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 255 * (int) sizeof( TableFixedGuardLink ), 0 }, // mode
+    { 1532u, 1732u, 8u, 0u, 1462u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 255 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1463u, 1724u, 64u, 1656u, 1462u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 256 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1531u, 1728u, 1u, 0u, 1462u, kTableFixedBool, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 256 * (int) sizeof( TableFixedGuardLink ), 0 }, // force
+    { 1463u, 1676u, 16u, 1656u, 1462u, kTableFixedText, 3, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 0 }, // reason
+    { 1483u, 2616u, 3u, 0u, 1462u, kTableFixedCount, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 0 }, // edits count
+    { 1487u, 1680u, 5u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 0 }, // revision
+    { 1492u, 1688u, 8u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1500u, 1732u, 32u, 1696u, 1491u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 1536u, 1736u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin tag
+    { 1537u, 1760u, 16u, 1740u, 1536u, kTableFixedText, 1, 1, 0, 0, 1, 1491u, 1, 1, 3, 260 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1537u, 1808u, 64u, 1740u, 1536u, kTableFixedText, 2, 1, 0, 0, 1, 1491u, 1, 1, 3, 263 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1605u, 1812u, 4u, 0u, 1536u, kTableFixedCopy, 2, 0, 0, 0, 1, 1491u, 1, 1, 3, 263 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1537u, 1740u, 4u, 0u, 1536u, kTableFixedCopy, 3, 0, 0, 0, 1, 1491u, 1, 1, 3, 266 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 1537u, 1768u, 24u, 1740u, 1536u, kTableFixedText, 4, 1, 0, 0, 1, 1491u, 1, 1, 3, 269 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 1609u, 1976u, 2u, 0u, 1491u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 1613u, 1816u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 1614u, 1840u, 16u, 1820u, 1613u, kTableFixedText, 1, 1, 0, 0, 1, 1491u, 1, 1, 3, 272 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1614u, 1888u, 64u, 1820u, 1613u, kTableFixedText, 2, 1, 0, 0, 1, 1491u, 1, 1, 3, 275 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1682u, 1892u, 4u, 0u, 1613u, kTableFixedCopy, 2, 0, 0, 0, 1, 1491u, 1, 1, 3, 275 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1614u, 1820u, 4u, 0u, 1613u, kTableFixedCopy, 3, 0, 0, 0, 1, 1491u, 1, 1, 3, 278 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 1614u, 1848u, 24u, 1820u, 1613u, kTableFixedText, 4, 1, 0, 0, 1, 1491u, 1, 1, 3, 281 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 1686u, 1896u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 1687u, 1920u, 16u, 1900u, 1686u, kTableFixedText, 1, 1, 0, 0, 1, 1491u, 1, 1, 3, 284 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1687u, 1968u, 64u, 1900u, 1686u, kTableFixedText, 2, 1, 0, 0, 1, 1491u, 1, 1, 3, 287 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1755u, 1972u, 4u, 0u, 1686u, kTableFixedCopy, 2, 0, 0, 0, 1, 1491u, 1, 1, 3, 287 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1687u, 1900u, 4u, 0u, 1686u, kTableFixedCopy, 3, 0, 0, 0, 1, 1491u, 1, 1, 3, 290 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 1687u, 1928u, 24u, 1900u, 1686u, kTableFixedText, 4, 1, 0, 0, 1, 1491u, 1, 1, 3, 293 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 1760u, 1984u, 2u, 0u, 1491u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 1764u, 1980u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1765u, 1981u, 1u, 0u, 1491u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 1759u, 1988u, 8u, 1980u, 1491u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 258 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 1492u, 1688u, 16u, 0u, 1491u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 296 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1492u, 1688u, 4u, 0u, 1491u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 298 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 1492u, 1696u, 3u, 0u, 1491u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 300 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 1496u, 1688u, 6u, 0u, 1491u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 300 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 1492u, 1692u, 4u, 1688u, 1491u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 302 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 1492u, 1688u, 1u, 0u, 1491u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 304 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 1766u, 1992u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // revision
+    { 1770u, 1996u, 1u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 1 }, // revision
+    { 1771u, 2000u, 8u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1779u, 2044u, 32u, 2008u, 1770u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 1815u, 2048u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 1816u, 2072u, 16u, 2052u, 1815u, kTableFixedText, 1, 1, 0, 0, 1, 1770u, 1, 1, 3, 308 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1816u, 2120u, 64u, 2052u, 1815u, kTableFixedText, 2, 1, 0, 0, 1, 1770u, 1, 1, 3, 311 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1884u, 2124u, 4u, 0u, 1815u, kTableFixedCopy, 2, 0, 0, 0, 1, 1770u, 1, 1, 3, 311 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1816u, 2052u, 4u, 0u, 1815u, kTableFixedCopy, 3, 0, 0, 0, 1, 1770u, 1, 1, 3, 314 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 1816u, 2080u, 24u, 2052u, 1815u, kTableFixedText, 4, 1, 0, 0, 1, 1770u, 1, 1, 3, 317 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 1888u, 2288u, 2u, 0u, 1770u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 1892u, 2128u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 1893u, 2152u, 16u, 2132u, 1892u, kTableFixedText, 1, 1, 0, 0, 1, 1770u, 1, 1, 3, 320 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1893u, 2200u, 64u, 2132u, 1892u, kTableFixedText, 2, 1, 0, 0, 1, 1770u, 1, 1, 3, 323 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1961u, 2204u, 4u, 0u, 1892u, kTableFixedCopy, 2, 0, 0, 0, 1, 1770u, 1, 1, 3, 323 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1893u, 2132u, 4u, 0u, 1892u, kTableFixedCopy, 3, 0, 0, 0, 1, 1770u, 1, 1, 3, 326 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 1893u, 2160u, 24u, 2132u, 1892u, kTableFixedText, 4, 1, 0, 0, 1, 1770u, 1, 1, 3, 329 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 1965u, 2208u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 1966u, 2232u, 16u, 2212u, 1965u, kTableFixedText, 1, 1, 0, 0, 1, 1770u, 1, 1, 3, 332 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1966u, 2280u, 64u, 2212u, 1965u, kTableFixedText, 2, 1, 0, 0, 1, 1770u, 1, 1, 3, 335 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2034u, 2284u, 4u, 0u, 1965u, kTableFixedCopy, 2, 0, 0, 0, 1, 1770u, 1, 1, 3, 335 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 1966u, 2212u, 4u, 0u, 1965u, kTableFixedCopy, 3, 0, 0, 0, 1, 1770u, 1, 1, 3, 338 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 1966u, 2240u, 24u, 2212u, 1965u, kTableFixedText, 4, 1, 0, 0, 1, 1770u, 1, 1, 3, 341 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 2039u, 2296u, 2u, 0u, 1770u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 2043u, 2292u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2044u, 2293u, 1u, 0u, 1770u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2038u, 2300u, 8u, 2292u, 1770u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 306 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 1771u, 2000u, 16u, 0u, 1770u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 344 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1771u, 2000u, 4u, 0u, 1770u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 346 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 1771u, 2008u, 3u, 0u, 1770u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 348 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 1775u, 2000u, 6u, 0u, 1770u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 348 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 1771u, 2004u, 4u, 2000u, 1770u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 350 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 1771u, 2000u, 1u, 0u, 1770u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 352 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 2045u, 2304u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // revision
+    { 2049u, 2308u, 1u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 1 }, // revision
+    { 2050u, 2312u, 8u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2058u, 2356u, 32u, 2320u, 2049u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 2094u, 2360u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 2095u, 2384u, 16u, 2364u, 2094u, kTableFixedText, 1, 1, 0, 0, 1, 2049u, 1, 1, 3, 356 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2095u, 2432u, 64u, 2364u, 2094u, kTableFixedText, 2, 1, 0, 0, 1, 2049u, 1, 1, 3, 359 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2163u, 2436u, 4u, 0u, 2094u, kTableFixedCopy, 2, 0, 0, 0, 1, 2049u, 1, 1, 3, 359 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2095u, 2364u, 4u, 0u, 2094u, kTableFixedCopy, 3, 0, 0, 0, 1, 2049u, 1, 1, 3, 362 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 2095u, 2392u, 24u, 2364u, 2094u, kTableFixedText, 4, 1, 0, 0, 1, 2049u, 1, 1, 3, 365 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 2167u, 2600u, 2u, 0u, 2049u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 2171u, 2440u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 2172u, 2464u, 16u, 2444u, 2171u, kTableFixedText, 1, 1, 0, 0, 1, 2049u, 1, 1, 3, 368 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2172u, 2512u, 64u, 2444u, 2171u, kTableFixedText, 2, 1, 0, 0, 1, 2049u, 1, 1, 3, 371 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2240u, 2516u, 4u, 0u, 2171u, kTableFixedCopy, 2, 0, 0, 0, 1, 2049u, 1, 1, 3, 371 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2172u, 2444u, 4u, 0u, 2171u, kTableFixedCopy, 3, 0, 0, 0, 1, 2049u, 1, 1, 3, 374 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 2172u, 2472u, 24u, 2444u, 2171u, kTableFixedText, 4, 1, 0, 0, 1, 2049u, 1, 1, 3, 377 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 2244u, 2520u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 2245u, 2544u, 16u, 2524u, 2244u, kTableFixedText, 1, 1, 0, 0, 1, 2049u, 1, 1, 3, 380 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2245u, 2592u, 64u, 2524u, 2244u, kTableFixedText, 2, 1, 0, 0, 1, 2049u, 1, 1, 3, 383 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2313u, 2596u, 4u, 0u, 2244u, kTableFixedCopy, 2, 0, 0, 0, 1, 2049u, 1, 1, 3, 383 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2245u, 2524u, 4u, 0u, 2244u, kTableFixedCopy, 3, 0, 0, 0, 1, 2049u, 1, 1, 3, 386 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 2245u, 2552u, 24u, 2524u, 2244u, kTableFixedText, 4, 1, 0, 0, 1, 2049u, 1, 1, 3, 389 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 2318u, 2608u, 2u, 0u, 2049u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 2322u, 2604u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2323u, 2605u, 1u, 0u, 2049u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2317u, 2612u, 8u, 2604u, 2049u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 354 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 2050u, 2312u, 16u, 0u, 2049u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 392 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2050u, 2312u, 4u, 0u, 2049u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 394 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 2050u, 2320u, 3u, 0u, 2049u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 396 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 2054u, 2312u, 6u, 0u, 2049u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 396 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 2050u, 2316u, 4u, 2312u, 2049u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 398 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 2050u, 2312u, 1u, 0u, 2049u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 400 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 2324u, 2620u, 1u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 1 }, // pending[0] tag
+    { 2325u, 2624u, 8u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2333u, 2668u, 32u, 2632u, 2324u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 2369u, 2672u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 2370u, 2696u, 16u, 2676u, 2369u, kTableFixedText, 1, 1, 0, 0, 1, 2324u, 1, 1, 3, 404 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2370u, 2744u, 64u, 2676u, 2369u, kTableFixedText, 2, 1, 0, 0, 1, 2324u, 1, 1, 3, 407 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2438u, 2748u, 4u, 0u, 2369u, kTableFixedCopy, 2, 0, 0, 0, 1, 2324u, 1, 1, 3, 407 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2370u, 2676u, 4u, 0u, 2369u, kTableFixedCopy, 3, 0, 0, 0, 1, 2324u, 1, 1, 3, 410 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 2370u, 2704u, 24u, 2676u, 2369u, kTableFixedText, 4, 1, 0, 0, 1, 2324u, 1, 1, 3, 413 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 2442u, 2912u, 2u, 0u, 2324u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 2446u, 2752u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 2447u, 2776u, 16u, 2756u, 2446u, kTableFixedText, 1, 1, 0, 0, 1, 2324u, 1, 1, 3, 416 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2447u, 2824u, 64u, 2756u, 2446u, kTableFixedText, 2, 1, 0, 0, 1, 2324u, 1, 1, 3, 419 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2515u, 2828u, 4u, 0u, 2446u, kTableFixedCopy, 2, 0, 0, 0, 1, 2324u, 1, 1, 3, 419 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2447u, 2756u, 4u, 0u, 2446u, kTableFixedCopy, 3, 0, 0, 0, 1, 2324u, 1, 1, 3, 422 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 2447u, 2784u, 24u, 2756u, 2446u, kTableFixedText, 4, 1, 0, 0, 1, 2324u, 1, 1, 3, 425 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 2519u, 2832u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 2520u, 2856u, 16u, 2836u, 2519u, kTableFixedText, 1, 1, 0, 0, 1, 2324u, 1, 1, 3, 428 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2520u, 2904u, 64u, 2836u, 2519u, kTableFixedText, 2, 1, 0, 0, 1, 2324u, 1, 1, 3, 431 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2588u, 2908u, 4u, 0u, 2519u, kTableFixedCopy, 2, 0, 0, 0, 1, 2324u, 1, 1, 3, 431 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2520u, 2836u, 4u, 0u, 2519u, kTableFixedCopy, 3, 0, 0, 0, 1, 2324u, 1, 1, 3, 434 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 2520u, 2864u, 24u, 2836u, 2519u, kTableFixedText, 4, 1, 0, 0, 1, 2324u, 1, 1, 3, 437 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 2593u, 2920u, 2u, 0u, 2324u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 2597u, 2916u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2598u, 2917u, 1u, 0u, 2324u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2592u, 2924u, 8u, 2916u, 2324u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 402 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 2325u, 2624u, 16u, 0u, 2324u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 440 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2325u, 2624u, 4u, 0u, 2324u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 442 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].tally
+    { 2325u, 2632u, 3u, 0u, 2324u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 444 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].marks count
+    { 2329u, 2624u, 6u, 0u, 2324u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 444 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 2325u, 2628u, 4u, 2624u, 2324u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 446 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].blob
+    { 2325u, 2624u, 1u, 0u, 2324u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 448 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].mode
+    { 2599u, 2928u, 1u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 1 }, // pending[1] tag
+    { 2600u, 2932u, 8u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2608u, 2976u, 32u, 2940u, 2599u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 2644u, 2980u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 2645u, 3004u, 16u, 2984u, 2644u, kTableFixedText, 1, 1, 0, 0, 1, 2599u, 1, 1, 3, 452 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2645u, 3052u, 64u, 2984u, 2644u, kTableFixedText, 2, 1, 0, 0, 1, 2599u, 1, 1, 3, 455 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2713u, 3056u, 4u, 0u, 2644u, kTableFixedCopy, 2, 0, 0, 0, 1, 2599u, 1, 1, 3, 455 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2645u, 2984u, 4u, 0u, 2644u, kTableFixedCopy, 3, 0, 0, 0, 1, 2599u, 1, 1, 3, 458 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 2645u, 3012u, 24u, 2984u, 2644u, kTableFixedText, 4, 1, 0, 0, 1, 2599u, 1, 1, 3, 461 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 2717u, 3220u, 2u, 0u, 2599u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 2721u, 3060u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 2722u, 3084u, 16u, 3064u, 2721u, kTableFixedText, 1, 1, 0, 0, 1, 2599u, 1, 1, 3, 464 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2722u, 3132u, 64u, 3064u, 2721u, kTableFixedText, 2, 1, 0, 0, 1, 2599u, 1, 1, 3, 467 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2790u, 3136u, 4u, 0u, 2721u, kTableFixedCopy, 2, 0, 0, 0, 1, 2599u, 1, 1, 3, 467 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2722u, 3064u, 4u, 0u, 2721u, kTableFixedCopy, 3, 0, 0, 0, 1, 2599u, 1, 1, 3, 470 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 2722u, 3092u, 24u, 3064u, 2721u, kTableFixedText, 4, 1, 0, 0, 1, 2599u, 1, 1, 3, 473 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 2794u, 3140u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 2795u, 3164u, 16u, 3144u, 2794u, kTableFixedText, 1, 1, 0, 0, 1, 2599u, 1, 1, 3, 476 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2795u, 3212u, 64u, 3144u, 2794u, kTableFixedText, 2, 1, 0, 0, 1, 2599u, 1, 1, 3, 479 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2863u, 3216u, 4u, 0u, 2794u, kTableFixedCopy, 2, 0, 0, 0, 1, 2599u, 1, 1, 3, 479 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2795u, 3144u, 4u, 0u, 2794u, kTableFixedCopy, 3, 0, 0, 0, 1, 2599u, 1, 1, 3, 482 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 2795u, 3172u, 24u, 3144u, 2794u, kTableFixedText, 4, 1, 0, 0, 1, 2599u, 1, 1, 3, 485 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 2868u, 3228u, 2u, 0u, 2599u, kTableFixedCount, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 2872u, 3224u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2873u, 3225u, 1u, 0u, 2599u, kTableFixedCopy, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 2867u, 3232u, 8u, 3224u, 2599u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 1462u, 3, 1, 2, 450 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 2600u, 2932u, 16u, 0u, 2599u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 3, 1, 2, 488 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2600u, 2932u, 4u, 0u, 2599u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 3, 1, 2, 490 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].tally
+    { 2600u, 2940u, 3u, 0u, 2599u, kTableFixedCount, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 492 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].marks count
+    { 2604u, 2932u, 6u, 0u, 2599u, kTableFixedCopy, 4, 0, 0, 0, 1, 1462u, 3, 1, 2, 492 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 2600u, 2936u, 4u, 2932u, 2599u, kTableFixedText, 5, 3, 0, 0, 1, 1462u, 3, 1, 2, 494 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].blob
+    { 2600u, 2932u, 1u, 0u, 2599u, kTableFixedCopy, 6, 0, 0, 0, 1, 1462u, 3, 1, 2, 496 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].mode
+    { 2875u, 3236u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // checkpoints[0]
+    { 2879u, 3240u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // checkpoints[0]
+    { 2874u, 3244u, 8u, 3236u, 1462u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 0 }, // checkpoints present, absent payload defaults
+    { 2884u, 3248u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2888u, 3252u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2892u, 3256u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2896u, 3260u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2900u, 3264u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2904u, 3268u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2908u, 3272u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2912u, 3276u, 4u, 0u, 1462u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2883u, 3280u, 32u, 3248u, 1462u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 257 * (int) sizeof( TableFixedGuardLink ), 0 }, // snapshots present, absent payload defaults
+    { 1463u, 1656u, 4u, 0u, 1462u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 498 * (int) sizeof( TableFixedGuardLink ), 0 }, // nonce
+    { 1463u, 1656u, 8u, 0u, 1462u, kTableFixedCopy, 5, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 499 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[0].caps
+    { 1463u, 1656u, 8u, 0u, 1462u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 500 * (int) sizeof( TableFixedGuardLink ), 0 }, // spans, whole
+    { 1463u, 1656u, 1u, 0u, 1462u, kTableFixedCopy, 7, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 501 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[0].origin tag
+    { 1464u, 1680u, 16u, 1660u, 1463u, kTableFixedText, 1, 1, 0, 0, 1, 1462u, 7, 1, 2, 502 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 1464u, 1728u, 64u, 1660u, 1463u, kTableFixedText, 2, 1, 0, 0, 1, 1462u, 7, 1, 2, 504 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 1532u, 1732u, 4u, 0u, 1463u, kTableFixedCopy, 2, 0, 0, 0, 1, 1462u, 7, 1, 2, 504 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 1464u, 1660u, 4u, 0u, 1463u, kTableFixedCopy, 3, 0, 0, 0, 1, 1462u, 7, 1, 2, 506 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[0].origin.pid
+    { 1464u, 1688u, 24u, 1660u, 1463u, kTableFixedText, 4, 1, 0, 0, 1, 1462u, 7, 1, 2, 508 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[0].origin.note
+    { 2917u, 3364u, 64u, 3296u, 2916u, kTableFixedText, 1, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 510 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2985u, 3368u, 1u, 0u, 2916u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 510 * (int) sizeof( TableFixedGuardLink ), 0 }, // mode
+    { 2986u, 3372u, 8u, 0u, 2916u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 510 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2917u, 3364u, 64u, 3296u, 2916u, kTableFixedText, 2, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 511 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2985u, 3368u, 1u, 0u, 2916u, kTableFixedBool, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 511 * (int) sizeof( TableFixedGuardLink ), 0 }, // force
+    { 2917u, 3316u, 16u, 3296u, 2916u, kTableFixedText, 3, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 0 }, // reason
+    { 2937u, 4256u, 3u, 0u, 2916u, kTableFixedCount, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 0 }, // edits count
+    { 2941u, 3320u, 5u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 0 }, // revision
+    { 2946u, 3328u, 8u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2954u, 3372u, 32u, 3336u, 2945u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 2990u, 3376u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin tag
+    { 2991u, 3400u, 16u, 3380u, 2990u, kTableFixedText, 1, 1, 0, 0, 1, 2945u, 1, 1, 3, 515 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2991u, 3448u, 64u, 3380u, 2990u, kTableFixedText, 2, 1, 0, 0, 1, 2945u, 1, 1, 3, 518 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3059u, 3452u, 4u, 0u, 2990u, kTableFixedCopy, 2, 0, 0, 0, 1, 2945u, 1, 1, 3, 518 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 2991u, 3380u, 4u, 0u, 2990u, kTableFixedCopy, 3, 0, 0, 0, 1, 2945u, 1, 1, 3, 521 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 2991u, 3408u, 24u, 3380u, 2990u, kTableFixedText, 4, 1, 0, 0, 1, 2945u, 1, 1, 3, 524 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 3063u, 3616u, 2u, 0u, 2945u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 3067u, 3456u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 3068u, 3480u, 16u, 3460u, 3067u, kTableFixedText, 1, 1, 0, 0, 1, 2945u, 1, 1, 3, 527 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3068u, 3528u, 64u, 3460u, 3067u, kTableFixedText, 2, 1, 0, 0, 1, 2945u, 1, 1, 3, 530 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3136u, 3532u, 4u, 0u, 3067u, kTableFixedCopy, 2, 0, 0, 0, 1, 2945u, 1, 1, 3, 530 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3068u, 3460u, 4u, 0u, 3067u, kTableFixedCopy, 3, 0, 0, 0, 1, 2945u, 1, 1, 3, 533 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 3068u, 3488u, 24u, 3460u, 3067u, kTableFixedText, 4, 1, 0, 0, 1, 2945u, 1, 1, 3, 536 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 3140u, 3536u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 3141u, 3560u, 16u, 3540u, 3140u, kTableFixedText, 1, 1, 0, 0, 1, 2945u, 1, 1, 3, 539 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3141u, 3608u, 64u, 3540u, 3140u, kTableFixedText, 2, 1, 0, 0, 1, 2945u, 1, 1, 3, 542 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3209u, 3612u, 4u, 0u, 3140u, kTableFixedCopy, 2, 0, 0, 0, 1, 2945u, 1, 1, 3, 542 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3141u, 3540u, 4u, 0u, 3140u, kTableFixedCopy, 3, 0, 0, 0, 1, 2945u, 1, 1, 3, 545 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 3141u, 3568u, 24u, 3540u, 3140u, kTableFixedText, 4, 1, 0, 0, 1, 2945u, 1, 1, 3, 548 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 3214u, 3624u, 2u, 0u, 2945u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 3218u, 3620u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 3219u, 3621u, 1u, 0u, 2945u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 3213u, 3628u, 8u, 3620u, 2945u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 513 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 2946u, 3328u, 16u, 0u, 2945u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 551 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2946u, 3328u, 4u, 0u, 2945u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 553 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 2946u, 3336u, 3u, 0u, 2945u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 555 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 2950u, 3328u, 6u, 0u, 2945u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 555 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 2946u, 3332u, 4u, 3328u, 2945u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 557 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 2946u, 3328u, 1u, 0u, 2945u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 559 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 3220u, 3632u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // revision
+    { 3224u, 3636u, 1u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 1 }, // revision
+    { 3225u, 3640u, 8u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 3233u, 3684u, 32u, 3648u, 3224u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 3269u, 3688u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 3270u, 3712u, 16u, 3692u, 3269u, kTableFixedText, 1, 1, 0, 0, 1, 3224u, 1, 1, 3, 563 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3270u, 3760u, 64u, 3692u, 3269u, kTableFixedText, 2, 1, 0, 0, 1, 3224u, 1, 1, 3, 566 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3338u, 3764u, 4u, 0u, 3269u, kTableFixedCopy, 2, 0, 0, 0, 1, 3224u, 1, 1, 3, 566 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3270u, 3692u, 4u, 0u, 3269u, kTableFixedCopy, 3, 0, 0, 0, 1, 3224u, 1, 1, 3, 569 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 3270u, 3720u, 24u, 3692u, 3269u, kTableFixedText, 4, 1, 0, 0, 1, 3224u, 1, 1, 3, 572 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 3342u, 3928u, 2u, 0u, 3224u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 3346u, 3768u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 3347u, 3792u, 16u, 3772u, 3346u, kTableFixedText, 1, 1, 0, 0, 1, 3224u, 1, 1, 3, 575 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3347u, 3840u, 64u, 3772u, 3346u, kTableFixedText, 2, 1, 0, 0, 1, 3224u, 1, 1, 3, 578 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3415u, 3844u, 4u, 0u, 3346u, kTableFixedCopy, 2, 0, 0, 0, 1, 3224u, 1, 1, 3, 578 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3347u, 3772u, 4u, 0u, 3346u, kTableFixedCopy, 3, 0, 0, 0, 1, 3224u, 1, 1, 3, 581 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 3347u, 3800u, 24u, 3772u, 3346u, kTableFixedText, 4, 1, 0, 0, 1, 3224u, 1, 1, 3, 584 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 3419u, 3848u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 3420u, 3872u, 16u, 3852u, 3419u, kTableFixedText, 1, 1, 0, 0, 1, 3224u, 1, 1, 3, 587 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3420u, 3920u, 64u, 3852u, 3419u, kTableFixedText, 2, 1, 0, 0, 1, 3224u, 1, 1, 3, 590 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3488u, 3924u, 4u, 0u, 3419u, kTableFixedCopy, 2, 0, 0, 0, 1, 3224u, 1, 1, 3, 590 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3420u, 3852u, 4u, 0u, 3419u, kTableFixedCopy, 3, 0, 0, 0, 1, 3224u, 1, 1, 3, 593 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 3420u, 3880u, 24u, 3852u, 3419u, kTableFixedText, 4, 1, 0, 0, 1, 3224u, 1, 1, 3, 596 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 3493u, 3936u, 2u, 0u, 3224u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 3497u, 3932u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 3498u, 3933u, 1u, 0u, 3224u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 3492u, 3940u, 8u, 3932u, 3224u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 561 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 3225u, 3640u, 16u, 0u, 3224u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 599 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 3225u, 3640u, 4u, 0u, 3224u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 601 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 3225u, 3648u, 3u, 0u, 3224u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 603 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 3229u, 3640u, 6u, 0u, 3224u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 603 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 3225u, 3644u, 4u, 3640u, 3224u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 605 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 3225u, 3640u, 1u, 0u, 3224u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 607 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 3499u, 3944u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // revision
+    { 3503u, 3948u, 1u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 1 }, // revision
+    { 3504u, 3952u, 8u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 3512u, 3996u, 32u, 3960u, 3503u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 3548u, 4000u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 3549u, 4024u, 16u, 4004u, 3548u, kTableFixedText, 1, 1, 0, 0, 1, 3503u, 1, 1, 3, 611 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3549u, 4072u, 64u, 4004u, 3548u, kTableFixedText, 2, 1, 0, 0, 1, 3503u, 1, 1, 3, 614 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3617u, 4076u, 4u, 0u, 3548u, kTableFixedCopy, 2, 0, 0, 0, 1, 3503u, 1, 1, 3, 614 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3549u, 4004u, 4u, 0u, 3548u, kTableFixedCopy, 3, 0, 0, 0, 1, 3503u, 1, 1, 3, 617 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 3549u, 4032u, 24u, 4004u, 3548u, kTableFixedText, 4, 1, 0, 0, 1, 3503u, 1, 1, 3, 620 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 3621u, 4240u, 2u, 0u, 3503u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 3625u, 4080u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 3626u, 4104u, 16u, 4084u, 3625u, kTableFixedText, 1, 1, 0, 0, 1, 3503u, 1, 1, 3, 623 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3626u, 4152u, 64u, 4084u, 3625u, kTableFixedText, 2, 1, 0, 0, 1, 3503u, 1, 1, 3, 626 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3694u, 4156u, 4u, 0u, 3625u, kTableFixedCopy, 2, 0, 0, 0, 1, 3503u, 1, 1, 3, 626 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3626u, 4084u, 4u, 0u, 3625u, kTableFixedCopy, 3, 0, 0, 0, 1, 3503u, 1, 1, 3, 629 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 3626u, 4112u, 24u, 4084u, 3625u, kTableFixedText, 4, 1, 0, 0, 1, 3503u, 1, 1, 3, 632 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 3698u, 4160u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 3699u, 4184u, 16u, 4164u, 3698u, kTableFixedText, 1, 1, 0, 0, 1, 3503u, 1, 1, 3, 635 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3699u, 4232u, 64u, 4164u, 3698u, kTableFixedText, 2, 1, 0, 0, 1, 3503u, 1, 1, 3, 638 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3767u, 4236u, 4u, 0u, 3698u, kTableFixedCopy, 2, 0, 0, 0, 1, 3503u, 1, 1, 3, 638 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3699u, 4164u, 4u, 0u, 3698u, kTableFixedCopy, 3, 0, 0, 0, 1, 3503u, 1, 1, 3, 641 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 3699u, 4192u, 24u, 4164u, 3698u, kTableFixedText, 4, 1, 0, 0, 1, 3503u, 1, 1, 3, 644 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 3772u, 4248u, 2u, 0u, 3503u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 3776u, 4244u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 3777u, 4245u, 1u, 0u, 3503u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 3771u, 4252u, 8u, 4244u, 3503u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 609 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 3504u, 3952u, 16u, 0u, 3503u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 647 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 3504u, 3952u, 4u, 0u, 3503u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 649 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.tally
+    { 3504u, 3960u, 3u, 0u, 3503u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 651 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.marks count
+    { 3508u, 3952u, 6u, 0u, 3503u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 651 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 3504u, 3956u, 4u, 3952u, 3503u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 653 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.blob
+    { 3504u, 3952u, 1u, 0u, 3503u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 655 * (int) sizeof( TableFixedGuardLink ), 0 }, // body.mode
+    { 3778u, 4260u, 1u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 1 }, // pending[0] tag
+    { 3779u, 4264u, 8u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 3787u, 4308u, 32u, 4272u, 3778u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 3823u, 4312u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 3824u, 4336u, 16u, 4316u, 3823u, kTableFixedText, 1, 1, 0, 0, 1, 3778u, 1, 1, 3, 659 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3824u, 4384u, 64u, 4316u, 3823u, kTableFixedText, 2, 1, 0, 0, 1, 3778u, 1, 1, 3, 662 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3892u, 4388u, 4u, 0u, 3823u, kTableFixedCopy, 2, 0, 0, 0, 1, 3778u, 1, 1, 3, 662 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3824u, 4316u, 4u, 0u, 3823u, kTableFixedCopy, 3, 0, 0, 0, 1, 3778u, 1, 1, 3, 665 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 3824u, 4344u, 24u, 4316u, 3823u, kTableFixedText, 4, 1, 0, 0, 1, 3778u, 1, 1, 3, 668 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 3896u, 4552u, 2u, 0u, 3778u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 3900u, 4392u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 3901u, 4416u, 16u, 4396u, 3900u, kTableFixedText, 1, 1, 0, 0, 1, 3778u, 1, 1, 3, 671 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3901u, 4464u, 64u, 4396u, 3900u, kTableFixedText, 2, 1, 0, 0, 1, 3778u, 1, 1, 3, 674 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 3969u, 4468u, 4u, 0u, 3900u, kTableFixedCopy, 2, 0, 0, 0, 1, 3778u, 1, 1, 3, 674 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3901u, 4396u, 4u, 0u, 3900u, kTableFixedCopy, 3, 0, 0, 0, 1, 3778u, 1, 1, 3, 677 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 3901u, 4424u, 24u, 4396u, 3900u, kTableFixedText, 4, 1, 0, 0, 1, 3778u, 1, 1, 3, 680 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 3973u, 4472u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 3974u, 4496u, 16u, 4476u, 3973u, kTableFixedText, 1, 1, 0, 0, 1, 3778u, 1, 1, 3, 683 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 3974u, 4544u, 64u, 4476u, 3973u, kTableFixedText, 2, 1, 0, 0, 1, 3778u, 1, 1, 3, 686 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 4042u, 4548u, 4u, 0u, 3973u, kTableFixedCopy, 2, 0, 0, 0, 1, 3778u, 1, 1, 3, 686 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 3974u, 4476u, 4u, 0u, 3973u, kTableFixedCopy, 3, 0, 0, 0, 1, 3778u, 1, 1, 3, 689 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 3974u, 4504u, 24u, 4476u, 3973u, kTableFixedText, 4, 1, 0, 0, 1, 3778u, 1, 1, 3, 692 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 4047u, 4560u, 2u, 0u, 3778u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 4051u, 4556u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 4052u, 4557u, 1u, 0u, 3778u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 4046u, 4564u, 8u, 4556u, 3778u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 657 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 3779u, 4264u, 16u, 0u, 3778u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 695 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 3779u, 4264u, 4u, 0u, 3778u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 697 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].tally
+    { 3779u, 4272u, 3u, 0u, 3778u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 699 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].marks count
+    { 3783u, 4264u, 6u, 0u, 3778u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 699 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 3779u, 4268u, 4u, 4264u, 3778u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 701 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].blob
+    { 3779u, 4264u, 1u, 0u, 3778u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 703 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[0].mode
+    { 4053u, 4568u, 1u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 1 }, // pending[1] tag
+    { 4054u, 4572u, 8u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 4062u, 4616u, 32u, 4580u, 4053u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 0 }, // text
+    { 4098u, 4620u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 1 }, // origin tag
+    { 4099u, 4644u, 16u, 4624u, 4098u, kTableFixedText, 1, 1, 0, 0, 1, 4053u, 1, 1, 3, 707 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 4099u, 4692u, 64u, 4624u, 4098u, kTableFixedText, 2, 1, 0, 0, 1, 4053u, 1, 1, 3, 710 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 4167u, 4696u, 4u, 0u, 4098u, kTableFixedCopy, 2, 0, 0, 0, 1, 4053u, 1, 1, 3, 710 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4099u, 4624u, 4u, 0u, 4098u, kTableFixedCopy, 3, 0, 0, 0, 1, 4053u, 1, 1, 3, 713 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.pid
+    { 4099u, 4652u, 24u, 4624u, 4098u, kTableFixedText, 4, 1, 0, 0, 1, 4053u, 1, 1, 3, 716 * (int) sizeof( TableFixedGuardLink ), 0 }, // origin.note
+    { 4171u, 4860u, 2u, 0u, 4053u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins count
+    { 4175u, 4700u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[0] tag
+    { 4176u, 4724u, 16u, 4704u, 4175u, kTableFixedText, 1, 1, 0, 0, 1, 4053u, 1, 1, 3, 719 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 4176u, 4772u, 64u, 4704u, 4175u, kTableFixedText, 2, 1, 0, 0, 1, 4053u, 1, 1, 3, 722 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 4244u, 4776u, 4u, 0u, 4175u, kTableFixedCopy, 2, 0, 0, 0, 1, 4053u, 1, 1, 3, 722 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4176u, 4704u, 4u, 0u, 4175u, kTableFixedCopy, 3, 0, 0, 0, 1, 4053u, 1, 1, 3, 725 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].pid
+    { 4176u, 4732u, 24u, 4704u, 4175u, kTableFixedText, 4, 1, 0, 0, 1, 4053u, 1, 1, 3, 728 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[0].note
+    { 4248u, 4780u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 1 }, // origins[1] tag
+    { 4249u, 4804u, 16u, 4784u, 4248u, kTableFixedText, 1, 1, 0, 0, 1, 4053u, 1, 1, 3, 731 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 4249u, 4852u, 64u, 4784u, 4248u, kTableFixedText, 2, 1, 0, 0, 1, 4053u, 1, 1, 3, 734 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 4317u, 4856u, 4u, 0u, 4248u, kTableFixedCopy, 2, 0, 0, 0, 1, 4053u, 1, 1, 3, 734 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4249u, 4784u, 4u, 0u, 4248u, kTableFixedCopy, 3, 0, 0, 0, 1, 4053u, 1, 1, 3, 737 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].pid
+    { 4249u, 4812u, 24u, 4784u, 4248u, kTableFixedText, 4, 1, 0, 0, 1, 4053u, 1, 1, 3, 740 * (int) sizeof( TableFixedGuardLink ), 0 }, // origins[1].note
+    { 4322u, 4868u, 2u, 0u, 4053u, kTableFixedCount, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes count
+    { 4326u, 4864u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 4327u, 4865u, 1u, 0u, 4053u, kTableFixedCopy, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 1 }, // modes[0]
+    { 4321u, 4872u, 8u, 4864u, 4053u, kTableFixedPresentDefaults, 1, 0, 0, 0, 1, 2916u, 3, 1, 2, 705 * (int) sizeof( TableFixedGuardLink ), 0 }, // modes present, absent payload defaults
+    { 4054u, 4572u, 16u, 0u, 4053u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 3, 1, 2, 743 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 4054u, 4572u, 4u, 0u, 4053u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 3, 1, 2, 745 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].tally
+    { 4054u, 4580u, 3u, 0u, 4053u, kTableFixedCount, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 747 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].marks count
+    { 4058u, 4572u, 6u, 0u, 4053u, kTableFixedCopy, 4, 0, 0, 0, 1, 2916u, 3, 1, 2, 747 * (int) sizeof( TableFixedGuardLink ), 0 }, // marks, whole
+    { 4054u, 4576u, 4u, 4572u, 4053u, kTableFixedText, 5, 3, 0, 0, 1, 2916u, 3, 1, 2, 749 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].blob
+    { 4054u, 4572u, 1u, 0u, 4053u, kTableFixedCopy, 6, 0, 0, 0, 1, 2916u, 3, 1, 2, 751 * (int) sizeof( TableFixedGuardLink ), 0 }, // pending[1].mode
+    { 4329u, 4876u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // checkpoints[0]
+    { 4333u, 4880u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // checkpoints[0]
+    { 4328u, 4884u, 8u, 4876u, 2916u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 0 }, // checkpoints present, absent payload defaults
+    { 4338u, 4888u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4342u, 4892u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4346u, 4896u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4350u, 4900u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4354u, 4904u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4358u, 4908u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4362u, 4912u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4366u, 4916u, 4u, 0u, 2916u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 4 }, // line
+    { 4337u, 4920u, 32u, 4888u, 2916u, kTableFixedPresentDefaults, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 512 * (int) sizeof( TableFixedGuardLink ), 0 }, // snapshots present, absent payload defaults
+    { 2917u, 3296u, 4u, 0u, 2916u, kTableFixedCopy, 4, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 753 * (int) sizeof( TableFixedGuardLink ), 0 }, // nonce
+    { 2917u, 3296u, 8u, 0u, 2916u, kTableFixedCopy, 5, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 754 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[1].caps
+    { 2917u, 3296u, 8u, 0u, 2916u, kTableFixedCopy, 6, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 755 * (int) sizeof( TableFixedGuardLink ), 0 }, // spans, whole
+    { 2917u, 3296u, 1u, 0u, 2916u, kTableFixedCopy, 7, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 756 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[1].origin tag
+    { 2918u, 3320u, 16u, 3300u, 2917u, kTableFixedText, 1, 1, 0, 0, 1, 2916u, 7, 1, 2, 757 * (int) sizeof( TableFixedGuardLink ), 0 }, // name
+    { 2918u, 3368u, 64u, 3300u, 2917u, kTableFixedText, 2, 1, 0, 0, 1, 2916u, 7, 1, 2, 759 * (int) sizeof( TableFixedGuardLink ), 0 }, // path
+    { 2986u, 3372u, 4u, 0u, 2917u, kTableFixedCopy, 2, 0, 0, 0, 1, 2916u, 7, 1, 2, 759 * (int) sizeof( TableFixedGuardLink ), 0 }, // line
+    { 2918u, 3300u, 4u, 0u, 2917u, kTableFixedCopy, 3, 0, 0, 0, 1, 2916u, 7, 1, 2, 761 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[1].origin.pid
+    { 2918u, 3328u, 24u, 3300u, 2917u, kTableFixedText, 4, 1, 0, 0, 1, 2916u, 7, 1, 2, 763 * (int) sizeof( TableFixedGuardLink ), 0 }, // history[1].origin.note
+    { 4370u, 5164u, 232u, 4932u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // trace present, absent payload defaults
+    { 4591u, 5167u, 2u, 5165u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // marks present, absent payload defaults
 };
-constexpr int32_t ToolMessageFixedPlanCount = 540;
-constexpr int32_t ToolMessageFixedPlanGuarded = 13;
+constexpr int32_t ToolMessageFixedPlanCount = 586;
+constexpr int32_t ToolMessageFixedPlanGuarded = 14;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink ToolMessageFixedGuards[] = {
@@ -29425,6 +29954,10 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 {
     const int64_t need = ToolMessageFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ToolMessageFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ToolMessageFixedHash );

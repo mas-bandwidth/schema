@@ -103,19 +103,34 @@ public final class MixedEntityFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true);
+    }
+
+    /**
+     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
+     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
+     * (docs/SPEC-TABLES.md §3.4).
+     */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.entityId = TableFixed.get32(b, at + 0);
         if (v.entityId > 4095L) {
             v.entityId = (int) (4095L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -16383L) {
                 q = -16383L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 16383L) {
                 q = 16383L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.posX = (int) (q);
         }
@@ -123,10 +138,14 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 8);
             if (q < -16383L) {
                 q = -16383L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 16383L) {
                 q = 16383L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.posY = (int) (q);
         }
@@ -134,31 +153,43 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 12);
             if (q < -16383L) {
                 q = -16383L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 16383L) {
                 q = 16383L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
         if (v.yaw > 511L) {
             v.yaw = (int) (511L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(9) clamps to 2^N - 1
         v.pitch = TableFixed.get32(b, at + 20);
         if (v.pitch > 511L) {
             v.pitch = (int) (511L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(9) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 24);
             if (q < -2048L) {
                 q = -2048L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 2047L) {
                 q = 2047L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.velX = (int) (q);
         }
@@ -166,10 +197,14 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 28);
             if (q < -2048L) {
                 q = -2048L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 2047L) {
                 q = 2047L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.velY = (int) (q);
         }
@@ -177,10 +212,14 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 32);
             if (q < -2048L) {
                 q = -2048L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 2047L) {
                 q = 2047L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.velZ = (int) (q);
         }
@@ -188,10 +227,14 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 36);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 1000L) {
                 q = 1000L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.health = (int) (q);
         }
@@ -199,12 +242,24 @@ public final class MixedEntityFixed {
             long q = (b[at + 40] & 0xFF);
             if (q > 15L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.weapon = (byte) (q);
         }
         v.damage = TableFixed.get64(b, at + 41);
+        if ((b[at + 49] & 0xFF) > 1) {
+            if (live) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+            }
+        }
         v.moving = b[at + 49] != 0;
+        if ((b[at + 50] & 0xFF) > 1) {
+            if (live) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+            }
+        }
         v.firing = b[at + 50] != 0;
     }
 }

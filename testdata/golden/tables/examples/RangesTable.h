@@ -4331,6 +4331,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -4396,6 +4403,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -4498,6 +4525,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -4511,7 +4598,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -4555,7 +4642,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -4572,7 +4661,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -4584,13 +4673,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -4599,14 +4688,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -4618,13 +4712,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -4640,10 +4734,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -5851,6 +5949,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -5912,7 +6011,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -9387,6 +9486,8 @@ inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & val
     return bytes;
 }
 
+inline bool RangedSignedFixedWriteAdmits( const RangedSigned & value );
+
 inline int64_t RangedSignedMeasure( const RangedSigned & value )
 {
     TableIds ids;
@@ -12073,6 +12174,7 @@ inline int64_t RangedSignedMeasureMessages( const RangedSigned * values, int64_t
     {
         const int64_t body = RangedSignedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RangedSignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12091,6 +12193,7 @@ inline int64_t RangedSignedSaveMessages( const RangedSigned * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RangedSignedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RangedSignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RangedSignedMeasureMessages( values, count, report )
@@ -12169,6 +12272,8 @@ inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned &
     }
     return bytes;
 }
+
+inline bool RangedUnsignedFixedWriteAdmits( const RangedUnsigned & value );
 
 inline int64_t RangedUnsignedMeasure( const RangedUnsigned & value )
 {
@@ -14622,6 +14727,7 @@ inline int64_t RangedUnsignedMeasureMessages( const RangedUnsigned * values, int
     {
         const int64_t body = RangedUnsignedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RangedUnsignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14640,6 +14746,7 @@ inline int64_t RangedUnsignedSaveMessages( const RangedUnsigned * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RangedUnsignedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RangedUnsignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RangedUnsignedMeasureMessages( values, count, report )
@@ -14699,6 +14806,8 @@ inline int64_t RangedWidthsMeasureBody( TableIds & ids, const RangedWidths & val
     if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     return bytes;
 }
+
+inline bool RangedWidthsFixedWriteAdmits( const RangedWidths & value );
 
 inline int64_t RangedWidthsMeasure( const RangedWidths & value )
 {
@@ -15649,6 +15758,7 @@ inline int64_t RangedWidthsMeasureMessages( const RangedWidths * values, int64_t
     {
         const int64_t body = RangedWidthsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RangedWidthsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -15667,6 +15777,7 @@ inline int64_t RangedWidthsSaveMessages( const RangedWidths * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RangedWidthsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RangedWidthsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RangedWidthsMeasureMessages( values, count, report )
@@ -15871,6 +15982,30 @@ TABLE_FIXED_INLINE bool RangedSignedFixedInRange( const RangedSigned & value )
     return bad == 0;
 }
 
+// RangedSigned's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RangedSignedFixedWriteAdmits( const RangedSigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.i8_low > 126 );
+    bad |= (int) ( value.i8_high < -127 );
+    bad |= (int) ( value.i8_inside < -127 ) | (int) ( value.i8_inside > 126 );
+    bad |= (int) ( value.i16_low > 32766 );
+    bad |= (int) ( value.i16_high < -32767 );
+    bad |= (int) ( value.i16_inside < -32767 ) | (int) ( value.i16_inside > 32766 );
+    bad |= (int) ( value.i32_low > 2147483646 );
+    bad |= (int) ( value.i32_high < -2147483647 );
+    bad |= (int) ( value.i32_inside < -2147483647 ) | (int) ( value.i32_inside > 2147483646 );
+    bad |= (int) ( value.i64_low > 9223372036854775806ll );
+    bad |= (int) ( value.i64_high < -9223372036854775807ll );
+    bad |= (int) ( value.i64_inside < -9223372036854775807ll ) | (int) ( value.i64_inside > 9223372036854775806ll );
+    for ( int64_t i = 0; i < ( value.edges_count >= 0 && value.edges_count <= 4 ? (int64_t) value.edges_count : 0 ); ++i )
+    {
+    }
+    return bad == 0;
+}
+
 // RangedSigned's read-side bounds.
 inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15930,6 +16065,30 @@ TABLE_FIXED_INLINE bool RangedUnsignedFixedInRange( const RangedUnsigned & value
     return bad == 0;
 }
 
+// RangedUnsigned's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RangedUnsignedFixedWriteAdmits( const RangedUnsigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.u8_low > 254 );
+    bad |= (int) ( value.u8_high < 1 );
+    bad |= (int) ( value.u8_inside < 1 ) | (int) ( value.u8_inside > 254 );
+    bad |= (int) ( value.u16_low > 65534 );
+    bad |= (int) ( value.u16_high < 1 );
+    bad |= (int) ( value.u16_inside < 1 ) | (int) ( value.u16_inside > 65534 );
+    bad |= (int) ( value.u32_low > 4294967294 );
+    bad |= (int) ( value.u32_high < 1 );
+    bad |= (int) ( value.u32_inside < 1 ) | (int) ( value.u32_inside > 4294967294 );
+    bad |= (int) ( value.u64_low > 18446744073709551614ull );
+    bad |= (int) ( value.u64_high < 1ull );
+    bad |= (int) ( value.u64_inside < 1ull ) | (int) ( value.u64_inside > 18446744073709551614ull );
+    for ( int64_t i = 0; i < ( value.counts_count >= 0 && value.counts_count <= 4 ? (int64_t) value.counts_count : 0 ); ++i )
+    {
+    }
+    return bad == 0;
+}
+
 // RangedUnsigned's read-side bounds.
 inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15968,6 +16127,23 @@ inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & TABL
 // RangedWidths's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RangedWidthsFixedInRange( const RangedWidths & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.b8 > 255ull );
+    // bits(16) width clamp
+    bad |= (int) ( value.b16 > 65535ull );
+    // bits(12) width clamp
+    bad |= (int) ( value.b12 > 4095ull );
+    // bits(48) width clamp
+    bad |= (int) ( value.b48 > 281474976710655ull );
+    return bad == 0;
+}
+
+// RangedWidths's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RangedWidthsFixedWriteAdmits( const RangedWidths & value )
 {
     (void) value;
     int bad = 0;
@@ -16139,13 +16315,30 @@ constexpr TableFixedDst RangedSignedFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RangedSignedFixedPlan[] = {
-    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // i8_span
-    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // i64_span
-    { 60u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // edges count
-    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // edges, whole
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // i8_span
+    { 1u, 1u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // i8_span
+    { 2u, 2u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // i8_span
+    { 3u, 3u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // i8_span
+    { 4u, 4u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // i8_span
+    { 6u, 6u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // i8_span
+    { 8u, 8u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // i8_span
+    { 10u, 10u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // i8_span
+    { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // i8_span
+    { 16u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // i8_span
+    { 20u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // i8_span
+    { 24u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // i8_span
+    { 28u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // i64_span
+    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // i64_span
+    { 44u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // i64_span
+    { 52u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // i64_span
+    { 60u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // edges count
+    { 64u, 64u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // edges, whole
+    { 66u, 66u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // edges, whole
+    { 68u, 68u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // edges, whole
+    { 70u, 70u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // edges, whole
 };
-constexpr int32_t RangedSignedFixedPlanCount = 4;
-constexpr int32_t RangedSignedFixedPlanGuarded = 4;
+constexpr int32_t RangedSignedFixedPlanCount = 21;
+constexpr int32_t RangedSignedFixedPlanGuarded = 21;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RangedSignedFixedGuards[] = {
@@ -16223,6 +16416,10 @@ inline int64_t RangedSignedFixedSave( const RangedSigned * values, int64_t count
 {
     const int64_t need = RangedSignedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RangedSignedFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedSignedFixedHash );
@@ -16676,13 +16873,30 @@ constexpr TableFixedDst RangedUnsignedFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RangedUnsignedFixedPlan[] = {
-    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // u8_span
-    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // u64_span
-    { 60u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counts count
-    { 64u, 64u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counts, whole
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // u8_span
+    { 1u, 1u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // u8_span
+    { 2u, 2u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // u8_span
+    { 3u, 3u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // u8_span
+    { 4u, 4u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // u8_span
+    { 6u, 6u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // u8_span
+    { 8u, 8u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // u8_span
+    { 10u, 10u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // u8_span
+    { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // u8_span
+    { 16u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // u8_span
+    { 20u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // u8_span
+    { 24u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // u8_span
+    { 28u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // u64_span
+    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // u64_span
+    { 44u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // u64_span
+    { 52u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // u64_span
+    { 60u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // counts count
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // counts, whole
+    { 72u, 72u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // counts, whole
+    { 80u, 80u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // counts, whole
+    { 88u, 88u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // counts, whole
 };
-constexpr int32_t RangedUnsignedFixedPlanCount = 4;
-constexpr int32_t RangedUnsignedFixedPlanGuarded = 4;
+constexpr int32_t RangedUnsignedFixedPlanCount = 21;
+constexpr int32_t RangedUnsignedFixedPlanGuarded = 21;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RangedUnsignedFixedGuards[] = {
@@ -16760,6 +16974,10 @@ inline int64_t RangedUnsignedFixedSave( const RangedUnsigned * values, int64_t c
 {
     const int64_t need = RangedUnsignedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RangedUnsignedFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedUnsignedFixedHash );
@@ -17164,12 +17382,15 @@ constexpr TableFixedDst RangedWidthsFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RangedWidthsFixedPlan[] = {
-    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // b8
-    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // b64
-    { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // b48
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // b8
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // b8
+    { 8u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // b8
+    { 12u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // b64
+    { 20u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // b64
+    { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // b48
 };
-constexpr int32_t RangedWidthsFixedPlanCount = 3;
-constexpr int32_t RangedWidthsFixedPlanGuarded = 3;
+constexpr int32_t RangedWidthsFixedPlanCount = 6;
+constexpr int32_t RangedWidthsFixedPlanGuarded = 6;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RangedWidthsFixedGuards[] = {
@@ -17235,6 +17456,10 @@ inline int64_t RangedWidthsFixedSave( const RangedWidths * values, int64_t count
 {
     const int64_t need = RangedWidthsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RangedWidthsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedWidthsFixedHash );

@@ -1,5 +1,11 @@
-// Repeated map entry keys on the wire: the final occurrence determines key
-// validity and value (docs/SPEC-TABLES.md §2.8, §3).
+// Repeated map entry keys on the wire. Under the strict read a repeated key is
+// damage (docs/plans/strict-only.md, decision 5): the load refuses the whole
+// value. Each row here also carries a key of the wrong kind, and the read
+// refuses at the first condition it meets, so the rows pin the VERDICT — the
+// refusal and that it names a reason — and not which of the two reasons C
+// meets first: the reason is a per-language diagnostic (SPEC-TABLES §6.5). C
+// has no duplicate-key name; this is the C++ twin's check
+// (internal/codegen/cpptable/map_repeated_key_widen_test.go).
 package ctable
 
 import (
@@ -138,7 +144,7 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root == NULL );
-        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
+        CHECK( rep.refused == 1 && rep.refuse_reason != SCHEMA_TABLE_REFUSE_OK );
         free( region );
     }
 
@@ -173,7 +179,7 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root == NULL );
-        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
+        CHECK( rep.refused == 1 && rep.refuse_reason != SCHEMA_TABLE_REFUSE_OK );
         free( region );
     }
 
@@ -208,7 +214,7 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root == NULL );
-        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
+        CHECK( rep.refused == 1 && rep.refuse_reason != SCHEMA_TABLE_REFUSE_OK );
         free( region );
     }
 
