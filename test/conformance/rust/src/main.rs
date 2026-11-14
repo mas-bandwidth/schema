@@ -1332,7 +1332,12 @@ fn surface_wire(manifest: &Manifest, out: &str) {
             match fixed_read(&f[2], &f[3], &data) {
                 Some(FixedRead { read: true, save: Some(bytes), .. }) => spill(out, &f[1], &bytes),
                 Some(FixedRead { read: true, save: None, .. }) => fail(&format!("{}: the fixed save refused the value", f[1])),
-                Some(_) => fail(&format!("{}: fixed load refused {}", f[1], f[4])),
+                // A REFUSED FIXED READ answers ABSENT naming the refusal, as the
+                // variable read below does: the harness scores it as the wire
+                // refusal a `wire-refused` row owes (the fixed_dead_* rows,
+                // docs/SPEC-TABLES.md §3.4, THE SLACK RULE), and as a missing
+                // case anywhere else
+                Some(_) => spill(out, &format!("{}.absent", f[1]), b"fixed load refused"),
                 None => spill_absent(out, &f[1]),
             }
             continue;

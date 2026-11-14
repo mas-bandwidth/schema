@@ -149,14 +149,18 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 			arms = append(arms, i)
 		}
 	}
-	if len(arms) > 0 {
-		g.pf("    match tag {\n")
-		for _, i := range arms {
-			g.pf("        %d => {\n", i+1)
-			g.emitFixedDeadPayload(un.Variants[i].F, tagw, 12)
-			g.pf("        }\n")
+	// the taken arm's own slack, one test per arm that can carry any; a nested
+	// declaration's check rides the tag test itself, so no `if` is left alone
+	// inside another
+	for _, i := range arms {
+		f := un.Variants[i].F
+		if name, n, nested := fixedNestedBody(f); nested && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+			g.pf("    if tag == %d && !%s(&b[%d..%d]) {\n        return false;\n    }\n", i+1, fn(name, "fixed_dead"), tagw, tagw+n)
+			continue
 		}
-		g.pf("        _ => {}\n    }\n")
+		g.pf("    if tag == %d {\n", i+1)
+		g.emitFixedDeadPayload(f, tagw, 8)
+		g.pf("    }\n")
 	}
 	g.pf("    true\n}\n\n")
 }

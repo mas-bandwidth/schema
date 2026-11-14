@@ -18,6 +18,9 @@
 // and <root>_save_retain over the caller-owned stores the arm declares — and
 // the two retention counters ride the reply beside the six.
 //
+// A FIXED-CLASS ROOT'S FORM 3 WIRE is read by the root's fixed codec
+// (fixed_drive below), chosen by the wire's own form byte.
+//
 // THE ROSTER THIS LEG CARRIES is ROOTS and MESSAGE_ROOTS below. A form-1
 // root whose unit the Rust generator refuses whole answers 0. The retention
 // arm is the variable form's; a form-2 message has no retaining codec (§6.6).
@@ -275,6 +278,84 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide09"),
 ];
 
+// THE FIXED FORM (docs/SPEC-TABLES.md §3.4): a fixed-class root's corpus file
+// is a form 3 file, and the FORM BYTE says which codec reads it, read first as
+// the generated readers read it. A form 3 wire goes through the root's
+// <root>_fixed_load and its write-back through <root>_fixed_save, the way the
+// conformance driver's fixed_read does (test/conformance/rust/src/main.rs);
+// any other form byte goes to the form 1 arm. Damage answers malformed, any
+// other refusal answers refused, so a refusal is always named.
+const TABLE_FIXED_FORM_BYTE: u8 = 3;
+const FIXED_RECORDS: usize = 64;
+const FIXED_PLAN: usize = 1 << 14;
+
+macro_rules! fixed_arm {
+    ($unit:ident, $load:ident, $save:ident, $measure:ident, $row:ident, $wire:expr, $plan:expr) => {{
+        let mut values = vec![$unit::$row::default(); FIXED_RECORDS];
+        let mut plan = vec![$unit::TableFixedEntry::default(); $plan];
+        let mut remap = vec![0u16; $plan];
+        let mut report = $unit::TableFixedReport::default();
+        let read = $unit::$load(&mut values, $wire, &mut plan, &mut remap, &mut report);
+        let read = read.filter(|_| !report.refused && !report.damaged);
+        let mut reply = Reply { loaded: true, measure: -1, ..Default::default() };
+        reply.unknown = u64::from(report.unknown);
+        reply.widened = u64::from(report.widened);
+        reply.damaged = report.damaged;
+        reply.refused = read.is_none() && !report.damaged;
+        match read {
+            Some(n) => {
+                let mut buffer = vec![0u8; $unit::$measure(n)];
+                match $unit::$save(&values[..n], &mut buffer) {
+                    Some(written) => {
+                        buffer.truncate(written);
+                        reply.saved = buffer;
+                    }
+                    None => reply.save_fail = true,
+                }
+            }
+            None => reply.save_fail = true,
+        }
+        Some(reply)
+    }};
+}
+
+// fixed_drive reads one form 3 wire through the (unit, root) fixed codec; None
+// when this leg reaches no fixed codec for the root.
+fn fixed_drive(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
+    match (unit, root) {
+        ("backenddemo", "LoginRequest") => fixed_arm!(backenddemo, login_request_fixed_load, login_request_fixed_save, login_request_fixed_measure, LoginRequestRow, wire, FIXED_PLAN),
+        ("backenddemo", "MatchResult") => fixed_arm!(backenddemo, match_result_fixed_load, match_result_fixed_save, match_result_fixed_measure, MatchResultRow, wire, FIXED_PLAN),
+        ("backenddemo", "StorePurchase") => fixed_arm!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, wire, FIXED_PLAN),
+        ("messagedemo", "ToolMessage") => fixed_arm!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, wire, FIXED_PLAN),
+        ("scalars", "SimState") => fixed_arm!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire, FIXED_PLAN),
+        ("tblscalars2", "SimState") => fixed_arm!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire, FIXED_PLAN),
+        ("tabledemo", "ArchiveConfig") => fixed_arm!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, wire, FIXED_PLAN),
+        ("tabledemo", "KeyedConfig") => fixed_arm!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, wire, FIXED_PLAN),
+        ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire, FIXED_PLAN),
+        ("tabledemo", "ProfileConfig") => fixed_arm!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, wire, FIXED_PLAN),
+        ("tabledemo", "RootConfig") => fixed_arm!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, wire, FIXED_PLAN),
+        // the conformance driver's own capacity for this root: a one-entry plan
+        // the layout does not fit, so the read refuses by name
+        ("tabledemo", "WideBlob") => fixed_arm!(tabledemo, wide_blob_fixed_load, wide_blob_fixed_save, wide_blob_fixed_measure, WideBlobRow, wire, 1),
+        ("tbla2", "Root") => fixed_arm!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire, FIXED_PLAN),
+        ("tblk1", "Root") => fixed_arm!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire, FIXED_PLAN),
+        ("tblk2", "Root") => fixed_arm!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire, FIXED_PLAN),
+        ("tblm1", "Msg") => fixed_arm!(tblm1, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire, FIXED_PLAN),
+        ("tblm2", "Msg") => fixed_arm!(tblm2, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire, FIXED_PLAN),
+        ("tblp1", "Chain") => fixed_arm!(tblp1, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire, FIXED_PLAN),
+        ("tblp3", "Chain") => fixed_arm!(tblp3, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire, FIXED_PLAN),
+        ("tblr1", "Cfg") => fixed_arm!(tblr1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
+        ("tblr2", "Cfg") => fixed_arm!(tblr2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
+        ("tblv1", "Cfg") => fixed_arm!(tblv1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
+        ("tblv2", "Cfg") => fixed_arm!(tblv2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
+        ("vocabdemo", "Wide00") => fixed_arm!(vocabdemo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire, FIXED_PLAN),
+        ("vocabdemo", "Wide09") => fixed_arm!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, wire, FIXED_PLAN),
+        ("vocab9demo", "Wide00") => fixed_arm!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire, FIXED_PLAN),
+        ("vocab9demo", "Wide19") => fixed_arm!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, wire, FIXED_PLAN),
+        _ => None,
+    }
+}
+
 fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
     match (unit, root) {
         ("backenddemo", "LoginRequest") => arm!(backenddemo, login_request_load, login_request_load_retain, login_request_save, login_request_save_checked, login_request_save_retain, login_request_load_measure, wire, retain),
@@ -400,8 +481,16 @@ fn main() {
             return;
         }
         let (unit, root, _, retain, fixed, message) = &roster[index];
-        let Some(mut reply) = (if *message { drive_message(unit, root, &wire) } else { drive(unit, root, &wire, *retain) }) else { return };
-        if *fixed && !reply.loaded {
+        let form3 = *fixed && !*message && !*retain && wire.first() == Some(&TABLE_FIXED_FORM_BYTE);
+        let reply = if *message {
+            drive_message(unit, root, &wire)
+        } else if form3 {
+            fixed_drive(unit, root, &wire)
+        } else {
+            drive(unit, root, &wire, *retain)
+        };
+        let Some(mut reply) = reply else { return };
+        if *fixed && !form3 && !reply.loaded {
             // The fixed-class form-1 adapter keeps its region on a failed
             // tolerant read; the loader's Option only says it decoded no
             // value. The harness's loaded bit says the region still exists.

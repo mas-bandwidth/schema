@@ -346,7 +346,12 @@ func t12R27(t *testing.T, corpus string) {
 // does) and asserts `the_hostile_sweep`'s verdict line.
 func t12P3(t *testing.T, corpus string) {
 	out := t12FixedFormRun(t, corpus)
-	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1625 malformed=35 landed=674, three answers never a fourth"
+	// THE SLACK RULE MOVED 233 ANSWERS FROM landed TO malformed (the owner's
+	// 2026-11-10 ruling, docs/rulings.json fixed-dead-bytes-zero; the pin was
+	// malformed=35 landed=674): a non-zero poison in a byte of slack, and a
+	// smaller count, length, tag or present byte that turns live bytes into
+	// slack, are now damage. The total and the refusals by name did not move.
+	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1625 malformed=268 landed=441, three answers never a fourth"
 	if strings.Contains(out, "FAIL:") {
 		t.Fatalf("rust/P3: test/rust-fixedform reported a failure:\n%s", out)
 	}
