@@ -252,6 +252,17 @@ local function bool_byte(buf, pos)
   return b == 1
 end
 
+-- EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+-- docs/rulings.json fixed-dead-bytes-zero): the `n` bytes from `pos` are slack
+-- (past a counted array's live count, past a text's or a byte buffer's used
+-- length, behind a narrower or absent union arm, under an absent optional's
+-- present byte), and a conforming writer leaves zeros there, so any other byte
+-- refuses the whole record as wire_damaged. Slack is checked for zero and for
+-- nothing else: no bool, range, ordinal or text rule runs over it.
+local function dead_zero(buf, pos, n)
+  if n > 0 and strfind(string.sub(buf, pos, pos + n - 1), "[^\0]") then error("wire_damaged", 0) end
+end
+
 decode_value = function(T, d, buf, pos, size, elemSize)
   local s = d.shape
   if s == "int" then
@@ -316,6 +327,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     if n < 0 or n > cap then error("length_over_bound") end
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
+    -- the bytes past the used length are slack, and slack is zero (§3.4)
+    dead_zero(buf, pos + 4 + n, cap - n)
     return sub, pos + size
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
@@ -344,10 +357,18 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local tag = unpack_int(buf, pos, ud.tag, false)
     if tag > #ud.arms then refuse_out_of_range() end
     local v = { tag = tag }
+    -- the arm bytes behind the taken arm, up to the widest, are slack, and
+    -- slack is zero (§3.4): all of them under tag 0 or a payload-free arm
+    local taken = 0
+    local fd = nil
     if tag ~= 0 then
+      fd = T.Unions[d.target].arms[tag].field
+      if fd ~= nil then taken = ud.arms[tag].size end
+    end
+    dead_zero(buf, pos + ud.tag + taken, size - ud.tag - taken)
+    if fd ~= nil then
       local arm = ud.arms[tag]
-      local fd = T.Unions[d.target].arms[tag].field
-      if fd ~= nil then v[arm.slot] = decode_value(T, fd, buf, pos + ud.tag, arm.size, arm.elem) end
+      v[arm.slot] = decode_value(T, fd, buf, pos + ud.tag, arm.size, arm.elem)
     end
     return v, pos + size
   elseif s == "array" then
@@ -375,6 +396,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
           t[i] = ev
         end
       end
+      -- the tail past the live count is slack, and slack is zero (§3.4)
+      dead_zero(buf, pos + 4 + n * elemSize, size - 4 - n * elemSize)
       return t, pos + size
     end
     if d.fixed or d.keyed then
@@ -389,6 +412,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     for i = 1, n do
       t[i] = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
     end
+    -- the tail past the live count is slack, and slack is zero (§3.4)
+    dead_zero(buf, pos + 4 + n * elemSize, size - 4 - n * elemSize)
     return t, pos + size
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     return nil, pos + size
@@ -407,7 +432,12 @@ decode_table = function(T, name, buf, pos, writerSize)
       if f.optional then
         local present = bool_byte(buf, cursor)
         v[f.name .. "_present"] = present
-        if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem) end
+        if present then
+          v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem)
+        else
+          -- an absent optional's payload is slack, and slack is zero (§3.4)
+          dead_zero(buf, cursor + 1, fs - 1)
+        end
         cursor = cursor + fs
       else
         v[f.name], cursor = decode_value(T, f, buf, cursor, fs, f.fixed_elem)
@@ -586,6 +616,10 @@ local function decode_old_table(T, name, node, buf, pos, rep)
           v[f.name .. "_present"] = present
           if present and child.children[1] ~= nil and compat_old(f, child.children[1]) then
             v[f.name] = decode_old_value(T, f, child.children[1], buf, cpos + 1, rep)
+          elseif not present then
+            -- the WRITER's payload under its absent flag is slack, and
+            -- slack is zero (§3.4)
+            dead_zero(buf, cpos + 1, child.size - 1)
           end
         elseif compat_old(f, child) then
           -- THE PRESENT COMPANION THE READER GAINED IS TRUE for an old T (§5.9
@@ -625,6 +659,8 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     if n < 0 or n > cap then error("length_over_bound") end
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
+    -- the bytes past the writer's used length are slack, and slack is zero
+    dead_zero(buf, pos + 4 + n, cap - n)
     return sub
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
@@ -649,6 +685,12 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local tag = unpack_int(buf, pos, w, false)
     -- THE WRITER'S ARM COUNT GOVERNS (§4.6): a tag past it refuses
     if tag > nArms then refuse_out_of_range() end
+    -- the bytes behind the WRITER's taken arm, up to its widest, are slack,
+    -- and slack is zero (§3.4): all of them under tag 0 or a payload-free arm
+    -- (a payload-free arm's layout entry has size 0)
+    local taken = 0
+    if tag ~= 0 then taken = node.children[tag].size end
+    dead_zero(buf, pos + w + taken, node.size - w - taken)
     if tag > #T.Unions[d.target].arms then tag = 0 end
     local v = { tag = tag }
     if tag ~= 0 then
@@ -685,6 +727,8 @@ decode_old_value = function(T, d, node, buf, pos, rep)
       if ev == nil and d.elem.shape == "enum" then ev = false end
       t[i] = ev
     end
+    -- the writer's tail past its live count is slack, and slack is zero (§3.4)
+    dead_zero(buf, pos + 4 + n * es, cap * es - n * es)
     return t
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     return nil

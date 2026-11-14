@@ -111,6 +111,26 @@ local function boolByte(buf: buffer, at: number): boolean
 	return b == 1
 end
 
+-- EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+-- docs/rulings.json fixed-dead-bytes-zero): the `n` bytes at `at` are slack,
+-- the bytes past a counted array's live count, past a text's or a byte
+-- buffer's used length, behind a narrower or absent union arm and under an
+-- absent optional's present byte, all of them the WRITER's. A conforming
+-- writer leaves zeros there, so any other byte refuses the whole record as
+-- wire_damaged. Slack is checked for zero and for nothing else: no bool,
+-- range, ordinal or text rule runs over it.
+local function deadZero(buf: buffer, at: number, n: number)
+	local i = 0
+	while i + 4 <= n do
+		if buffer.readu32(buf, at + i) ~= 0 then error({ name = "wire_damaged", field = _owner .. "." .. _field }, 0) end
+		i = i + 4
+	end
+	while i < n do
+		if buffer.readu8(buf, at + i) ~= 0 then error({ name = "wire_damaged", field = _owner .. "." .. _field }, 0) end
+		i = i + 1
+	end
+end
+
 local function asInt(v: any): integer
 	if typeof(v) == "integer" then return v end
 	return integer.create(v)
@@ -494,6 +514,10 @@ local function readTable(d: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 					v[f.present] = present
 					if present then
 						got, companion = readPair(f, wc.children[1], rc.children[1], buf, at, cx, v[slot])
+					else
+						-- the WRITER's payload under its absent flag is slack,
+						-- and slack is zero (§3.4)
+						deadZero(buf, wc.off + at + PRESENT, wc.size - PRESENT)
 					end
 				elseif rc.kind == 35 then
 					-- T INTO ?T (bill §12.8): the writer always carried the
@@ -529,6 +553,8 @@ local function readText(f: any, w: Node, buf: buffer, at: number): (any, any)
 	elseif utf8IllFormed(buf, w.off + at + COUNT, length) then
 		error(refuse("text_ill_formed"), 0)
 	end
+	-- the bytes past the writer's used length are slack, and slack is zero (§3.4)
+	deadZero(buf, w.off + at + COUNT + length * unit, (cap - length) * unit)
 	local bound = f.bound or length
 	if length > bound then length = bound end
 	local b = buffer.create(bound * unit)
@@ -564,8 +590,11 @@ end
 local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx): any
 	local d = S.lookup(f.t)
 	local v = d.new()
-	local tag = leU(buf, w.off + at, tagWidth(w))
+	local tagw = tagWidth(w)
+	local tag = leU(buf, w.off + at, tagw)
 	if tag == 0 then
+		-- no arm is taken: every arm byte is slack, and slack is zero (§3.4)
+		deadZero(buf, w.off + at + tagw, w.size - tagw)
 		v.Type = 0
 		return v
 	end
@@ -573,6 +602,10 @@ local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		-- a tag past the WRITER's arm count names no arm: out_of_range (§4.6)
 		error(outOfRange(f), 0)
 	end
+	-- the bytes behind the WRITER's taken arm, up to its widest, are slack, and
+	-- slack is zero (§3.4); a payload-free arm's layout entry has size 0
+	local taken = w.children[tag].size
+	deadZero(buf, w.off + at + tagw + taken, w.size - tagw - taken)
 	local k = if w == r then tag else childIndexById(r.children, w.children[tag].id)
 	v.Type = k
 	if k == 0 then return v end
@@ -629,6 +662,8 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local length = buffer.readu32(buf, w.off + at)
 		local cap = w.size - COUNT
 		if length > cap then error(refuse("length_over_bound"), 0) end
+		-- the bytes past the writer's used length are slack, and slack is zero
+		deadZero(buf, w.off + at + COUNT + length, cap - length)
 		local bound = f.bound or length
 		if length > bound then length = bound end
 		local b = buffer.create(bound)
@@ -643,6 +678,9 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local count = buffer.readu32(buf, w.off + at)
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
+		-- the writer's tail past its live count is slack, and slack is zero
+		-- (§3.4)
+		deadZero(buf, w.off + at + head + count * we.size, (theirs - count) * we.size)
 		if count > mine then count = mine end
 		local out = slots(def, mine)
 		for i = 1, count do

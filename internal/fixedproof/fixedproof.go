@@ -2423,13 +2423,34 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			t.Fatalf("save live_extents_base failed: %s", why)
 		}
 		body := len(file) - 13
-		file[body+5] = 99
-		file[body+6] = 99
-		file[body+8] = 99
 		eOwn, _ := LineageEntryOf(u, "T")
 		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
 		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) {
 			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
+		}
+		// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+		// the owner's ruling of 2026-11-10, docs/rulings.json
+		// fixed-dead-bytes-zero): a stained byte past the array's live count
+		// (an element slot or the last one) or under the absent optional's
+		// present byte refuses the whole record. Only the verdict is compared
+		// (refusal-verdict-only), and a value of 99 is no ordinal of Small, so
+		// a reader that read the slack as a value would also refuse; the 1 at
+		// the last tail slot is a valid ordinal, so only the slack rule refuses
+		// it.
+		for _, stain := range []struct {
+			name string
+			at   int
+			b    byte
+		}{
+			{"the array tail's first slot", 5, 99},
+			{"the array tail's last slot, a live ordinal", 6, 1},
+			{"the absent optional's payload, a live ordinal", 8, 1},
+		} {
+			stained := append([]byte(nil), file...)
+			stained[body+stain.at] = stain.b
+			if n, r, _, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, stained, -1); n >= 0 {
+				t.Errorf("C14/W4: a stained byte in %s read (n=%d r=%q), want a refusal", stain.name, n, r)
+			}
 		}
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_field_append.schema")
