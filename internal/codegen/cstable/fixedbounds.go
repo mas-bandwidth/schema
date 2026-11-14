@@ -49,13 +49,79 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	if !ir.TableFixedClampNeeded(st) {
 		return
 	}
-	g.pf("// %s's read-side bounds (§4.6).\n", st.Name)
-	g.pf("public static void %sFixedClampBody(%s value, ref int clamped)\n{\n", st.Name, st.Name)
+	if g.fixedWriteCheck {
+		g.pf("// %s's write check (docs/SPEC.md §5.1), debug builds only.\n", st.Name)
+	} else {
+		g.pf("// %s's read-side bounds (§4.6).\n", st.Name)
+	}
+	g.pf("public static void %s(%s value, ref int clamped)\n{\n", g.fixedBoundsName(st), st.Name)
 	g.pf("    if (value == null) return;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(st, f, "value", 4)
 	}
 	g.pf("}\n\n")
+}
+
+// THE WRITE CHECK (docs/SPEC.md §5.1). C# is an assert leg: a value its
+// declaration refuses — a ranged scalar off its bounds, a bits(N) value past
+// its width, an enum ordinal or union tag naming no variant, a text that is
+// not well-formed UTF-8 or holds a zero byte — is caller error on the write
+// side, caught by a Debug.Assert in a debug build and compiled out of a
+// release one. The bounds walk above already holds every one of those
+// numbers, over the same storage a write reads, so the write check IS that
+// walk, emitted a second time with the text content rule the read side leaves
+// to the plan. A count or length past its storage is not this check's: the
+// writers' own storage checks hold it in every build.
+
+// fixedBoundsName names one type's bounds walk: the read-side clamp body, or
+// its write-check twin while fixedWriteCheck is set.
+func (g *tableGen) fixedBoundsName(st *ir.Struct) string {
+	if g.fixedWriteCheck {
+		return st.Name + "FixedWriteCheckBody"
+	}
+	return st.Name + "FixedClampBody"
+}
+
+// emitFixedWriteCheckBodyFn is ONE type's write check, the twin of its clamp
+// body.
+func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
+	g.fixedWriteCheck = true
+	g.emitFixedClampBodyFn(st)
+	g.fixedWriteCheck = false
+}
+
+// fixedWriteAdmits names a table's write check, or "" when it has none: the
+// table has no fixed form to borrow the walk from, or bounds nothing.
+func (g *tableGen) fixedWriteAdmits(st *ir.Struct) string {
+	if !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+		return ""
+	}
+	return st.Name + "FixedWriteAdmits"
+}
+
+// emitFixedWriteAdmits is a ROOT's write check, the one call each writer's
+// Debug.Assert makes.
+func (g *tableGen) emitFixedWriteAdmits(st *ir.Struct) {
+	admits := g.fixedWriteAdmits(st)
+	if admits == "" {
+		return
+	}
+	g.pf("// THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this %s\n", st.Name)
+	g.pf("// holds is one its declaration admits. Every writer asserts it, debug only.\n")
+	g.pf("public static bool %s(%s value)\n{\n", admits, st.Name)
+	g.pf("    int bad = 0;\n")
+	g.pf("    %sFixedWriteCheckBody(value, ref bad);\n", st.Name)
+	g.pf("    return bad == 0;\n}\n\n")
+}
+
+// emitFixedWriteAssert is the assert a writer makes on one value, or nothing
+// when the table has no write check.
+func (g *tableGen) emitFixedWriteAssert(st *ir.Struct, value, ind string) {
+	admits := g.fixedWriteAdmits(st)
+	if admits == "" {
+		return
+	}
+	g.pf("%sSystem.Diagnostics.Debug.Assert(%s(%s)); // the write contract, debug only (docs/SPEC.md §5.1)\n", ind, admits, value)
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
@@ -128,10 +194,16 @@ func (g *tableGen) emitFixedClampPayload(owner *ir.Struct, f *ir.Field, val stri
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.leaveLoop()
 	case f.Type.Kind == ir.TString:
-		// THE CONTENT RULE IS NOT THIS LEG'S YET. §5.8 row 8's ruling — a
-		// content violation REFUSES BY NAME — is owed by the reference first;
-		// the bounds pass holds the bounds a declaration states and nothing
-		// else.
+		// THE CONTENT RULE IS NOT THIS LEG'S YET on the read side. §5.8 row
+		// 8's ruling — a content violation REFUSES BY NAME — is owed by the
+		// reference first; the bounds pass holds the bounds a declaration
+		// states and nothing else. The WRITE check holds it (§5.1 row 8):
+		// the used bytes are well-formed UTF-8 with no zero byte, read only
+		// when the length is inside the storage.
+		if g.fixedWriteCheck {
+			g.pf("%sif (%s != null && %s.%sLength >= 0 && %s.%sLength <= %s.Length && !TableWire.TextValid(%s.AsSpan(0, %s.%sLength))) { clamped++; }\n",
+				ind, expr, val, prop, val, prop, expr, expr, val, prop)
+		}
 	default:
 		g.emitFixedClampElement(f, expr, indent)
 	}
@@ -143,7 +215,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%sFixedClampBody(%s, ref clamped);\n", ind, r.Name, expr)
+				g.pf("%s%s(%s, ref clamped);\n", ind, g.fixedBoundsName(r), expr)
 			}
 			return
 		case *ir.Union:

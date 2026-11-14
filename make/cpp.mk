@@ -454,7 +454,14 @@ write-refusal-storage-release-cpp-negative-control: bin/schema $(STORAGE_RELEASE
 # THE WRITE CONTRACT'S NEGATIVE CONTROLS (docs/SPEC.md §5.1): one check is
 # removed from a copy of the generated C++ tree, the leg's driver is rebuilt
 # against the copy, and the surface that writer serves must go red while the
-# surface beside it stays green. Nothing tracked is written to.
+# surface beside it stays green. Nothing tracked is written to. The
+# write-refusal surface drives a FIXED root, so its control removes that
+# root's value write check (rows 1, 2, 5, 6, 8) from the fixed save; a check
+# in the variable save would be one the surface never reaches. The check is
+# matched by its prefix (a bracket would be a sed class), held in variables
+# because its parentheses do not balance inside a $(call) argument.
+CPP_WREF_VALUE_CHECK := schema_assert( RootConfigFixedWriteAdmits(
+CPP_WREF_VALUE_SABOTAGE := (void) ( /* SABOTAGED: no value write check */ 1 || RootConfigFixedWriteAdmits(
 define conformance-negative-control-cpp-wref
 	@rm -rf build/conformance-negative-cpp-$(1) && mkdir -p build/conformance-negative-cpp-$(1)
 	@cp -R build/tables-generated build/conformance-negative-cpp-$(1)/generated
@@ -489,7 +496,7 @@ endef
 
 .PHONY: conformance-negative-control-cpp-write-refusal
 conformance-negative-control-cpp-write-refusal: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal,if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; },if ( false ) { return false; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal,$(CPP_WREF_VALUE_CHECK),$(CPP_WREF_VALUE_SABOTAGE),SABOTAGED: no value write check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-fixed
 conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
@@ -497,4 +504,4 @@ conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness 
 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)

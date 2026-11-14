@@ -81,6 +81,14 @@ func (g *tableGen) emitMessageSurface(st *ir.Struct) {
 		return
 	}
 	n := st.Name
+	if admits := g.fixedWriteAdmits(st); admits != "" {
+		// THE WRITE CONTRACT (docs/SPEC.md §5.1), asserted on every value of
+		// the batch, debug only, before the shared writer runs
+		g.pf("public static long %sMeasureMessages(%s[] values) { if (values != null) { foreach (%s v in values) { System.Diagnostics.Debug.Assert(%s(v)); } } return TableWire.MessageSave(values, %sTableType(), Span<byte>.Empty, true); }\n", n, n, n, admits, n)
+		g.pf("public static long %sSaveMessages(%s[] values, Span<byte> bytes, TableReport report = null) { if (values != null) { foreach (%s v in values) { System.Diagnostics.Debug.Assert(%s(v)); } } if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, %sTableType(), bytes, false); }\n", n, n, n, admits, n)
+		g.pf("public static TableWire.Verdict %sLoadMessages(%s[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, %sTableType(), bytes, vocabulary, report, out count); }\n\n", n, n, n)
+		return
+	}
 	g.pf("public static long %sMeasureMessages(%s[] values) { return TableWire.MessageSave(values, %sTableType(), Span<byte>.Empty, true); }\n", n, n, n)
 	g.pf("public static long %sSaveMessages(%s[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, %sTableType(), bytes, false); }\n", n, n, n)
 	g.pf("public static TableWire.Verdict %sLoadMessages(%s[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, %sTableType(), bytes, vocabulary, report, out count); }\n\n", n, n, n)

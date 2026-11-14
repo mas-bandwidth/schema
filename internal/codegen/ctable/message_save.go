@@ -268,10 +268,16 @@ func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
 			}
 		}
 		g.pf(" w=table_bit_writer(%s,%s);\n", buf, cap)
+		// THE WRITE CONTRACT (docs/SPEC.md §5.1): each value of the batch is
+		// asserted before its body is written, debug only.
+		each := fmt.Sprintf(" for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n", g.api(st.Name, "save_message_body"))
+		if a := g.writeAdmits(st); a != "" {
+			each = fmt.Sprintf(" for(i=0;i<count;i++) {\n  schema_assert(%s(values+i)); /* the write contract, debug only (docs/SPEC.md §5.1) */\n  if(!%s(&w,values+i)) return -1;\n }\n", a, g.api(st.Name, "save_message_body"))
+		}
 		if st.Integrity != "" {
-			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", g.api(st.Name, "save_message_body"), buf)
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n%s table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", each, buf)
 		} else {
-			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", g.api(st.Name, "save_message_body"))
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n%s table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", each)
 		}
 	}
 }

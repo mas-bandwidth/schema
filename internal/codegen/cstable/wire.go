@@ -343,8 +343,12 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 	cap := ir.TableWireIdCapacity(g.unit)
 	if !ir.VariableTables(g.unit)[st.Name] {
 		g.emitTypedWireSurface(st)
-		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
-		g.pf("public static long %sSave(%s value, Span<byte> buffer)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, buffer, ids, false);\n}\n\n", st.Name, st.Name, cap, st.Name)
+		g.pf("public static long %sMeasure(%s value)\n{\n", st.Name, st.Name)
+		g.emitFixedWriteAssert(st, "value", "    ")
+		g.pf("    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, Span<byte>.Empty, ids, true);\n}\n\n", cap, st.Name)
+		g.pf("public static long %sSave(%s value, Span<byte> buffer)\n{\n", st.Name, st.Name)
+		g.emitFixedWriteAssert(st, "value", "    ")
+		g.pf("    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, buffer, ids, false);\n}\n\n", cap, st.Name)
 	} else {
 		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return TableWire.Save(value, %sTableType(), Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
 		g.pf("public static long %sSave(%s value, Span<byte> buffer)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return TableWire.Save(value, %sTableType(), buffer, ids, false);\n}\n\n", st.Name, st.Name, cap, st.Name)

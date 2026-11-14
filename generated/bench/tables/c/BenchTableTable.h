@@ -3955,8 +3955,10 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_entity_write_admits_( const benchtable_table_entity_t * value );
 static SCHEMA_UNUSED int64_t benchtable_table_entity_measure( const benchtable_table_entity_t * value )
 {
+    schema_assert( schema_benchtable_table_entity_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( NULL, INT64_MAX, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_entity_save_body( &w, value ) ) { return -1; }
@@ -3967,6 +3969,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_measure( const benchtable_t
 static SCHEMA_UNUSED int64_t benchtable_table_entity_save( const benchtable_table_entity_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    schema_assert( schema_benchtable_table_entity_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_entity_save_body( &w, value ) ) { return -1; }
@@ -4789,7 +4792,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_measure_messages(const benc
  w=benchtable_table_bit_writer(NULL,INT64_MAX);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  schema_assert(schema_benchtable_table_entity_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+  if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -4806,7 +4813,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_save_messages(const benchta
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  schema_assert(schema_benchtable_table_entity_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+  if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5175,8 +5186,10 @@ static SCHEMA_UNUSED int benchtable_table_stat_save_body( benchtable_table_write
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_stat_write_admits_( const benchtable_table_stat_t * value );
 static SCHEMA_UNUSED int64_t benchtable_table_stat_measure( const benchtable_table_stat_t * value )
 {
+    schema_assert( schema_benchtable_table_stat_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( NULL, INT64_MAX, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_stat_save_body( &w, value ) ) { return -1; }
@@ -5187,6 +5200,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_measure( const benchtable_tab
 static SCHEMA_UNUSED int64_t benchtable_table_stat_save( const benchtable_table_stat_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    schema_assert( schema_benchtable_table_stat_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_stat_save_body( &w, value ) ) { return -1; }
@@ -5336,7 +5350,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_measure_messages(const bencht
  w=benchtable_table_bit_writer(NULL,INT64_MAX);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  schema_assert(schema_benchtable_table_stat_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+  if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5353,7 +5371,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_save_messages(const benchtabl
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  schema_assert(schema_benchtable_table_stat_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+  if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5834,8 +5856,10 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_write_admits_( const benchtable_table_mixed_t * value );
 static SCHEMA_UNUSED int64_t benchtable_table_mixed_measure( const benchtable_table_mixed_t * value )
 {
+    schema_assert( schema_benchtable_table_mixed_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( NULL, INT64_MAX, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_mixed_save_body( &w, value ) ) { return -1; }
@@ -5846,6 +5870,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_measure( const benchtable_ta
 static SCHEMA_UNUSED int64_t benchtable_table_mixed_save( const benchtable_table_mixed_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    schema_assert( schema_benchtable_table_mixed_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( buffer, capacity, &vocabulary );
     benchtable_table_writer_put8( &w, 1 );
     if ( !benchtable_table_mixed_save_body( &w, value ) ) { return -1; }
@@ -7270,7 +7295,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_measure_messages(const bench
  w=benchtable_table_bit_writer(NULL,INT64_MAX);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  schema_assert(schema_benchtable_table_mixed_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+  if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7287,7 +7316,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_save_messages(const benchtab
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  schema_assert(schema_benchtable_table_mixed_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+  if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9412,6 +9445,135 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
 }
 
+/* TableEntity's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_write_check_body_( const benchtable_table_entity_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->entity_id > 4095ull );
+    (*out_of_range) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    (*out_of_range) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    (*out_of_range) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    /* bits(9) width clamp */
+    (*out_of_range) += ( value->yaw > 511ull );
+    /* bits(9) width clamp */
+    (*out_of_range) += ( value->pitch > 511ull );
+    (*out_of_range) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    (*out_of_range) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    (*out_of_range) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    (*out_of_range) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    if ( (uint64_t) value->weapon > 15u ) { (*out_of_range)++; }
+}
+
+/* TableStat's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_stat_fixed_write_check_body_( const benchtable_table_stat_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(8) width clamp */
+    (*out_of_range) += ( value->stat_id > 255ull );
+    (*out_of_range) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+}
+
+/* TableHitEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_hit_event_fixed_write_check_body_( const benchtable_table_hit_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->target_id > 4095ull );
+    (*out_of_range) += (int) ( value->damage < 0 ) | (int) ( value->damage > 4095 );
+    (*out_of_range) += (int) ( value->hit_kind < 0 ) | (int) ( value->hit_kind > 7 );
+}
+
+/* TableChatEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_chat_event_fixed_write_check_body_( const benchtable_table_chat_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->speaker > 4095ull );
+}
+
+/* TablePickupEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_pickup_event_fixed_write_check_body_( const benchtable_table_pickup_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(10) width clamp */
+    (*out_of_range) += ( value->item_id > 1023ull );
+    (*out_of_range) += (int) ( value->amount < 0 ) | (int) ( value->amount > 255 );
+}
+
+/* TableMixed's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_mixed_fixed_write_check_body_( const benchtable_table_mixed_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(16) width clamp */
+    (*out_of_range) += ( value->sequence > 65535ull );
+    (*out_of_range) += (int) ( value->ack_sequence < 0 ) | (int) ( value->ack_sequence > 65535 );
+    (*out_of_range) += (int) ( value->nonce < 1ull ) | (int) ( value->nonce > 9223372036854775807ull );
+    (*out_of_range) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
+    /* bits(48) width clamp */
+    (*out_of_range) += ( value->frame_tick > 281474976710655ull );
+    (*out_of_range) += (int) ( value->server_time < 0.0f ) | (int) ( value->server_time > 65535.0f );
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
+        {
+            schema_benchtable_table_entity_fixed_write_check_body_( &value->entities[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->stats_count >= 0 && value->stats_count <= 80 ? (int64_t) value->stats_count : 0 ); ++i )
+        {
+            schema_benchtable_table_stat_fixed_write_check_body_( &value->stats[i], out_of_range, damaged );
+        }
+    }
+    if ( (uint32_t) value->game_event.type > 3u ) { (*out_of_range)++; }
+    switch ( value->game_event.type )
+    {
+        case BENCHTABLE_TABLE_EVENT_TYPE_HIT:
+        {
+            schema_benchtable_table_hit_event_fixed_write_check_body_( &value->game_event.as.hit, out_of_range, damaged );
+            break;
+        }
+        case BENCHTABLE_TABLE_EVENT_TYPE_CHAT:
+        {
+            schema_benchtable_table_chat_event_fixed_write_check_body_( &value->game_event.as.chat, out_of_range, damaged );
+            break;
+        }
+        case BENCHTABLE_TABLE_EVENT_TYPE_PICKUP:
+        {
+            schema_benchtable_table_pickup_event_fixed_write_check_body_( &value->game_event.as.pickup, out_of_range, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( value->player_name_length >= 0 && value->player_name_length <= 15 && !benchtable_table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        (*damaged)++;
+    }
+    (*out_of_range) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
+    (*out_of_range) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
+    (*out_of_range) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
+    (*out_of_range) += (int) ( value->flux < -1000000000000000000ll ) | (int) ( value->flux > 1000000000000000000ll );
+    (*out_of_range) += (int) ( value->ping < 0.0f ) | (int) ( value->ping > 250.0f );
+    /* bits(24) width clamp */
+    (*out_of_range) += ( value->crc_hint > 16777215ull );
+    (*out_of_range) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
+    (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableEntity holds is
+   one its declaration admits. Every writer of TableEntity asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_benchtable_table_entity_write_admits_( const benchtable_table_entity_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_benchtable_table_entity_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9590,6 +9752,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_save( const benchtabl
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_benchtable_table_entity_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BENCHTABLE_K_TABLE_FIXED_FORM;
     benchtable_table_fixed_put64( buffer + BENCHTABLE_K_TABLE_FIXED_HASH_AT, benchtable_table_entity_fixed_hash );
@@ -9738,6 +9904,17 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableStat holds is
+   one its declaration admits. Every writer of TableStat asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_benchtable_table_stat_write_admits_( const benchtable_table_stat_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_benchtable_table_stat_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9848,6 +10025,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_save( const benchtable_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_benchtable_table_stat_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BENCHTABLE_K_TABLE_FIXED_FORM;
     benchtable_table_fixed_put64( buffer + BENCHTABLE_K_TABLE_FIXED_HASH_AT, benchtable_table_stat_fixed_hash );
@@ -9994,6 +10175,17 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { benchtable_table_stat_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableMixed holds is
+   one its declaration admits. Every writer of TableMixed asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_write_admits_( const benchtable_table_mixed_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_benchtable_table_mixed_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -10575,6 +10767,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_save( const benchtable
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_benchtable_table_mixed_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_benchtable_table_mixed_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

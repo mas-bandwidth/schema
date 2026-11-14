@@ -89,7 +89,12 @@ type tableGen struct {
 	fixedOwner *ir.Struct
 	// fixedCheck makes the clamp walk emit <T>FixedInRange — each clamp's
 	// count expression or'd into `bad`, and no store — instead of the body.
-	fixedCheck  bool
+	fixedCheck bool
+	// fixedWriteCheck, with fixedCheck, makes the same walk emit
+	// <T>FixedWriteAdmits: the write contract's check (docs/SPEC.md §5.1),
+	// walked only inside the storage a caller filled.
+	fixedWriteCheck bool
+
 	unit        *ir.Unit
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
@@ -2124,8 +2129,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
-		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteBound(u) {
+		// them. The §5.1 write contract (range, bits width, enum ordinal,
+		// union tag, ill-formed text) asserts through the same hook. A unit
+		// with nothing to check gets no hook.
+		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteCheck(u) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {

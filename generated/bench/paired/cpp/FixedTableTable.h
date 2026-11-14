@@ -5756,8 +5756,11 @@ inline int64_t FixedTableMeasureBody( TableIds & ids, const FixedTable & value )
     return bytes;
 }
 
+inline bool FixedTableFixedWriteAdmits( const FixedTable & value );
+
 inline int64_t FixedTableMeasure( const FixedTable & value )
 {
+    schema_assert( FixedTableFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableIds ids;
     const int64_t body = FixedTableMeasureBody( ids, value );
     if ( body < 0 || ids.overflow ) { return -1; }
@@ -5785,6 +5788,7 @@ BENCH_TABLE_INLINE bool FixedTableSaveBody( TableWriter & w, TableIds & ids, con
 
 inline int64_t FixedTableSave( const FixedTable & value, uint8_t * buffer, int64_t capacity )
 {
+    schema_assert( FixedTableFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -6111,6 +6115,7 @@ inline int64_t FixedTableMeasureMessages( const FixedTable * values, int64_t cou
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
+        schema_assert( FixedTableFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         const int64_t body = FixedTableMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
         bits += body;
@@ -6130,6 +6135,7 @@ inline int64_t FixedTableSaveMessages( const FixedTable * values, int64_t count,
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
     {
+        schema_assert( FixedTableFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         if ( !FixedTableSaveMessageBody( batch.w, values[i] ) ) { return -1; }
         batch.written++;
     }
@@ -6210,6 +6216,16 @@ TABLE_FIXED_INLINE bool FixedTableFixedInRange( const FixedTable & value )
     (void) value;
     int bad = 0;
     bad |= (int) !BenchMixedFixedInRange( value.value );
+    return bad == 0;
+}
+
+// FixedTable's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool FixedTableFixedWriteAdmits( const FixedTable & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !BenchMixedFixedWriteAdmits( value.value );
     return bad == 0;
 }
 
@@ -6799,6 +6815,10 @@ inline int64_t FixedTableFixedSave( const FixedTable * values, int64_t count, ui
 {
     const int64_t need = FixedTableFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( FixedTableFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, FixedTableFixedHash );

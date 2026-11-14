@@ -89,12 +89,14 @@ namespace Bench
 
         public static long FixedTableMeasure(FixedTable value)
         {
+            System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(value)); // the write contract, debug only (docs/SPEC.md §5.1)
             Span<ulong> ids = stackalloc ulong[79];
             return FixedTableSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long FixedTableSave(FixedTable value, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(value)); // the write contract, debug only (docs/SPEC.md §5.1)
             Span<ulong> ids = stackalloc ulong[79];
             return FixedTableSaveTyped(value, buffer, ids, false);
         }
@@ -109,8 +111,8 @@ namespace Bench
             return FixedTableLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long FixedTableMeasureMessages(FixedTable[] values) { return TableWire.MessageSave(values, FixedTableTableType(), Span<byte>.Empty, true); }
-        public static long FixedTableSaveMessages(FixedTable[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, FixedTableTableType(), bytes, false); }
+        public static long FixedTableMeasureMessages(FixedTable[] values) { if (values != null) { foreach (FixedTable v in values) { System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(v)); } } return TableWire.MessageSave(values, FixedTableTableType(), Span<byte>.Empty, true); }
+        public static long FixedTableSaveMessages(FixedTable[] values, Span<byte> bytes, TableReport report = null) { if (values != null) { foreach (FixedTable v in values) { System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(v)); } } if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, FixedTableTableType(), bytes, false); }
         public static TableWire.Verdict FixedTableLoadMessages(FixedTable[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, FixedTableTableType(), bytes, vocabulary, report, out count); }
 
         public static long FixedTableCookMeasure(FixedTable value) { return TableWire.Cook(value, FixedTableTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -196,6 +198,13 @@ namespace Bench
             BenchMixedFixedClampBody(value.Value, ref clamped);
         }
 
+        // FixedTable's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void FixedTableFixedWriteCheckBody(FixedTable value, ref int clamped)
+        {
+            if (value == null) return;
+            BenchMixedFixedWriteCheckBody(value.Value, ref clamped);
+        }
+
         // FixedTable's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string FixedTableFixedFiniteBody(FixedTable value)
@@ -219,6 +228,15 @@ namespace Bench
             FixedTableFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this FixedTable
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool FixedTableFixedWriteAdmits(FixedTable value)
+        {
+            int bad = 0;
+            FixedTableFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- FixedTable, the fixed form ----
@@ -1990,6 +2008,10 @@ namespace Bench
             long need = FixedTableFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (FixedTableFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), FixedTableFixedHash);

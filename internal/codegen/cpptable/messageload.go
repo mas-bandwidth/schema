@@ -659,6 +659,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    if ( count > kTableMessageBatchMax )\n    {\n        TableMessageRefuseBatch( report );\n        return -1;\n    }\n")
 	g.pf("    int64_t bits = 8; // the body count, a ranged integer over [1, 256]\n")
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
+	g.emitWriteAssert(st, "values[i]", "        ")
 	g.pf("        const int64_t body = %sMeasureMessageBody( bits, values[i] );\n", n)
 	g.pf("        if ( body < 0 ) { return -1; }\n")
 	g.pf("        bits += body;\n    }\n")
@@ -678,6 +679,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 		g.pf("    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }\n")
 	}
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
+	g.emitWriteAssert(st, "values[i]", "        ")
 	g.pf("        if ( !%sSaveMessageBody( batch.w, values[i] ) ) { return -1; }\n", n)
 	g.pf("        batch.written++;\n    }\n")
 	if st.Integrity != "" {
