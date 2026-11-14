@@ -349,8 +349,8 @@ func TestLobsterFixedRowOrdinals(t *testing.T) {
 // TestLobsterFixedRowNormalization is normalization (C12, C13, R17) under
 // the strict read (fix 2): a bool byte or a present byte other than 0 or 1
 // refuses wire_damaged with nothing landed; 1 and 1 land true and the payload
-// behind the present byte lands; a present byte of 0 makes the payload dead
-// storage, never read (0xff there loads) and written back as zeros. The
+// behind the present byte lands; a present byte of 0 makes the payload slack,
+// which is zero (0xff there refuses) and written back as zeros. The
 // negative control widens the byte check to 255; 0x7f then reads.
 func TestLobsterFixedRowNormalization(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
@@ -377,9 +377,14 @@ func TestLobsterFixedRowNormalization(t *testing.T) {
 	if got := rowLoad(t, u, "T", nil, file(1, 1, 42, 0, 0, 0), nil); got.head() != "ok 1 u0 w0" || got.fields["r0.flag"] != "true" || got.fields["r0.opt_present"] != "true" || got.fields["r0.opt"] != "42" {
 		t.Errorf("R17 the lawful bytes: %s %v", got.head(), got.fields)
 	}
-	dead := file(0, 0, 0xff, 0xff, 0xff, 0xff)
-	if got := rowLoad(t, u, "T", nil, dead, nil); got.head() != "ok 1 u0 w0" || got.fields["r0.opt_present"] != "false" || string(got.resaved) != string(file(0, 0, 0, 0, 0, 0)) {
+	// THE SLACK RULE (docs/SPEC-TABLES.md §3.4; owner, 2026-11-10: "Every dead
+	// byte"): an absent optional's payload is slack, and slack is zero. A zero
+	// payload reads absent and writes back as zeros; a stained one refuses.
+	if got := rowLoad(t, u, "T", nil, file(0, 0, 0, 0, 0, 0), nil); got.head() != "ok 1 u0 w0" || got.fields["r0.opt_present"] != "false" || string(got.resaved) != string(file(0, 0, 0, 0, 0, 0)) {
 		t.Errorf("R17 an absent payload: %s %v", got.head(), got.fields)
+	}
+	if got := rowLoad(t, u, "T", nil, file(0, 0, 0xff, 0xff, 0xff, 0xff), nil).head(); got != "refused wire_damaged" {
+		t.Errorf("R17 a stained absent payload: %s, want refused wire_damaged", got)
 	}
 	if got := rowLoad(t, u, "T", nil, file(0x7f, 1, 42, 0, 0, 0), plantRow(t, rowsFixedevolve, "                        if v > 1:\n", "                        if v > 255:\n")); got.count != 1 {
 		t.Errorf("the negative control: the widened byte check still refuses: %s", got.head())

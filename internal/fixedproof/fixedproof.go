@@ -2423,10 +2423,19 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			t.Fatalf("save live_extents_base failed: %s", why)
 		}
 		body := len(file) - 13
-		file[body+5] = 99
-		file[body+6] = 99
-		file[body+8] = 99
 		eOwn, _ := LineageEntryOf(u, "T")
+		// THE SLACK RULE (docs/SPEC-TABLES.md §3.4; owner, 2026-11-10: "Every
+		// dead byte"): the elements past the live count and an absent
+		// optional's payload are slack, and slack is zero. A stained byte in
+		// either refuses the record wire_damaged; the clean record reads its
+		// live extent only.
+		for _, at := range []int{5, 6, 8} {
+			stained := append([]byte(nil), file...)
+			stained[body+at] = 99
+			if n, r, _, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, stained, -1); n != -1 || r != "wire_damaged" {
+				t.Errorf("C14/W4: slack byte %d stained: n=%d r=%q, want refused wire_damaged", at, n, r)
+			}
+		}
 		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
 		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) {
 			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
