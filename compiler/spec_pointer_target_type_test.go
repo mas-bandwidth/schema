@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestSpecPointerTargetTypeChecked(t *testing.T) {
@@ -113,6 +115,7 @@ func TestSpecPointerTargetTypeChecked(t *testing.T) {
 
 	t.Run("the generator reproduces each vector", func(t *testing.T) {
 		t.Parallel()
+		slowtest.Gate(t, "the Go toolchain (it builds and runs the vector generator)")
 		dir := filepath.Join("..", "testdata", "wire", "pointer-target-type")
 		root, err := filepath.Abs("..")
 		if err != nil {

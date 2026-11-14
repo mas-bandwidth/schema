@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const generationHeadroomJavaSchema = `package probe
@@ -179,6 +181,7 @@ public final class WireGenerationProbe {
 
 func TestJavaWireCheckGenerationHeadroom(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 	files, err := Generate(unitFrom(t, generationHeadroomJavaSchema))
 	if err != nil {

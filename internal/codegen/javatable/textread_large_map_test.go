@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -89,6 +90,7 @@ type textReadLargeMapWant struct {
 // 80,000-key maps and their repeated-key twins, in one Java process.
 func TestJavaTextLargeMapFunctional(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 	u := unitFrom(t, textReadLargeMapSchema)
 	model := tabletext.NewModel(u)

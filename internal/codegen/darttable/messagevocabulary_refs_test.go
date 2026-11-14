@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -245,6 +246,7 @@ func damagedBody(announce, batch []byte) string {
 // load the same values and report on the emitted Dart as on the Go engine.
 func TestDartMessageReadsThePeerVocabulary(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "dart")
 	dartBinary(t) // a missing toolchain FAILS under SCHEMA_REQUIRE_CORPUS
 
 	reader := peerUnit(t, peerVocabularySchema)
@@ -331,6 +333,7 @@ func TestDartMessageReadsThePeerVocabulary(t *testing.T) {
 // wider peer's cross-build read to go red.
 func TestDartMessageReadsThePeerVocabularyNegativeControl(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "dart")
 	dartBinary(t)
 
 	reader := peerUnit(t, peerVocabularySchema)

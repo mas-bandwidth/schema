@@ -32,6 +32,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -51,6 +52,7 @@ var messageZeroWidthBatch = []byte{ir.TableWireMessageForm, 0, 0x01}
 
 func TestRustMessageZeroWidthRunIsBounded(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	messageBatchRustc(t)
 
 	u := unitFrom(t, messageZeroWidthSrc)
