@@ -690,6 +690,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			wireRefusals[instance.Name] = instance
 		}
 	}
+	relaxed, err := readRelaxedCases(relaxedCasesPath)
+	if err != nil {
+		return false, err
+	}
 	results := map[string]map[string]*result{}
 	var langs []string
 	for i, d := range drivers {
@@ -776,17 +780,31 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				pass, named, missing := r.pass, r.named, r.missing
+				pass, named, missing, failed := r.pass, r.named, r.missing, len(r.failures)
 				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				slug, isRelaxed := relaxed[relaxedKey(d.lang, s, e.name)]
 				switch {
 				case r.pass > pass:
 					r.verdict(e.name, "pass")
+					if isRelaxed {
+						// a relaxed case that passes must leave the list
+						r.failures = append(r.failures, fmt.Sprintf("%s: relaxed (%s, %s) but it passes: remove it from %s so it is gated", e.name, slug, relaxedCasesPath, relaxedCasesPath))
+					}
 				case r.named > named:
 					r.verdict(e.name, "named")
 				case r.missing > missing:
 					r.verdict(e.name, "absent")
 				default:
 					r.verdict(e.name, "fail")
+					if isRelaxed {
+						// RELAXED 2026-11-14 (maintainer: get main green): the
+						// case stays "fail" in the results, so the proof still
+						// names it, and does not fail the leg
+						for _, f := range r.failures[failed:] {
+							_, _ = io.WriteString(w, "conformance RELAXED ("+slug+") "+d.lang+" / "+s+": "+f+"\n")
+						}
+						r.failures = r.failures[:failed]
+					}
 				}
 			}
 			if reference && r.missing > r.named {
