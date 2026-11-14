@@ -984,7 +984,11 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 		g.pf("    if (bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,bytes)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; } return -1; }\n")
 		g.pf("    if (bytes>0 && wire!=NULL && wire[0]==1) { bytes-=4; }\n")
 	}
-	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }\n")
+	// A FORM BYTE refusal leaves refuse_reason OK and is named unknown_form;
+	// framing damage (an empty or short wire) arrives already wire_damaged and
+	// is not a form refusal, so the measure leaves its reason OK, as the C++
+	// reference's LoadMeasure does.
+	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }\n")
 	g.pf("    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=%s(&reader,&data,&records);\n    if(total<0 && reason!=NULL) { *reason=report.reason; }\n", g.sym(n, "load_layout"))
 	g.pf("%s", strictShared)
 	g.pf("    if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;\n}\n")
@@ -1034,11 +1038,14 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 			g.pf("                    case %s: { TableBlob * blob=(TableBlob *)value; blob->length=(uint32_t)body.size; blob->zero=0; memcpy(blob+1,body.buffer,(size_t)body.size); break; }\n", blob.name)
 		}
 	}
+	// A RECORD'S TERMINATOR IS THE END OF ITS PAYLOAD (docs/SPEC-TABLES.md §3,
+	// §3.1): a body that ends before its record's L is damage, as an element's is.
+	recordWhole := "if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }"
 	for _, t := range ir.PointerReachable(st) {
 		if g.retain {
-			g.pf("                    case UINT64_C(0x%016x):retention.path=table_retain_root(value,(uint32_t)k+2);%s(&body,(%s *)value);break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+			g.pf("                    case UINT64_C(0x%016x):retention.path=table_retain_root(value,(uint32_t)k+2);%s(&body,(%s *)value);%sbreak;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name, recordWhole)
 		} else {
-			g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+			g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); %s break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name, recordWhole)
 		}
 	}
 	retainedRoot := ""
@@ -1065,7 +1072,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load"))
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total; int refused_before,reason_before; int32_t non_finite_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->refused=0;\n")
 	if st.Integrity != "" {
-		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return NULL; }\n")
+		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return NULL; }\n")
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
 	}
 	g.pf("    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->refused=report->refused||refused_before; return NULL; }\n")
@@ -1082,7 +1089,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder"), n)
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok,refused_before; int32_t non_finite_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; non_finite_before=report->non_finite_floats; report->refused=0;\n", n)
 	if st.Integrity != "" {
-		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
+		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
 	}
 	g.pf("    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->refused=report->refused||refused_before; return 0; }\n")

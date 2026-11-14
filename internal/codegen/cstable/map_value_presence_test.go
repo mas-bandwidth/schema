@@ -17,8 +17,13 @@ func TestMapValuePresenceCSharp(t *testing.T) {
 	slowtest.Gate(t, "the .NET SDK")
 	t15RunCS(t, mapValuePresenceSchema, `
  void Check(string input,bool present,int mismatch,int duplicate,int expectedValue=0){
+  // THE STRICT READ (docs/SPEC-TABLES.md §4, §6.5, §16.2): a changed kind and a
+  // repeated key each refuse the whole load, by name.
   var value=new Probe.Root();var report=new Probe.TableReport();
-  if(!Probe.Schema.RootFromJson(value,System.Text.Encoding.UTF8.GetBytes(input),report)||report.Malformed||report.Refused||report.KindMismatch!=mismatch||report.Duplicate!=duplicate)throw new Exception("map scalar shape report "+input+" mismatch="+report.KindMismatch+" malformed="+report.Malformed);
+  bool ok=Probe.Schema.RootFromJson(value,System.Text.Encoding.UTF8.GetBytes(input),report);
+  bool accept=mismatch==0&&duplicate==0;
+  if(ok!=accept||(accept&&(report.Damaged||report.Refused))||(!accept&&report.Reason==null))throw new Exception("map scalar shape verdict "+input+" ok="+ok+" reason="+report.Reason);
+  if(!accept){return;}
   if(value.OptionalCount!=1||value.Optional[0].ValuePresent!=present||value.Optional[0].Value!=expectedValue)throw new Exception("optional map-value presence "+input);
   byte[] wire=new byte[Probe.Schema.RootMeasure(value)];if(Probe.Schema.RootSave(value,wire)!=wire.Length)throw new Exception("map value save");
   var back=new Probe.Root();if(!Probe.Schema.RootLoad(back,wire,new Probe.TableReport())||back.OptionalCount!=1||back.Optional[0].ValuePresent!=present||back.Optional[0].Value!=expectedValue)throw new Exception("map value wire presence");
@@ -32,7 +37,7 @@ func TestMapValuePresenceCSharp(t *testing.T) {
  foreach(string token in new[]{"null","\"bad\"","[]","{}","true"}){
   var value=new Probe.Root();var report=new Probe.TableReport();
   string input="{\"plain\":{\"a\":"+token+"},\"scalar\":"+token+"}";
-  if(!Probe.Schema.RootFromJson(value,System.Text.Encoding.UTF8.GetBytes(input),report)||report.Malformed||report.KindMismatch!=2||value.PlainCount!=1||value.Plain[0].Value!=0||value.Scalar!=0)throw new Exception("plain scalar mismatched shape "+token);
+  if(Probe.Schema.RootFromJson(value,System.Text.Encoding.UTF8.GetBytes(input),report)||report.Reason==null)throw new Exception("plain scalar mismatched shape must refuse "+token);
  }
 `)
 }

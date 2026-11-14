@@ -468,8 +468,9 @@ fn save_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals:
     var order: i64[>..<] = [];
     var index: i64[>..<] = [];
     var open: bool[>..<] = [];
+    var sorted: i64[>..<] = [];
     let at = out.len;
-    var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, root_tab: -1, refusal: 0, retain: store, retaining: true, retain_lost: 0 };
+    var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, sorted: sorted, root_tab: -1, refusal: 0, retain: store, retaining: true, retain_lost: 0 };
     for d, i in unit.tables { if d.name == root { c.root_tab = i; } }
     if c.root_tab < 0 { return SaveRefuseUnknownRoot; }
     let refusal = save_into(c, root_val);

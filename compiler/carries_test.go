@@ -11,8 +11,9 @@ import (
 // Dart and Java carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
 // C++ also carries the timestamp kind (§2.11), the JSON array root (§16.10),
 // the one-sided integer range (§4.3) and ?map[K]V (§2.8); Lobster carries
-// optional-variable-closure, the timestamp kind, the one-sided integer range
-// and the text lists (docs/PORT-LOBSTER.md); Luau carries every construct but
+// optional-variable-closure, the timestamp kind, the one-sided integer range,
+// the text lists, `forms`, `integrity` and the JSON array root
+// (docs/PORT-LOBSTER.md); Luau carries every construct but
 // integrity (docs/SPEC-TABLES.md §2.14); Squirrel carries the constructs its
 // compiler/target_squirrel_*.go files register; every other target
 // carries none at this stage.
@@ -27,7 +28,7 @@ var nonGoCarriers = map[string][]string{
 	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine, the
 	// text form's by its carries_test.go
 	"moo":      {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
-	"lobster":  {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
+	"lobster":  {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryArrayRoot},
 	"squirrel": {carryTimestamp, carryTextList, carryTextListTotal, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryOneSidedRange, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.12, §2.13, §2.13.1, §2.14, §4.3, §16.2, §16.10
 }
 

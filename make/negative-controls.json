@@ -214,12 +214,13 @@
     {
       "name": "lua-conformance",
       "when": "pull-request",
-      "why": "the Lua port's conformance-harness controls on the pinned PUC-Rio 5.4.8 (make dist-lua): the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the walk and cycle surfaces, and the caller-owned absent driver (a driver whose absent() writes nothing; red because an unanswered case never passes, I4). Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; this half is the harness leg. Measured 38 s of control time over the 5 harness controls.",
+      "why": "the Lua port's conformance-harness controls on the pinned PUC-Rio 5.4.8 (make dist-lua): the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the walk and cycle surfaces, the write-contract walk answering nil (red on exactly lua / write-refusal, write-refusal-fixed and write-refusal-message), and the caller-owned absent driver (a driver whose absent() writes nothing; red because an unanswered case never passes, I4). Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; this half is the harness leg. Measured 38 s of control time over the 5 harness controls; the write control measured 21 s warm on the studio at load average 34 (2026-11-14).",
       "targets": [
         "conformance-negative-control-lua",
         "conformance-negative-control-lua-walk",
         "conformance-negative-control-lua-framing",
         "conformance-negative-control-lua-cycle",
+        "conformance-negative-control-lua-write",
         "conformance-negative-control-lua-absent"
       ],
       "lua": "5.4.8"
@@ -2258,7 +2259,7 @@
     {
       "name": "goose",
       "when": "pull-request",
-      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
+      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else. With them, the enum-keyed accessor's control (M5: the None compare, the past-E.Max compare and the shift planted out, each over a `goose build -O2` probe) and the maps controls (M19: eight plants of the writers' sort, the readers' placement and the wire reader's rules), measured on studio on 2026-11-14 at 1.53 s and 1.39 s of make wall (time -p real), Go and the pinned Goose only.",
       "targets": [
         "tables-goose-fixedform-negative-control",
         "tables-goose-tablewire-negative-control",
@@ -2266,7 +2267,9 @@
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
         "tables-goose-damage-negative-control",
-        "tables-goose-view-negative-controls"
+        "tables-goose-view-negative-controls",
+        "tables-goose-keyed-negative-control",
+        "tables-goose-maps-negative-controls"
       ]
     },
     {

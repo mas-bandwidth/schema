@@ -40,17 +40,17 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "expected three records, not " + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             if (r.Unknown != 1)
             {
                 bad += ProbeLog.Fail(@NAME@, "the census is once per endpoint, not per record: unknown=" + r.Unknown);
             }
-            if (r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "only the unknown counter may move: kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "only the unknown counter may move: widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }
             int[][] wantA = { new int[] { 10, 11, 12, 13 }, new int[] { 20, 21, 22, 23 }, new int[] { 30, 31, 32, 33 } };
             for (int i = 0; i < 3; ++i)
