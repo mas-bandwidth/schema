@@ -25,6 +25,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -167,13 +169,14 @@ func cppFramingCheck(t *testing.T, root string, answers map[string][]byte, rows 
 	return wrong
 }
 
-// cppConformanceMake runs one make target at the repository root and
-// fails with its output.
+// cppConformanceMake runs one make target at the repository root, one job
+// per core so the driver's table objects compile side by side, and fails
+// with its output.
 func cppConformanceMake(t *testing.T, root string, args ...string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", args...)
+	cmd := exec.CommandContext(ctx, "make", append([]string{"-j" + strconv.Itoa(runtime.GOMAXPROCS(0))}, args...)...)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("make %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -215,8 +218,8 @@ func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 // TestCppDriverRefusesFormOneFramingNegativeControl plants its fault in
 // the real artifact: the strict form-1 walk is taken out of a COPY of the
 // driver (no tracked file is written to), the copy is built with the
-// Makefile's own flags beside the generated tables, and the framing
-// battery must go red on exactly the strict rows — each read again,
+// Makefile's own flags against the driver's own table objects, and the
+// framing battery must go red on exactly the strict rows — each read again,
 // as the unsabotaged readers left them. A control that stayed green, or
 // went red anywhere else, would prove the walk is not what refuses them.
 func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
@@ -243,7 +246,10 @@ func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	}
 	bin := filepath.Join(scratch, "driver-bin")
 	mk := filepath.Join(scratch, "negative.mk")
-	rule := fmt.Sprintf("%s: build/tables-generated/.stamp\n\t$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) %s $(CONFORMANCE_SOURCES) -o %s\n", bin, plantedSrc, bin)
+	// the planted main.cpp links the table objects the driver links (the
+	// Makefile's conformance-cpp-objects), so the control compiles one
+	// translation unit, not the driver's every table source over again
+	rule := fmt.Sprintf("%s: conformance-cpp-objects\n\t$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) %s $(CONFORMANCE_OBJECTS) -o %s\n", bin, plantedSrc, bin)
 	if err := os.WriteFile(mk, []byte(rule), 0o600); err != nil {
 		t.Fatal(err)
 	}
