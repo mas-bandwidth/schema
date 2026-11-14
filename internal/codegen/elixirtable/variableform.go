@@ -1437,7 +1437,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         if not terminated, do: throw(:wire_damaged)
 
-        report = Map.put(report, :blob_shared, shared)
+        # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5)
+        if shared > 0, do: throw(:wire_damaged)
+
+        # the report keeps its blob_shared count, which a read that lands is
+        # now always 0
+        report = Map.put(report, :blob_shared, 0)
 
         # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
         # that met damage anywhere returns no value, only its report
@@ -5941,9 +5946,14 @@ const variableRetainSource = `
 
         if not terminated, do: throw(:wire_damaged)
 
-        report =
-          Map.put(report, :blob_shared, shared)
-          |> Map.update(:missing_required, missing_before, &(&1 + missing_before))
+        # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5)
+        if shared > 0, do: throw(:wire_damaged)
+
+        # the report keeps its blob_shared count, which a read that lands is
+        # now always 0
+        report = Map.put(report, :blob_shared, 0)
+
+        report = Map.update(report, :missing_required, missing_before, &(&1 + missing_before))
 
         # the records were kept newest first; they are saved in the order
         # retained

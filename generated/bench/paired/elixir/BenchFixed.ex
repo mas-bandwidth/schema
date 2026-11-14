@@ -187,8 +187,8 @@ defmodule Bench.BenchFixed do
        health: min(max(f_health, 0), 1000),
        weapon: elem(Bench.MixedWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
        damage: f_damage,
-       moving: f_moving != 0,
-       firing: f_firing != 0
+       moving: R.flag(f_moving),
+       firing: R.flag(f_firing)
      }, c, m}
   end
 
@@ -232,8 +232,8 @@ defmodule Bench.BenchFixed do
         health: min(max(f_health, 0), 1000),
         weapon: elem(Bench.MixedWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
         damage: f_damage,
-        moving: f_moving != 0,
-        firing: f_firing != 0
+        moving: R.flag(f_moving),
+        firing: R.flag(f_firing)
       }
 
     {tail, c, m} = mixed_entity_fixed_list(rest, n - 1, c, m)
@@ -359,7 +359,7 @@ defmodule Bench.BenchFixed do
        target_id: f_target_id,
        damage: min(max(f_damage, 0), 4095),
        hit_kind: min(max(f_hit_kind, 0), 7),
-       crit: f_crit != 0
+       crit: R.flag(f_crit)
      }, c, m}
   end
 
@@ -391,7 +391,7 @@ defmodule Bench.BenchFixed do
         target_id: f_target_id_0,
         damage: min(max(f_damage_0, 0), 4095),
         hit_kind: min(max(f_hit_kind_0, 0), 7),
-        crit: f_crit_0 != 0
+        crit: R.flag(f_crit_0)
       }
 
     c = R.clamps(c, f_damage_1, 0, 4095)
@@ -402,7 +402,7 @@ defmodule Bench.BenchFixed do
         target_id: f_target_id_1,
         damage: min(max(f_damage_1, 0), 4095),
         hit_kind: min(max(f_hit_kind_1, 0), 7),
-        crit: f_crit_1 != 0
+        crit: R.flag(f_crit_1)
       }
 
     c = R.clamps(c, f_damage_2, 0, 4095)
@@ -413,7 +413,7 @@ defmodule Bench.BenchFixed do
         target_id: f_target_id_2,
         damage: min(max(f_damage_2, 0), 4095),
         hit_kind: min(max(f_hit_kind_2, 0), 7),
-        crit: f_crit_2 != 0
+        crit: R.flag(f_crit_2)
       }
 
     c = R.clamps(c, f_damage_3, 0, 4095)
@@ -424,7 +424,7 @@ defmodule Bench.BenchFixed do
         target_id: f_target_id_3,
         damage: min(max(f_damage_3, 0), 4095),
         hit_kind: min(max(f_hit_kind_3, 0), 7),
-        crit: f_crit_3 != 0
+        crit: R.flag(f_crit_3)
       }
 
     {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 4, c, m)
@@ -446,7 +446,7 @@ defmodule Bench.BenchFixed do
         target_id: f_target_id,
         damage: min(max(f_damage, 0), 4095),
         hit_kind: min(max(f_hit_kind, 0), 7),
-        crit: f_crit != 0
+        crit: R.flag(f_crit)
       }
 
     {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 1, c, m)
@@ -788,7 +788,7 @@ defmodule Bench.BenchFixed do
          ),
        ping: min(max(f_ping, 0), 64_000),
        crc_hint: f_crc_hint,
-       has_extra: f_has_extra != 0,
+       has_extra: R.flag(f_has_extra),
        extra: min(max(f_extra, 0), 255),
        idle_ticks: min(max(f_idle_ticks, 0), 15)
      }, c, m}

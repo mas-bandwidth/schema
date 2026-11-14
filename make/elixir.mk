@@ -1696,11 +1696,13 @@ test-elixir: cards-elixir-retain-fuzz
 # --retain arm of this roster is its own gate.
 ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 0
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
+# ELIXIR_WIRE_FUZZ_ALL_EBIN lets the control point the gate at a planted reader.
+ELIXIR_WIRE_FUZZ_ALL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin
 .PHONY: tables-elixir-wire-fuzz-all
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG)
 	@ELIXIR_WIRE_FUZZ_ABSENT=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_ABSENT_LOG) \
-		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \
@@ -1721,6 +1723,35 @@ tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/
 	@grep -qE '[1-9][0-9]* mutants' build/tables-elixir-wire-fuzz-all.log
 
 test-elixir: tables-elixir-wire-fuzz-all
+
+# ITS CONTROL: the one read's rule that bytes left inside an array's L after
+# its elements are damage (docs/SPEC-TABLES.md §3, §4) is removed from a copy
+# of one unit's generated reader (featurewitnesses), compiled over a copy of
+# the corpus ebin, and the gate must go red with the leg accepting a mutant
+# the oracle refuses. N is small: the plant is met in the enumerated pass.
+ELIXIR_WIRE_FUZZ_NC := build/elixir-wire-fuzz-nc
+
+.PHONY: tables-elixir-wire-fuzz-negative-control
+tables-elixir-wire-fuzz-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@rm -rf $(ELIXIR_WIRE_FUZZ_NC) && mkdir -p $(ELIXIR_WIRE_FUZZ_NC)/ebin
+	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_NC)/ebin/
+	@sed -e 's|    if rest != <<>>, do: throw(:wire_damaged)|    _ = rest # SABOTAGED|' \
+		build/tables-generated-elixir/featurewitnesses/Table.ex > $(ELIXIR_WIRE_FUZZ_NC)/Table.ex
+	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_NC)/Table.ex || \
+		{ echo "NEGATIVE CONTROL: the Elixir wire-fuzz sabotage patched nothing"; exit 1; }
+	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_WIRE_FUZZ_NC)/ebin $(ELIXIR_WIRE_FUZZ_NC)/Table.ex > /dev/null 2>&1
+	@if $(MAKE) --no-print-directory tables-elixir-wire-fuzz-all N=200 \
+			ELIXIR_WIRE_FUZZ_ALL_EBIN=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_NC)/ebin \
+			> $(ELIXIR_WIRE_FUZZ_NC)/log 2>&1; then \
+		cat $(ELIXIR_WIRE_FUZZ_NC)/log; \
+		echo "NEGATIVE CONTROL FAILED: a reader that keeps bytes left inside an array's L left the wire fuzz green"; exit 1; \
+	fi
+	@grep -q 'read acceptance differs: the leg says true, the oracle says false' $(ELIXIR_WIRE_FUZZ_NC)/log && \
+		grep -q '(featurewitnesses\.' $(ELIXIR_WIRE_FUZZ_NC)/log || \
+		{ cat $(ELIXIR_WIRE_FUZZ_NC)/log; echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the planted reader"; exit 1; }
+	@echo "elixir wire-fuzz negative control: a reader that keeps bytes left inside an array's L reds the wire fuzz"
+
+test-elixir: tables-elixir-wire-fuzz-negative-control
 
 # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), Elixir side: every
 # framing vector the manifest answers `malformed`, through the plain and the

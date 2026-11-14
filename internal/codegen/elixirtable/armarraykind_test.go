@@ -97,7 +97,11 @@ func TestUnionArrayElementKindsElixir(t *testing.T) {
 				} else if e == nil || !report.Refused || report.Reason == "" || !tablewire.ReadRefusal(e) {
 					t.Fatalf("%s oracle refusal: %v %v %+v", label, ok, e, report)
 				}
-				if p.mismatch != 0 {
+				// THE LEG FOLLOWS THE ORACLE: a kind mismatch and a truncated arm
+				// payload both refuse in both Elixir reads (§3, §4;
+				// docs/plans/strict-only.md). A truncated arm used to read as an
+				// empty arm, a tolerant read the one strict read retired.
+				if p.mismatch != 0 || !ok {
 					fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
@@ -108,8 +112,7 @@ end
 `, hex.EncodeToString(wire), label, label)
 					continue
 				}
-				if ok {
-					fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
@@ -121,23 +124,6 @@ for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  unless elem(written,0)==:ok and Base.encode16(elem(written,1),case: :lower)==%q,do: raise(%q<>" save "<>inspect(written))
 end
 `, hex.EncodeToString(wire), label, string(wantText)+"\n", label, hex.EncodeToString(want), label)
-				} else {
-					// The Go reader refuses a truncated arm payload the
-					// Elixir reader still reads as an empty arm; assert the
-					// Elixir value and a successful save without a Go oracle.
-					fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
-store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
-for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
- unless elem(result,0)==:ok and elem(result,2).reason=="",do: raise(%q<>" report "<>inspect(result))
- value=elem(result,1)
- {:ok,text}=T.to_json("Root",value)
- unless String.contains?(text,%q)==%t,do: raise(%q<>" value "<>text)
- written=if tuple_size(result)==4,do: T.save_retain("Root",value,elem(result,3),zero),else: T.save("Root",value)
- unless elem(written,0)==:ok,do: raise(%q<>" save "<>inspect(written))
-end
-`, hex.EncodeToString(wire), label, strconv.Quote(a.name)+":", p.selected, label, label)
-				}
 			}
 		}
 	}

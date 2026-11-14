@@ -1564,16 +1564,20 @@ defmodule WireFuzz do
     if damaged?(report) do
       stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
     else
-      first_val = decoded_rev |> Enum.reverse() |> hd()
-      encoded_first = msg_encode_body(vocab, tables, desc, first_val)
+      # THE WHOLE BATCH IS WRITTEN BACK, every body the wire carried, as the
+      # oracle writes it (docs/SPEC-TABLES.md §3.3)
+      encoded =
+        decoded_rev
+        |> Enum.reverse()
+        |> Enum.map(&msg_encode_body(vocab, tables, desc, &1))
 
       measure =
-        case mod.measure_messages(vocab, [encoded_first]) do
+        case mod.measure_messages(vocab, encoded) do
           {:ok, n} -> n
           _ -> 0
         end
 
-      case mod.save_messages(vocab, [encoded_first]) do
+      case mod.save_messages(vocab, encoded) do
         {:ok, bytes} ->
           stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
           stdout_write(bytes)

@@ -58,34 +58,194 @@ func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 	return insertOnce(runtime, "  # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----\n", load.String())
 }
 
-const strictHelpers = `  defp strict_unknown!(13, payload, _nodes, ids) do
-    case leb(payload) do
-      {l, body} when byte_size(body) >= l ->
-        case entries(binary_part(body, 0, l), ids, false, :nested) do
-          {:ok, _fields, []} -> :ok
-          _ -> throw(:wire_damaged)
+const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC-TABLES.md §3, §4):
+  # its payload is walked as the framing alone describes it, nested bodies,
+  # arrays, keyed pairs and arms included, and whatever no writer emits there
+  # refuses the whole read: a reference past the id table, a repeated id or
+  # key, a reserved id, a bool past 1, ill-formed text, a float that is not
+  # finite, a header that does not fill its L. Pointer payloads are the reach
+  # walk's (strict_wire_reachable!/4).
+  defp strict_unknown!(kind, payload, _nodes, ids) do
+    case unknown_payload(payload, kind, ids, 0) do
+      {:ok, <<>>} -> :ok
+      _ -> throw(:wire_damaged)
+    end
+  end
+
+  defp unknown_payload(buf, kind, ids, depth) do
+    cond do
+      kind in 1..11 or kind in 18..29 or kind == 36 ->
+        w = unknown_width(kind)
+
+        case buf do
+          <<v::binary-size(^w), rest::binary>> ->
+            if unknown_scalar?(v, kind), do: {:ok, rest}, else: :error
+
+          _ ->
+            :error
+        end
+
+      kind == 17 ->
+        case leb(buf) do
+          {_idx, rest} -> {:ok, rest}
+          :error -> :error
+        end
+
+      kind == 30 ->
+        case leb(buf) do
+          {ref, rest} when ref <= div(byte_size(ids), 8) -> {:ok, rest}
+          _ -> :error
+        end
+
+      kind == 15 ->
+        unknown_arm(buf, ids, depth)
+
+      kind in [12, 13, 14, 16, 31, 32] ->
+        case leb(buf) do
+          {n, rest} when byte_size(rest) >= n ->
+            <<content::binary-size(^n), after_l::binary>> = rest
+
+            if unknown_content?(content, kind, ids, depth),
+              do: {:ok, after_l},
+              else: :error
+
+          _ ->
+            :error
+        end
+
+      true ->
+        :error
+    end
+  end
+
+  defp unknown_width(kind) when kind in [1, 2, 6, 20, 25], do: 1
+  defp unknown_width(kind) when kind in [3, 7, 21, 26], do: 2
+  defp unknown_width(kind) when kind in [4, 8, 10], do: 4
+  defp unknown_width(kind) when kind in [5, 9, 11], do: 8
+  defp unknown_width(kind), do: kind_width(kind)
+
+  defp unknown_scalar?(<<b>>, 1), do: b <= 1
+  defp unknown_scalar?(<<bits::little-32>>, 10), do: (bits &&& 0x7F800000) != 0x7F800000
+
+  defp unknown_scalar?(<<bits::little-64>>, 11),
+    do: (bits &&& 0x7FF0000000000000) != 0x7FF0000000000000
+
+  defp unknown_scalar?(_v, _kind), do: true
+
+  defp unknown_content?(b, 12, _ids, _depth),
+    do: utf8_valid?(b) and :binary.match(b, <<0>>) == :nomatch
+
+  defp unknown_content?(_b, 31, _ids, _depth), do: true
+  defp unknown_content?(b, 32, _ids, _depth), do: b == <<>>
+
+  defp unknown_content?(_b, kind, _ids, depth) when kind in [13, 14, 16] and depth >= 128,
+    do: false
+
+  defp unknown_content?(b, 13, ids, depth), do: unknown_body?(b, ids, depth + 1, MapSet.new())
+  defp unknown_content?(b, 14, ids, depth), do: unknown_array?(b, ids, depth + 1)
+  defp unknown_content?(b, 16, ids, depth), do: unknown_keyed?(b, ids, depth + 1)
+
+  defp unknown_content?(b, kind, ids, depth) do
+    case unknown_payload(b, kind, ids, depth) do
+      {:ok, <<>>} -> true
+      _ -> false
+    end
+  end
+
+  defp unknown_body?(b, ids, depth, seen) do
+    case leb(b) do
+      {0, rest} ->
+        rest == <<>>
+
+      {ref, <<kind, rest::binary>>} ->
+        id = resolve(ids, ref)
+
+        cond do
+          id == :error or MapSet.member?(seen, id) ->
+            false
+
+          id in [@build_version_id, @message_vocab_id, @node_id] ->
+            false
+
+          true ->
+            case unknown_payload(rest, kind, ids, depth) do
+              {:ok, after_payload} ->
+                unknown_body?(after_payload, ids, depth, MapSet.put(seen, id))
+
+              :error ->
+                false
+            end
         end
 
       _ ->
-        throw(:wire_damaged)
+        false
     end
   end
 
-  defp strict_unknown!(kind, payload, nodes, _ids) when kind in [17, 30] do
-    case leb(payload) do
-      {idx, _rest} when idx <= length(nodes) + 1 -> :ok
-      _ -> throw(:wire_damaged)
+  defp unknown_array?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
+    case leb(rest) do
+      {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
+      _ -> false
     end
   end
 
-  defp strict_unknown!(kind, payload, _nodes, _ids) when kind in [14, 16] do
-    case leb(payload) do
-      {_l, body} when byte_size(body) >= 2 -> :ok
-      _ -> throw(:wire_damaged)
+  defp unknown_array?(_b, _ids, _depth), do: false
+
+  defp unknown_elements?(rest, _ek, 0, _ids, _depth), do: rest == <<>>
+
+  defp unknown_elements?(rest, ek, n, ids, depth) do
+    case unknown_payload(rest, ek, ids, depth) do
+      {:ok, after_elem} -> unknown_elements?(after_elem, ek, n - 1, ids, depth)
+      :error -> false
     end
   end
 
-  defp strict_unknown!(_kind, _payload, _nodes, _ids), do: :ok
+  defp unknown_keyed?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
+    case leb(rest) do
+      {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
+      _ -> false
+    end
+  end
+
+  defp unknown_keyed?(_b, _ids, _depth), do: false
+
+  defp unknown_pairs?(rest, _ek, 0, _ids, _depth, _seen), do: rest == <<>>
+
+  defp unknown_pairs?(rest, ek, n, ids, depth, seen) do
+    with {key, r1} <- leb(rest),
+         true <- key != 0 and key <= div(byte_size(ids), 8) and not MapSet.member?(seen, key),
+         {len, r2} when byte_size(r2) >= len <- leb(r1),
+         <<content::binary-size(^len), r3::binary>> <- r2,
+         true <- unknown_content?(content, ek, ids, depth) do
+      unknown_pairs?(r3, ek, n - 1, ids, depth, MapSet.put(seen, key))
+    else
+      _ -> false
+    end
+  end
+
+  defp unknown_arm(buf, ids, depth) do
+    case leb(buf) do
+      {0, rest} ->
+        {:ok, rest}
+
+      {ref, <<kind, rest::binary>>} when ref <= div(byte_size(ids), 8) ->
+        with {n, r1} when byte_size(r1) >= n <- leb(rest),
+             <<content::binary-size(^n), r2::binary>> <- r1 do
+          deeper = if kind in [13, 14, 15, 16], do: depth + 1, else: depth
+
+          cond do
+            kind in [13, 14, 15, 16] and depth >= 128 -> :error
+            unknown_content?(content, kind, ids, deeper) -> {:ok, r2}
+            true -> :error
+          end
+        else
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
 
   # A node record no pointer reaches is damage (§3, §4): the reach is
   # syntactic, over the wire's own pointer payloads in the root body and in
@@ -114,8 +274,28 @@ const strictHelpers = `  defp strict_unknown!(13, payload, _nodes, ids) do
     if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
       do: throw(:wire_damaged)
 
+    # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5): every pointer
+    # payload in every body names, a skipped field's too, and each body is
+    # counted once however many pointers reach it.
+    names =
+      bodies
+      |> Map.values()
+      |> Enum.flat_map(&wire_field_refs(&1, ids))
+      |> Enum.frequencies()
+
+    # A POINTER PAST THE NODE TABLE is damage wherever it rides (§3.1)
+    last = length(nodes) + 1
+    if Enum.any?(Map.keys(names), &(&1 > last)), do: throw(:wire_damaged)
+
+    if Enum.any?(indexed, fn {node, idx} -> blob_node?(node) and Map.get(names, idx, 0) > 1 end),
+      do: throw(:wire_damaged)
+
     :ok
   end
+
+  defp blob_node?({:blob, _kind, _bytes}), do: true
+  defp blob_node?({:unknown, :blob}), do: true
+  defp blob_node?(_node), do: false
 
   defp wire_reach([], _bodies, seen, _ids), do: seen
 

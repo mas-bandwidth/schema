@@ -149,7 +149,7 @@ func t07C14(t *testing.T) {
 	body := t07Filter(t, out)
 	t07Has(t, body, "root_tiers_fixed_list(_bin, 0, c, m), do: {[], c, m}", "C14 the identity walk stops at the count")
 	t07Has(t, body, "R.past(c, f_e_0, 2)", "C14 an enum ordinal's bound runs only over live elements")
-	t07Has(t, body, "c = if(p_opt != 0, do: c_opt, else: c)", "C14 an optional's payload is held to a bound only when present")
+	t07Has(t, body, "c = if(p_opt, do: c_opt, else: c)", "C14 an optional's payload is held to a bound only when present")
 }
 
 // ---- elixir/W4 --------------------------------------------------------------

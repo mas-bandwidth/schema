@@ -750,10 +750,12 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 	var out rseg
 	if f.Type.Optional {
 		out.match = append(out.match, "p_"+v+"::unsigned-8")
-		flag := rawf("p_%s != 0", v)
-		out.field(f.Name+"_present", flag)
+		// THE PRESENT BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1
+		// refuses any other byte as damage before the payload is read
+		out.stmt("p_"+v, rawf("R.flag(p_%s)", v))
+		out.field(f.Name+"_present", raw("p_"+v))
 		var payload rseg
-		g.readPayload(&payload, f, v, rawf("p_%s != 0", v))
+		g.readPayload(&payload, f, v, raw("p_"+v))
 		// THE COUNT AND THE DAMAGE FLAG MOVE ONLY WHEN PRESENT: the payload's
 		// statements run against a fork of both, and the fork is kept only if
 		// the flag was set. An absent optional's payload is unspecified (§3.4)
@@ -764,8 +766,8 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 		for _, p := range payload.post {
 			out.post = append(out.post, postStmt{name: forkName(p.name, v), val: forkNode(p.val, v)})
 		}
-		out.stmt("c", rawf("if(p_%s != 0, do: c_%s, else: c)", v, v))
-		out.stmt("m", rawf("if(p_%s != 0, do: m_%s, else: m)", v, v))
+		out.stmt("c", rawf("if(p_%s, do: c_%s, else: c)", v, v))
+		out.stmt("m", rawf("if(p_%s, do: m_%s, else: m)", v, v))
 		out.keys = append(out.keys, payload.keys...)
 		out.vals = append(out.vals, payload.vals...)
 		return out
@@ -1006,9 +1008,9 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`, which is what a form that writes 0 or 1
-		// and reads anything owes a hostile writer.
-		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
+		// A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1 refuses any
+		// other byte as damage, and the whole read with it.
+		return leafDec{spec: name + "::unsigned-8", wrap: call("R.flag", raw(name))}
 	case ir.TFloat32, ir.TFloat64:
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and
 		// R.f64_value/1 refuse a NaN or an infinity on its raw bits, before

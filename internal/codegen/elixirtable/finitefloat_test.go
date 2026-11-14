@@ -360,11 +360,15 @@ defmodule FiniteProbe do
       end
     end)
 
-    row("plain read skips an unknown float", fn ->
+    # A NON-FINITE FLOAT REFUSES IN A FIELD THIS READER DOES NOT DECLARE TOO
+    # (docs/SPEC-TABLES.md, the strict read is decidable from the wire alone and
+    # applied to every byte; docs/plans/strict-only.md): the plain read used to
+    # skip it, which the one strict read does not.
+    row("plain read refuses an unknown float", fn ->
       wire = patch(base, bits(1.125, 8), raw(0x7FF8000000000000, 8))
 
       case Old.load("Root", wire) do
-        {:ok, _, _} -> :ok
+        {:error, _, _} -> :ok
         other -> {:fail, inspect(other)}
       end
     end)

@@ -102,9 +102,14 @@ IO.puts("ok")
 			"arm_framing_damaged?(a, inner) ->",
 			"false and arm_framing_damaged?(a, inner) ->",
 		}}, "(FunctionClauseError) no function clause matching in Tbla2.Table.float_of/3"},
+		// The slot's own read and the strict walk's pointer bound both refuse
+		// it, so the witness plants both back.
 		{"slot out of range", stream, slotProbe, [][2]string{{
 			":out_of_range -> {nil, throw(:wire_damaged)}",
 			":out_of_range -> {nil, report}",
+		}, {
+			"if Enum.any?(Map.keys(names), &(&1 > last)), do: throw(:wire_damaged)",
+			"_ = last",
 		}}, ""},
 	}
 	for _, c := range cases {
