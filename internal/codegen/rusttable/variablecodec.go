@@ -2033,9 +2033,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	g.emitVariableMeasure(b, st)
 }
 
-// emitVariableGraphPass emits a variable-class root's graph pass (docs/SPEC-
-// TABLES.md §3.1, §4): the stubs, every placeable record decoded before the
-// root, the root body, then the edges, the cycle check, the link in
+// emitVariableGraphPass emits a variable-class root's graph pass
+// (docs/SPEC-TABLES.md §3.1, §4): the stubs, every placeable record decoded
+// before the root, the root body, then the edges, the cycle check, the link in
 // post-order and the shared build.
 func (g *gen) emitVariableGraphPass(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    nodes.init_stubs(Rc::new(%s::default()), variable_node_stub_alloc);\n", st.Name)
