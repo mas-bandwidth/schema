@@ -528,6 +528,9 @@ export function FixedTableMeasureMessages(values, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+  }
   const w = new TableBitWriter(null, true);
   for (let i = 0; i < values.length; i++) {
     if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
@@ -542,6 +545,9 @@ export function FixedTableSaveMessages(values, buffer, report) {
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
   if (buffer.length < 2) { return -1; }
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+  }
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);

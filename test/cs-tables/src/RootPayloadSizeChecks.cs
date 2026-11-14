@@ -87,7 +87,7 @@ static partial class Program
         byte[] child = Join(new byte[] { 3,4 }, U32(42), new byte[] { 0 });
         byte[] items = Join(new byte[] { 13,2 }, Var((ulong)child.Length), child, new byte[] { 1,0 });
         byte[] text = value.Text.AsSpan(0, value.TextLength).ToArray();
-        byte[] keys = new byte[] { 4,1,7,4,9,0,0,0 };
+        byte[] keys = new byte[] { 4,1,6,4,9,0,0,0 };
         return Fixture(Join(
             new byte[] { 1,13,1,0,2,14 }, Var((ulong)items.Length), items,
             new byte[] { 4,12 }, Var((ulong)text.Length), text,

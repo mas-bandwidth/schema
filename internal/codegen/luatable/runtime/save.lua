@@ -683,8 +683,9 @@ end
 -- (docs/PORTING.md M22); the numbering, the node table, the id table and the
 -- trailer are this one function either way.
 local function save_with(T, name, v, typed)
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, v)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, v)
   if refused ~= nil then return nil, refused end
   local desc = T.Tables[name]
   if desc == nil then return nil end

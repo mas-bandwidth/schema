@@ -254,15 +254,13 @@ func buildPlantSpecs(u *genUnit, baseJSON string, sabotage bool) []plantSpec {
 		nanMode = "must_accept"
 	}
 	specs = append(specs, plantSpec{name: "nan_" + f0, mode: nanMode, text: withFieldReplaced(baseJSON, f0, "NaN")})
-	// (5) a lone surrogate escape
+	// (5) a lone surrogate escape refuses by name at every string site
+	// (docs/SPEC-TABLES.md §16.3, string_lone_surrogate), never replaced by
+	// U+FFFD
 	specs = append(specs, plantSpec{name: "lone_surrogate_" + f0, mode: "either", text: withFieldReplaced(baseJSON, f0, `"\ud800"`)})
 	for _, f := range u.Root.Fields {
 		if f.Kind == gString && f.Name != f0 {
-			mode := "must_accept"
-			if f.StrN < 3 {
-				mode = "must_refuse"
-			}
-			specs = append(specs, plantSpec{name: "lone_surrogate_str_" + f.Name, mode: mode, text: withFieldReplaced(baseJSON, f.Name, `"\ud800"`)})
+			specs = append(specs, plantSpec{name: "lone_surrogate_str_" + f.Name, mode: "must_refuse", text: withFieldReplaced(baseJSON, f.Name, `"\ud800"`)})
 			break
 		}
 	}
@@ -271,8 +269,9 @@ func buildPlantSpecs(u *genUnit, baseJSON string, sabotage bool) []plantSpec {
 	specs = append(specs, plantSpec{name: "leading_bom", mode: "must_accept", text: "\ufeff" + baseJSON})
 	// (7) trailing data after the object
 	specs = append(specs, plantSpec{name: "trailing_data", mode: "must_refuse", text: baseJSON + " {}"})
-	// (8) a duplicate key
-	specs = append(specs, plantSpec{name: "duplicate_key_" + f0, mode: "must_accept", text: withDuplicateKey(baseJSON, f0)})
+	// (8) a duplicate key is damage and refuses (docs/rulings.json
+	// strict-only-read, which retires last-wins on a repeated JSON key)
+	specs = append(specs, plantSpec{name: "duplicate_key_" + f0, mode: "must_refuse", text: withDuplicateKey(baseJSON, f0)})
 	// (9) nesting of 10^6 arrays (token "__DEEP_1E6__" is expanded in the probe before timing/memstats)
 	specs = append(specs, plantSpec{name: "nested_1e6_arrays", mode: "must_refuse", text: withFieldReplaced(baseJSON, f0, `"__DEEP_1E6__"`)})
 	return specs
@@ -365,7 +364,7 @@ func TestJsonPlantsProbe(t *testing.T) {
 				}
 			}
 
-			// Whenever RootFromJSON returns true (accepted or tolerantly clamped/skipped),
+			// Whenever RootFromJSON returns true (the whole value, §6.5),
 			// the resulting value must measure, save, and write JSON that reads back equal.
 			if ok {
 				m, mreason := RootMeasureReason(&pv)
