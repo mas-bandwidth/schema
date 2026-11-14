@@ -93,7 +93,8 @@ const (
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	goExamplesLineBudget = 60097
+	// +39: the strict read and the text read return the measure's refusal before the builder, and a small text decodes into a stack buffer so a refusal allocates nothing.
+	goExamplesLineBudget = 60136
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
