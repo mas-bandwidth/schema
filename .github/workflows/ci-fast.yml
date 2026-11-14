@@ -36,8 +36,10 @@ name: CI fast
 #   * ci-full.yml runs everything — the whole go-test, pins, the nine
 #     conformance legs, the 47 negative controls, windows, msvc, big-endian,
 #     vuln — on merge to main, dev or fixed-table-form, nightly, on
-#     `gh workflow run ci-full.yml --ref <branch>`, and on any pull request
-#     carrying the `full-ci` label.
+#     `gh workflow run ci-full.yml --ref <branch>`, and on every pull request
+#     (fleet jobs only for a pull request from this repository). It was once
+#     behind a `full-ci` label on pull requests; a pull request now runs what
+#     main runs.
 #
 # THE SELECTION IS BY PATH AND NEVER BY DROPPING A GATE. A diff that touches
 # ir/, compiler/, docs/FIXED-FORM-*, the C++ reference's emitters, tables/, the
@@ -346,8 +348,8 @@ jobs:
 
   # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
   # human would otherwise find by reading. modernize runs here too (issue
-  # #1424): the full `lint` job is gated behind the `full-ci` label on pull
-  # requests, so a PR into fixed-table-form skips it and modernize only fires
+  # #1424): the full `lint` job was then gated behind the `full-ci` label on pull
+  # requests, so a PR into fixed-table-form skipped it and modernize only fired
   # on a branch push — the hole #1422 slipped through when two lines it landed
   # in internal/ci reddened `CI full` on the push, after the PR had passed with
   # lint skipped. golangci-lint, the absolute ledger and the render smoke are
@@ -402,8 +404,8 @@ jobs:
         run: go mod tidy -diff
       - name: go vet
         run: go vet ./...
-      # MODERNIZE (issue #1424). The full `lint` job runs this on a branch push
-      # but a pull request into fixed-table-form skips it, because that job is
+      # MODERNIZE (issue #1424). The full `lint` job ran this on a branch push
+      # but a pull request into fixed-table-form skipped it, because that job was
       # gated behind the `full-ci` label; `lint-fast` has no such gate and runs
       # on every pull-request push, so it carries the check here instead. The
       # pin below is the one ci-full.yml carries — the version gopls's own
@@ -852,8 +854,8 @@ jobs:
   # over the whole corpus is nightly-class work, and its control is already
   # the nightly `lobster-forgery` negative-control group. Both still run, and
   # still go red on their own failure, in `make test-lobster` on ci-full.yml's
-  # go-test unit-codegen row on every merge to main, on the nightly, and on a
-  # pull request labelled full-ci.
+  # go-test unit-codegen row on every merge to main, on the nightly, and on
+  # every pull request from this repository.
   leg-gate-lobster:
     needs: plan
     if: contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))

@@ -14,17 +14,25 @@ name: CI full
 # iteration. A 15-minute job timeout was raised that morning instead of the
 # cause being fixed, which treats a queue as a budget.
 #
-# SO THIS FILE NOW RUNS: on every push to main, dev and fixed-table-form (the
-# merge gate), nightly at 07:10 UTC, on `gh workflow run ci-full.yml --ref
-# <branch>`, and on any pull request carrying the `full-ci` label. Every job
-# carries the same `if:` for that last case, which is why the expression is
-# repeated rather than named once: GitHub gives a job-level `if:` no access to
-# the `env` context.
+# THAT SPLIT PUT EVERYTHING BUT `generated`, `pins` and `cs-tables` behind a
+# `full-ci` label on pull requests, and it let a pull request go green and then
+# redden main: main was red from 2026-10-31 on jobs no unlabelled pull request
+# ran. The rule now is that a pull request runs what main runs.
 #
-# WHAT RUNS ON EVERY PUSH IS ci-fast.yml, five jobs selected by path, targeting
-# two minutes wall: the cheap lints, the block zero-cost gate, `go test` of the
-# packages the diff touches, and the fixed-form and versioning gates of the
-# legs the diff touches. Its header carries the measurement table in full.
+# SO THIS FILE RUNS: on every pull request from this repository, whatever its
+# base, on every push to main, dev and fixed-table-form (the merge gate),
+# nightly at 07:10 UTC, and on `gh workflow run ci-full.yml --ref <branch>`. A
+# fork's pull request runs only the hosted jobs (big-endian, windows, msvc):
+# every fleet job carries the same fork guard, which is why the expression is
+# repeated rather than named once: GitHub gives a job-level `if:` no access to
+# the `env` context. The queue cost the split was made for is a runner-capacity
+# question, answered by the runners, not by skipping jobs on pull requests.
+#
+# ci-fast.yml also runs on every pull request: five jobs selected by path,
+# targeting two minutes wall: the cheap lints, the block zero-cost gate, `go
+# test` of the packages the diff touches, and the fixed-form and versioning
+# gates of the legs the diff touches. Its header carries the measurement table
+# in full.
 #
 # THE PULL-REQUEST GATE (issue #368). Every job in this file answers a question
 # about the CODE IN THE DIFF, and every one of them fits the owner's rule for
@@ -99,13 +107,11 @@ on:
     branches: [ main, dev, fixed-table-form ]
   # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
-    # A pull request runs this file only when it carries the `full-ci` label —
-    # every job below is gated on that, except `generated`, `pins` and
-    # `cs-tables` which run on every pull request. The label is how a branch
-    # near the hot paths, or anything that moves the C++ emitters, asks for the
-    # whole suite before merging; `gh workflow run ci-full.yml --ref <branch>`
-    # is the other way, and needs no label.
-    types: [ opened, synchronize, reopened, labeled ]
+    # A pull request runs every job a push to main runs (fleet jobs only when
+    # the pull request comes from this repository). No label gates it, so
+    # labelling a pull request starts no run: a new run would repeat the same
+    # head's jobs and cancel the one in progress.
+    types: [ opened, synchronize, reopened ]
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
     # toolchains and the vulnerability database, which move on their own
@@ -169,12 +175,11 @@ jobs:
   # another generator running a probe per row per column; fifteen is the budget
   # they share.
   go-test:
-    # Runs on a pull request only when it comes from this repository and
-    # carries the `full-ci` label; on a merge, the nightly and a dispatch it
-    # always runs. A fork pull request never reaches the fleet runners, even if
-    # labelled `full-ci`. The expression is repeated per job because a job-level
-    # `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: go-test (${{ matrix.group }})
     # THE FLEET'S RUNNERS, as ci-fast's runs into main use (standing rule,
     # 2026-10-21: every CI job on fleet runners, never GitHub-hosted). On a
@@ -1196,7 +1201,7 @@ jobs:
   # single 586 s test under the 110 s per-commit budget, so the full tagged
   # legs now run only on this workflow's schedule trigger (the nightly
   # tier), in this same job and matrix, through the same full targets.
-  # Every other event (push, labelled PR, workflow_dispatch) runs a fast
+  # Every other event (push, pull request, workflow_dispatch) runs a fast
   # smoke per row instead: the tagged build compiles and its
   # registration/admission tests run (the compiler's Moo tests, the moo
   # table descriptors load, the harness's tagged-admission test), which is
@@ -1204,7 +1209,7 @@ jobs:
   # Nothing is dropped: what leaves per-commit runs on the schedule here,
   # and `make test-moo-tagged` still runs the whole moo leg locally.
   leg-tagged:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
@@ -1276,8 +1281,8 @@ jobs:
     # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
     # this is the one check that names a stale committed generated/ tree, and a
     # pull request into fixed-table-form runs no other — ci-fast.yml's leg gate is
-    # `github.base_ref == 'main'` and every other job in this file carries the
-    # label gate — so #1395 landed a stale
+    # `github.base_ref == 'main'` and every other job in this file then carried
+    # the label gate (since removed) — so #1395 landed a stale
     # generated/bench/paired/rust/fixed_runtime.rs with nothing able to see it.
     # The tree-current question is an ITERATION gate and belongs on every pull
     # request. On a merge, the nightly and a dispatch it runs with the rest of
@@ -1525,9 +1530,10 @@ jobs:
   # its toolchain has no step yet, in which case it adds one step keyed on a
   # new field, which is the one edit this file still takes.
   conformance-matrix:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
     #
     # THIS JOB ALSO BUILDS THE SHARED CONFORMANCE INPUTS ONCE. Every
     # conformance leg used to rebuild bin/schema, build/conformance-harness
@@ -1538,7 +1544,7 @@ jobs:
     # download it and build only their own driver, in parallel. The Go
     # build cache is restored here on fleet runners too (not only
     # hosted), so an ephemeral fleet runner starts warm.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     defaults:
@@ -1594,10 +1600,11 @@ jobs:
           if-no-files-found: error
 
   conformance:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]
@@ -1803,7 +1810,7 @@ jobs:
   # a superseded run would otherwise queue this job for a fleet runner, never
   # finish, and hold the next run behind it in the concurrency group.
   proof:
-    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: conformance
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1850,10 +1857,11 @@ jobs:
   # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
   # leg over the 2-minute ceiling.
   cs-fuzz:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: C# fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1929,10 +1937,11 @@ jobs:
   # Its negative control, tables-js-wire-fuzz-negative-control, rides in the
   # js group of the negative-controls job.
   js-fuzz:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: JavaScript fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1994,10 +2003,11 @@ jobs:
   # Dart leg clones no runtime (generated Dart is self-contained), so the job is
   # Go and the pinned SDK only.
   dart-fuzz:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Dart fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -2157,10 +2167,8 @@ jobs:
   # records the resolved closure both pins pull in.
   big-endian:
     name: big-endian (${{ matrix.leg }})
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Runs on every pull request, every merge, the nightly and a dispatch. A
+    # hosted runner, so it needs no fork guard.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -2292,10 +2300,11 @@ jobs:
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     defaults:
@@ -2400,10 +2409,11 @@ jobs:
   # in certify.yml — the same job in both files, deliberately, because neither
   # trigger substitutes for the other.
   vuln:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     defaults:
@@ -2460,10 +2470,8 @@ jobs:
   # Windows: vet + build, cheap enough to ride every pull request. What it
   # EMITS is compiled with cl by the `msvc` job below.
   windows:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Runs on every pull request, every merge, the nightly and a dispatch. A
+    # hosted runner, so it needs no fork guard.
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -2545,10 +2553,8 @@ jobs:
   # named one. It is also why /MP is absent: parallel TUs are faster and
   # unmeasurable, and here the measurement is worth more than the seconds.
   msvc:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Runs on every pull request, every merge, the nightly and a dispatch. A
+    # hosted runner, so it needs no fork guard.
     runs-on: windows-2025
     timeout-minutes: 10
     steps:
@@ -2695,10 +2701,11 @@ jobs:
   # tooling, one beside each leg for its own — with an exact count that can
   # only shrink.
   shape-gate:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     defaults:
@@ -2744,10 +2751,11 @@ jobs:
   # which is the same comparison a dispatch on a branch wants. On a push to
   # main the diff against main is empty and the job is a no-op that says so.
   cpp-lock:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     defaults:
@@ -2884,10 +2892,11 @@ jobs:
   # between them, so it sits in the plan's exclusion list beside the other
   # umbrellas rather than in a job that would run one of those leaves twice.
   negative-controls-matrix:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     defaults:
@@ -2932,10 +2941,11 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   negative-controls:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Runs on every pull request from this repository, every merge, the
+    # nightly and a dispatch; a fork's pull request never reaches the fleet.
+    # The expression is repeated per job because a job-level `if:` cannot
+    # read `env`.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]

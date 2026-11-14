@@ -106,14 +106,13 @@ row in [docs/PORTING.md](PORTING.md), check the file out with
 `git checkout --conflict=diff3 docs/PORTING.md` and run
 `go run ./tools/cellmerge docs/PORTING.md`. It merges each conflicted row cell
 by cell by column name, three-way, and leaves any hunk it cannot merge exactly
-for a person. Pull requests into `main`,
-`dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
-against the target branch so only touched packages and legs are selected) and
-the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
-pull request is from this repository. The rest of `ci-full.yml` runs on a push
-to those three branches, nightly, on `workflow_dispatch`, and on a pull
-request into those branches that carries the `full-ci` label. A self-hosted
-fleet job on a pull request also requires
+for a person. Every pull request, whatever its
+base, automatically runs `ci-fast.yml` (planning by diff against the target
+branch so only touched packages and legs are selected) and every job of
+`ci-full.yml` that a push to `main` runs, so a pull request cannot go green on
+less than `main` checks. `ci-full.yml` also runs on a push to `main`, `dev` and
+`fixed-table-form`, nightly, and on `workflow_dispatch`. A self-hosted
+fleet job on a pull request requires
 `github.event.pull_request.head.repo.full_name == github.repository`, so fork
 code never executes on fleet runners.
 
@@ -276,12 +275,10 @@ The same split is in [SECURITY.md](SECURITY.md).
   runner.
 - [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
   push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
-  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those
-  branches. Most of its jobs run on a pull request only when that pull request
-  carries the `full-ci` label. Fleet jobs on a pull request also require the
-  head repository to be this one. `generated` and `cs-tables` run on a pull
-  request without that label. `pins` runs on a same-repository pull request
-  without that label. Its runners are Linux and
+  (`10 7 * * *`), on `workflow_dispatch`, and on every pull request whatever
+  its base, which runs every job a push to `main` runs. Fleet jobs on a pull
+  request require the head repository to be this one, so a fork's pull
+  request runs only the hosted jobs. Its runners are Linux and
   Windows. It does not include `macos-latest`.
 - macOS certification of the full chain is
   [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), nightly
@@ -294,9 +291,8 @@ Run `make test` and `go test ./internal/fuzz/` locally before opening a pull
 request. The fuzz package re-runs every crasher ever found. Those local
 commands are not a macOS certificate.
 
-**`msvc`** rides `ci-full.yml`, so a push to `main`, `dev`, or `fixed-table-form`, the
-nightly, a dispatch, and a pull request that carries `full-ci` run it. An
-unlabeled pull request does not. It is `cl` with
+**`msvc`** rides `ci-full.yml`, so every pull request, a push to `main`, `dev`, or
+`fixed-table-form`, the nightly and a dispatch run it. It is `cl` with
 `/W4 /WX /std:c++17 /permissive-` over the generated C++ corpus, one
 translation unit at a time, on a pinned `windows-2025` image, with a negative
 control that must go red on a GNU extension. Visual C++ is a hard requirement

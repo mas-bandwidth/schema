@@ -121,12 +121,10 @@ what the language specifies, in a way that weakens a check.
   and it does not run on macOS.
   [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
   push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
-  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those
-  branches. Most of its jobs run on a pull request only when that pull request
-  carries the `full-ci` label. Fleet jobs on a pull request also require the
-  head repository to be this one. `generated` and `cs-tables` run on a pull
-  request without that label. `pins` runs on a same-repository pull request
-  without that label. Its runners are Linux and
+  (`10 7 * * *`), on `workflow_dispatch`, and on every pull request whatever
+  its base, which runs every job a push to `main` runs. Fleet jobs on a pull
+  request require the head repository to be this one, so a fork's pull
+  request runs only the hosted jobs. Its runners are Linux and
   Windows (`windows-latest`, `windows-2025`). It does not include `macos-latest`.
   macOS certification of the full chain is
   [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), which

@@ -10,8 +10,8 @@ name: Certify
 # two at most; anything longer is nightly or manually triggered.
 #
 # THE PULL-REQUEST GATE IS ci-fast.yml (per push, two minutes, selected by
-# path) and ci-full.yml (on merge, nightly, on demand, and on a `full-ci`
-# label), and together they are the fast half of this same set.
+# path) and ci-full.yml (on every pull request, on merge, nightly and on
+# demand), and together they are the fast half of this same set.
 # Nothing is checked less than it was before the split — what moved is WHEN a
 # certification instrument runs. A regression only this file can see fails
 # loudly at the next nightly, or the same hour when someone dispatches this
