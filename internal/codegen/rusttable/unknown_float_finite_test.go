@@ -156,7 +156,7 @@ func TestRustUnknownFieldFloatIsFinite(t *testing.T) {
 for retaining in [false, true] {
     let wire = vec!%s;
     let mut report = TableReport::default();
-    let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(4096) };
+    let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(4096), nodes: Default::default() };
     let got = if retaining { root_load_retain(&wire, &mut store, &mut report) } else { root_load(&wire, &mut report) };
     assert!(got.is_none() && report.refused && report.reason == TableReason::NonFiniteFloat, "%s retaining={} accepted a non-finite unknown float: {:?}", retaining, report);
     assert!(store.bytes.is_empty() && store.ids.is_empty(), "%s retaining={} kept a non-finite unknown float for write-back: {:?}", retaining, report);
@@ -177,7 +177,7 @@ for retaining in [false, true] {
 for retaining in [false, true] {
     let wire = vec!%s;
     let mut report = TableReport::default();
-    let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(4096) };
+    let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(4096), nodes: Default::default() };
     let got = if retaining { root_load_retain(&wire, &mut store, &mut report) } else { root_load(&wire, &mut report) };
     assert!(got.is_some() && !report.refused, "finite-control retaining={} refused: {:?}", retaining, report);
     assert!(!retaining || !store.bytes.is_empty(), "finite-control retaining={} kept no unknown field: {:?}", retaining, report);
