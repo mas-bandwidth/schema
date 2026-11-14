@@ -72,9 +72,9 @@ func TestFixedVersioningPrefillWrites(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "prefill_writes: the newer reader refused the older writer's file: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean NEW-READS-OLD is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean NEW-READS-OLD is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             if (back[0].X != 11 || back[0].Y != 22 || back[0].Z != 33)
             {
@@ -88,9 +88,9 @@ func TestFixedVersioningPrefillWrites(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "the appended field is not its declared default: " + back[0].W);
             }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "counters moved on a clean backward read: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "counters moved on a clean backward read: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 	}
 

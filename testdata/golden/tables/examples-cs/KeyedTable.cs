@@ -1561,6 +1561,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TeamConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2084,6 +2085,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             GunnerConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2633,6 +2635,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TurretConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -3250,6 +3253,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             HullConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4104,6 +4108,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             KeyedConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
