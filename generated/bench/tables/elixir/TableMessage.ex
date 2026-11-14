@@ -1238,7 +1238,7 @@ defmodule Benchtable.TableMessage do
   defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth) when n > 0, do: :malformed
 
   defp zero_width_run(_vocab, _shape, n, r, acc, v) do
-    # The shape is the peer's announcement, whatever its minimum and maximum:
+    # The shape is the writer's announcement, whatever its minimum and maximum:
     # a run the batch's bits cannot back is damage
     # (internal/tablewire/messagedecode.go). An element costs at least one bit
     # (floor 1), so a count the batch cannot back is refused before any cell is
