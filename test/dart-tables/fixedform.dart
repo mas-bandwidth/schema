@@ -2308,7 +2308,10 @@ void readSlackRefused() {
       r,
     );
     check(
-      n == 1 && r.refused == 0 && back[0].itemsCount == 1 && back[0].items[0] == 7,
+      n == 1 &&
+          r.refused == 0 &&
+          back[0].itemsCount == 1 &&
+          back[0].items[0] == 7,
       'CONTROL: the clean record reads (got $n, refused ${r.refused})',
     );
   }
@@ -2352,7 +2355,8 @@ void readSlackRefused() {
     'out_of_range (refused ${v1home.TableFixedRefusal.name(r.refused)})',
   );
   check(
-    back[0].itemsCount == fresh.itemsCount && back[0].items[0] == fresh.items[0],
+    back[0].itemsCount == fresh.itemsCount &&
+        back[0].items[0] == fresh.items[0],
     'EVERY DEAD BYTE IS ZERO: a refused read lands nothing',
   );
   check(
