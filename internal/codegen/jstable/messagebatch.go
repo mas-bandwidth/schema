@@ -392,6 +392,9 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		"TableMessageResetReport", "TableMessageRefuse",
 		"tableMessageBatchOpen", "tableMessageBatchClose",
 		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody")
+	if fixedStructNeedsValueCheck(st) {
+		g.needHome(st.Name + "FixedCheckBody")
+	}
 
 	g.emitMessageVerbs(st)
 }
@@ -880,6 +883,22 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	g.pf("%s  }\n%s}\n", ind, ind)
 }
 
+// emitMessageCheck emits the message writer's preflight (docs/SPEC.md §5.1;
+// docs/SPEC-TABLES.md §3.3): a body is the fixed form's own value, so the
+// fixed form's <T>FixedCheckBody holds it to its declaration before any bit
+// is measured or written. JavaScript refuses in every build: a ranged value
+// off its bounds, an ordinal or tag past its last variant, a count or a used
+// length past its storage and ill-formed text are refused (invalid_value),
+// never masked, wrapped or clamped into the field's width.
+func (g *fixedModule) emitMessageCheck(st *ir.Struct) {
+	if !fixedStructNeedsValueCheck(st) {
+		return
+	}
+	g.pf("  for (let i = 0; i < values.length; i++) {\n")
+	g.pf("    if (values[i] !== null && values[i] !== undefined && !%sFixedCheckBody(values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("  }\n")
+}
+
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
 	if st.Integrity != "" {
@@ -892,6 +911,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
 	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
+	g.emitMessageCheck(st)
 	g.pf("  const w = new TableBitWriter(null, true);\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
 	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
@@ -913,6 +933,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	} else {
 		g.pf("  if (buffer.length < 2) { return -1; }\n")
 	}
+	g.emitMessageCheck(st)
 	g.pf("  buffer[0] = 2;\n")
 	g.pf("  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {

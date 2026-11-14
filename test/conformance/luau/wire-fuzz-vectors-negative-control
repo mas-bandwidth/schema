@@ -60,15 +60,28 @@ plant() {
 	echo "luau vectors negative control: the $name fix reverted turns the $name vector red"
 }
 
-plant map_header_count_past_length \
-	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= 13 then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
-plant keyed_header_count_past_length \
-	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= fd\.ek then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
-plant text_ill_formed_repeat_reads_default \
-	's/\t\t\t\tstore_bytes\(v, fd\.slot, buffer\.fromstring\(def\), 0, #def, #def\)\n//'
+# UNDER THE STRICT READ the fuzzer compares the verdict and the written-back
+# bytes only (docs/rulings.json strict-only-read, refusal-verdict-only), so a
+# plant that only trades one refusal for another (kind_mismatch for framing
+# damage, a cap refusal for damage) or only moves a counter is invisible on its
+# old vector: both readers refuse it either way. Each such control is re-aimed
+# at the rule that took the old one's place, on the code it planted in, and at
+# a vector that rule alone refuses: the plant turns REFUSED into READ.
+#
+# the map header's element kind is judged and a foreign kind refuses
+plant map_header_foreign_element_kind \
+	's/if ek ~= 13 then report\.kindMismatch = report\.kindMismatch \+ 1; r\.at = endpos; return true end/if ek ~= 13 then r.at = endpos; return true end/'
+# the keyed body's element kind, the same rule on kind 16
+plant keyed_header_foreign_element_kind \
+	's/if not widens\(ek, fd\.ek\) then report\.kindMismatch = report\.kindMismatch \+ 1; r\.at = endpos; return true end/if not widens(ek, fd.ek) then r.at = endpos; return true end/'
+# kind 12's content rule: ill-formed text refuses the load
+plant text_ill_formed_refuses \
+	's/(local function utf8_ok\(b: buffer, at: number, n: number\): boolean\n)/$1\tif true then return true end -- PLANTED: the kind 12 content rule is gone\n/'
+# the key scan's foreign key kind refuses (the later-widening reset it once
+# guarded is a repeated key under the strict read, refused either way)
+plant map_key_foreign_kind \
+	's/report\.kindMismatch = report\.kindMismatch \+ 1\n(\t+)landed = \{\}/landed = {}/'
 plant list_count_cross_length \
 	's/\t\t\tif crossed then\n/\t\t\tif false then\n/'
-plant map_repeated_key_widen \
-	's/\t*kindBad = false -- this occurrence replaces the earlier key kind\n//'
 plant region_align_extent_uint128 \
 	's/math\.max\(layout\.record_layout\(v\)\.align, layout\.extent_align\(v, \{\}\)\)/layout.record_layout(v).align/' driver
