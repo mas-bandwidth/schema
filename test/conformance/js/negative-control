@@ -1,32 +1,71 @@
 #!/bin/sh
-# THE JAVASCRIPT LEG's WALK negative control (docs/PORTING.md I11).
+# THE JAVASCRIPT LEG's negative controls (docs/PORTING.md I11, docs/SPEC.md §5.1).
 #
-# One statement of the GENERATED text reader is changed in a COPY of the
-# generated tree: the bool arm of the from-text walk stores false where the
-# text said true. The driver (test/conformance/js/main.mjs) imports from
+# One statement of the GENERATED code is changed in a COPY of the generated
+# tree. The driver (test/conformance/js/main.mjs) imports from
 # SCHEMA_JS_GENERATED, so it is aimed at the copy and nothing tracked is
-# written to. The matrix must go red on `js / json-read` and on no other
-# surface: json-write and wire do not run the reader, so they stay green, which
-# is what says the harness found a defect in generated code and localized it.
+# written to. The matrix must go red on the one surface the statement serves
+# while a surface that does not run it stays green, which is what says the
+# harness found a defect in generated code and localized it.
+#
+#   walk                   the bool arm of the from-text walk stores false where
+#                          the text said true: json-read red, json-write and
+#                          wire green.
+#   write-refusal          WeaponConfig's ranged penetration check is removed
+#                          from the fixed writer's preflight: write-refusal red
+#                          (wref_range_high, wref_range_low), wire green.
+#   write-refusal-fixed    WeaponConfig's bits-width channel check is removed
+#                          from the same preflight: write-refusal-fixed red
+#                          (fref_bits_wide), wire green.
+#   write-refusal-message  StorePurchase's message preflight is removed from
+#                          MeasureMessages and SaveMessages: write-refusal-message
+#                          red, message green.
 set -eu
 
 mode=${1:-walk}
-[ "$mode" = walk ] || { echo "unknown control: $mode" >&2; exit 1; }
 src=build/tables-generated-js
-out=build/js-conformance-negative
-file=examples/TabledemoVariable.js
-anchor='        holder\[key\] = true;'
+out=build/js-conformance-negative-$mode
+case "$mode" in
+walk)
+    file=examples/TabledemoVariable.js
+    anchor='        holder[key] = true;'
+    patch='        holder[key] = false;'
+    want=1 red=json-read green='json-write wire'
+    ;;
+write-refusal)
+    file=examples/TabledemoTable.js
+    anchor='  if (value.penetration < 0 || value.penetration > 10) { return false; }'
+    patch='  // SABOTAGED: no ranged penetration check'
+    want=1 red=write-refusal green=wire
+    ;;
+write-refusal-fixed)
+    file=examples/TabledemoTable.js
+    anchor='  if (value.channel < 0 || value.channel > 63) { return false; }'
+    patch='  // SABOTAGED: no bits-width channel check'
+    want=1 red=write-refusal-fixed green=wire
+    ;;
+write-refusal-message)
+    file=backend/BackendTable.js
+    anchor='    if (values[i] !== null && values[i] !== undefined && !StorePurchaseFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }'
+    patch='    // SABOTAGED: no message preflight'
+    want=2 red=write-refusal-message green=message
+    ;;
+*)
+    echo "unknown control: $mode" >&2
+    exit 1
+    ;;
+esac
 
 rm -rf "$out"
 mkdir -p "$out"
 cp -R "$src" "$out/generated"
 
-n=$(grep -c "^$anchor\$" "$src/$file")
-if [ "$n" != 1 ]; then
-    echo "negative control anchor matched $n times in $src/$file, want exactly 1" >&2
+n=$(grep -cxF -e "$anchor" "$src/$file" || true)
+if [ "$n" != "$want" ]; then
+    echo "negative control anchor matched $n times in $src/$file, want exactly $want" >&2
     exit 1
 fi
-sed "s/^$anchor\$/        holder[key] = false;/" "$src/$file" > "$out/generated/$file"
+awk -v a="$anchor" -v p="$patch" '$0 == a { print p; next } { print }' "$src/$file" > "$out/generated/$file"
 if cmp -s "$src/$file" "$out/generated/$file"; then
     echo "negative control patched nothing: $mode" >&2
     exit 1
@@ -42,8 +81,9 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
     exit 1
 fi
 cat "$out/log"
-grep -q 'js / json-read' "$out/log"
-grep -q 'json-read     FAIL' "$out/log"
-grep -Eq '^ *json-write +pass' "$out/log"
-grep -Eq '^ *wire +pass' "$out/log"
-echo "JavaScript walk negative control: $mode detected by js / json-read"
+grep -q "js / $red" "$out/log"
+grep -Eq "^ *$red *FAIL" "$out/log"
+for s in $green; do
+    grep -Eq "^ *$s +pass" "$out/log"
+done
+echo "JavaScript $mode negative control: detected by js / $red"

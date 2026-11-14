@@ -192,19 +192,34 @@ public final class BenchMixedFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true);
+    }
+
+    /**
+     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
+     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
+     * (docs/SPEC-TABLES.md §3.4).
+     */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.sequence = TableFixed.get32(b, at + 0);
         if (v.sequence > 65535L) {
             v.sequence = (int) (65535L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(16) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 65535L) {
                 q = 65535L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.ackSequence = (int) (q);
         }
@@ -215,10 +230,14 @@ public final class BenchMixedFixed {
             long q = TableFixed.get64(b, at + 24);
             if (Long.compareUnsigned(q, 0x0L) < 0) {
                 q = 0x0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (Long.compareUnsigned(q, 0xffffffffffffffffL) > 0) {
                 q = 0xffffffffffffffffL;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.nonce = q;
         }
@@ -226,26 +245,36 @@ public final class BenchMixedFixed {
             long q = TableFixed.get64(b, at + 32);
             if (q < -1000000000000L) {
                 q = -1000000000000L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 1000000000000L) {
                 q = 1000000000000L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.worldTime = q;
         }
         v.frameTick = TableFixed.get64(b, at + 40);
         if (v.frameTick > 281474976710655L) {
             v.frameTick = 281474976710655L;
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(48) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 48);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 16776960L) {
                 q = 16776960L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.serverTime = (int) (q);
         }
@@ -253,31 +282,39 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 52);
             if (n < 0) {
                 n = 0;
-                r.refuse(TableFixed.Reason.countOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.countOverBound);
+                }
             } else if (n > 8) {
                 n = 8;
-                r.refuse(TableFixed.Reason.countOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.countOverBound);
+                }
             }
             v.entitiesCount = n;
         }
         for (int i = 0; i < v.entitiesCount; i++) {
-            MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r);
+            MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r, live);
         }
         {
             int n = TableFixed.get32(b, at + 464);
             if (n < 0) {
                 n = 0;
-                r.refuse(TableFixed.Reason.countOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.countOverBound);
+                }
             } else if (n > 80) {
                 n = 80;
-                r.refuse(TableFixed.Reason.countOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.countOverBound);
+                }
             }
             v.statsCount = n;
         }
         for (int i = 0; i < v.statsCount; i++) {
-            MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r);
+            MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r, live);
         }
-        MixedEventFixed.scatter(b, at + 1108, v.gameEvent, r);
+        MixedEventFixed.scatter(b, at + 1108, v.gameEvent, r, live);
         for (int i = 0; i < 4; i++) {
             v.loadout[i] = b[at + 1122 + i * 1 + 0];
         }
@@ -285,14 +322,18 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 1126);
             if (n < 0) {
                 n = 0;
-                r.refuse(TableFixed.Reason.lengthOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.lengthOverBound);
+                }
             } else if (n > 15) {
                 n = 15;
-                r.refuse(TableFixed.Reason.lengthOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.lengthOverBound);
+                }
             }
             v.playerNameLength = n;
         }
-        if (!TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) {
+        if (live && !TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) {
             r.refuse(TableFixed.Reason.textIllFormed);
             return;
         }
@@ -304,10 +345,14 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 1145);
             if (n < 0) {
                 n = 0;
-                r.refuse(TableFixed.Reason.countOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.countOverBound);
+                }
             } else if (n > 16) {
                 n = 16;
-                r.refuse(TableFixed.Reason.countOverBound);
+                if (live) {
+                    r.refuse(TableFixed.Reason.countOverBound);
+                }
             }
             v.payloadLength = n;
         }
@@ -317,55 +362,67 @@ public final class BenchMixedFixed {
         }
         {
             final int fbits = TableFixed.get32(b, at + 1165);
-            if ((fbits & 0x7f800000) == 0x7f800000) {
+            if (live && (fbits & 0x7f800000) == 0x7f800000) {
                 r.refuseNonFinite("BenchMixed.aim_x");
                 return;
             }
             float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > Float.intBitsToFloat(0x3f800000)) {
                 q = Float.intBitsToFloat(0x3f800000);
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.aimX = q;
         }
         {
             final int fbits = TableFixed.get32(b, at + 1169);
-            if ((fbits & 0x7f800000) == 0x7f800000) {
+            if (live && (fbits & 0x7f800000) == 0x7f800000) {
                 r.refuseNonFinite("BenchMixed.aim_y");
                 return;
             }
             float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > Float.intBitsToFloat(0x3f800000)) {
                 q = Float.intBitsToFloat(0x3f800000);
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.aimY = q;
         }
         {
             final int fbits = TableFixed.get32(b, at + 1173);
-            if ((fbits & 0x7f800000) == 0x7f800000) {
+            if (live && (fbits & 0x7f800000) == 0x7f800000) {
                 r.refuseNonFinite("BenchMixed.aim_z");
                 return;
             }
             float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > Float.intBitsToFloat(0x3f800000)) {
                 q = Float.intBitsToFloat(0x3f800000);
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.aimZ = q;
         }
         {
             final int fbits = TableFixed.get32(b, at + 1177);
-            if ((fbits & 0x7f800000) == 0x7f800000) {
+            if (live && (fbits & 0x7f800000) == 0x7f800000) {
                 r.refuseNonFinite("BenchMixed.recoil");
                 return;
             }
@@ -373,39 +430,68 @@ public final class BenchMixedFixed {
         }
         {
             final long fbits = TableFixed.get64(b, at + 1181);
-            if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            if (live && (fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 r.refuseNonFinite("BenchMixed.drift");
                 return;
             }
             v.drift = Double.longBitsToDouble(fbits);
         }
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));
-        v.flux = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
+        {
+            Int128 q = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
+            if (q.compareTo(new Int128(0xfffffff000000000L, 0x0L)) < 0) {
+                q = new Int128(0xfffffff000000000L, 0x0L);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
+            } else if (q.compareTo(new Int128(0x1000000000L, 0x0L)) > 0) {
+                q = new Int128(0x1000000000L, 0x0L);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
+            }
+            v.flux = q;
+        }
         {
             long q = TableFixed.get16(b, at + 1221);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 64000L) {
                 q = 64000L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.ping = (short) (q);
         }
         v.crcHint = TableFixed.get32(b, at + 1223);
         if (v.crcHint > 16777215L) {
             v.crcHint = (int) (16777215L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(24) clamps to 2^N - 1
+        if ((b[at + 1227] & 0xFF) > 1) {
+            if (live) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+            }
+        }
         v.hasExtra = b[at + 1227] != 0;
         {
             long q = TableFixed.get32(b, at + 1228);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 255L) {
                 q = 255L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.extra = (int) (q);
         }
@@ -413,10 +499,14 @@ public final class BenchMixedFixed {
             long q = TableFixed.get32(b, at + 1232);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 15L) {
                 q = 15L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.idleTicks = (int) (q);
         }

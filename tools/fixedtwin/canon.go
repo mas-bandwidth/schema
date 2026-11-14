@@ -500,6 +500,7 @@ func normalizeSyntax(s string) string {
 		{"for ( i = guarded;", "for ( int32_t i = guarded;"},
 		{"const TableFixedEntry REF p = &plan[i];", "const TableFixedEntry REF p = plan[i];"},
 		{"guard_pool = nullptr", "guard_pool"},
+		{"defaults = nullptr", "defaults"},
 		{"const TableFixedGuardLink REF l = * ( const TableFixedGuardLink * )", "const TableFixedGuardLink REF l = ( const TableFixedGuardLink * )"},
 		{"TableFixedFail( TableFixedCheck REF c, int why )", "TableFixedFail( TableFixedCheck REF c, TableMessageReason why )"},
 		{"int kids_are_variants = true;", "bool kids_are_variants = true;"},
@@ -842,26 +843,22 @@ func strictCountTextScan(fn string) bool {
 var (
 	reCCounterParam = regexp.MustCompile(`int32_t \* out_of_range,\s*int32_t \* widened`)
 	reCCounterInc   = regexp.MustCompile(`\(\*out_of_range\)\+\+`)
-	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened\s*\)`)
+	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened(\s*[,)])`)
 	reCCounterLocal = regexp.MustCompile(`int32_t out_of_range = 0;`)
 	reCCounterTest  = regexp.MustCompile(`\(\s*out_of_range != 0\s*\)`)
 	reCCommaRefusal = regexp.MustCompile(`(\w+(?:\.|->)report(?:\.|->))refused\s*=\s*1\s*,\s*(\w+(?:\.|->)report(?:\.|->)refuse_reason)\s*=\s*`)
 	reCRefusedOne   = regexp.MustCompile(`((?:\.|->)refused)\s*=\s*1\s*;`)
-	// OWED BY BOTH LEGS (docs/FIXED-FORM-ALGORITHM.md §4.5, the 2026-11-03
-	// ruling, row 16): a bool or present byte other than 0 or 1 refuses
-	// wire_damaged in LOAD's check pass, over live data. C counts the byte as
-	// out_of_range inside Apply and C++ lands it as byte != 0 with no count;
-	// neither is the ruling. The C half is stripped here so the two legs are
-	// compared on everything else, and this rule goes when both legs refuse in
-	// the check pass.
-	reOwedBoolByte = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*out_of_range\)\+\+;\s*\}`)
+	// THE BOOL-BYTE DEBT IS CLOSED (docs/FIXED-FORM-ALGORITHM.md §4.5, the
+	// 2026-11-03 ruling, row 16): a bool or present byte other than 0 or 1
+	// refuses wire_damaged in LOAD's check pass on BOTH legs, outside this
+	// runtime, and both read loops land byte != 0. The rule that stripped the C
+	// loop's old count is DELETED, not widened.
 )
 
 func rewriteCCounter(s string) string {
-	s = reOwedBoolByte.ReplaceAllString(s, "")
 	s = reCCounterParam.ReplaceAllString(s, "int32_t & oor_count, int32_t & widened")
 	s = reCCounterInc.ReplaceAllString(s, "oor_count++")
-	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened )")
+	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened$1")
 	s = reCCounterLocal.ReplaceAllString(s, "int32_t oor_count = 0;")
 	s = reCCounterTest.ReplaceAllString(s, "( oor_count != 0 )")
 	s = reCCommaRefusal.ReplaceAllString(s, "${1}refused = true; $2 = ")

@@ -88,7 +88,7 @@ grep -qx -- "$2" "$dir/list" || exit 2
 # through the manifest the way the program joins it (test/conformance/README.md,
 # The surfaces): a message through its connection, a cook-write through its
 # instance, a forgery through its subject's block or cook line, a refusal
-# through its forgery. A refused unit's cases are answered absent from it.
+# through its forgery, a write-refusal-message row through its connection. A refused unit's cases are answered absent from it.
 pairs() {
 	awk -v s="$1" '
 	NR == FNR {
@@ -114,6 +114,8 @@ pairs() {
 	s == "cook-forgery" && $1 == "forgery" && $3 == "cook" { print subj("cook", $4), $2 }
 	s == "block-reason" && $1 == "refusal" && $3 == "block" { print subj("block", fs[$2]), $2 }
 	s == "cook-reason" && $1 == "refusal" && $3 == "cook" { print subj("cook", fs[$2]), $2 }
+	(s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json") && $1 == s { print $3, $2 }
+	s == "write-refusal-message" && $1 == s { print conn[$3], $2 }
 	' "$manifest" "$manifest"
 }
 

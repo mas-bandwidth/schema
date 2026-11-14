@@ -1838,15 +1838,20 @@ fn surface_message(manifest: &Manifest, out: &str) {
 // the WRITE CONTRACT (docs/SPEC-TABLES.md §3): write-refusal
 // ---------------------------------------------------------------------------
 //
-// Each row loads its wire as its root with the `wire` surface's Load, sets the
-// ONE field its path names, and saves through the same variable-form Save. The
-// Rust writer refuses in two ways: a named Err from <root>_save_checked (a
-// NaN or an infinity, every build) or a debug_assert! panic (a range, a
-// bits(N) width, a count, a length, an unpaired surrogate), which fires
-// because this driver and the generated crates build in the dev profile. An
-// enum ordinal or a union tag outside its set, and a narrow text's ill-formed
-// bytes, are `unrepresentable`: the first two are native Rust enums and the
-// third a String.
+// Each row loads the root's CURRENT-FORM instance by that same form
+// (testdata/conformance/tables/FORMAT.md, `write-refusal`), sets the ONE field
+// its path names, and saves through the root's own form's writer. A declared
+// fixed root's instance is a form 3 file: it is read by the fixed form's
+// FixedLoad into the root's Row, and written by its FixedSave, the writer the
+// row's verdict names. A variable root's instance is read by the `wire`
+// surface's Load and written by the variable-form Save. A Rust writer refuses
+// in two ways: a named Err or None (a NaN or an infinity, every build) or a
+// debug_assert! panic (the rest of the write contract), which fires because
+// this driver and the generated crates build in the dev profile; a release
+// build carries no such check (docs/SPEC.md §5.1, an assert leg). On
+// a variable root an enum ordinal or a union tag outside its set, and a narrow
+// text's ill-formed bytes, are `unrepresentable`: the first two are native
+// Rust enums and the third a String. A Row holds all three as plain storage.
 
 enum Mutation {
     Done,
@@ -1969,6 +1974,57 @@ fn wref_save<T>(save: impl FnOnce() -> Result<T, String>) -> &'static str {
     }
 }
 
+// wref_fixed_row! reads a form 3 instance through the root's FixedLoad and
+// yields its one record, the Row the fixed and message writers take. Any
+// refusal, damage or record count but one stops the driver: the row's base
+// value must load before the one field is set.
+macro_rules! wref_fixed_row {
+    ($krate:ident, $load:ident, $row:ident, $case:expr, $wire:expr, $data:expr) => {{
+        let mut values = vec![$krate::$row::default(); 1];
+        let mut plan = vec![$krate::TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
+        let mut report = $krate::TableFixedReport::default();
+        let read = $krate::$load(&mut values, $data, &mut plan, &mut remap, &mut report);
+        match read.filter(|_| !report.refused && !report.damaged) {
+            Some(1) => values[0],
+            _ => fail(&format!("{}: fixed load refused {}", $case, $wire)),
+        }
+    }};
+}
+
+// wref_fixed_save is the one Row saved through the fixed form's FixedSave as
+// a batch of one, into a buffer of exactly the measure.
+fn wref_fixed_save<R>(row: R, measure: fn(usize) -> usize, save: fn(&[R], &mut [u8]) -> Option<usize>) -> &'static str {
+    wref_save(|| {
+        let mut buffer = vec![0u8; measure(1)];
+        save(&[row], &mut buffer).ok_or_else(String::new)
+    })
+}
+
+// wref_fixed_case answers a write-refusal or write-refusal-fixed row on a
+// declared fixed root: FixedLoad, the one field set in the Row, FixedSave.
+// `f` is the manifest line, `data` its wire's bytes.
+fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
+    let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+    match (unit, root) {
+        ("tabledemo", "RootConfig") => {
+            let mut row = wref_fixed_row!(tabledemo, root_config_fixed_load, RootConfigRow, case, wire, data);
+            match wref_root_config_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, tabledemo::root_config_fixed_measure, tabledemo::root_config_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
+        ("tabledemo", "LoadoutConfig") => {
+            let mut row = wref_fixed_row!(tabledemo, loadout_config_fixed_load, LoadoutConfigRow, case, wire, data);
+            match wref_loadout_config_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, tabledemo::loadout_config_fixed_measure, tabledemo::loadout_config_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
+        _ => fail(&format!("write-refusal: no fixed root {unit} {root}")),
+    }
+}
+
 fn surface_write_refusal(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("write-refusal") {
         if f.len() < 8 {
@@ -1976,6 +2032,12 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
         let data = slurp(wire);
+        // THE ROOT'S OWN FORM: a declared fixed root's instance is form 3,
+        // read and written by the fixed form
+        if is_fixed_form(&data) {
+            spill(out, case, wref_fixed_case(f, &data).as_bytes());
+            continue;
+        }
         let mut report = Default::default();
         let answer = match (unit, root) {
             ("tabledemo", "RootConfig") => {
@@ -2131,6 +2193,12 @@ fn surface_write_refusal_fixed(manifest: &Manifest, out: &str) {
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
         let data = slurp(wire);
+        // the root's current-form instance, read by the fixed form itself
+        if is_fixed_form(&data) {
+            spill(out, case, wref_fixed_case(f, &data).as_bytes());
+            continue;
+        }
+        // a form 1 instance: the Row is the value's cook
         macro_rules! fixed_case {
             ($krate:ident, $load:ident, $cook:ident, $mutate:ident, $save:ident, $measure:ident) => {{
                 let mut report = $krate::TableReport::default();
@@ -2173,7 +2241,7 @@ fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
         let ann = slurp(&c[4]);
         let data = slurp(wire);
         macro_rules! message_case {
-            ($krate:ident, $load:ident, $cook:ident, $mutate:ident, $measure:ident, $save:ident) => {{
+            ($krate:ident, $load:ident, $fixed_load:ident, $row:ident, $cook:ident, $mutate:ident, $measure:ident, $save:ident) => {{
                 use $krate as k;
                 let mut storage = vec![k::TableMessageEntry::default(); 4096];
                 let mut vocabulary = k::TableVocabulary::new(&mut storage);
@@ -2181,8 +2249,14 @@ fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
                 if !k::announce_read(&mut vocabulary, &ann, &mut report) {
                     fail(&format!("{case}: the announcement {} did not read", c[4]));
                 }
-                let Some(v) = k::$load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
-                let mut row = wref_row(case, k::$cook(&v, 1), k::table_cook_open);
+                // the root's current-form instance: a form 3 file is read by
+                // the fixed form into the Row; a form 1 file's Row is its cook
+                let mut row = if is_fixed_form(&data) {
+                    wref_fixed_row!($krate, $fixed_load, $row, case, wire, &data)
+                } else {
+                    let Some(v) = k::$load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                    wref_row(case, k::$cook(&v, 1), k::table_cook_open)
+                };
                 match $mutate(&mut row, path, kind, value) {
                     Mutation::Done => wref_save(|| {
                         let mut ignored = k::TableReport::default();
@@ -2201,8 +2275,8 @@ fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
             }};
         }
         let answer = match (c[2].as_str(), root) {
-            ("backenddemo", "StorePurchase") => message_case!(backenddemo, store_purchase_load, store_purchase_cook_write, wref_store_purchase_row, store_purchase_measure_messages, store_purchase_save_messages),
-            ("backenddemo", "MatchResult") => message_case!(backenddemo, match_result_load, match_result_cook_write, wref_match_result_row, match_result_measure_messages, match_result_save_messages),
+            ("backenddemo", "StorePurchase") => message_case!(backenddemo, store_purchase_load, store_purchase_fixed_load, StorePurchaseRow, store_purchase_cook_write, wref_store_purchase_row, store_purchase_measure_messages, store_purchase_save_messages),
+            ("backenddemo", "MatchResult") => message_case!(backenddemo, match_result_load, match_result_fixed_load, MatchResultRow, match_result_cook_write, wref_match_result_row, match_result_measure_messages, match_result_save_messages),
             _ => fail(&format!("write-refusal-message: no root {} {root}", c[2])),
         };
         spill(out, case, answer.as_bytes());
@@ -2235,6 +2309,13 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
         let data = slurp(wire);
+        // the root's current-form instance is read by its own form: a form 3
+        // file reads into the fixed Row, which this leg's text writer does not
+        // take (as for `json-write-refusal`), so the row answers ABSENT by name
+        if is_fixed_form(&data) && fixed_read(unit, root, &[]).is_some() {
+            spill(out, &format!("{case}.absent"), FIXED_NO_TEXT.as_bytes());
+            continue;
+        }
         let mut report = Default::default();
         let written = |text: Option<String>| -> Result<String, String> { text.ok_or_else(String::new) };
         let outcome: Result<Result<String, String>, &'static str> = match (unit, root) {

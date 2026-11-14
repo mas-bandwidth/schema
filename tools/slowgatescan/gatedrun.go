@@ -90,6 +90,9 @@ func gatedTestPackages(root string) (map[string][]string, error) {
 			case ".git", "build", "generated", "node_modules", "testdata":
 				return filepath.SkipDir
 			}
+			if nestedModule(root, path) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if strings.HasSuffix(path, "_test.go") {
@@ -117,6 +120,19 @@ func gatedTestPackages(root string) (map[string][]string, error) {
 		sort.Strings(out[rel])
 	}
 	return out, nil
+}
+
+// nestedModule reports whether path is a directory below root that holds its
+// own go.mod. Its packages belong to that module, not root's: an import path
+// built from root's module name does not resolve (`go test` from root fails
+// setup and prints no slowtest skip), and that module's own make targets run
+// its gated tests through test/slowgate/proof.
+func nestedModule(root, path string) bool {
+	if filepath.Clean(path) == filepath.Clean(root) {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(path, "go.mod"))
+	return err == nil && !info.IsDir()
 }
 
 type funcKey struct {
@@ -150,6 +166,9 @@ func moduleFuncs(root string) (map[funcKey]funcBody, error) {
 		if d.IsDir() {
 			switch d.Name() {
 			case ".git", "build", "generated", "node_modules", "testdata":
+				return filepath.SkipDir
+			}
+			if nestedModule(root, path) {
 				return filepath.SkipDir
 			}
 			return nil
