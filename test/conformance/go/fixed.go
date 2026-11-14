@@ -73,6 +73,9 @@ func fixedForm[T any, R any, E any](
 		var inner R
 		n := load(unsafe.Slice(value.(*T), 1), wire, plan, &inner)
 		*rep = snapReport(&inner)
+		if e, ok := any(&inner).(interface{ Err() error }); ok {
+			rep.err = e.Err()
+		}
 		return n == 1 && !rep.refused
 	}
 	c.measure = func(any) int64 { return measure(1) }

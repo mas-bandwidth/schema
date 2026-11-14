@@ -215,7 +215,13 @@ func surfaceWire(lines []line, out string) error {
 			// refuses a file whose two slots name one blob. That refusal is
 			// this row's answer (the corpus marks it wire-refused); any other
 			// refusal of a corpus instance is a failure.
-			if errors.Is(rep.err, blobdemo.TableRefuseBlobShared) {
+			//
+			// docs/SPEC-TABLES.md §3.4 (the owner, 2026-11-10: "Every dead
+			// byte") makes a fixed record whose slack is not zero refused
+			// whole as wire_damaged, and the fixed_dead_* rows are those
+			// records; that refusal is their answer too, held by the harness
+			// against the row's wire-refused flag.
+			if errors.Is(rep.err, blobdemo.TableRefuseBlobShared) || (rep.err != nil && rep.err.Error() == "wire_damaged") {
 				if err := spillAbsentReason(out, f[1], rep.err.Error()); err != nil {
 					return err
 				}
