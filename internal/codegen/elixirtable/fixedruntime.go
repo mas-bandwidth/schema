@@ -2237,7 +2237,8 @@ const fixedRuntimeBody = `  @moduledoc """
     :ok
   end
 
-  defp lineage_dead_of(%{hash: h}, own, mine, dst) when h == own, do: compile_dead(mine, mine, dst)
+  defp lineage_dead_of(%{hash: h}, own, mine, dst) when h == own,
+    do: compile_dead(mine, mine, dst)
 
   defp lineage_dead_of(k, _own, mine, dst) do
     case parse_layout(k.layout) do

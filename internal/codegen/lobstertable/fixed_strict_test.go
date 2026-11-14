@@ -63,6 +63,15 @@ fixed table Row {
 		offsets[field.Name] = at
 		at += ir.TableFixedFieldBytes(field)
 	}
+	var optionalPayload, liveElem int64
+	for _, field := range row.Fields {
+		switch field.Name {
+		case "optional":
+			optionalPayload = ir.TableFixedFieldBytes(field) - ir.TableFixedPresentBytes
+		case "live":
+			liveElem = ir.TableFixedElementBytes(field)
+		}
+	}
 	main := fmt.Sprintf(`import .ProbeTable
 let good = strictfixed.NewRow()
 good.Seq = 99
@@ -108,18 +117,31 @@ for(damaged) bad:
     else:
         print("damage case " + string(case_index) + " returned " + string(n) + ": " + report.reason)
     case_index += 1
-// Inactive optional payload and counted-array slack are not values.
-var slack = write_int8_le(copy(wire), second + %[2]d, 0)
-slack = write_int8_le(slack, second + %[2]d + 1, 255)
-slack = write_int32_le(slack, second + %[2]d + 2, 99)
-slack = write_int8_le(slack, second + %[3]d + 4 + 8, 255)
-slack = write_int32_le(slack, second + %[3]d + 4 + 8 + 1, 99)
-if strictfixed.RowFixedLoad(back, slack, plan, report) == 2 and not back[1].OptionalPresent and back[1].LiveCount == 1:
+// THE SLACK RULE (docs/SPEC-TABLES.md §3.4, owner 2026-11-10: "Every dead
+// byte"): an inactive optional payload, a counted array's tail past its live
+// count and a text's bytes past its used length are slack, and slack is zero.
+// A stained byte in any of them refuses the whole batch, with every caller
+// record back at its defaults. An absent optional with a zero payload reads.
+var absent = write_int8_le(copy(wire), second + %[2]d, 0)
+for(%[7]d) z: absent = write_int8_le(absent, second + %[2]d + 1 + z, 0)
+if strictfixed.RowFixedLoad(back, absent, plan, report) == 2 and not back[1].OptionalPresent and back[1].LiveCount == 1:
     passed += 1
 else:
-    print("inactive storage failed: " + report.reason)
+    print("zero slack failed: " + report.reason)
+let stained:[string] = [
+    write_int8_le(copy(absent), second + %[2]d + 1, 1),
+    write_int32_le(copy(wire), second + %[3]d + 4 + %[8]d + 1, 99),
+    write_int8_le(copy(wire), second + %[3]d + 4 + 1 + 4 + 2, 65)
+]
+for(stained) bad:
+    for(back) r: r.Seq = 123
+    let n = strictfixed.RowFixedLoad(back, bad, plan, report)
+    if n == -1 and report.reason == "wire_damaged" and back[0].Seq == 7 and back[1].Seq == 7 and back[2].Seq == 7:
+        passed += 1
+    else:
+        print("stained slack case returned " + string(n) + ": " + report.reason)
 print(passed)
-`, offsets["flag"], offsets["optional"], offsets["live"], offsets["ranged"], offsets["ratio"], offsets["tier"])
+`, offsets["flag"], offsets["optional"], offsets["live"], offsets["ranged"], offsets["ratio"], offsets["tier"], optionalPayload, liveElem)
 	run := func(t *testing.T, files map[string][]byte) string {
 		t.Helper()
 		dir := t.TempDir()
@@ -133,8 +155,8 @@ print(passed)
 		}
 		return strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", nil)))
 	}
-	if got := run(t, files); got != "11" {
-		t.Fatalf("fixed-read checks: got %q, want 11", got)
+	if got := run(t, files); got != "14" {
+		t.Fatalf("fixed-read checks: got %q, want 14", got)
 	}
 	t.Run("boolean_validation_mutation", func(t *testing.T) {
 		mutant := maps.Clone(files)
@@ -144,7 +166,7 @@ print(passed)
 			t.Fatal("boolean mutation did not apply")
 		}
 		mutant["fixedevolve.lobster"] = []byte(after)
-		if got := run(t, mutant); got == "11" {
+		if got := run(t, mutant); got == "14" {
 			t.Fatal("boolean validation deletion escaped the native proof")
 		}
 	})
@@ -191,5 +213,95 @@ func TestLobsterFixedOneReadEnumWiden(t *testing.T) {
 `, map[string][]byte{"good.bin": wire, "bad.bin": forged})
 	if strings.TrimSpace(out) != "PASS" {
 		t.Fatalf("enum-width read: %q", out)
+	}
+}
+
+// THE SLACK RULE ON THE LINEAGE READ (docs/SPEC-TABLES.md §3.4): an older
+// writer's record read through a newer reader is held to the WRITER's slack,
+// in the writer's offsets. Each stained file sets one byte the writer left
+// dead to a value that would be lawful if it were live: under an absent
+// optional, past a counted array's live count, behind a narrower union arm,
+// under tag 0, and under a payload-free arm. Each refuses wire_damaged; the
+// clean record reads.
+func TestLobsterFixedLineageSlackIsZero(t *testing.T) {
+	t.Parallel()
+	const types = `package slackline
+type Hit
+{
+    amount uint16
+}
+type Big
+{
+    a int32
+    b int32
+}
+union Pick
+{
+    hit Hit
+    big Big
+    none
+}
+`
+	older := types + "fixed table Row {\n opt ?int32\n live [..2]uint16\n pick Pick\n seq int32 = 7\n}\n"
+	newer := types + "fixed table Row {\n opt ?int32\n live [..2]uint16\n pick Pick\n seq int32 = 7\n extra int32\n}\n"
+	old := lobsterUnitOf(t, older)
+	entry, ok := FixedLineageOf(old, "Row")
+	if !ok {
+		t.Fatal("old Row is not fixed")
+	}
+	var row *ir.Struct
+	for _, root := range ir.TableFixedRoots(old) {
+		if root.Name == "Row" {
+			row = root
+		}
+	}
+	if row == nil {
+		t.Fatal("old Row is not a fixed root")
+	}
+	at := map[string]int{}
+	var size int
+	for _, f := range row.Fields {
+		at[f.Name] = size
+		size += int(ir.TableFixedFieldBytes(f))
+	}
+	head := make([]byte, 16)
+	head[0] = 3
+	binary.LittleEndian.PutUint64(head[8:], entry.Wire)
+	head = binary.LittleEndian.AppendUint32(head, uint32(len(entry.Layout)))
+	head = append(head, entry.Layout...)
+	head = binary.LittleEndian.AppendUint64(head, entry.Wire)
+	body := make([]byte, size)
+	binary.LittleEndian.PutUint32(body[at["live"]:], 1)
+	binary.LittleEndian.PutUint16(body[at["live"]+4:], 5)
+	body[at["pick"]] = 1
+	binary.LittleEndian.PutUint16(body[at["pick"]+1:], 3)
+	binary.LittleEndian.PutUint32(body[at["seq"]:], 9)
+	file := func(edit func(b []byte)) []byte {
+		b := append([]byte(nil), body...)
+		edit(b)
+		return append(append([]byte(nil), head...), b...)
+	}
+	inputs := map[string][]byte{
+		"good.bin": file(func([]byte) {}),
+		"a.bin":    file(func(b []byte) { b[at["opt"]+2] = 1 }),
+		"b.bin":    file(func(b []byte) { b[at["live"]+4+2] = 1 }),
+		"c.bin":    file(func(b []byte) { b[at["pick"]+1+2] = 1 }),
+		"d.bin":    file(func(b []byte) { b[at["pick"]] = 0 }),
+		"e.bin":    file(func(b []byte) { b[at["pick"]] = 3 }),
+	}
+	out := runLobsterVersionProbe(t, newer, []string{older}, 0, `
+    let back = [slackline.NewRow()]
+    let plan = slackline.make_plan(4096)
+    let report = schema_rt.TableReport {}
+    assert_eq(slackline.RowFixedLoad(back, read_in("good.bin"), plan, report), 1, "an older record with zero slack reads")
+    assert_eq(back[0].Seq, 9, "the older record's seq")
+    for(["a.bin", "b.bin", "c.bin", "d.bin", "e.bin"]) f:
+        assert_eq(slackline.RowFixedLoad(back, read_in(f), plan, report), -1, f)
+        assert_eq(report.reason, "wire_damaged", f)
+        assert_eq(back[0].Seq, 7, "refusal restores defaults")
+    print "PASS"
+`, inputs)
+	if strings.TrimSpace(out) != "PASS" {
+		t.Fatalf("lineage slack read: %q", out)
 	}
 }

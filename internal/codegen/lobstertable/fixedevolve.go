@@ -1444,8 +1444,15 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 		name, name, name, len(resetImg))
 	g.Pf("let %sLineageHoles = schema_rt.fixed_lineage_holes(%sLineagePlans, %d)\n",
 		name, name, len(resetImg))
-	g.Pf("let %sPlanMax = schema_rt.fixed_plan_max(%sPlan, %sLineagePlans)\n\n",
+	g.Pf("let %sPlanMax = schema_rt.fixed_plan_max(%sPlan, %sLineagePlans)\n",
 		name, name, name)
+	// THE WRITER'S SLACK CHECKS (docs/SPEC-TABLES.md §3.4), one list per
+	// lineage entry and one for this build's own layout, laid down beside the
+	// plans at module load
+	g.Pf("let %sSlack = schema_rt.fixed_slack_of(%sLayoutBytes(), %sLayoutBytes(), %sDst)\n",
+		name, name, name, name)
+	g.Pf("let %sLineageSlack = schema_rt.fixed_lineage_slack(%sKnown, %sLayoutBytes(), %sDst)\n\n",
+		name, name, name, name)
 
 	trailer := ""
 	if st.Integrity != "" {
@@ -1543,6 +1550,7 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    var entries = %sPlan.entries\n", name)
 	g.Pf("    var entry_count = %sPlan.count\n", name)
 	g.Pf("    var holes = %sHoles\n", name)
+	g.Pf("    var slack = %sSlack\n", name)
 	g.Pf("    let record_bytes = known.record\n")
 	g.Pf("    var census_unknown = 0\n")
 	g.Pf("    var census_kind = 0\n")
@@ -1554,6 +1562,7 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        entries = lane.entries\n")
 	g.Pf("        entry_count = lane.count\n")
 	g.Pf("        holes = %sLineageHoles[pick]\n", name)
+	g.Pf("        slack = %sLineageSlack[pick]\n", name)
 	g.Pf("        census_unknown = lane.unknown\n")
 	g.Pf("        census_kind = lane.kind_mismatch\n")
 	g.Pf("    if census_kind != 0:\n")
@@ -1582,6 +1591,10 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        if why != \"\":\n")
 	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, why)\n")
+	g.Pf("        let why_slack = schema_rt.fixed_slack_refusal(slack, data, rec_at + 8)\n")
+	g.Pf("        if why_slack != \"\":\n")
+	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
+	g.Pf("            return schema_rt.fixed_refuse(report, why_slack)\n")
 	g.Pf("    for(n) k:\n")
 	g.Pf("        let rec_at = records_start + k * record_bytes\n")
 	g.Pf("        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(%d), %sResetImage, holes)\n", bodyBytes, name)

@@ -1070,6 +1070,207 @@ def fixed_lineage_holes(lanes:[TableFixedLineagePlan], dst_size:int) -> [[TableF
             push(out, empty)
     return out
 
+// THE SLACK RULE (docs/SPEC-TABLES.md §3.4): every byte of the writer's
+// slack is zero, or the whole read refuses wire_damaged. The slack is the
+// WRITER's, in the writer's offsets: an absent optional's payload, a counted
+// array's or a text's tail past its live count, and a union's arm bytes under
+// tag 0 or behind the taken arm up to the widest. A check runs only where
+// every condition above it holds (its enclosing arm's tag, present flag, live
+// element), so slack nested in live data is checked as that value's slack and
+// slack inside slack is covered by the outer region whole. Slack is checked
+// for zero and nothing else. A field this reader declares deprecated, and a
+// field of the writer's this reader cannot name, carry no check.
+let tableFixedSlackOptional = 0
+let tableFixedSlackTail = 1
+let tableFixedSlackUnion = 2
+
+let tableFixedSlackTag = 0
+let tableFixedSlackPresent = 1
+let tableFixedSlackLive = 2
+
+class TableFixedSlackCond:
+    kind:int = 0
+    at:int = 0
+    w:int = 0
+    arg:int = 0
+
+class TableFixedSlack:
+    mode:int = 0
+    at:int = 0
+    size:int = 0
+    unit:int = 0
+    tagw:int = 0
+    arms:[int] = []
+    conds:[TableFixedSlackCond] = []
+
+def fixed_slack_with(conds:[TableFixedSlackCond], c:TableFixedSlackCond) -> [TableFixedSlackCond]:
+    let out:[TableFixedSlackCond] = []
+    for(conds) k:
+        push(out, k)
+    push(out, c)
+    return out
+
+def fixed_slack_entry(s:[TableFixedSlack], theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], conds:[TableFixedSlackCond]) -> void:
+    let te = fixed_entry_at(theirs, ti)
+    let me = fixed_entry_at(mine, mi)
+    if mi < 0 or mi >= length(dst):
+        return
+    if (dst[mi].arg & tableFixedDstDeprecated) != 0:
+        return
+    if me.kind == 35 and te.kind != 35:
+        fixed_slack_entry(s, theirs, ti, their_at, mine, mi + 1, dst, conds)
+        return
+    if te.kind != me.kind:
+        return
+    switch me.kind:
+        case 35:
+            push(s, TableFixedSlack { mode: tableFixedSlackOptional, at: their_at, size: te.size, conds: conds })
+            let present = fixed_slack_with(conds, TableFixedSlackCond { kind: tableFixedSlackPresent, at: their_at })
+            fixed_slack_entry(s, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, present)
+        case 13:
+            fixed_slack_children(s, theirs, ti, their_at, mine, mi, dst, conds)
+        case 14:
+            let tel = fixed_entry_at(theirs, ti + 1)
+            let mel = fixed_entry_at(mine, mi + 1)
+            let counted = dst[mi].counted != 0
+            let head = if counted: 4 else: 0
+            let their_n = if tel.size != 0: (te.size - head) / tel.size else: 0
+            let my_n = if mel.size != 0: (me.size - head) / mel.size else: 0
+            let n = if my_n < their_n: my_n else: their_n
+            if counted and tel.size != 0:
+                push(s, TableFixedSlack { mode: tableFixedSlackTail, at: their_at, size: te.size, unit: tel.size, conds: conds })
+            for(n) i:
+                let live = if counted: fixed_slack_with(conds, TableFixedSlackCond { kind: tableFixedSlackLive, at: their_at, arg: i }) else: conds
+                fixed_slack_entry(s, theirs, ti + 1, their_at + head + i * tel.size, mine, mi + 1, dst, live)
+        case 16:
+            let tkey = fixed_entry_at(theirs, ti + 1)
+            let mkey = fixed_entry_at(mine, mi + 1)
+            let tel = ti + 1 + fixed_subtree(theirs, ti + 1)
+            let mel = mi + 1 + fixed_subtree(mine, mi + 1)
+            let tee = fixed_entry_at(theirs, tel)
+            for(mkey.children) k:
+                let key_id = fixed_entry_at(mine, mi + 2 + k).id
+                var matched = false
+                for(tkey.children) j:
+                    if not matched and fixed_entry_at(theirs, ti + 2 + j).id == key_id:
+                        matched = true
+                        fixed_slack_entry(s, theirs, tel, their_at + j * tee.size, mine, mel, dst, conds)
+        case 15:
+            let their_tag = fixed_tag_bytes(theirs, ti)
+            let arms:[int] = []
+            var their_arm = ti + 1
+            for(te.children):
+                let ta = fixed_entry_at(theirs, their_arm)
+                var arm_bytes = ta.size
+                if ta.kind == 32:
+                    arm_bytes = 0
+                push(arms, arm_bytes)
+                their_arm += fixed_subtree(theirs, their_arm)
+            push(s, TableFixedSlack { mode: tableFixedSlackUnion, at: their_at, size: te.size, tagw: their_tag, arms: arms, conds: conds })
+            var my_arm = mi + 1
+            for(me.children):
+                let ma = fixed_entry_at(mine, my_arm)
+                var ta_at = ti + 1
+                var matched = false
+                for(te.children) j:
+                    if not matched:
+                        if fixed_entry_at(theirs, ta_at).id == ma.id:
+                            matched = true
+                            let taken = fixed_slack_with(conds, TableFixedSlackCond { kind: tableFixedSlackTag, at: their_at, w: their_tag, arg: j + 1 })
+                            fixed_slack_entry(s, theirs, ta_at, their_at + their_tag, mine, my_arm, dst, taken)
+                        else:
+                            ta_at += fixed_subtree(theirs, ta_at)
+                my_arm += fixed_subtree(mine, my_arm)
+        case 12:
+            push(s, TableFixedSlack { mode: tableFixedSlackTail, at: their_at, size: te.size, unit: 1, conds: conds })
+        default:
+            pass()
+
+def fixed_slack_children(s:[TableFixedSlack], theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], conds:[TableFixedSlackCond]) -> void:
+    let te = fixed_entry_at(theirs, ti)
+    let me = fixed_entry_at(mine, mi)
+    var my_child = mi + 1
+    for(me.children):
+        let mc = fixed_entry_at(mine, my_child)
+        var their_child = ti + 1
+        var their_off = their_at
+        var matched = false
+        for(te.children):
+            if not matched:
+                let tc = fixed_entry_at(theirs, their_child)
+                if tc.id == mc.id:
+                    matched = true
+                    fixed_slack_entry(s, theirs, their_child, their_off, mine, my_child, dst, conds)
+                else:
+                    their_off += tc.size
+                    their_child += fixed_subtree(theirs, their_child)
+        my_child += fixed_subtree(mine, my_child)
+
+// The writer's slack checks for a layout read through this build's own:
+// compiled once per lineage entry at module load, beside its plan. A layout
+// that does not parse carries none, and its lane refuses by name before any
+// record is read.
+def fixed_slack_of(their_layout:string, my_layout:string, dst:[TableFixedDst]) -> [TableFixedSlack]:
+    let s:[TableFixedSlack] = []
+    let theirs, why = fixed_parse_layout(their_layout)
+    let mine, my_why = fixed_parse_layout(my_layout)
+    if why == "" and my_why == "":
+        let none:[TableFixedSlackCond] = []
+        fixed_slack_children(s, theirs, 0, 0, mine, 0, dst, none)
+    return s
+
+def fixed_lineage_slack(known:[TableFixedKnownLayout], my_layout:string, dst:[TableFixedDst]) -> [[TableFixedSlack]]:
+    let out:[[TableFixedSlack]] = []
+    for(known) k:
+        push(out, fixed_slack_of(k.layout, my_layout, dst))
+    return out
+
+def fixed_zero_span(src:string, from:int, to:int) -> bool:
+    var i = from
+    while i + 8 <= to:
+        if read_int64_le(src, i) != 0:
+            return false
+        i += 8
+    while i < to:
+        if read_uint8_le(src, i) != 0:
+            return false
+        i += 1
+    return true
+
+def fixed_slack_cond_holds(c:TableFixedSlackCond, src:string, src_base:int) -> bool:
+    if c.kind == tableFixedSlackTag:
+        return fixed_tag_at(src, src_base + c.at, c.w) == c.arg
+    if c.kind == tableFixedSlackPresent:
+        return read_uint8_le(src, src_base + c.at) != 0
+    // a live element: below the writer's raw count (a count out of its bound
+    // is the plan's own refusal)
+    return c.arg < read_int32_le(src, src_base + c.at)
+
+def fixed_slack_refusal(slack:[TableFixedSlack], src:string, src_base:int) -> string:
+    for(slack) k:
+        var on = true
+        for(k.conds) c:
+            if on and not fixed_slack_cond_holds(c, src, src_base):
+                on = false
+        if on:
+            let at = src_base + k.at
+            if k.mode == tableFixedSlackOptional:
+                if read_uint8_le(src, at) == 0 and not fixed_zero_span(src, at + 1, at + k.size):
+                    return "wire_damaged"
+            elif k.mode == tableFixedSlackTail:
+                let v = read_int32_le(src, at)
+                if v >= 0 and v * k.unit <= k.size - 4 and not fixed_zero_span(src, at + 4 + v * k.unit, at + k.size):
+                    return "wire_damaged"
+            else:
+                let t = fixed_tag_at(src, at, k.tagw)
+                if t == 0:
+                    if not fixed_zero_span(src, at + k.tagw, at + k.size):
+                        return "wire_damaged"
+                elif t <= length(k.arms):
+                    if not fixed_zero_span(src, at + k.tagw + k.arms[t - 1], at + k.size):
+                        return "wire_damaged"
+    return ""
+
 def fixed_plan_max(own:TableFixedPlan, lanes:[TableFixedLineagePlan]) -> int:
     var m = own.count
     for(length(lanes)) i:
@@ -1147,8 +1348,9 @@ def fixed_text_ill_formed(meta:int, used:int, p:string, base:int) -> bool:
         return not fixed_utf8_valid_no_nul(p, base, used)
     return false
 
-// Dead payload bytes are storage slack: do not validate absent optionals or
-// elements past a counted array's live extent (SPEC-TABLES §6.5).
+// Dead payload bytes are storage slack: no value rule runs on an absent
+// optional's payload or on elements past a counted array's live extent
+// (SPEC-TABLES §6.5). That they are zero is fixed_slack_refusal's check.
 def fixed_dead_at(dead:[TableFixedHole], at:int) -> bool:
     for(dead) h:
         if at >= h.off and at < h.off + h.size:
