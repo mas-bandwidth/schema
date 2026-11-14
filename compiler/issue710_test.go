@@ -52,7 +52,18 @@ func TestIssue710UnpackPaths(t *testing.T) {
 	c := New()
 	for _, key := range []string{"../escape", "..", "a/b", `a\b`, "C:drive", "a\x00b"} {
 		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
-			u := unitFromSource(t, "package p\ntable Root { x int32 | json = \""+key+"\" }\n")
+			src := "package p\ntable Root { x int32 | json = \"" + key + "\" }\n"
+			if key == "a\x00b" {
+				path := filepath.Join(t.TempDir(), "Root.schema")
+				if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := c.Load([]string{path}); err == nil || !strings.Contains(err.Error(), "U+0000") {
+					t.Fatalf("json key with U+0000 must refuse at compile time: %v", err)
+				}
+				return
+			}
+			u := unitFromSource(t, src)
 			m := tabletext.NewModel(u)
 			wire, err := tablewire.Encode(m, m.New(u.Tables["Root"]))
 			if err != nil {
