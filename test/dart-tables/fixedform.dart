@@ -1792,13 +1792,23 @@ void textLengthClampCase() {
 
   // AND THE CONTROL: EVERY length the rule ADMITS lands whole. The cap
   // itself, zero, and anything between land WHOLE and refuse nothing; a
-  // refusal here would be a refusal of a clean read.
+  // refusal here would be a refusal of a clean read. A CLEAN record is what a
+  // conforming writer lays: the used units, then zeros to the cap, because
+  // every dead byte is zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE) and a
+  // unit past the length that is not zero refuses wire_damaged.
   for (final legit in <int>[0, 3, cap]) {
+    for (var i = 0; i < cap; i++) {
+      file[body + labelAt + 4 + i] = i < legit ? 0x61 + i : 0;
+    }
     final (landed, why) = loopRun(legit);
     check(
       landed == legit && why == fx1home.TableFixedRefusal.none,
-      'CONTROL: a length of $legit is in range and refuses NOTHING',
+      'CONTROL: a length of $legit is in range and refuses NOTHING '
+      '(got ${fx1home.TableFixedRefusal.name(why)})',
     );
+  }
+  for (var i = 0; i < cap; i++) {
+    file[body + labelAt + 4 + i] = 0x61 + i;
   }
 
   // THE FULL READ, the two paths together: a forged length refuses the whole
@@ -2236,22 +2246,21 @@ void writeSlackCase() {
   quiet(r, 'W1 slack');
 }
 
-// W4: READ SLACK IS UNSPECIFIED (docs/FIXED-FORM-ALGORITHM.md §3.1). The rule,
-// by name: "Slack is UNSPECIFIED on read and not a refusal: a reader validates
-// the USED UNITS only, and non-zero slack is not `malformed`, not a refusal,
-// and moves no counter." `absentOptionalCase` above is the WRITE half of the
-// same rule; this is the read half, and the one that faces a STRANGER's bytes.
+// W4: EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; the
+// owner's ruling of 2026-11-10, docs/rulings.json fixed-dead-bytes-zero). The
+// read checks slack for zero and for nothing else: a byte of slack that is not
+// zero refuses the whole read wire_damaged, lands nothing and moves no
+// counter. `absentOptionalCase` above is the WRITE half of the same rule; this
+// is the read half, and the one that faces a STRANGER's bytes.
 //
 // THE STAIN IS ON THE WIRE, which is what separates this from every other slack
-// case in this file. A clean writer lays the template's zeros in the slack, so
-// reading a record THIS BUILD wrote cannot tell a reader that walks the USED
-// UNITS from one that walks the DECLARED BOUND. Here the slack of V1's
-// `items [..8]int32` (a RANGED element: | min = 0, max = 255) is stained AFTER
-// the write with four 0xFF bytes per unused slot — a value past the range — so
-// a decode that walked the bound would clamp seven times and a decode that
-// walks the live count clamps none. `clamped` is the observable, and the doc's
-// "moves no counter" is the claim.
-void readSlackUnspecified() {
+// case in this file. A clean writer lays the template's zeros in the slack.
+// Here the slack of V1's `items [..8]int32` (a RANGED element: | min = 0,
+// max = 255) is stained AFTER the write with four 0xFF bytes per unused slot —
+// a value past the range — so the refusal must be wire_damaged and never
+// out_of_range: no range rule runs on slack. The same record with its slack
+// clean is the control, and it reads.
+void readSlackRefused() {
   // THE COUNT'S OFFSET IS FOUND, NOT SPELLED: two saves that differ only in the
   // live count, and the first byte that differs is the count's own. A hardcoded
   // offset here would quietly stop naming `items` the day a field moves.
@@ -2286,13 +2295,30 @@ void readSlackUnspecified() {
     'read slack: the wire count is the live 1, found by shape and not spelled',
   );
 
+  // THE CONTROL: the record as the writer laid it, slack clean, reads.
+  {
+    final back = <v1home.Cfg>[v1home.Cfg()];
+    final r = v1home.TableFixedReport();
+    final n = v1.cfgFixedLoad(
+      back,
+      1,
+      live,
+      live.length,
+      v1.cfgFixedNewPlan(),
+      r,
+    );
+    check(
+      n == 1 && r.refused == 0 && back[0].itemsCount == 1 && back[0].items[0] == 7,
+      'CONTROL: the clean record reads (got $n, refused ${r.refused})',
+    );
+  }
+
   // STAIN THE SLACK: every byte of the seven unused int32 slots, past the count
   // word and the one live element, to the end of the declared eight.
   final slackAt = countAt + 4 + 4;
   final slackEnd = countAt + 4 + 8 * 4;
-  // ONE BYTE, SO CONTROL 1 IS ONE LINE: point it at the conforming zero a
-  // clean writer lays there and the case must stay green; 0xFF is the hostile
-  // value past the ranged element's bound that a bound-walker would clamp.
+  // 0xFF is a value past the ranged element's bound: a reader that ran the
+  // range rule on slack would refuse out_of_range, not wire_damaged.
   const stain = 0xFF;
   for (var i = slackAt; i < slackEnd; i++) {
     live[i] = stain;
@@ -2309,6 +2335,7 @@ void readSlackUnspecified() {
   );
 
   final back = <v1home.Cfg>[v1home.Cfg()];
+  final fresh = v1home.Cfg();
   final r = v1home.TableFixedReport();
   final n = v1.cfgFixedLoad(
     back,
@@ -2318,19 +2345,19 @@ void readSlackUnspecified() {
     v1.cfgFixedNewPlan(),
     r,
   );
-  check(n == 1, 'read slack: the record reads (got $n)');
+  check(n == -1, 'read slack: the stained record is refused (got $n)');
   check(
-    r.refused == 0,
-    'SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal',
+    r.refused == v1home.TableFixedRefusal.damaged,
+    'EVERY DEAD BYTE IS ZERO: stained slack refuses wire_damaged, never '
+    'out_of_range (refused ${v1home.TableFixedRefusal.name(r.refused)})',
   );
   check(
-    back[0].itemsCount == 1 && back[0].items[0] == 7,
-    'SLACK IS UNSPECIFIED: the USED UNITS land and the slack behind them is not read',
+    back[0].itemsCount == fresh.itemsCount && back[0].items[0] == fresh.items[0],
+    'EVERY DEAD BYTE IS ZERO: a refused read lands nothing',
   );
   check(
-    r.refused == 0 && r.unknown == 0 && r.widened == 0,
-    'SLACK IS UNSPECIFIED: a reader validates the USED UNITS only and moves no '
-    'counter (refused ${r.refused})',
+    r.unknown == 0 && r.widened == 0,
+    'EVERY DEAD BYTE IS ZERO: the refusal moves no counter',
   );
 }
 
@@ -3820,7 +3847,7 @@ void main(List<String> args) {
   rangedScalarClampCase();
   hostileBytesCase();
   writeSlackCase();
-  readSlackUnspecified();
+  readSlackRefused();
   planPartitionCase();
   writeChecksDebugOnlyCase();
   w9PrefillUnwrittenOnly();
