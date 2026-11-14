@@ -1036,7 +1036,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// needs <stdlib.h> whether or not NDEBUG keeps the assert.
 		h.WriteString("#include <assert.h> /* the keyed accessor's None refusal, in a debug build */\n")
 		h.WriteString("#include <stdlib.h> /* and its abort, which NDEBUG does not remove */\n")
-	} else if ir.TableFixedHasWriteCheck(u) {
+	} else if unitHasWriteBound(u) {
 		// THE WRITE-SIDE CHECKS need the assert and NOTHING after it
 		// (docs/SPEC.md §5.1): a text field's used length, a counted array's
 		// live count and the value bounds, debug-only, with no abort behind
