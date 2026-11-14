@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -173,11 +175,12 @@ func strictGateLoad(t *testing.T, unit []string) (u *ir.Unit, err error) {
 
 // strictGateAnalyzer resolves moo-analyze and holds it to the pin: the
 // directory it lives in carries the PIN file `make dist-moo` writes (and
-// .github/actions/moo checks), and it must name moorun.Pin, and the moo
-// beside it must report the pinned release. moo-analyze has no --version of
-// its own, so the build's PIN file and its sibling interpreter are the
-// evidence. A gate run on another analyzer proves nothing about the pin; it
-// refuses BY NAME.
+// .github/actions/moo checks), or, for an installed prefix whose tools sit in
+// <prefix>/bin (the fleet's SDK, which the runners' $MOO_ANALYZE names), the
+// prefix carries it; it must name moorun.Pin, and the moo beside the analyzer
+// must report the pinned release. moo-analyze has no --version of its own, so
+// the build's PIN file and its sibling interpreter are the evidence. A gate
+// run on another analyzer proves nothing about the pin; it refuses BY NAME.
 func strictGateAnalyzer(t *testing.T) string {
 	t.Helper()
 	analyze, why := moorun.Analyzer()
@@ -196,8 +199,14 @@ const strictGateRelease = "moo 1.3.0 (Luau 0.741)"
 func strictGatePinned(analyze string) error {
 	dir := filepath.Dir(analyze)
 	pin, err := os.ReadFile(filepath.Join(dir, "PIN"))
+	if errors.Is(err, fs.ErrNotExist) && filepath.Base(dir) == "bin" {
+		// an installed prefix: <prefix>/bin/moo-analyze beside <prefix>/PIN.
+		// Only a PIN that is absent beside the analyzer is looked for there,
+		// so a PIN beside it always decides.
+		pin, err = os.ReadFile(filepath.Join(filepath.Dir(dir), "PIN"))
+	}
 	if err != nil {
-		return fmt.Errorf("the analyzer %s is not the pin: no PIN file beside it (make dist-moo writes one naming %s)", analyze, moorun.Pin)
+		return fmt.Errorf("the analyzer %s is not the pin: no PIN file beside it or in its install prefix (make dist-moo writes one naming %s)", analyze, moorun.Pin)
 	}
 	if got := strings.TrimSpace(string(pin)); got != moorun.Pin {
 		return fmt.Errorf("the analyzer %s is moo %s, not the pin %s (MOO_PIN in make/moo.mk)", analyze, got, moorun.Pin)
@@ -408,35 +417,71 @@ func TestMooGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 // negative control: the real analyzer, copied beside a PIN file naming
 // another commit, must be REFUSED by name; and beside the true PIN and the
 // true moo it must be accepted, so the refusal is the PIN and nothing else.
+// Both layouts the check reads are held: `make dist-moo`'s (the PIN beside
+// the tools) and an installed prefix's (the tools in <prefix>/bin, the PIN in
+// <prefix>). A PIN beside the analyzer decides even over a true one in the
+// prefix, and an analyzer with no PIN in either place is refused.
 func TestMooGeneratedAnalyzeStrictGatePinNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo-analyze (the pinned analyzer, over the whole corpus)")
 	t.Parallel()
 	analyze := strictGateAnalyzer(t)
 	src := filepath.Dir(analyze)
-	link := func(dir, pin string) string {
+	tools := func(dir string) string {
 		t.Helper()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		for _, tool := range []string{"moo", "moo-analyze"} {
 			if err := os.Symlink(filepath.Join(src, tool), filepath.Join(dir, tool)); err != nil {
 				t.Fatal(err)
 			}
 		}
+		return filepath.Join(dir, "moo-analyze")
+	}
+	writePin := func(dir, pin string) {
+		t.Helper()
 		if err := os.WriteFile(filepath.Join(dir, "PIN"), []byte(pin+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		return filepath.Join(dir, "moo-analyze")
 	}
-	good := link(t.TempDir(), moorun.Pin)
-	if err := strictGatePinned(good); err != nil {
-		t.Fatalf("the true pin was refused, so a refusal below would prove nothing: %v", err)
+	beside := func(pin string) string {
+		dir := t.TempDir()
+		a := tools(dir)
+		writePin(dir, pin)
+		return a
+	}
+	prefix := func(pin string) string {
+		dir := t.TempDir()
+		a := tools(filepath.Join(dir, "bin"))
+		writePin(dir, pin)
+		return a
 	}
 	const other = "7c0ff3e83d8e7f4a71f4b06c9530862197271d41"
-	bad := link(t.TempDir(), other)
-	err := strictGatePinned(bad)
-	if err == nil {
-		t.Fatalf("an analyzer whose PIN names %s was accepted as the pin %s: the version check has no blade", other, moorun.Pin)
+	for _, layout := range []struct {
+		name  string
+		place func(pin string) string
+	}{
+		{"beside", beside},
+		{"prefix", prefix},
+	} {
+		if err := strictGatePinned(layout.place(moorun.Pin)); err != nil {
+			t.Fatalf("%s: the true pin was refused, so a refusal below would prove nothing: %v", layout.name, err)
+		}
+		err := strictGatePinned(layout.place(other))
+		if err == nil {
+			t.Fatalf("%s: an analyzer whose PIN names %s was accepted as the pin %s: the version check has no blade", layout.name, other, moorun.Pin)
+		}
+		if !strings.Contains(err.Error(), other) || !strings.Contains(err.Error(), moorun.Pin) {
+			t.Fatalf("%s: the refusal does not name both commits: %v", layout.name, err)
+		}
+		t.Logf("negative control (%s): %v", layout.name, err)
 	}
-	if !strings.Contains(err.Error(), other) || !strings.Contains(err.Error(), moorun.Pin) {
-		t.Fatalf("the refusal does not name both commits: %v", err)
+	shadowed := prefix(moorun.Pin)
+	writePin(filepath.Dir(shadowed), other)
+	if err := strictGatePinned(shadowed); err == nil || !strings.Contains(err.Error(), other) {
+		t.Fatalf("a PIN beside the analyzer naming %s was overridden by the true PIN in its prefix: %v", other, err)
 	}
-	t.Logf("negative control: %v", err)
+	if err := strictGatePinned(tools(filepath.Join(t.TempDir(), "bin"))); err == nil || !strings.Contains(err.Error(), "no PIN file") {
+		t.Fatalf("an analyzer with no PIN beside it or in its prefix was not refused as unpinned: %v", err)
+	}
 }
