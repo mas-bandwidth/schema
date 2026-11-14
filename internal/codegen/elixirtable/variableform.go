@@ -1899,11 +1899,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           # body was read (directory_report), so this is never taken
           :null
 
-        _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+        :unknown ->
+          # a record of a type this reader cannot name reads null (§3.1,
+          # §6.5), counted unknown by the directory census, as the Go
+          # reference's resolveCell reads it: only a type it names that is
+          # not the slot's own refuses
+          :null
       end
     end
   end

@@ -1394,6 +1394,16 @@ defmodule Benchtable.Table do
     }
   end
 
+  # A refused load's report names its refusal (docs/SPEC-TABLES.md §4): the
+  # verdict and the reason never disagree, so a refusal the fixed read left
+  # unnamed takes the refusal's own name.
+  defp fixed_class_refusal(refusal, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = named -> %{named | reason: to_string(refusal)}
+      named -> named
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -2712,7 +2722,7 @@ defmodule Benchtable.Table do
 
   def load("TableEntity", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}
   end
 
   def load("TableEntity", data) when is_binary(data) do
@@ -2721,19 +2731,19 @@ defmodule Benchtable.Table do
         {:ok, fixed_class_to_table("TableEntity", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refusal(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refusal(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}
     end
   end
 
   def load("TableStat", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}
   end
 
   def load("TableStat", data) when is_binary(data) do
@@ -2742,19 +2752,19 @@ defmodule Benchtable.Table do
         {:ok, fixed_class_to_table("TableStat", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refusal(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refusal(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}
     end
   end
 
   def load("TableMixed", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}
   end
 
   def load("TableMixed", data) when is_binary(data) do
@@ -2763,13 +2773,13 @@ defmodule Benchtable.Table do
         {:ok, fixed_class_to_table("TableMixed", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refusal(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refusal(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}
     end
   end
 
@@ -3316,11 +3326,12 @@ defmodule Benchtable.Table do
           # body was read (directory_report), so this is never taken
           :null
 
-        _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+        :unknown ->
+          # a record of a type this reader cannot name reads null (§3.1,
+          # §6.5), counted unknown by the directory census, as the Go
+          # reference's resolveCell reads it: only a type it names that is
+          # not the slot's own refuses
+          :null
       end
     end
   end
