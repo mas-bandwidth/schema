@@ -331,7 +331,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -790,6 +790,85 @@ defmodule Driver do
     end
   end
 
+  # THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1, test/conformance/README.md).
+  # Each row loads the root's current-form instance, sets ONE field to the
+  # row's value and runs the writer its surface names. Elixir refuses in every
+  # build: `{:error, _}` from a save, or the `ArgumentError` the fixed writer
+  # raises. A value this leg's terms cannot hold (a BEAM float holds no NaN or
+  # infinity) answers `unrepresentable`, which only a refused row accepts.
+  defp run(surface, rows, outdir)
+       when surface in ["write-refusal", "write-refusal-fixed", "write-refusal-json"] do
+    for [name, unit, root, wire, path, kind, text | _] <- rows(rows, surface) do
+      case table_module(unit) do
+        nil ->
+          write_absent(outdir, name)
+
+        mod ->
+          {:ok, value, _report} = mod.load(root, File.read!(wire))
+          ctx = %{mod: mod, ns: namespace(unit_package(unit)), descs: mod.descriptors()}
+
+          answer =
+            case WriteRefusal.set(ctx, root, value, path, kind, text) do
+              :unrepresentable ->
+                "unrepresentable"
+
+              {:ok, changed} ->
+                zero =
+                  kind == "bytes" and
+                    :binary.match(Base.decode16!(text, case: :mixed), <<0>>) != :nomatch
+
+                write_refusal_answer(surface, mod, root, changed, zero)
+            end
+
+          write(outdir, name, answer <> "\n")
+      end
+    end
+  end
+
+  # THE MESSAGE FORM's writer: the row's <unit> is a connection whose announced
+  # vocabulary the batch of one is written against. The body is the instance's
+  # own message (its `message` row's batch), read through that vocabulary, and
+  # the row's field is set on it by reference.
+  defp run("write-refusal-message", rows, outdir) do
+    connections =
+      Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
+        {key, {unit, announcement}}
+      end)
+
+    batches =
+      Map.new(rows(rows, "message"), fn [_name, _conn, _root, file, batch | _] ->
+        {file, batch}
+      end)
+
+    for [name, connection, root, wire, path, kind, text | _] <-
+          rows(rows, "write-refusal-message") do
+      with {unit, announcement} <- Map.get(connections, connection),
+           mod when mod != nil <- message_module(unit),
+           table when table != nil <- table_module(unit),
+           batch when is_binary(batch) <- Map.get(batches, wire) do
+        {:ok, vocab} = mod.announce_read(File.read!(announcement))
+        {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
+        ctx = %{descs: table.descriptors(), vocab: vocab}
+
+        answer =
+          case WriteRefusal.set_message(ctx, root, body, path, kind, text) do
+            :unrepresentable ->
+              "unrepresentable"
+
+            {:ok, changed} ->
+              case mod.save_messages(vocab, [changed]) do
+                {:ok, _bytes} -> "wrote"
+                {:error, _reason} -> "refused"
+              end
+          end
+
+        write(outdir, name, answer <> "\n")
+      else
+        _ -> write_absent(outdir, name)
+      end
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
@@ -1021,6 +1100,35 @@ defmodule Driver do
     File.write!(Path.join(outdir, name <> ".absent"), "")
   end
 
+  # The root's own form's writer (testdata/conformance/tables/FORMAT.md): save/2
+  # is the variable-form Save for a variable root and the fixed form's
+  # FixedSave, as a batch of one, for a declared fixed root, so `write-refusal`
+  # and `write-refusal-fixed` reach the same writer on a fixed root, as the Go
+  # driver's do. The text writer answers `wrote` only when its text spells a
+  # zero byte as \u0000 (docs/SPEC-TABLES.md §16.3).
+  defp write_refusal_answer("write-refusal-json", mod, root, value, zero) do
+    case mod.to_json(root, value) do
+      {:ok, text} ->
+        if zero and not String.contains?(IO.iodata_to_binary(text), "\\u0000"),
+          do: "wrote without \\u0000",
+          else: "wrote"
+
+      _ ->
+        "refused"
+    end
+  rescue
+    ArgumentError -> "refused"
+  end
+
+  defp write_refusal_answer(_surface, mod, root, value, _zero) do
+    case mod.save(root, value) do
+      {:ok, _bytes} -> "wrote"
+      {:error, _reason} -> "refused"
+    end
+  rescue
+    ArgumentError -> "refused"
+  end
+
   # the unit's message module, <Package>.TableMessage, resolved the way
   # table_module resolves <Package>.Table. nil when the leg has none.
   defp message_module(unit) do
@@ -1137,6 +1245,193 @@ defmodule Driver do
 
   defp write(outdir, name, data) when is_binary(data) do
     File.write!(Path.join(outdir, name), data)
+  end
+end
+
+# ---------------------------------------------------------------------------
+# THE WRITE-REFUSAL ROWS' ONE FIELD (testdata/conformance/tables/FORMAT.md)
+# ---------------------------------------------------------------------------
+#
+# A row's <path> is dotted field names with [i] element indexes, from the root,
+# and its <kind> says what the value sets. The table value is the codec's own:
+# a map keyed by field name, an enum by its member's name, a union as
+# {arm, payload}. The message body is the message form's: {ref, value} pairs
+# under the connection's announced vocabulary, an enum as the reference of its
+# member. The field is found through the unit's descriptors (§8), never a
+# generated accessor.
+defmodule WriteRefusal do
+  @segment ~r/^([A-Za-z_][A-Za-z0-9_]*)(?:\[([0-9]+)\])?$/
+
+  def set(ctx, root, value, path, kind, text) do
+    set_in(ctx, Map.fetch!(ctx.descs, root), value, String.split(path, "."), kind, text)
+  end
+
+  def set_message(ctx, root, body, path, kind, text) do
+    set_body(ctx, Map.fetch!(ctx.descs, root), body, String.split(path, "."), kind, text)
+  end
+
+  # ---- the table value ----
+
+  defp set_in(ctx, desc, owner, [seg | rest], kind, text) do
+    {name, index} = segment(seg)
+    f = field(desc, name)
+    current = Map.get(owner, name)
+
+    result =
+      case {rest, index} do
+        {[], nil} ->
+          leaf(ctx, f, current, kind, text)
+
+        {[], i} ->
+          with {:ok, v} <- leaf(ctx, f, Enum.at(current, i), kind, text),
+               do: {:ok, List.replace_at(current, i, v)}
+
+        {_, nil} ->
+          set_in(ctx, Map.fetch!(ctx.descs, f.elem), current || %{}, rest, kind, text)
+
+        {_, i} ->
+          with {:ok, v} <-
+                 set_in(ctx, Map.fetch!(ctx.descs, f.elem), Enum.at(current, i), rest, kind, text),
+               do: {:ok, List.replace_at(current, i, v)}
+      end
+
+    case result do
+      {:ok, v} -> {:ok, Map.put(owner, name, v)}
+      other -> other
+    end
+  end
+
+  # an enum by its raw ordinal: the member's name, and an ordinal no member
+  # carries stays the bare integer, which the writer must refuse
+  defp leaf(_ctx, f, _current, "ordinal", text) do
+    k = String.to_integer(text)
+    {:ok, member_name(f, k) || if(k == 0, do: nil, else: k)}
+  end
+
+  # a union by its raw tag: a declared tag takes its arm at the arm's declared
+  # defaults (an empty payload the codec fills); a tag past the arms stays the
+  # bare integer beside an empty payload, which the writer must refuse
+  defp leaf(ctx, f, _current, "tag", text) do
+    t = String.to_integer(text)
+
+    case Module.concat(ctx.ns, f.type_name <> "Type").from_int(t) do
+      {:ok, :none} -> {:ok, nil}
+      {:ok, arm} -> {:ok, {Atom.to_string(arm), %{}}}
+      :error -> {:ok, {t, %{}}}
+    end
+  end
+
+  defp leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
+
+  # ---- the message body ----
+
+  defp set_body(ctx, desc, body, [seg | rest], kind, text) do
+    {name, index} = segment(seg)
+    f = field(desc, name)
+    ref = ref_of(ctx.vocab, f.id)
+
+    current =
+      case List.keyfind(body, ref, 0) do
+        {_, v} -> v
+        nil -> nil
+      end
+
+    result =
+      case {rest, index} do
+        {[], nil} ->
+          message_leaf(ctx, f, current, kind, text)
+
+        {[], i} ->
+          with {:ok, v} <- message_leaf(ctx, f, Enum.at(current, i), kind, text),
+               do: {:ok, List.replace_at(current, i, v)}
+
+        {_, nil} ->
+          set_body(ctx, Map.fetch!(ctx.descs, f.elem), current || [], rest, kind, text)
+
+        {_, i} ->
+          with {:ok, v} <-
+                 set_body(
+                   ctx,
+                   Map.fetch!(ctx.descs, f.elem),
+                   Enum.at(current, i),
+                   rest,
+                   kind,
+                   text
+                 ),
+               do: {:ok, List.replace_at(current, i, v)}
+      end
+
+    case result do
+      {:ok, v} -> {:ok, List.keystore(body, ref, 0, {ref, v})}
+      other -> other
+    end
+  end
+
+  # an enum rides as the reference of its member's id; an ordinal no member
+  # carries has no member to reference, so it rides as a reference past the
+  # whole vocabulary, which names no member and the writer must refuse
+  defp message_leaf(ctx, f, _current, "ordinal", text) do
+    k = String.to_integer(text)
+
+    case member_name(f, k) do
+      nil -> {:ok, length(ctx.vocab.entries) + k}
+      name -> {:ok, ref_of(ctx.vocab, Map.fetch!(f.by_name, name))}
+    end
+  end
+
+  defp message_leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
+
+  # ---- the kinds both values share ----
+
+  defp scalar(_current, "int", text), do: {:ok, String.to_integer(text)}
+
+  # the used count of an array: a new element is a copy of element 0
+  defp scalar(current, "count", text) do
+    n = String.to_integer(text)
+    list = current || []
+
+    if n <= length(list),
+      do: {:ok, Enum.take(list, n)},
+      else: {:ok, list ++ List.duplicate(hd(list), n - length(list))}
+  end
+
+  # the used length of a text, filled with `a`
+  defp scalar(_current, "length", text), do: {:ok, String.duplicate("a", String.to_integer(text))}
+
+  defp scalar(_current, "bytes", text), do: {:ok, Base.decode16!(text, case: :mixed)}
+
+  # a BEAM float holds no NaN and no infinity (docs/SPEC.md §5.1's Elixir row 7)
+  defp scalar(_current, "float", text) when text in ["nan", "inf", "-inf"], do: :unrepresentable
+
+  defp scalar(_current, "float", text) do
+    {v, ""} = Float.parse(text)
+    {:ok, v}
+  end
+
+  defp scalar(_current, kind, _text), do: raise("write-refusal: no value of kind #{kind}")
+
+  # ---- lookup ----
+
+  defp segment(seg) do
+    case Regex.run(@segment, seg) do
+      [_, name] -> {name, nil}
+      [_, name, index] -> {name, String.to_integer(index)}
+      _ -> raise "write-refusal: #{inspect(seg)} is not a field path segment"
+    end
+  end
+
+  defp field(desc, name) do
+    Enum.find(desc.fields, &(&1.name == name)) ||
+      raise "write-refusal: no field #{name} in #{inspect(Map.get(desc, :name))}"
+  end
+
+  defp member_name(f, k), do: Enum.find_value(f.ords, fn {name, o} -> if o == k, do: name end)
+
+  defp ref_of(vocab, id) do
+    case Enum.find_index(vocab.entries, &(&1.id == id)) do
+      nil -> raise "write-refusal: id #{id} is not in the announced vocabulary"
+      i -> i + 1
+    end
   end
 end
 

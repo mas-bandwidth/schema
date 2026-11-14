@@ -9486,6 +9486,8 @@ inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & val
     return bytes;
 }
 
+inline bool RangedSignedFixedWriteAdmits( const RangedSigned & value );
+
 inline int64_t RangedSignedMeasure( const RangedSigned & value )
 {
     TableIds ids;
@@ -12172,6 +12174,7 @@ inline int64_t RangedSignedMeasureMessages( const RangedSigned * values, int64_t
     {
         const int64_t body = RangedSignedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RangedSignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12190,6 +12193,7 @@ inline int64_t RangedSignedSaveMessages( const RangedSigned * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RangedSignedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RangedSignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RangedSignedMeasureMessages( values, count, report )
@@ -12268,6 +12272,8 @@ inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned &
     }
     return bytes;
 }
+
+inline bool RangedUnsignedFixedWriteAdmits( const RangedUnsigned & value );
 
 inline int64_t RangedUnsignedMeasure( const RangedUnsigned & value )
 {
@@ -14721,6 +14727,7 @@ inline int64_t RangedUnsignedMeasureMessages( const RangedUnsigned * values, int
     {
         const int64_t body = RangedUnsignedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RangedUnsignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14739,6 +14746,7 @@ inline int64_t RangedUnsignedSaveMessages( const RangedUnsigned * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RangedUnsignedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RangedUnsignedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RangedUnsignedMeasureMessages( values, count, report )
@@ -14798,6 +14806,8 @@ inline int64_t RangedWidthsMeasureBody( TableIds & ids, const RangedWidths & val
     if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     return bytes;
 }
+
+inline bool RangedWidthsFixedWriteAdmits( const RangedWidths & value );
 
 inline int64_t RangedWidthsMeasure( const RangedWidths & value )
 {
@@ -15748,6 +15758,7 @@ inline int64_t RangedWidthsMeasureMessages( const RangedWidths * values, int64_t
     {
         const int64_t body = RangedWidthsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RangedWidthsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -15766,6 +15777,7 @@ inline int64_t RangedWidthsSaveMessages( const RangedWidths * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RangedWidthsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RangedWidthsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RangedWidthsMeasureMessages( values, count, report )
@@ -15970,6 +15982,30 @@ TABLE_FIXED_INLINE bool RangedSignedFixedInRange( const RangedSigned & value )
     return bad == 0;
 }
 
+// RangedSigned's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RangedSignedFixedWriteAdmits( const RangedSigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.i8_low > 126 );
+    bad |= (int) ( value.i8_high < -127 );
+    bad |= (int) ( value.i8_inside < -127 ) | (int) ( value.i8_inside > 126 );
+    bad |= (int) ( value.i16_low > 32766 );
+    bad |= (int) ( value.i16_high < -32767 );
+    bad |= (int) ( value.i16_inside < -32767 ) | (int) ( value.i16_inside > 32766 );
+    bad |= (int) ( value.i32_low > 2147483646 );
+    bad |= (int) ( value.i32_high < -2147483647 );
+    bad |= (int) ( value.i32_inside < -2147483647 ) | (int) ( value.i32_inside > 2147483646 );
+    bad |= (int) ( value.i64_low > 9223372036854775806ll );
+    bad |= (int) ( value.i64_high < -9223372036854775807ll );
+    bad |= (int) ( value.i64_inside < -9223372036854775807ll ) | (int) ( value.i64_inside > 9223372036854775806ll );
+    for ( int64_t i = 0; i < ( value.edges_count >= 0 && value.edges_count <= 4 ? (int64_t) value.edges_count : 0 ); ++i )
+    {
+    }
+    return bad == 0;
+}
+
 // RangedSigned's read-side bounds.
 inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -16029,6 +16065,30 @@ TABLE_FIXED_INLINE bool RangedUnsignedFixedInRange( const RangedUnsigned & value
     return bad == 0;
 }
 
+// RangedUnsigned's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RangedUnsignedFixedWriteAdmits( const RangedUnsigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.u8_low > 254 );
+    bad |= (int) ( value.u8_high < 1 );
+    bad |= (int) ( value.u8_inside < 1 ) | (int) ( value.u8_inside > 254 );
+    bad |= (int) ( value.u16_low > 65534 );
+    bad |= (int) ( value.u16_high < 1 );
+    bad |= (int) ( value.u16_inside < 1 ) | (int) ( value.u16_inside > 65534 );
+    bad |= (int) ( value.u32_low > 4294967294 );
+    bad |= (int) ( value.u32_high < 1 );
+    bad |= (int) ( value.u32_inside < 1 ) | (int) ( value.u32_inside > 4294967294 );
+    bad |= (int) ( value.u64_low > 18446744073709551614ull );
+    bad |= (int) ( value.u64_high < 1ull );
+    bad |= (int) ( value.u64_inside < 1ull ) | (int) ( value.u64_inside > 18446744073709551614ull );
+    for ( int64_t i = 0; i < ( value.counts_count >= 0 && value.counts_count <= 4 ? (int64_t) value.counts_count : 0 ); ++i )
+    {
+    }
+    return bad == 0;
+}
+
 // RangedUnsigned's read-side bounds.
 inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -16067,6 +16127,23 @@ inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & TABL
 // RangedWidths's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RangedWidthsFixedInRange( const RangedWidths & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.b8 > 255ull );
+    // bits(16) width clamp
+    bad |= (int) ( value.b16 > 65535ull );
+    // bits(12) width clamp
+    bad |= (int) ( value.b12 > 4095ull );
+    // bits(48) width clamp
+    bad |= (int) ( value.b48 > 281474976710655ull );
+    return bad == 0;
+}
+
+// RangedWidths's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RangedWidthsFixedWriteAdmits( const RangedWidths & value )
 {
     (void) value;
     int bad = 0;
@@ -16339,6 +16416,10 @@ inline int64_t RangedSignedFixedSave( const RangedSigned * values, int64_t count
 {
     const int64_t need = RangedSignedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RangedSignedFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedSignedFixedHash );
@@ -16893,6 +16974,10 @@ inline int64_t RangedUnsignedFixedSave( const RangedUnsigned * values, int64_t c
 {
     const int64_t need = RangedUnsignedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RangedUnsignedFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedUnsignedFixedHash );
@@ -17371,6 +17456,10 @@ inline int64_t RangedWidthsFixedSave( const RangedWidths * values, int64_t count
 {
     const int64_t need = RangedWidthsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RangedWidthsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedWidthsFixedHash );

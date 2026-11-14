@@ -748,6 +748,7 @@ defmodule Bench.TableMessage do
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -768,6 +769,7 @@ defmodule Bench.TableMessage do
     end
   catch
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -855,6 +857,7 @@ defmodule Bench.TableMessage do
   defp encode_fields(vocab, [{ref, value} | rest], acc) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
+        check_field(vocab, entry, value)
         acc2 = put_bits(acc, ref, vocab.ref_bits)
 
         case encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2) do
@@ -919,7 +922,10 @@ defmodule Bench.TableMessage do
   end
 
   defp encode_array(vocab, shape, elem, value, acc) do
+    # a count off the announced shape's min..max refuses and is never masked
+    # into the count's width (docs/SPEC.md §5.1, row 3)
     count = length(value)
+    check(count >= shape.min and count <= shape.max)
     acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
     acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
     encode_elements(vocab, elem, value, acc3)
@@ -941,12 +947,84 @@ defmodule Bench.TableMessage do
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
+        check_field(vocab, entry, value)
         encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
 
       :error ->
         :error
     end
   end
+
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1). Elixir has no compile-out assert,
+  # so save_messages and measure_messages refuse, in every build, a value its
+  # own declaration does not admit: an integer off its declared range or past
+  # its storage (an integer array's elements too), a count off its shape, a
+  # text past its bound, ill-formed or holding a zero byte, an enum reference
+  # that names no member and a union reference that names no arm. Nothing is
+  # masked into the width. The rules are this unit's own declarations, emitted
+  # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
+  # vocabulary entry carries; a field no declaration of this unit names
+  # carries no rule.
+  defp check_field(vocab, entry, value) do
+    case Map.get(write_rules(), {entry.id, entry.kind}) do
+      %{min: lo, max: hi} ->
+        check(is_integer(value) and value >= lo and value <= hi)
+
+      %{each_min: lo, each_max: hi} ->
+        check(is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi)))
+
+      %{text: max} ->
+        check(is_binary(value) and byte_size(value) <= max and text_ok?(value))
+
+      %{member: members} ->
+        check(named?(vocab, members, value))
+
+      %{arm: arms} ->
+        check(value == :none or (is_tuple(value) and named?(vocab, arms, elem(value, 0))))
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp check(true), do: :ok
+  defp check(false), do: throw(:invalid_value)
+
+  defp text_ok?(text), do: String.valid?(text) and :binary.match(text, <<0>>) == :nomatch
+
+  # an enum rides as the reference of its member's name, zero being None; a
+  # union as the reference of its arm
+  defp named?(_vocab, _ids, 0), do: true
+
+  defp named?(vocab, ids, ref) when is_integer(ref) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} -> MapSet.member?(ids, entry.id)
+      :error -> false
+    end
+  end
+
+  defp named?(_vocab, _ids, _ref), do: false
+
+  defp write_rules do
+    case :persistent_term.get({__MODULE__, :write_rules}, nil) do
+      nil ->
+        rules =
+          Enum.reduce(write_rule_rows(), %{}, fn {id, kind, what, v}, acc ->
+            Map.update(acc, {id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
+          end)
+
+        :persistent_term.put({__MODULE__, :write_rules}, rules)
+        rules
+
+      rules ->
+        rules
+    end
+  end
+
+  defp add_rule(rule, what, v) when what in [:member, :arm],
+    do: Map.update(rule, what, MapSet.new([v]), &MapSet.put(&1, v))
+
+  defp add_rule(rule, what, v), do: Map.put(rule, what, v)
 
   # A byte run appended whole: the writer must be at a byte boundary, which the
   # align that precedes a string or a bytes array guarantees.
@@ -1298,5 +1376,96 @@ defmodule Bench.TableMessage do
   defp f32_to_bits(f) do
     <<v::little-32>> = <<f::little-float-32>>
     if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
+  end
+
+  # this unit's own write rules, one {id, kind, rule, value} row each
+  defp write_rule_rows do
+    [
+      {0x01FBC365B059B925, 4, :min, 0},
+      {0x01FBC365B059B925, 4, :max, 7},
+      {0x0DBE005C56697C3E, 4, :min, 0},
+      {0x0DBE005C56697C3E, 4, :max, 65_535},
+      {0x13A62F542CF8E86E, 12, :text, 15},
+      {0x23FCFD6678E36712, 7, :min, 0},
+      {0x23FCFD6678E36712, 7, :max, 4095},
+      {0x2E35DC5321AA5790, 15, :arm, 0x33732819300680AA},
+      {0x2E35DC5321AA5790, 15, :arm, 0x9FA3A41C86ECB765},
+      {0x2E35DC5321AA5790, 15, :arm, 0xF2A38D910B5B348B},
+      {0x3EEE6B51BE54FC85, 5, :min, -1_000_000_000_000},
+      {0x3EEE6B51BE54FC85, 5, :max, 1_000_000_000_000},
+      {0x52076675EC13A0C1, 4, :min, -512},
+      {0x52076675EC13A0C1, 4, :max, 511},
+      {0x53A9F665A90CC1B1, 7, :min, 0},
+      {0x53A9F665A90CC1B1, 7, :max, 511},
+      {0x560D6527CCD8515F, 8, :min, 0},
+      {0x560D6527CCD8515F, 8, :max, 16_777_215},
+      {0x5759CE7586BBB5A3, 14, :each_min, 0},
+      {0x5759CE7586BBB5A3, 14, :each_max, 255},
+      {0x6CEDE5B6EB60ECB4, 4, :min, -2048},
+      {0x6CEDE5B6EB60ECB4, 4, :max, 2047},
+      {0x6CEDE6B6EB60EE67, 4, :min, -2048},
+      {0x6CEDE6B6EB60EE67, 4, :max, 2047},
+      {0x6CEDE8B6EB60F1CD, 4, :min, -2048},
+      {0x6CEDE8B6EB60F1CD, 4, :max, 2047},
+      {0x6D7B98E2D095967E, 8, :min, 0},
+      {0x6D7B98E2D095967E, 8, :max, 4_294_967_295},
+      {0x73A94C71D60DC0D8, 9, :min, 0},
+      {0x73A94C71D60DC0D8, 9, :max, 18_446_744_073_709_551_615},
+      {0x78101AC0AA8CBCFE, 4, :min, 0},
+      {0x78101AC0AA8CBCFE, 4, :max, 15},
+      {0x7BBC035F7B6D0112, 9, :min, 0},
+      {0x7BBC035F7B6D0112, 9, :max, 281_474_976_710_655},
+      {0x7F6308BE8AB37FC0, 4, :min, 0},
+      {0x7F6308BE8AB37FC0, 4, :max, 4095},
+      {0x7F69D4B5288BA9CF, 4, :min, 0},
+      {0x7F69D4B5288BA9CF, 4, :max, 1000},
+      {0x80AB75F0866DBF65, 6, :min, 0},
+      {0x80AB75F0866DBF65, 6, :max, 255},
+      {0x8113FE7EA2B16969, 4, :min, 0},
+      {0x8113FE7EA2B16969, 4, :max, 255},
+      {0x9BAE0DA8B829EE03, 8, :min, 0},
+      {0x9BAE0DA8B829EE03, 8, :max, 4_294_967_295},
+      {0x9E7FD06D864FBD56, 7, :min, 0},
+      {0x9E7FD06D864FBD56, 7, :max, 1023},
+      {0xA0B610205F2C6E01, 30, :member, 0x011C7B49A7228F9D},
+      {0xA0B610205F2C6E01, 30, :member, 0x04DC16AEA8FF5276},
+      {0xA0B610205F2C6E01, 30, :member, 0x0CA8B41B00D755F6},
+      {0xA0B610205F2C6E01, 30, :member, 0x188BBB1783928A95},
+      {0xA0B610205F2C6E01, 30, :member, 0x20BADA21BC8CB334},
+      {0xA0B610205F2C6E01, 30, :member, 0x229D0447C3086A55},
+      {0xA0B610205F2C6E01, 30, :member, 0x2C3667B9C2F272F1},
+      {0xA0B610205F2C6E01, 30, :member, 0x2CC8282FB0DE8831},
+      {0xA0B610205F2C6E01, 30, :member, 0x35E53BC341129217},
+      {0xA0B610205F2C6E01, 30, :member, 0x89F7566E1123E15F},
+      {0xA0B610205F2C6E01, 30, :member, 0x8D7F25318B3B4469},
+      {0xA0B610205F2C6E01, 30, :member, 0x985FC819FAB21A4E},
+      {0xA0B610205F2C6E01, 30, :member, 0x9FBFEFA835DA8476},
+      {0xA0B610205F2C6E01, 30, :member, 0xA790EEE12766CF0C},
+      {0xA0B610205F2C6E01, 30, :member, 0xD9CD0DCC285B7816},
+      {0xA3348580461FAF16, 19, :min, 0},
+      {0xA3348580461FAF16, 19, :max, 340_282_366_920_938_463_463_374_607_431_768_211_455},
+      {0xA5013E9AD5CAEDA4, 4, :min, 0},
+      {0xA5013E9AD5CAEDA4, 4, :max, 3},
+      {0xAA38ACA481F528A8, 7, :min, 0},
+      {0xAA38ACA481F528A8, 7, :max, 65_535},
+      {0xB54D8E19798E16E8, 7, :min, 0},
+      {0xB54D8E19798E16E8, 7, :max, 511},
+      {0xB7BC9AC015A25050, 7, :min, 0},
+      {0xB7BC9AC015A25050, 7, :max, 4095},
+      {0xB7D7B5650A590B05, 9, :min, 0},
+      {0xB7D7B5650A590B05, 9, :max, 18_446_744_073_709_551_615},
+      {0xCB4B353576672DA8, 4, :min, -16_383},
+      {0xCB4B353576672DA8, 4, :max, 16_383},
+      {0xCB4B37357667310E, 4, :min, -16_383},
+      {0xCB4B37357667310E, 4, :max, 16_383},
+      {0xCB4B3835766732C1, 4, :min, -16_383},
+      {0xCB4B3835766732C1, 4, :max, 16_383},
+      {0xD61BDD7908AF2642, 18, :min, -1_267_650_600_228_229_401_496_703_205_376},
+      {0xD61BDD7908AF2642, 18, :max, 1_267_650_600_228_229_401_496_703_205_376},
+      {0xFBF1AC4D96EBD022, 7, :min, 0},
+      {0xFBF1AC4D96EBD022, 7, :max, 4095},
+      {0xFD29EE12A979CB69, 4, :min, 0},
+      {0xFD29EE12A979CB69, 4, :max, 255}
+    ]
   end
 end

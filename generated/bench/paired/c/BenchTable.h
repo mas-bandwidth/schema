@@ -9490,6 +9490,120 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
 }
 
+/* MixedEntity's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_write_check_body_( const bench_mixed_entity_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->entity_id > 4095ull );
+    (*out_of_range) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    (*out_of_range) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    (*out_of_range) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    /* bits(9) width clamp */
+    (*out_of_range) += ( value->yaw > 511ull );
+    /* bits(9) width clamp */
+    (*out_of_range) += ( value->pitch > 511ull );
+    (*out_of_range) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    (*out_of_range) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    (*out_of_range) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    (*out_of_range) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    if ( (uint64_t) value->weapon > 15u ) { (*out_of_range)++; }
+}
+
+/* MixedStat's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_write_check_body_( const bench_mixed_stat_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(8) width clamp */
+    (*out_of_range) += ( value->stat_id > 255ull );
+    (*out_of_range) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+}
+
+/* MixedHitEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_write_check_body_( const bench_mixed_hit_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->target_id > 4095ull );
+    (*out_of_range) += (int) ( value->damage < 0 ) | (int) ( value->damage > 4095 );
+    (*out_of_range) += (int) ( value->hit_kind < 0 ) | (int) ( value->hit_kind > 7 );
+}
+
+/* MixedChatEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_write_check_body_( const bench_mixed_chat_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->speaker > 4095ull );
+}
+
+/* MixedPickupEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_write_check_body_( const bench_mixed_pickup_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(10) width clamp */
+    (*out_of_range) += ( value->item_id > 1023ull );
+    (*out_of_range) += (int) ( value->amount < 0 ) | (int) ( value->amount > 255 );
+}
+
+/* BenchMixed's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_write_check_body_( const bench_bench_mixed_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(16) width clamp */
+    (*out_of_range) += ( value->sequence > 65535ull );
+    (*out_of_range) += (int) ( value->ack_sequence < 0 ) | (int) ( value->ack_sequence > 65535 );
+    (*out_of_range) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
+    /* bits(48) width clamp */
+    (*out_of_range) += ( value->frame_tick > 281474976710655ull );
+    (*out_of_range) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
+        {
+            schema_bench_mixed_entity_fixed_write_check_body_( &value->entities[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->stats_count >= 0 && value->stats_count <= 80 ? (int64_t) value->stats_count : 0 ); ++i )
+        {
+            schema_bench_mixed_stat_fixed_write_check_body_( &value->stats[i], out_of_range, damaged );
+        }
+    }
+    if ( (uint32_t) value->game_event.type > 3u ) { (*out_of_range)++; }
+    switch ( value->game_event.type )
+    {
+        case BENCH_MIXED_EVENT_TYPE_HIT:
+        {
+            schema_bench_mixed_hit_event_fixed_write_check_body_( &value->game_event.as.hit, out_of_range, damaged );
+            break;
+        }
+        case BENCH_MIXED_EVENT_TYPE_CHAT:
+        {
+            schema_bench_mixed_chat_event_fixed_write_check_body_( &value->game_event.as.chat, out_of_range, damaged );
+            break;
+        }
+        case BENCH_MIXED_EVENT_TYPE_PICKUP:
+        {
+            schema_bench_mixed_pickup_event_fixed_write_check_body_( &value->game_event.as.pickup, out_of_range, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( value->player_name_length >= 0 && value->player_name_length <= 15 && !bench_table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        (*damaged)++;
+    }
+    (*out_of_range) += (int) ( bench_table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( bench_table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
+    (*out_of_range) += ( value->ping > 64000 );
+    /* bits(24) width clamp */
+    (*out_of_range) += ( value->crc_hint > 16777215ull );
+    (*out_of_range) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
+    (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
+}
+
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define bench_mixed_entity_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */

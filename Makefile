@@ -5140,10 +5140,34 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 	@mkdir -p build
 	go build -o $@ ./test/conformance/harness
 
+# THE DRIVER LINKS ONE OBJECT PER TABLE SOURCE. One c++ over main.cpp and every
+# CONFORMANCE_SOURCES file compiled them one after another (36 s on the Studio,
+# >77 s on a runner), and internal/codegen/cpptable's form-1 framing test and
+# its negative control each paid that whole compile in series: under the
+# unit-codegen row's load the package died at its ten-minute limit inside the
+# first of them (run 43570208757). Each source is now its own object, compiled
+# under make's own -j, and the negative control links the same objects to its
+# planted main.cpp, so the table sources are compiled once. The objects are
+# named only inside recipes, to a sub-make, because CONFORMANCE_SOURCES globs
+# files the stamp writes: anything that expands it when the Makefile is parsed
+# runs before the stamp on a clean tree, and make then keeps the empty
+# directory listing it read for the rest of the run, so the link would miss
+# the maps, lists and widelist tables.
+CONFORMANCE_OBJECTS = $(patsubst build/tables-generated/%.cpp,build/conformance-cpp-objs/%.o,$(CONFORMANCE_SOURCES))
+
+build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+.PHONY: conformance-cpp-objects
+conformance-cpp-objects: build/tables-generated/.stamp
+	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
+
 build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
 	@mkdir -p build
+	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
-		$(CONFORMANCE_SOURCES) -o $@
+		$(CONFORMANCE_OBJECTS) -o $@
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
 #
@@ -6592,6 +6616,15 @@ FIXEDFORM_INCLUDES = -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) -I$(SERIALIZE)
 FIXEDFORM_ASAN_FLAGS = -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
+# THE HOSTILE-VALUE WRITERS ARE BUILT THE WAY A RELEASE BUILD IS. The fixed
+# writer's value checks (docs/SPEC.md §5.1: range, bits width, enum, union tag,
+# ill-formed text) are debug asserts, the programmer's job, so a release build
+# CAN put a value past them on the wire. These binaries write such values on
+# purpose so the READER can be made to answer for them, and compile the write
+# assert out the way a release build does: the same flag on every unit of a
+# binary, so no inline function differs between two of them.
+FIXEDFORM_RELEASE_WRITE := '-Dschema_assert(x)=((void)0)'
+
 # ONE OBJECT PER TRANSLATION UNIT, for the plain binary and its sanitized twin
 # alike: the three sources compile side by side under `make -j` rather than one
 # after another inside a single compiler command (the sanitized build of the
@@ -6601,11 +6634,11 @@ FIXEDFORM_UNITS := fixedform_main versioning_lists versioning_numbers
 
 build/fixedform-objs/%.o: test/tables/%.cpp build/tables-generated/.stamp
 	@mkdir -p $(@D)
-	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) $(FIXEDFORM_INCLUDES) -c $< -o $@
 
 build/fixedform-objs-asan/%.o: test/tables/%.cpp build/tables-generated/.stamp
 	@mkdir -p $(@D)
-	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_RELEASE_WRITE) $(FIXEDFORM_INCLUDES) -c $< -o $@
 
 build/schema_test_fixedform: $(FIXEDFORM_UNITS:%=build/fixedform-objs/%.o)
 	@mkdir -p build
@@ -6760,7 +6793,7 @@ tables-fixedform-run-copy-negative-control:
 # packages, one of which runs `make tables-rust-fixedform`).
 build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp | tables-fixedform-corpus-check
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/examples \
@@ -7633,10 +7666,17 @@ pins-source-goldens: bin/schema
 	go test ./internal/goldens -count=1 -run '^TestGolden'
 
 .PHONY: pins-source
-pins-source: pins-source-cpp pins-source-c pins-source-cs pins-source-goldens
 # The writer rows and the golden row touch the same table pins, so the local
 # aggregate keeps them serial; ci-full.yml runs each row in its own checkout.
-.NOTPARALLEL: pins-source
+# They run as four sub-makes in order, never as prerequisites under
+# `.NOTPARALLEL: pins-source`: GNU make before 4.4 (macOS ships 3.81; the
+# runners have 4.4.1) ignores .NOTPARALLEL's prerequisites and serialises EVERY
+# target in the Makefile, so that one line turned off -j for all of it on a Mac.
+pins-source:
+	$(MAKE) --no-print-directory pins-source-cpp
+	$(MAKE) --no-print-directory pins-source-c
+	$(MAKE) --no-print-directory pins-source-cs
+	$(MAKE) --no-print-directory pins-source-goldens
 
 .PHONY: pins-wire-packet
 pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table

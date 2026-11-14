@@ -109,7 +109,7 @@ func relaxVectorVerdict(pass, name, verdict string, relax, seen map[string]bool)
 // canonical re-encoding has the input's length but not its bytes, so the
 // difference is bytes the decoded value does not carry (the fixed form has
 // one size, so a same-length re-encoding differs only in dead bytes).
-// RELAXED 2026-11-14 (maintainer: get main green); re-enable: relax/dead-bytes
+// RELAXED 2026-11-14 (maintainer: get main green); re-enable: relax/dead-bytes.
 func deadByteMutant(root *wireRoot, reply legReply, ans oracleAnswer, data []byte) bool {
 	if root.variable || reply.accepted() || !ans.accepted || ans.encFail {
 		return false

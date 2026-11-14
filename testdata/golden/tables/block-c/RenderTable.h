@@ -4597,6 +4597,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_body( blockdemo_table_writer
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_write_admits_( const blockdemo_render_ship_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure( const blockdemo_render_ship_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5068,7 +5069,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure_messages(const blockd
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_ship_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5085,7 +5090,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_ship_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5410,6 +5419,7 @@ static SCHEMA_UNUSED int blockdemo_render_turret_save_body( blockdemo_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_write_admits_( const blockdemo_render_turret_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure( const blockdemo_render_turret_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5874,7 +5884,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure_messages(const bloc
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_turret_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5891,7 +5905,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockde
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_turret_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6191,6 +6209,7 @@ static SCHEMA_UNUSED int blockdemo_render_missile_save_body( blockdemo_table_wri
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_write_admits_( const blockdemo_render_missile_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure( const blockdemo_render_missile_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -6538,7 +6557,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure_messages(const blo
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_missile_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6555,7 +6578,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockd
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_missile_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6822,6 +6849,7 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_save_body( blockdemo_tabl
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_write_admits_( const blockdemo_render_dynamic_prop_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure( const blockdemo_render_dynamic_prop_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -7172,7 +7200,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure_messages(cons
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_dynamic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7189,7 +7221,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const b
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_dynamic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7459,6 +7495,7 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_save_body( blockdemo_table
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_write_admits_( const blockdemo_render_static_prop_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure( const blockdemo_render_static_prop_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -7840,7 +7877,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure_messages(const
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_static_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7857,7 +7898,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const bl
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_static_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8140,6 +8185,7 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_body( blockdemo_tab
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_write_admits_( const blockdemo_render_cosmetic_prop_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure( const blockdemo_render_cosmetic_prop_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -8542,7 +8588,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure_messages(con
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_cosmetic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8559,7 +8609,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const 
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_cosmetic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8844,6 +8898,7 @@ static SCHEMA_UNUSED int blockdemo_render_laser_save_body( blockdemo_table_write
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_write_admits_( const blockdemo_render_laser_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure( const blockdemo_render_laser_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -9162,7 +9217,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure_messages(const block
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_laser_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9179,7 +9238,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdem
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_laser_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9438,6 +9501,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_save_body( blockdemo_table_w
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_write_admits_( const blockdemo_render_explosion_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure( const blockdemo_render_explosion_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -9809,7 +9873,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure_messages(const b
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_explosion_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9826,7 +9894,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const bloc
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_explosion_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -12897,6 +12969,69 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
+/* RenderShip's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_write_check_body_( const blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->ship_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderTurret's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_write_check_body_( const blockdemo_render_turret_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderMissile's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_write_check_body_( const blockdemo_render_missile_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->missile_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderDynamicProp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_write_check_body_( const blockdemo_render_dynamic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderStaticProp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_write_check_body_( const blockdemo_render_static_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderCosmeticProp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_write_check_body_( const blockdemo_render_cosmetic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderLaser's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_write_check_body_( const blockdemo_render_laser_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->laser_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderExplosion's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_write_check_body_( const blockdemo_render_explosion_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->explosion_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
 /* ---- RenderCamera, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -13216,6 +13351,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderShip holds is
+   one its declaration admits. Every writer of RenderShip asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_write_admits_( const blockdemo_render_ship_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_ship_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -13387,6 +13533,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_ship_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_ship_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -13596,6 +13746,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderTurret holds is
+   one its declaration admits. Every writer of RenderTurret asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_write_admits_( const blockdemo_render_turret_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_turret_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -13748,6 +13909,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_turret_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_turret_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -13957,6 +14122,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderMissile holds is
+   one its declaration admits. Every writer of RenderMissile asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_write_admits_( const blockdemo_render_missile_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_missile_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -14115,6 +14291,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_missile_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_missile_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -14324,6 +14504,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderDynamicProp holds is
+   one its declaration admits. Every writer of RenderDynamicProp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_write_admits_( const blockdemo_render_dynamic_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_dynamic_prop_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -14484,6 +14675,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_dynamic_prop_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_dynamic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -14693,6 +14888,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderStaticProp holds is
+   one its declaration admits. Every writer of RenderStaticProp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_write_admits_( const blockdemo_render_static_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_static_prop_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -14853,6 +15059,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_static_prop_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_static_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -15062,6 +15272,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderCosmeticProp holds is
+   one its declaration admits. Every writer of RenderCosmeticProp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_write_admits_( const blockdemo_render_cosmetic_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_cosmetic_prop_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -15225,6 +15446,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_cosmetic_prop_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -15434,6 +15659,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderLaser holds is
+   one its declaration admits. Every writer of RenderLaser asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_write_admits_( const blockdemo_render_laser_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_laser_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -15586,6 +15822,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_laser_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_laser_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -15795,6 +16035,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderExplosion holds is
+   one its declaration admits. Every writer of RenderExplosion asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_write_admits_( const blockdemo_render_explosion_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_explosion_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -15953,6 +16204,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_blockdemo_render_explosion_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_render_explosion_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */

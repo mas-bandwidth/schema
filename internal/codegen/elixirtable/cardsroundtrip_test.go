@@ -58,11 +58,11 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 	rest := make([]string, 0, len(names))
 	var last []string
 	for _, n := range names {
-		switch {
-		case n == BuildVersionModule+".ex":
-		case n == "PacketRuntime.ex" || n == "CookRuntime.ex" || n == "FixedRuntime.ex" || n == "TableRuntime.ex":
+		switch n {
+		case BuildVersionModule + ".ex":
+		case "PacketRuntime.ex", "CookRuntime.ex", "FixedRuntime.ex", "TableRuntime.ex":
 			first = append(first, n)
-		case n == "Table.ex" || n == "RetainTable.ex" || n == "TableMessage.ex" || n == "UnitView.ex":
+		case "Table.ex", "RetainTable.ex", "TableMessage.ex", "UnitView.ex":
 			last = append(last, n)
 		default:
 			rest = append(rest, n)

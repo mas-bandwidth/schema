@@ -673,7 +673,7 @@ func TestRustFiniteFloatNegativeControl(t *testing.T) {
 			{"if !table_retained_float_finite(kind,", "if false && !table_retained_float_finite(kind,"},
 		}, []string{"retain/non-finite-unknown-refuses/"}},
 		{"message-read", [][2]string{
-			{"|| table_finite_f32(lo as u32) {", "|| true /* SABOTAGED */ {"},
+			{"if table_finite_f32(lo as u32) {", "if true /* SABOTAGED */ {"},
 			{"else if table_finite_f64(lo) {", "else if true /* SABOTAGED */ {"},
 		}, []string{"message/read-refuses/"}},
 		{"message-writer", [][2]string{

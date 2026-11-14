@@ -4659,17 +4659,22 @@ defmodule Bench.Table do
 
   defp field_active?(_f, _desc, _value), do: true
 
-  defp validate_record(desc, value) do
+  # zero_ok is THE TEXT WRITER'S CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md
+  # §5.1): well-formed text, a zero byte included, which the text spells
+  # \u0000. The binary writers refuse a zero byte, because their readers do.
+  defp validate_record(desc, value), do: validate_record(desc, value, false)
+
+  defp validate_record(desc, value, zero_ok) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default))
+        validate_text_list(f, Map.get(value, f.name, f.default), zero_ok)
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
         end
       end
 
@@ -4677,7 +4682,7 @@ defmodule Bench.Table do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
         end
       end
 
@@ -5021,7 +5026,7 @@ defmodule Bench.Table do
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements) do
+  defp validate_text_list(f, elements, zero_ok) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -5032,7 +5037,7 @@ defmodule Bench.Table do
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or
+        if not is_binary(value) or not text_valid?(value, zero_ok) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -5063,6 +5068,9 @@ defmodule Bench.Table do
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
+
+  defp text_valid?(raw, true), do: String.valid?(raw)
+  defp text_valid?(raw, false), do: utf8_valid?(raw)
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
@@ -5273,7 +5281,7 @@ defmodule Bench.Table do
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -5369,7 +5377,7 @@ defmodule Bench.Table do
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1))
+    Enum.each(pairs, &validate_record(entry_desc, &1, true))
 
     if pairs == [] do
       "{}"
@@ -6658,10 +6666,12 @@ defmodule Bench.Table do
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
   # ---- objects, arrays, strings with escapes, numbers, booleans and null
 
-  defp json_value(_bin, depth) when depth > 128, do: :error
-
+  # THE DEPTH CAP COUNTS CONTAINERS (docs/SPEC-TABLES.md §16.2): the root
+  # container sits at depth 0 and a container past depth 128 is refused, so a
+  # scalar member of a depth-128 object (graph_chain_text's deepest node) reads.
   defp json_value(bin, depth) do
     case json_skip(bin) do
+      <<c, _::binary>> when c in [?{, ?[] and depth > 128 -> :error
       <<"{", rest::binary>> -> json_object_p(rest, depth)
       <<"[", rest::binary>> -> json_array_p(rest, depth)
       <<"\"", rest::binary>> -> json_string(rest, [])

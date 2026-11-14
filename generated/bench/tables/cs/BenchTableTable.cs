@@ -1440,7 +1440,8 @@ namespace Benchtable
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
+                    // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
+                    // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -7617,8 +7618,8 @@ namespace Benchtable
             return TableEntityLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableEntityMeasureMessages(TableEntity[] values) { return TableWire.MessageSave(values, TableEntityTableType(), Span<byte>.Empty, true); }
-        public static long TableEntitySaveMessages(TableEntity[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableEntityTableType(), bytes, false); }
+        public static long TableEntityMeasureMessages(TableEntity[] values) { long wrote = TableWire.MessageSave(values, TableEntityTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TableEntity v in values) { System.Diagnostics.Debug.Assert(TableEntityFixedWriteAdmits(v)); } } return wrote; }
+        public static long TableEntitySaveMessages(TableEntity[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TableEntityTableType(), bytes, false); if (wrote >= 0) { foreach (TableEntity v in values) { System.Diagnostics.Debug.Assert(TableEntityFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TableEntityLoadMessages(TableEntity[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableEntityTableType(), bytes, vocabulary, report, out count); }
 
         public static long TableEntityCookMeasure(TableEntity value) { return TableWire.Cook(value, TableEntityTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -7715,8 +7716,8 @@ namespace Benchtable
             return TableStatLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableStatMeasureMessages(TableStat[] values) { return TableWire.MessageSave(values, TableStatTableType(), Span<byte>.Empty, true); }
-        public static long TableStatSaveMessages(TableStat[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableStatTableType(), bytes, false); }
+        public static long TableStatMeasureMessages(TableStat[] values) { long wrote = TableWire.MessageSave(values, TableStatTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TableStat v in values) { System.Diagnostics.Debug.Assert(TableStatFixedWriteAdmits(v)); } } return wrote; }
+        public static long TableStatSaveMessages(TableStat[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TableStatTableType(), bytes, false); if (wrote >= 0) { foreach (TableStat v in values) { System.Diagnostics.Debug.Assert(TableStatFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TableStatLoadMessages(TableStat[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableStatTableType(), bytes, vocabulary, report, out count); }
 
         public static long TableStatCookMeasure(TableStat value) { return TableWire.Cook(value, TableStatTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -8101,8 +8102,8 @@ namespace Benchtable
             return TableMixedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableMixedMeasureMessages(TableMixed[] values) { return TableWire.MessageSave(values, TableMixedTableType(), Span<byte>.Empty, true); }
-        public static long TableMixedSaveMessages(TableMixed[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableMixedTableType(), bytes, false); }
+        public static long TableMixedMeasureMessages(TableMixed[] values) { long wrote = TableWire.MessageSave(values, TableMixedTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TableMixed v in values) { System.Diagnostics.Debug.Assert(TableMixedFixedWriteAdmits(v)); } } return wrote; }
+        public static long TableMixedSaveMessages(TableMixed[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TableMixedTableType(), bytes, false); if (wrote >= 0) { foreach (TableMixed v in values) { System.Diagnostics.Debug.Assert(TableMixedFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TableMixedLoadMessages(TableMixed[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableMixedTableType(), bytes, vocabulary, report, out count); }
 
         public static long TableMixedCookMeasure(TableMixed value) { return TableWire.Cook(value, TableMixedTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -9045,6 +9046,119 @@ namespace Benchtable
             if (value.IdleTicks < 0 || value.IdleTicks > 15) { clamped++; }
         }
 
+        // TableEntity's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableEntityFixedWriteCheckBody(TableEntity value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.EntityId > 4095) { clamped++; }
+            if (value.PosX < -16383 || value.PosX > 16383) { clamped++; }
+            if (value.PosY < -16383 || value.PosY > 16383) { clamped++; }
+            if (value.PosZ < -16383 || value.PosZ > 16383) { clamped++; }
+            // bits(9) width clamp
+            if (value.Yaw > 511) { clamped++; }
+            // bits(9) width clamp
+            if (value.Pitch > 511) { clamped++; }
+            if (value.VelX < -2048 || value.VelX > 2047) { clamped++; }
+            if (value.VelY < -2048 || value.VelY > 2047) { clamped++; }
+            if (value.VelZ < -2048 || value.VelZ > 2047) { clamped++; }
+            if (value.Health < 0 || value.Health > 1000) { clamped++; }
+            if ((ulong)value.Weapon > 15) { clamped++; }
+        }
+
+        // TableStat's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableStatFixedWriteCheckBody(TableStat value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(8) width clamp
+            if (value.StatId > 255) { clamped++; }
+            if (value.Delta < -512 || value.Delta > 511) { clamped++; }
+        }
+
+        // TableHitEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableHitEventFixedWriteCheckBody(TableHitEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.TargetId > 4095) { clamped++; }
+            if (value.Damage < 0 || value.Damage > 4095) { clamped++; }
+            if (value.HitKind < 0 || value.HitKind > 7) { clamped++; }
+        }
+
+        // TableChatEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableChatEventFixedWriteCheckBody(TableChatEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Channel < 0 || value.Channel > 3) { clamped++; }
+            // bits(12) width clamp
+            if (value.Speaker > 4095) { clamped++; }
+        }
+
+        // TablePickupEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TablePickupEventFixedWriteCheckBody(TablePickupEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(10) width clamp
+            if (value.ItemId > 1023) { clamped++; }
+            if (value.Amount < 0 || value.Amount > 255) { clamped++; }
+        }
+
+        // TableMixed's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableMixedFixedWriteCheckBody(TableMixed value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(16) width clamp
+            if (value.Sequence > 65535) { clamped++; }
+            if (value.AckSequence < 0 || value.AckSequence > 65535) { clamped++; }
+            if (value.Nonce < 1ul || value.Nonce > 9223372036854775807ul) { clamped++; }
+            if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) { clamped++; }
+            // bits(48) width clamp
+            if (value.FrameTick > 281474976710655ul) { clamped++; }
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
+                {
+                    TableEntityFixedWriteCheckBody(value.Entities[i], ref clamped);
+                }
+            }
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < value.StatsCount && i < value.Stats.Length; ++i)
+                {
+                    TableStatFixedWriteCheckBody(value.Stats[i], ref clamped);
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                if ((ulong)value.GameEvent.Type > 3) { clamped++; }
+                switch (value.GameEvent.Type)
+                {
+                    case TableEventType.Hit:
+                        {
+                            TableHitEventFixedWriteCheckBody(value.GameEvent.Hit, ref clamped);
+                            break;
+                        }
+                    case TableEventType.Chat:
+                        {
+                            TableChatEventFixedWriteCheckBody(value.GameEvent.Chat, ref clamped);
+                            break;
+                        }
+                    case TableEventType.Pickup:
+                        {
+                            TablePickupEventFixedWriteCheckBody(value.GameEvent.Pickup, ref clamped);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            if (value.PlayerName != null && value.PlayerNameLength >= 0 && value.PlayerNameLength <= value.PlayerName.Length && !TableWire.TextValid(value.PlayerName.AsSpan(0, value.PlayerNameLength))) { clamped++; }
+            if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) { clamped++; }
+            // bits(24) width clamp
+            if (value.CrcHint > 16777215) { clamped++; }
+            if (value.Extra < 0 || value.Extra > 255) { clamped++; }
+            if (value.IdleTicks < 0 || value.IdleTicks > 15) { clamped++; }
+        }
+
         // TableMixed's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string TableMixedFixedFiniteBody(TableMixed value)
@@ -9071,6 +9185,15 @@ namespace Benchtable
             TableEntityFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TableEntity
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TableEntityFixedWriteAdmits(TableEntity value)
+        {
+            int bad = 0;
+            TableEntityFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TableEntity, the fixed form ----
@@ -9518,6 +9641,10 @@ namespace Benchtable
         {
             long need = TableEntityFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TableEntityFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableEntityFixedHash);
@@ -9740,6 +9867,15 @@ namespace Benchtable
             TableStatFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TableStat
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TableStatFixedWriteAdmits(TableStat value)
+        {
+            int bad = 0;
+            TableStatFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TableStat, the fixed form ----
@@ -10054,6 +10190,10 @@ namespace Benchtable
         {
             long need = TableStatFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TableStatFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableStatFixedHash);
@@ -10276,6 +10416,15 @@ namespace Benchtable
             TableMixedFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TableMixed
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TableMixedFixedWriteAdmits(TableMixed value)
+        {
+            int bad = 0;
+            TableMixedFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TableMixed, the fixed form ----
@@ -12052,6 +12201,10 @@ namespace Benchtable
             long need = TableMixedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (TableMixedFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TableMixedFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableMixedFixedHash);
