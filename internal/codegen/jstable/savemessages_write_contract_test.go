@@ -7,13 +7,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestJsSaveMessagesRefusesOffContract holds the JavaScript message-form writer
+// TestJsSaveMessagesWriteContractRefusesOffContract holds the JavaScript message-form writer
 // to SPEC §5.1 rows 1 to 8: <T>SaveMessages and <T>MeasureMessages refuse a
 // batch holding a value its declaration does not admit, answering -1 with the
 // report's Verdict set and never throwing; the boundary values are written and
 // round-trip through LoadMessages. Each off-contract value is checked alone and
 // as the second body of a two-body batch.
-func TestJsSaveMessagesRefusesOffContract(t *testing.T) {
+func TestJsSaveMessagesWriteContractRefusesOffContract(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, jsSaveMessagesContractSchema)
 	st := findTable(t, u, "Doc")
