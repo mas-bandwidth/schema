@@ -886,7 +886,14 @@ public final class TableVariable {
             if (stamp.length <= ids.length) {
                 stamp = new int[Math.max(ids.length + 1, stamp.length * 2)];
                 gen = 0;
-            } else if (gen > Integer.MAX_VALUE - (1 << 20)) {
+            } else if (gen < 0 || gen > Integer.MAX_VALUE - buf.length) {
+                // A body and a keyed array each spend at least one byte, so
+                // this file stamps at most buf.length generations. Clear the
+                // stamps before the walk whenever those generations would
+                // carry the counter past Integer.MAX_VALUE, and whenever a
+                // counter from an older reset has already wrapped, so the
+                // counter never wraps between resets and a valid body never
+                // meets a stale generation.
                 java.util.Arrays.fill(stamp, 0);
                 gen = 0;
             }
