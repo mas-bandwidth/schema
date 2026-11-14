@@ -351,6 +351,19 @@ defmodule Bench.FixedRuntime do
     raise ArgumentError, "value is #{byte_size(bytes)} bytes, past the declared bound of #{n}"
   end
 
+  @doc """
+  text_slack for a STRING, which must also be well-formed UTF-8 with no zero
+  byte, or ArgumentError: the fixed reader refuses either as text_ill_formed,
+  and a writer never produces bytes its own reader refuses (docs/SPEC.md §5.1).
+  """
+  def string_slack(text, n) when is_binary(text) do
+    if not String.valid?(text) or :binary.match(text, <<0>>) != :nomatch do
+      raise ArgumentError, "value is not well-formed UTF-8 text with no zero byte"
+    end
+
+    text_slack(text, n)
+  end
+
   # ---------------------------------------------------------------------------
   # THE HASH: fnv1a64 over the layout's bytes, exactly as written
   # ---------------------------------------------------------------------------

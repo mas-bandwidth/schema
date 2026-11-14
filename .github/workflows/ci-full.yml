@@ -266,8 +266,11 @@ jobs:
         # re-enable: relax/ci-time-unit-codegen, relax/ci-time-versioning-cs,
         # relax/ci-time-versioning-rust, relax/ci-time-versioning-java,
         # relax/ci-time-versioning-c, relax/ci-time-unit-rest-ci,
-        # relax/ci-time-unit-rest-fuzz-2 (docs/relaxed.md)
-        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"group":"unit-codegen"},{"group":"versioning-cs"},{"group":"versioning-rust"},{"group":"versioning-java"},{"group":"versioning-c"},{"group":"unit-rest-ci"},{"group":"unit-rest-fuzz-2"}]' || '[]') }}
+        # relax/ci-time-unit-rest-fuzz-2 (docs/relaxed.md). Also unit-elixir-3, which
+        # was killed at the wall in run 43630522257 (runner captain-8 on
+        # captainamerica: 64 cores, no core cap, load1 96.5);
+        # re-enable: relax/ci-time-unit-elixir-3 (docs/relaxed.md)
+        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"group":"unit-codegen"},{"group":"versioning-cs"},{"group":"versioning-rust"},{"group":"versioning-java"},{"group":"versioning-c"},{"group":"unit-rest-ci"},{"group":"unit-rest-fuzz-2"},{"group":"unit-elixir-3"}]' || '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1711,6 +1714,8 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
@@ -3029,6 +3034,8 @@ jobs:
       # the conformance matrix above does. A base row names none of them and
       # installs none of them.
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - name: read the .NET SDK pin

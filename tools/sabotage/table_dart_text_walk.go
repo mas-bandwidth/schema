@@ -21,13 +21,17 @@ func init() {
 
 // THE DART LEG'S ZERO RULE CONTROL (docs/SPEC-TABLES.md §16.3, text_holds_zero):
 // take the refusal out of _jsonText, the one helper every text-storage read
-// goes through, so a decoded U+0000 is stored as text again. Exactly the two
-// carried hostile rows (str-zero-escape-value, str-zero-escape-map-key) go red;
-// the skipped unknown-key zero and every other surface stay green.
+// goes through, so a decoded U+0000 is stored as text again. Exactly the
+// carried zero rows (str-zero-escape-value, str-zero-escape-map-key,
+// str-zero-byte-bounded, str-zero-byte-bounded-nested) go red;
+// the skipped unknown-key zero and every other surface stay green. _wideValid
+// refuses a NUL code unit too (it also serves the wire's text), so the plant
+// hands it the text with every U+0000 taken out: the lone-surrogate check
+// stays, and nothing in _jsonText sees a zero.
 func init() {
 	sabotages["table-dart-text-zero"] = []edit{{
-		old: "  if (s.contains('\\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');\n  return s;",
-		new: "  return s; // SABOTAGED: text_holds_zero removed",
+		old: "  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');\n  if (s.contains('\\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');\n  return s;",
+		new: "  if (!_wideValid(s.replaceAll('\\u0000', '').codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');\n  return s; // SABOTAGED: text_holds_zero removed",
 	}}
 }
 
