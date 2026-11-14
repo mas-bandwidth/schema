@@ -25,6 +25,9 @@ package elixirtable
 
 import (
 	"fmt"
+	"math/big"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -65,8 +68,10 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
-	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(tablewire.MessageVocabulary(u)))
+	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
+	b.WriteString("\n")
 	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
+	b.WriteString(messageWriteRuleRows(u))
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
@@ -106,6 +111,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -126,6 +132,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   catch
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -213,6 +220,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_fields(vocab, [{ref, value} | rest], acc) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
+        check_field(vocab, entry, value)
         acc2 = put_bits(acc, ref, vocab.ref_bits)
 
         case encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2) do
@@ -277,7 +285,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   defp encode_array(vocab, shape, elem, value, acc) do
+    # a count off the announced shape's min..max refuses and is never masked
+    # into the count's width (docs/SPEC.md §5.1, row 3)
     count = length(value)
+    check(count >= shape.min and count <= shape.max)
     acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
     acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
     encode_elements(vocab, elem, value, acc3)
@@ -299,12 +310,84 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
+        check_field(vocab, entry, value)
         encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
 
       :error ->
         :error
     end
   end
+
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1). Elixir has no compile-out assert,
+  # so save_messages and measure_messages refuse, in every build, a value its
+  # own declaration does not admit: an integer off its declared range or past
+  # its storage (an integer array's elements too), a count off its shape, a
+  # text past its bound, ill-formed or holding a zero byte, an enum reference
+  # that names no member and a union reference that names no arm. Nothing is
+  # masked into the width. The rules are this unit's own declarations, emitted
+  # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
+  # vocabulary entry carries; a field no declaration of this unit names
+  # carries no rule.
+  defp check_field(vocab, entry, value) do
+    case Map.get(write_rules(), {entry.id, entry.kind}) do
+      %{min: lo, max: hi} ->
+        check(is_integer(value) and value >= lo and value <= hi)
+
+      %{each_min: lo, each_max: hi} ->
+        check(is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi)))
+
+      %{text: max} ->
+        check(is_binary(value) and byte_size(value) <= max and text_ok?(value))
+
+      %{member: members} ->
+        check(named?(vocab, members, value))
+
+      %{arm: arms} ->
+        check(value == :none or (is_tuple(value) and named?(vocab, arms, elem(value, 0))))
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp check(true), do: :ok
+  defp check(false), do: throw(:invalid_value)
+
+  defp text_ok?(text), do: String.valid?(text) and :binary.match(text, <<0>>) == :nomatch
+
+  # an enum rides as the reference of its member's name, zero being None; a
+  # union as the reference of its arm
+  defp named?(_vocab, _ids, 0), do: true
+
+  defp named?(vocab, ids, ref) when is_integer(ref) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} -> MapSet.member?(ids, entry.id)
+      :error -> false
+    end
+  end
+
+  defp named?(_vocab, _ids, _ref), do: false
+
+  defp write_rules do
+    case :persistent_term.get({__MODULE__, :write_rules}, nil) do
+      nil ->
+        rules =
+          Enum.reduce(write_rule_rows(), %{}, fn {id, kind, what, v}, acc ->
+            Map.update(acc, {id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
+          end)
+
+        :persistent_term.put({__MODULE__, :write_rules}, rules)
+        rules
+
+      rules ->
+        rules
+    end
+  end
+
+  defp add_rule(rule, what, v) when what in [:member, :arm],
+    do: Map.update(rule, what, MapSet.new([v]), &MapSet.put(&1, v))
+
+  defp add_rule(rule, what, v), do: Map.put(rule, what, v)
 
   # A byte run appended whole: the writer must be at a byte boundary, which the
   # align that precedes a string or a bytes array guarantees.
@@ -1318,3 +1401,199 @@ const messageRuntimeBody = `  defstruct announced: false,
   end
 
 `
+
+// messageWriteRuleRows emits write_rule_rows/0: the write contract
+// (docs/SPEC.md §5.1) of every declaration the message closure reaches, one
+// row per {id, kind, rule, value}, which save_messages folds into one rule per
+// vocabulary entry. An integer leaf is held to its declared range, else its
+// bits(N), else its storage; an integer array's elements the same; a bounded
+// string to its N; an enum to its members' ids and a union to its arms' ids.
+// Declarations sharing an id and a kind share one entry on the wire, so their
+// rules merge to the looser, and a pair whose rules disagree in shape carries
+// none rather than refusing a lawful value of either.
+func messageWriteRuleRows(u *ir.Unit) string {
+	type key struct {
+		id   uint64
+		kind uint8
+	}
+	type rule struct {
+		what     string // int, each, text, member, arm
+		lo, hi   *big.Int
+		text     int64
+		ids      map[uint64]bool
+		conflict bool
+	}
+	rules := map[key]*rule{}
+	add := func(k key, r *rule) {
+		old := rules[k]
+		if old == nil {
+			rules[k] = r
+			return
+		}
+		if old.conflict || old.what != r.what {
+			old.conflict = true
+			return
+		}
+		switch r.what {
+		case "int", "each":
+			if r.lo.Cmp(old.lo) < 0 {
+				old.lo = r.lo
+			}
+			if r.hi.Cmp(old.hi) > 0 {
+				old.hi = r.hi
+			}
+		case "text":
+			old.text = max(old.text, r.text)
+		default:
+			for id := range r.ids {
+				old.ids[id] = true
+			}
+		}
+	}
+	fieldRule := func(f *ir.Field) *rule {
+		if f.KeyEnum != "" || f.IsMap() || f.Type.Pointer {
+			return nil
+		}
+		if lo, hi, ok := messageIntBounds(f); ok {
+			if f.Array != ir.ArrayNone {
+				return &rule{what: "each", lo: lo, hi: hi}
+			}
+			return &rule{what: "int", lo: lo, hi: hi}
+		}
+		if f.Array != ir.ArrayNone {
+			return nil
+		}
+		if f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.Unbounded && f.Type.Size > 0 {
+			return &rule{what: "text", text: f.Type.Size}
+		}
+		if f.Type.Kind != ir.TNamed {
+			return nil
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			ids := map[uint64]bool{}
+			for i := range ref.Variants {
+				ids[ir.TableWireId(ref.VariantWireName(i))] = true
+			}
+			return &rule{what: "member", ids: ids}
+		case *ir.Union:
+			ids := map[uint64]bool{}
+			for _, v := range ref.Variants {
+				ids[ir.TableArmEntry(v).Id] = true
+			}
+			return &rule{what: "arm", ids: ids}
+		}
+		return nil
+	}
+	seenUnion := map[*ir.Union]bool{}
+	var fields func(fs []*ir.Field)
+	fields = func(fs []*ir.Field) {
+		for _, f := range fs {
+			e := ir.TableFieldEntry(f)
+			if r := fieldRule(f); r != nil {
+				add(key{e.Id, e.Kind}, r)
+			}
+			un, ok := f.Type.Ref.(*ir.Union)
+			if f.Type.Kind != ir.TNamed || !ok || seenUnion[un] {
+				continue
+			}
+			seenUnion[un] = true
+			for _, v := range un.Variants {
+				if v.F == nil {
+					continue
+				}
+				arm := ir.TableArmEntry(v)
+				if r := fieldRule(v.F); r != nil {
+					add(key{arm.Id, arm.Kind}, r)
+				}
+			}
+		}
+	}
+	closure := tablewire.MessageClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st != nil {
+			fields(st.Fields)
+		}
+	}
+
+	keys := make([]key, 0, len(rules))
+	for k, r := range rules {
+		if !r.conflict {
+			keys = append(keys, k)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].id != keys[j].id {
+			return keys[i].id < keys[j].id
+		}
+		return keys[i].kind < keys[j].kind
+	})
+	var rows []string
+	for _, k := range keys {
+		r := rules[k]
+		head := fmt.Sprintf("{0x%016X, %d, ", k.id, k.kind)
+		switch r.what {
+		case "int":
+			rows = append(rows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
+		case "each":
+			rows = append(rows, head+":each_min, "+fixedIntLiteral(r.lo)+"}", head+":each_max, "+fixedIntLiteral(r.hi)+"}")
+		case "text":
+			rows = append(rows, fmt.Sprintf("%s:text, %d}", head, r.text))
+		default:
+			ids := make([]uint64, 0, len(r.ids))
+			for id := range r.ids {
+				ids = append(ids, id)
+			}
+			slices.Sort(ids)
+			for _, id := range ids {
+				rows = append(rows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.what, id))
+			}
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("\n  # this unit's own write rules, one {id, kind, rule, value} row each\n")
+	if len(rows) == 0 {
+		b.WriteString("  defp write_rule_rows, do: []\n")
+		return b.String()
+	}
+	b.WriteString("  defp write_rule_rows do\n    [\n")
+	for i, row := range rows {
+		b.WriteString("      " + row)
+		if i < len(rows)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("    ]\n  end\n")
+	return b.String()
+}
+
+// messageIntBounds is an integer leaf's write domain: its declared range,
+// else its bits(N), else its storage width. ok is false for anything else.
+func messageIntBounds(f *ir.Field) (*big.Int, *big.Int, bool) {
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits:
+	default:
+		return nil, nil, false
+	}
+	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+		return f.IntMin, f.IntMax, true
+	}
+	one := big.NewInt(1)
+	w := uint(f.Type.Width)
+	if f.Type.Kind == ir.TInt && f.Type.Signed {
+		hi := new(big.Int).Sub(new(big.Int).Lsh(one, w-1), one)
+		return new(big.Int).Neg(new(big.Int).Lsh(one, w-1)), hi, true
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, w), one), true
+}
