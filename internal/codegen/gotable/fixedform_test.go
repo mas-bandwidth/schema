@@ -2748,78 +2748,136 @@ func TestDuplicateStaysZero(t *testing.T) {
 `)
 }
 
-// TestFixedFormReadSlackUnspecified is W4: a fixed record's declared slack is
-// UNSPECIFIED ON READ (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
-// §3.1): a reader validates the USED UNITS ONLY and never looks at the slack,
-// so an endpoint that leaves garbage past a string's stated length or an array's
-// live count is an endpoint this reader reads correctly. NON-ZERO SLACK IS NOT
-// malformed, NOT A REFUSAL, AND MOVES NO COUNTER.
+// TestFixedFormReadSlackIsZero is W4 under the owner's ruling of 2026-11-10
+// ("Every dead byte", "Be strict"; docs/rulings.json fixed-dead-bytes-zero,
+// docs/SPEC-TABLES.md §3.4 THE SLACK RULE, docs/FIXED-FORM-ALGORITHM.md §3.1):
+// EVERY DEAD BYTE OF A FIXED RECORD IS ZERO ON READ, or the whole record is
+// refused wire_damaged with nothing landed. Its predecessor pinned the retired
+// rule (slack unspecified on read, never a refusal); the rule moved, so the
+// test moved with it and was renamed because the old name now lied.
 //
-// The C++ reference's slack_case (test/tables/fixedform_main.cpp:715-777)
-// reads a wire its OWN writer zeroed; the read half is exactly the tolerance
-// above. This is that half with the wire slack poisoned AFTER the write, which
-// is the only way to reach the read rule at all: the writer's zeros would make
-// the assertion vacuous. The poison is chosen out of the array's declared
-// [0,10] range so that a pass which walked the declared bound instead of the
-// live count would count it.
-func TestFixedFormReadSlackUnspecified(t *testing.T) {
+// One byte of each class of slack is stained AFTER a clean write, with a value
+// that would be lawful if it were live (a printable byte, an in-range int, a
+// present-looking 1), so the zero rule is the only rule that can refuse it:
+// a string past its used length, a counted array past its live count, bytes(N)
+// past its used length, an absent optional's payload, the arm bytes behind a
+// narrower arm, every arm byte under a payload-free arm and under tag 0. The
+// controls: the clean record reads (an absent `note` whose min is 1 reads its
+// zero payload without a range refusal, since slack is held to zero and to
+// nothing else), and a stained LIVE byte of the narrow and wide arms reads.
+func TestFixedFormReadSlackIsZero(t *testing.T) {
 	runGenerated(t, `package probe
+type Level { lvl int32 = 1 | min = 1, max = 9 }
+union Pick
+{
+    wide   int64
+    narrow int16
+    ping
+    amount int32
+}
 fixed table Slack {
     label string(8)
     marks [..4]int32 | min = 0, max = 10
     tail  int32 = 42
+    blob  bytes(4)
+    note  ?Level
+    pick  Pick
 }
 `, `package probe
-import ("testing"; "encoding/binary")
+import ("testing"; "unsafe")
 
-func TestReadSlackUnspecified(t *testing.T) {
-	one := Slack{}
-	SlackReset(&one)
-	one.Label[0] = 'h'
-	one.Label[1] = 'i'
-	one.LabelLength = 2
-	one.MarksCount = 1
-	one.Marks[0] = 7
-	buf := make([]byte, SlackFixedMeasure(1))
-	if n := SlackFixedSave([]Slack{one}, buf); n != int64(len(buf)) {
-		t.Fatalf("save: n=%d want %d", n, len(buf))
-	}
-	if SlackFixedBodyBytes != 36 {
+func TestReadSlackIsZero(t *testing.T) {
+	if SlackFixedBodyBytes != 58 {
 		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", SlackFixedBodyBytes)
 	}
-	body := buf[len(buf)-SlackFixedRecordBytes+8:]
-	// the declared wire order: label length (4) + 8 label bytes, marks count
-	// (4) + four int32 elements (16), then tail (4).
-	const labelSlackAt = 4 + 2              // past the stated length of 2
-	const marksSlackAt = 4 + 8 + 4 + 4      // past the live count of 1
-	// AN ENDPOINT left garbage in the declared slack: a byte no clean record carries.
-	copy(body[labelSlackAt:], []byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA})
-	for i := 0; i < 3; i++ {
-		binary.LittleEndian.PutUint32(body[marksSlackAt+4*i:], 0x5A5A5A5A)
+	// the declared wire order: label length 4 + 8 bytes [0,12); marks count 4
+	// + four int32 [12,32); tail [32,36); blob length 4 + 4 bytes [36,44); note
+	// present byte 44 + int32 [45,49); pick tag 49 + the widest arm, 8, [50,58)
+	image := func(pick PickType) []byte {
+		one := Slack{}
+		SlackReset(&one)
+		one.Label[0], one.Label[1] = 'h', 'i'
+		one.LabelLength = 2
+		one.MarksCount = 1
+		one.Marks[0] = 7
+		one.Blob[0] = 9
+		one.BlobLength = 1
+		one.NotePresent = false
+		one.Pick.Type = pick
+		buf := make([]byte, SlackFixedMeasure(1))
+		if n := SlackFixedSave([]Slack{one}, buf); n != int64(len(buf)) {
+			t.Fatalf("save: n=%d want %d", n, len(buf))
+		}
+		return buf
 	}
-	// NOT VACUOUS: the wire really carries non-zero garbage in the declared
-	// slack (the exact bytes are a control knob; the RULE is about non-zero).
-	if body[labelSlackAt] == 0 || binary.LittleEndian.Uint32(body[marksSlackAt:]) == 0 {
-		t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+	load := func(buf []byte) (Slack, TableReport, int64) {
+		got := make([]Slack, 1)
+		var r TableReport
+		plan := make([]TableFixedEntry, 256)
+		n := SlackFixedLoad(got, buf, plan, &r)
+		return got[0], r, n
+	}
+	stain := func(buf []byte, at int, v byte) []byte {
+		out := append([]byte(nil), buf...)
+		body := out[len(out)-SlackFixedRecordBytes+8:]
+		if body[at] != 0 {
+			t.Fatalf("byte %d is %d in the clean image, so it is not dead there", at, body[at])
+		}
+		body[at] = v
+		return out
+	}
+	refused := func(what string, buf []byte) {
+		t.Helper()
+		got := make([]Slack, 1)
+		dst := unsafe.Slice((*byte)(unsafe.Pointer(&got[0])), unsafe.Sizeof(got[0]))
+		for i := range dst {
+			dst[i] = 0x5A
+		}
+		var r TableReport
+		plan := make([]TableFixedEntry, 256)
+		if n := SlackFixedLoad(got, buf, plan, &r); n != -1 || r.Reason != "wire_damaged" {
+			t.Fatalf("%s: n=%d %+v, want the record refused wire_damaged", what, n, r)
+		}
+		if r.Unknown != 0 || r.Widened != 0 {
+			t.Fatalf("%s: the refusal moved a counter: %+v", what, r)
+		}
+		for i, b := range dst {
+			if b != 0x5A {
+				t.Fatalf("%s: the refusal wrote destination byte %d", what, i)
+			}
+		}
 	}
 
-	got := make([]Slack, 1)
-	var r TableReport
-	plan := make([]TableFixedEntry, 256)
-	if n := SlackFixedLoad(got, buf, plan, &r); n != 1 {
-		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
+	// THE CONTROL: the clean record reads, the absent ranged note included.
+	narrow := image(PickTypeNarrow)
+	got, r, n := load(narrow)
+	if n != 1 || r != (TableReport{}) {
+		t.Fatalf("the clean record refused: n=%d %+v", n, r)
 	}
-	if r != (TableReport{}) {
-		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
+	if got.LabelLength != 2 || got.MarksCount != 1 || got.Marks[0] != 7 || got.BlobLength != 1 || got.NotePresent || got.Pick.Type != PickTypeNarrow || got.Tail != 42 {
+		t.Fatalf("the clean record misread: %+v", got)
 	}
-	if got[0].LabelLength != 2 || got[0].Label[0] != 'h' || got[0].Label[1] != 'i' {
-		t.Fatalf("the used text did not read: %+v", got[0])
+
+	// EVERY CLASS OF SLACK, one stained byte each.
+	refused("string(8) past its used length", stain(narrow, 4+2, 'x'))
+	refused("string(8) at its last byte", stain(narrow, 11, 'x'))
+	refused("a counted array past its live count", stain(narrow, 20, 1))
+	refused("a counted array at its last slot", stain(narrow, 31, 1))
+	refused("bytes(4) past its used length", stain(narrow, 41, 1))
+	refused("an absent optional's payload", stain(narrow, 45, 5))
+	refused("the arm bytes behind a narrower arm", stain(narrow, 52, 1))
+	refused("the last arm byte behind a narrower arm", stain(narrow, 57, 1))
+	refused("an arm byte under a payload-free arm", stain(image(PickTypePing), 50, 1))
+	refused("an arm byte under tag 0", stain(image(PickTypeNone), 57, 1))
+	refused("an arm byte behind a four-byte arm", stain(image(PickTypeAmount), 54, 1))
+
+	// LIVE BYTES ARE NOT SLACK: the narrow arm's high byte and the wide arm's
+	// last byte read.
+	if got, r, n := load(stain(narrow, 51, 1)); n != 1 || r != (TableReport{}) || got.Pick.Narrow != 256 {
+		t.Fatalf("a live byte of the narrow arm: n=%d %+v %+v", n, r, got.Pick)
 	}
-	if got[0].MarksCount != 1 || got[0].Marks[0] != 7 {
-		t.Fatalf("the live prefix did not read: %+v", got[0])
-	}
-	if got[0].Tail != 42 {
-		t.Fatalf("the field past the slack moved: %+v", got[0])
+	if got, r, n := load(stain(image(PickTypeWide), 57, 1)); n != 1 || r != (TableReport{}) || got.Pick.Wide != 1<<56 {
+		t.Fatalf("a live byte of the wide arm: n=%d %+v %+v", n, r, got.Pick)
 	}
 }
 `)

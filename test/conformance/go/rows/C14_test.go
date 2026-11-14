@@ -13,8 +13,8 @@ func TestRowC14(t *testing.T) {
 	// (docs/FIXED-FORM-ALGORITHM.md §4.6).
 	//
 	// Build a Cfg with ItemsCount=1, then forge Items[4] out of range BEYOND
-	// the live count: the read keeps the slack value, because the bounds pass
-	// only walks the live count.
+	// the live count: the bounds pass only walks the live count, and the
+	// dead-byte rule, not the range rule, refuses the forged slack.
 	//
 	// Wire layout (CfgFixedWriteBody):
 	//   [0..4)   a      float32
@@ -44,9 +44,13 @@ func TestRowC14(t *testing.T) {
 	}
 	data := buf[:n]
 
-	// Items[4] out of range in the slack (ItemsCount=1) is not walked, and the
-	// file reads with the slack value kept; the same value in a live element,
-	// or an enum byte past its variants, refuses (docs/SPEC-TABLES.md §4).
+	// Items[4] in the slack (ItemsCount=1) is not walked by the bounds pass:
+	// the clean record reads. A value forged into the slack is refused by the
+	// dead-byte rule and not the range rule (docs/SPEC-TABLES.md §3.4, THE
+	// SLACK RULE; the owner, 2026-11-10: "Every dead byte"), so its reason is
+	// wire_damaged; until that ruling the row read it with the slack value
+	// kept. The same value in a live element, or an enum byte past its
+	// variants, refuses (docs/SPEC-TABLES.md §4).
 	bodyAt := tblv2.TableFixedHeaderBytes + 4 + len(tblv2.CfgFixedLayout) + 8
 	plan := make([]tblv2.TableFixedEntry, 64)
 	read := func(forge func(body []byte)) (tblv2.Cfg, int64, tblv2.TableReport) {
@@ -57,9 +61,12 @@ func TestRowC14(t *testing.T) {
 		got := tblv2.CfgFixedLoad(scratch[:], wire, plan, &report)
 		return scratch[0], got, report
 	}
+	if v, got, report := read(func([]byte) {}); got != 1 || report.Err() != nil || v.ItemsCount != 1 || v.Items[0] != 7 {
+		t.Fatalf("the clean record: got=%d %+v items=%v count=%d", got, report, v.Items, v.ItemsCount)
+	}
 	slack := func(body []byte) { binary.LittleEndian.PutUint32(body[70:], 500) }
-	if v, got, report := read(slack); got != 1 || report.Err() != nil || v.Items[4] != 500 || v.ItemsCount != 1 || v.Items[0] != 7 {
-		t.Fatalf("slack out of range: got=%d %+v items=%v count=%d", got, report, v.Items, v.ItemsCount)
+	if _, got, report := read(slack); got != -1 || report.Reason != "wire_damaged" {
+		t.Fatalf("slack out of range: got=%d %+v, want the record refused wire_damaged", got, report)
 	}
 	live := func(body []byte) { slack(body); binary.LittleEndian.PutUint32(body[54:], 300) }
 	if _, got, report := read(live); got != -1 || report.Err() == nil {

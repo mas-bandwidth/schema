@@ -2800,8 +2800,11 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
-				// the tail past the live count is slack, and slack is zero
-				from, to := p.Src+4+uint32(v)*p.Aux, p.Src+4+p.Size*p.Aux
+				// the tail past the live count is slack, and slack is zero; the
+				// span is held inside the record, so a plan whose bound claims
+				// more slots than the record holds refuses rather than panics
+				to := min(p.Src+4+p.Size*p.Aux, uint32(len(src)))
+				from := min(p.Src+4+uint32(v)*p.Aux, to)
 				if !tableFixedZero(src[from:to]) {
 					return TableRefuseWireDamaged.Error()
 				}

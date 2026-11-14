@@ -271,9 +271,10 @@ func TestProbe(t *testing.T) {
 
 	t.Run("live-extents", func(t *testing.T) {
 		schema := `package probe
+type V { x int32 = 5 | min = 1, max = 100 }
 fixed table Live {
     lead  uint32 = 1
-    vals  [..4]int32 | min = 0, max = 100
+    vals  [..4]V
     flags [..3]bool
     text  string(8)
     tail  uint32 = 2
@@ -287,8 +288,8 @@ func TestProbe(t *testing.T) {
 	LiveReset(&one)
 	one.Lead = 0xAAAAAAAA
 	one.ValsCount = 2
-	one.Vals[0] = 11
-	one.Vals[1] = 22
+	one.Vals[0].X = 11
+	one.Vals[1].X = 22
 	one.FlagsCount = 1
 	one.Flags[0] = true
 	copy(one.Text[:], "hi")
@@ -301,47 +302,57 @@ func TestProbe(t *testing.T) {
 	if LiveFixedBodyBytes != 47 {
 		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", LiveFixedBodyBytes)
 	}
-	body := buf[len(buf)-LiveFixedRecordBytes+8:]
-	// the declared wire order: lead (4), vals count (4) + four int32 (16),
+	bodyAt := len(buf) - LiveFixedRecordBytes + 8
+	// the declared wire order: lead (4), vals count (4) + four V (16),
 	// flags count (4) + three bools (3), text length (4) + eight bytes (8),
 	// tail (4).
 	const valsSlackAt = 4 + 4 + 2*4
 	const flagsSlackAt = 4 + 4 + 4*4 + 4 + 1
 	const textSlackAt = 4 + 4 + 4*4 + 4 + 3 + 4 + 2
-	for i := 0; i < 2; i++ {
-		binary.LittleEndian.PutUint32(body[valsSlackAt+4*i:], 0x7FFFFFFF)
-	}
-	for i := 0; i < 2; i++ {
-		body[flagsSlackAt+i] = 0x02
-	}
-	for i := 0; i < 6; i++ {
-		body[textSlackAt+i] = 0xAA
-	}
-	// NOT VACUOUS: the declared slack really carries garbage no clean record has.
-	if binary.LittleEndian.Uint32(body[valsSlackAt:]) == 0 || body[flagsSlackAt] == 0 || body[textSlackAt] == 0 {
-		t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+	// NOT VACUOUS: the writer's slack is zero, and a zero V is below its
+	// min = 1, so a bounds walk past the live count refuses the clean record.
+	for at := valsSlackAt; at < valsSlackAt+2*4; at++ {
+		if buf[bodyAt+at] != 0 {
+			t.Fatalf("the writer left slack byte %d non-zero", at)
+		}
 	}
 
-	got := make([]Live, 1)
-	var r TableReport
-	plan := make([]TableFixedEntry, 256)
-	if n := LiveFixedLoad(got, buf, plan, &r); n != 1 {
-		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
+	load := func(data []byte) (Live, TableReport, int64) {
+		got := make([]Live, 1)
+		var r TableReport
+		n := LiveFixedLoad(got, data, make([]TableFixedEntry, 256), &r)
+		return got[0], r, n
 	}
-	if r != (TableReport{}) {
-		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
+	got, r, n := load(buf)
+	if n != 1 || r != (TableReport{}) {
+		t.Fatalf("the clean record refused: n=%d %+v", n, r)
 	}
-	if got[0].Lead != 0xAAAAAAAA || got[0].Tail != 0xBBBBBBBB {
-		t.Fatalf("the bracketing fields did not land: %+v", got[0])
+	if got.Lead != 0xAAAAAAAA || got.Tail != 0xBBBBBBBB {
+		t.Fatalf("the bracketing fields did not land: %+v", got)
 	}
-	if got[0].ValsCount != 2 || got[0].Vals[0] != 11 || got[0].Vals[1] != 22 {
-		t.Fatalf("the live array prefix did not read: %+v", got[0])
+	if got.ValsCount != 2 || got.Vals[0].X != 11 || got.Vals[1].X != 22 {
+		t.Fatalf("the live array prefix did not read: %+v", got)
 	}
-	if got[0].FlagsCount != 1 || !got[0].Flags[0] {
-		t.Fatalf("the live bool prefix did not read: %+v", got[0])
+	if got.FlagsCount != 1 || !got.Flags[0] {
+		t.Fatalf("the live bool prefix did not read: %+v", got)
 	}
-	if got[0].TextLength != 2 || string(got[0].Text[:2]) != "hi" {
-		t.Fatalf("the used text did not read: %+v", got[0])
+	if got.TextLength != 2 || string(got.Text[:2]) != "hi" {
+		t.Fatalf("the used text did not read: %+v", got)
+	}
+
+	// EVERY DEAD BYTE IS ZERO: a value the element, the bool or the text would
+	// take if it were live is still refused in the slack, wire_damaged.
+	stains := map[string]func([]byte){
+		"an in-range V past the live count": func(b []byte) { binary.LittleEndian.PutUint32(b[valsSlackAt:], 50) },
+		"a true past the live bool count":   func(b []byte) { b[flagsSlackAt] = 1 },
+		"a letter past the used length":     func(b []byte) { b[textSlackAt] = 'a' },
+	}
+	for name, stain := range stains {
+		data := append([]byte(nil), buf...)
+		stain(data[bodyAt:])
+		if _, r, n := load(data); n != -1 || r.Reason != "wire_damaged" {
+			t.Fatalf("%s: n=%d %+v, want the record refused wire_damaged", name, n, r)
+		}
 	}
 }
 `
@@ -383,25 +394,28 @@ func TestProbe(t *testing.T) {
 	})
 
 	t.Run("live-extents", func(t *testing.T) {
+		// The writer's slack is zero and a zero V is below its min = 1: a bounds
+		// walk over the declared bound refuses the clean record.
 		schema := `package probe
+type V { x int32 = 5 | min = 1, max = 100 }
 fixed table Live {
     lead  uint32 = 1
-    vals  [..4]int32 | min = 0, max = 100
+    vals  [..4]V
     flags [..3]bool
     text  string(8)
     tail  uint32 = 2
 }
 `
 		src := `package probe
-import ("encoding/binary"; "testing")
+import "testing"
 
 func TestProbe(t *testing.T) {
 	one := Live{}
 	LiveReset(&one)
 	one.Lead = 0xAAAAAAAA
 	one.ValsCount = 2
-	one.Vals[0] = 11
-	one.Vals[1] = 22
+	one.Vals[0].X = 11
+	one.Vals[1].X = 22
 	one.FlagsCount = 1
 	one.Flags[0] = true
 	copy(one.Text[:], "hi")
@@ -411,27 +425,10 @@ func TestProbe(t *testing.T) {
 	if n := LiveFixedSave([]Live{one}, buf); n != int64(len(buf)) {
 		t.Fatalf("save: n=%d want %d", n, len(buf))
 	}
-	body := buf[len(buf)-LiveFixedRecordBytes+8:]
-	const valsSlackAt = 4 + 4 + 2*4
-	const flagsSlackAt = 4 + 4 + 4*4 + 4 + 1
-	const textSlackAt = 4 + 4 + 4*4 + 4 + 3 + 4 + 2
-	for i := 0; i < 2; i++ {
-		binary.LittleEndian.PutUint32(body[valsSlackAt+4*i:], 0x7FFFFFFF)
-	}
-	for i := 0; i < 2; i++ {
-		body[flagsSlackAt+i] = 0x02
-	}
-	for i := 0; i < 6; i++ {
-		body[textSlackAt+i] = 0xAA
-	}
-
 	got := make([]Live, 1)
 	var r TableReport
-	if n := LiveFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != 1 {
-		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
-	}
-	if r != (TableReport{}) {
-		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
+	if n := LiveFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("the clean record refused: n=%d %+v", n, r)
 	}
 }
 `
@@ -441,6 +438,6 @@ func TestProbe(t *testing.T) {
 				"for i := range int64(4)",
 			})
 		}, src)
-		requireRed(t, "the live array extent", out, err, "in the slack refused")
+		requireRed(t, "the live array extent", out, err, "the clean record refused")
 	})
 }

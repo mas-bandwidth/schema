@@ -110,11 +110,13 @@ func t05GoC4(t *testing.T) {
 
 // t05GoR24 holds R24 to the emitted runtime and load: ill-formed text in the
 // USED units refuses by name (`text_ill_formed`); text is counted in bytes;
-// slack is unspecified on read and not a refusal. docs/FIXED-FORM-ALGORITHM.md
-// §4.5: "the CONTENT RULES apply to the USED UNITS and nothing else: UTF-8
-// validity over v bytes, never over N ... A content violation REFUSES BY NAME,
-// the verdict the packet reader gives"; docs/SPEC-TABLES.md §3.4: "ZERO on write past the used
-// bytes, UNSPECIFIED on read, never a refusal".
+// the slack past the used units is held to zero and to nothing else.
+// docs/FIXED-FORM-ALGORITHM.md §4.5: "the CONTENT RULES apply to the USED
+// UNITS and nothing else: UTF-8 validity over v bytes, never over N ... A
+// content violation REFUSES BY NAME, the verdict the packet reader gives";
+// docs/SPEC-TABLES.md §3.4 under the owner's ruling of 2026-11-10 ("Every dead
+// byte"): a non-zero slack byte refuses the record wire_damaged, never
+// text_ill_formed. It replaces the retired rule (slack unspecified on read).
 //
 // THE SOURCE IS NOT THE PROOF. A string match cannot bite on a validator that
 // ACCEPTS an ill-formed sequence, so this subtest also GENERATES the table unit
@@ -141,7 +143,7 @@ func t05GoR24(t *testing.T) {
 	}
 	t05Has(t, t05GeneratedLoad(t), "tableFixedRefuse(report, why)", "the refusal is by name, the load's own path (§5.8 row 8)")
 	// RUN it: every ill-formed sequence must land `text_ill_formed` through the
-	// generated load, and slack past the used units must not refuse.
+	// generated load, and slack past the used units refuses wire_damaged.
 	if out, err := t05RunProbe(t, t05IllFormedSchema, t05IllFormedProbe); err != nil {
 		t.Fatalf("t05: R24 drove the emitted runtime and it did not hold (§4.5):\n%s", out)
 	}
@@ -181,9 +183,10 @@ fixed table T {
 // t05IllFormedProbe drives the emitted tableFixedTextIllFormed through the
 // generated load. The wire is a clean record patched in place: the first
 // string's payload at body+4, the second string's length at body+12. Each
-// ill-formed sequence must return -1 with Reason text_ill_formed (§4.5), and
-// slack past the used string bytes
-// is UNSPECIFIED and must not refuse (docs/SPEC-TABLES.md §3.4).
+// ill-formed sequence must return -1 with Reason text_ill_formed (§4.5); the
+// clean record's zero slack reads, and a non-zero slack byte past the used
+// string bytes, ill-formed or not, refuses wire_damaged (docs/SPEC-TABLES.md
+// §3.4).
 const t05IllFormedProbe = `package probe
 
 import (
@@ -236,12 +239,17 @@ func TestIllFormed(t *testing.T) {
 		}
 	}
 
-	slack := append([]byte(nil), wire...)
-	for i := 3; i < 8; i++ {
-		slack[sPayload+i] = 0xFF
+	if got, r := load(wire); got != 1 || r.Reason != "" {
+		t.Fatalf("the clean record: n=%d reason=%q, want it read", got, r.Reason)
 	}
-	if got, r := load(slack); got < 0 {
-		t.Fatalf("slack: refused %q, want a clean read — slack is UNSPECIFIED, never a refusal (§3.4)", r.Reason)
+	for _, stain := range []byte{0xFF, 'a'} {
+		slack := append([]byte(nil), wire...)
+		for i := 3; i < 8; i++ {
+			slack[sPayload+i] = stain
+		}
+		if got, r := load(slack); got >= 0 || r.Reason != "wire_damaged" {
+			t.Fatalf("slack 0x%02x: n=%d reason=%q, want wire_damaged — every dead byte is zero, and slack is never judged as text (§3.4)", stain, got, r.Reason)
+		}
 	}
 
 	// THE REFUSAL IS TOTAL (§5.8): "no counter moves, nothing is decoded, and

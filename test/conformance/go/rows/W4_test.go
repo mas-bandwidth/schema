@@ -1,11 +1,13 @@
-// W4 — read slack unspecified (docs/FIXED-FORM-ALGORITHM.md:347).
+// W4 — every dead byte is zero on read (docs/SPEC-TABLES.md §3.4, THE SLACK
+// RULE; docs/FIXED-FORM-ALGORITHM.md §3.1; docs/rulings.json
+// fixed-dead-bytes-zero).
 //
-// "It walks only what a read can have written — a counted array's LIVE
-// elements and never its slack."  The bounds pass over a fixed table's
-// STORAGE iterates a counted array's live count, not its declared capacity,
-// so bytes behind the live count on the wire — even bytes past the ranged
-// element's clamped range — must move no counter and must not be malformed.
-// This is the Go leg's assertion of go/W4.
+// The owner, 2026-11-10: "Every dead byte", "Be strict". The bytes behind a
+// counted array's live count are slack, a conforming writer leaves them zero,
+// and a reader refuses the whole record (wire_damaged) when one is not, with
+// nothing landed and no counter moved. The row pinned the retired rule
+// (slack unspecified on read, stained slack read) until the ruling; it now
+// pins the rule that replaced it. This is the Go leg's assertion of go/W4.
 package main
 
 import (
@@ -46,47 +48,42 @@ func TestRowW4(t *testing.T) {
 		t.Fatal("wire count is not 1 — can't find ItemsCount offset")
 	}
 
-	// STAIN THE SLACK: every slack int32 gets 0xFF — a value past the
-	// declared [0,255] range that a bounds pass walking the full array would
-	// clamp.
-	for i := slackStart; i < slackEnd; i++ {
-		save[i] = 0xFF
+	load := func(wire []byte) (tblv1.Cfg, int64, tblv1.TableReport) {
+		var back [1]tblv1.Cfg
+		var rep tblv1.TableReport
+		plan := make([]tblv1.TableFixedEntry, tblv1.CfgFixedPlan.Count)
+		copy(plan, tblv1.CfgFixedPlan.Entries)
+		read := tblv1.CfgFixedLoad(back[:], wire, plan, &rep)
+		return back[0], read, rep
 	}
 
-	// Verify the stain actually took.
-	var stained int
-	for i := slackStart; i < slackEnd; i++ {
-		if save[i] == 0xFF {
-			stained++
+	// THE CONTROL: the writer's zeros in the slack read, and the USED UNITS
+	// land: ItemsCount=1, Items[0]=7.
+	back, read, rep := load(save)
+	if read != 1 || rep.Refused() {
+		t.Fatalf("the clean record: CfgFixedLoad returned %d %+v, want 1", read, rep)
+	}
+	if back.ItemsCount != 1 || back.Items[0] != 7 {
+		t.Fatalf("the used units did not land: count=%d items[0]=%d", back.ItemsCount, back.Items[0])
+	}
+
+	// STAIN THE SLACK, one byte at a time at both ends and once whole: a byte
+	// of 1 is an in-range element if it were live, so the zero rule is the only
+	// rule that can refuse it.
+	for _, at := range []int{slackStart, slackEnd - 1} {
+		stained := append([]byte(nil), save...)
+		stained[at] = 1
+		if _, read, rep := load(stained); read != -1 || rep.Reason != "wire_damaged" {
+			t.Errorf("slack byte %d stained: CfgFixedLoad returned %d %+v, want the record refused wire_damaged", at-bodyStart, read, rep)
+		} else if rep.Unknown != 0 || rep.Widened != 0 {
+			t.Errorf("slack byte %d stained: the refusal moved a counter: %+v", at-bodyStart, rep)
 		}
 	}
-	if stained != slackEnd-slackStart {
-		t.Fatal("stain verification failed: not all slack bytes are 0xFF")
+	stained := append([]byte(nil), save...)
+	for i := slackStart; i < slackEnd; i++ {
+		stained[i] = 0xFF
 	}
-
-	// READ BACK with the identity plan.
-	var back [1]tblv1.Cfg
-	var rep tblv1.TableReport
-	plan := make([]tblv1.TableFixedEntry, tblv1.CfgFixedPlan.Count)
-	copy(plan, tblv1.CfgFixedPlan.Entries)
-	read := tblv1.CfgFixedLoad(back[:], save, plan, &rep)
-	if read != 1 {
-		t.Fatalf("CfgFixedLoad returned %d, want 1", read)
-	}
-
-	// SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal.
-	if rep.Refused() {
-		t.Errorf("stained slack refused: %+v", rep)
-	}
-	if rep.Verdict != tblv1.TableOpenOk {
-		t.Errorf("verdict=%v — stained slack must not be a refusal", rep.Verdict)
-	}
-
-	// The USED UNITS landed: ItemsCount=1, Items[0]=7.
-	if back[0].ItemsCount != 1 {
-		t.Errorf("ItemsCount=%d, want 1", back[0].ItemsCount)
-	}
-	if back[0].Items[0] != 7 {
-		t.Errorf("Items[0]=%d, want 7", back[0].Items[0])
+	if _, read, rep := load(stained); read != -1 || rep.Reason != "wire_damaged" {
+		t.Errorf("the whole slack stained: CfgFixedLoad returned %d %+v, want the record refused wire_damaged", read, rep)
 	}
 }
