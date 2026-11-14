@@ -239,7 +239,7 @@ union Pick
 {
     hit Hit
     big Big
-    none
+    blank
 }
 `
 	older := types + "fixed table Row {\n opt ?int32\n live [..2]uint16\n pick Pick\n seq int32 = 7\n}\n"
