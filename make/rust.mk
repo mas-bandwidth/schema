@@ -1847,8 +1847,12 @@ define rust_wref_control
 endef
 
 .PHONY: conformance-negative-control-rust-write-refusal
+# The write-refusal rows load RootConfig's current-form instance, a form 3 file,
+# and save through the root's own form's writer, the fixed form's FixedSave
+# (testdata/conformance/tables/FORMAT.md): so the check removed is that
+# writer's finite rule, and wref_non_finite and wref_infinite go red.
 conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
-	$(call rust_wref_control,build/rust-conformance-wref-control,tabledemo/src/tables_table.rs,if !v.damage.is_finite() { table_float_refuse(ids, "WeaponConfig.damage"); },/* SABOTAGED: a non-finite float writes */,write-refusal,wire)
+	$(call rust_wref_control,build/rust-conformance-wref-control,tabledemo/src/tables_fixed.rs,!root_config_fixed_finite_body(value).is_empty(),false /* SABOTAGED: a non-finite float writes */,write-refusal,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-fixed
 conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
