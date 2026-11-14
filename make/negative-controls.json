@@ -1507,14 +1507,30 @@
     {
       "name": "rust-conformance-framing",
       "when": "pull-request",
-      "why": "the Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8) and per-case absence control (docs/PORTING.md I4), with the byte-order, order-word, node-label and cook-layout 3.0.0 proof controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 58 s of control time over the 6 controls on vision (framing 9 s, absent 12 s, byte-order 7 s, order-word 11 s, node-label 15 s, cook-layout 6 s).",
+      "why": "Since 2026-11-14 the byte-order, order-word, node-label and cook-layout controls only: the framing control is in rust-conformance-framing-control and the absence control in rust-conformance-absent (the six ran 213-224 s on AWS runners). Before: the Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8) and per-case absence control (docs/PORTING.md I4), with the byte-order, order-word, node-label and cook-layout 3.0.0 proof controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 58 s of control time over the 6 controls on vision (framing 9 s, absent 12 s, byte-order 7 s, order-word 11 s, node-label 15 s, cook-layout 6 s).",
       "targets": [
-        "conformance-negative-control-rust-framing",
-        "conformance-rust-absent-negative-control",
         "tables-rust-byte-order-negative-control",
         "tables-rust-order-word-negative-control",
         "tables-rust-node-label-negative-control",
         "tables-rust-cook-layout-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-conformance-absent",
+      "when": "pull-request",
+      "why": "the Rust per-case absence control (docs/PORTING.md I4), split from rust-conformance-framing: that group ran 213-224 s on AWS runners (main CI full 43635368439, 43640159584) against the 2-minute per-commit rule. One cargo build of the sabotaged driver.",
+      "targets": [
+        "conformance-rust-absent-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-conformance-framing-control",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the Rust conformance framing control alone builds two sabotaged drivers in sequence (about 67 s each on an AWS runner, main CI full 43635368439), past the 2-minute per-commit rule; re-enable: relax/ci-time-rust-conformance-framing. Before: in rust-conformance-framing, pull-request. The Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8).",
+      "targets": [
+        "conformance-negative-control-rust-framing"
       ],
       "rust": "stable"
     },
@@ -2060,8 +2076,24 @@
       "when": "pull-request",
       "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose wire-alone walk and map reader both read a map count that crosses its L as zero entries and requires the plain arm to go red on the read verdict for map_count_crosses_l (mapdemo.Slots). Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
-        "tables-java-wire-fuzz-negative-control",
-        "tables-java-retain-fuzz-negative-control",
+        "tables-java-wire-fuzz-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz-retain",
+      "when": "pull-request",
+      "why": "the Java retention arm's control (tables-java-retain-fuzz-negative-control), split from java-wire-fuzz: the three controls in one job ran 109-128 s on AWS runners against the 2-minute per-commit rule (main CI full 43632830583 to 43640159584).",
+      "targets": [
+        "tables-java-retain-fuzz-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz-map-count",
+      "when": "pull-request",
+      "why": "the Java map-count control (tables-java-map-count-negative-control), split from java-wire-fuzz for the same 109-128 s.",
+      "targets": [
         "tables-java-map-count-negative-control"
       ],
       "java": "21"

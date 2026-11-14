@@ -187,6 +187,15 @@ the text after "Before: " and the tier):
 - `relax/ci-time-java-tables-a`: median 123 s.
 - `relax/ci-time-java-tables-more-a`: median 117 s.
 - `relax/ci-time-base-c-write-refusal-a`: median 116 s.
+- `relax/ci-time-rust-conformance-framing`: not a whole group; the one
+  control `conformance-negative-control-rust-framing`, moved out of
+  `rust-conformance-framing` into the nightly group
+  `rust-conformance-framing-control`. It builds two sabotaged drivers in
+  sequence, about 67 s each on an AWS runner (main CI full 43635368439), so it
+  is over 110 s alone; the rest of its old group is split into
+  `rust-conformance-framing` and `rust-conformance-absent`, both per commit.
+  Real fix: build the two drivers in parallel or from one build, then return
+  the control to a pull-request group.
 - `relax/ci-time-rust-tables-1`: median 114 s.
 
 Left per commit although over 110 s, because a test pins their tier or rows:
