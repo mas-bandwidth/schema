@@ -1910,7 +1910,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
+      {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
@@ -2659,7 +2659,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4): every slot is framed by its own L, so no widening leaves any.
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -6977,8 +6983,13 @@ const variableRetainSource = `
     end
   end
 
-  defp read_keyed_retain(_f, _bin, 0, _nodes, _ids, acc, report, retain, _path),
-    do: {:cont, acc, report, retain}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4), as on the plain read.
+  defp read_keyed_retain(_f, bin, 0, _nodes, _ids, acc, report, retain, _path) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report, retain}
+  end
 
   defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
     with {kref, r1} <- leb(bin),
