@@ -19,10 +19,11 @@ import (
 //     counts no sharing and the save writes the Go engine's two records byte
 //     for byte, and so does a FRESH value built with equal binaries.
 //   - blob_shared and blob_shared_string: one blob record named from two
-//     slots. The tolerant read keeps the value, marks the second slot
-//     {:blob_shared, bytes} and counts one blob_shared; the save and the text
-//     writer refuse it by name, blob_shared, rather than writing a copy per
-//     slot.
+//     slots. Every read refuses it (§2.5; docs/plans/strict-only.md: the
+//     tolerant read that kept the value and counted blob_shared is retired).
+//     A value whose second slot is marked {:blob_shared, bytes} is still
+//     refused by the save and the text writer, by name, rather than written
+//     as a copy per slot.
 //
 // It runs the leg's own toolchain, so it is a FUNCTIONAL test.
 func TestBlobIsNumberedByItsSlotElixir(t *testing.T) {
@@ -52,9 +53,9 @@ fresh = Map.merge(value, %%{"thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>})
 Probe.check(again == out and back["alias"] == <<1, 2, 3>>, "fresh equal blobs", "round trip as two nodes")
 
 swire = File.read!(%[2]q)
-{:ok, svalue, sreport} = %[3]s.load("Catalog", swire)
-Probe.check(sreport.blob_shared == 1, "blob_shared", "one extra naming counted: " <> inspect(sreport))
-Probe.check(svalue["alias"] == {:blob_shared, svalue["thumb"]}, "blob_shared", "the second slot is marked: " <> inspect(svalue))
+{:error, _, sreport} = %[3]s.load("Catalog", swire)
+Probe.check(sreport.reason != "", "blob_shared", "the read refuses: " <> inspect(sreport))
+svalue = Map.put(value, "alias", {:blob_shared, value["thumb"]})
 Probe.check(%[3]s.save("Catalog", svalue) == {:error, :blob_shared}, "blob_shared", "save refuses by name")
 Probe.check(%[3]s.to_json("Catalog", svalue) == {:error, :blob_shared}, "blob_shared", "text refuses by name")
 `, equal, shared, mod)
@@ -63,10 +64,8 @@ Probe.check(%[3]s.to_json("Catalog", svalue) == {:error, :blob_shared}, "blob_sh
 			shared := filepath.Join(root, "testdata", "wire", "tables", "blob_shared_string.bin")
 			return fmt.Sprintf(`
 swire = File.read!(%[1]q)
-{:ok, svalue, sreport} = %[2]s.load("Docs", swire)
-Probe.check(sreport.blob_shared == 1, "blob_shared_string", "one extra naming counted: " <> inspect(sreport))
-Probe.check(%[2]s.save("Docs", svalue) == {:error, :blob_shared}, "blob_shared_string", "save refuses by name")
-Probe.check(%[2]s.to_json("Docs", svalue) == {:error, :blob_shared}, "blob_shared_string", "text refuses by name")
+{:error, _, sreport} = %[2]s.load("Docs", swire)
+Probe.check(sreport.reason != "", "blob_shared_string", "the read refuses: " <> inspect(sreport))
 `, shared, mod)
 		}},
 	}

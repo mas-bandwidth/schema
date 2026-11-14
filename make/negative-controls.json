@@ -2210,6 +2210,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-wire-fuzz",
+      "when": "pull-request",
+      "why": "the Elixir wire fuzzer's control (docs/PORTING.md I15): the rule that bytes left inside an array's L are damage is removed from a copy of one unit's generated reader (featurewitnesses), compiled over a copy of the corpus ebin, and tables-elixir-wire-fuzz-all at N=200 must go red with the leg accepting a mutant the oracle refuses. One file recompiled and one short harness run, so it is a group of its own.",
+      "targets": [
+        "tables-elixir-wire-fuzz-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-nightly-conformance",
       "when": "nightly",
       "why": "the Elixir conformance harness's controls, each of which rebuilds the whole corpus through a sabotaged compiler (walk, shared, label, ids, arm, order, mapsort, framing and the three write-refusal surfaces; framing does two builds) and runs the harness's Elixir leg against it. They are structurally identical to the alloc/soak/block controls that measure 95-173 s on the fleet runner, so every one of them exceeds the 75 s control budget the per-commit rule leaves after ~30 s of setup and shared build, and none can be split further by grouping. They moved from the pull request to the nightly tier on 2026-11-09 for that reason; the harness's cheap sibling surfaces (cards, packets, keyed, cook-blob, versioning, fixed-form) remain per commit, and no control was dropped.",

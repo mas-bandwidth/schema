@@ -32,6 +32,7 @@ package elixirtable
 
 import (
 	"fmt"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -768,10 +769,12 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 	var out rseg
 	if f.Type.Optional {
 		out.match = append(out.match, "p_"+v+"::unsigned-8")
-		flag := rawf("p_%s != 0", v)
-		out.field(f.Name+"_present", flag)
+		// THE PRESENT BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1
+		// refuses any other byte as damage before the payload is read
+		out.stmt("p_"+v, rawf("R.flag(p_%s)", v))
+		out.field(f.Name+"_present", raw("p_"+v))
 		var payload rseg
-		g.readPayload(&payload, f, v, rawf("p_%s != 0", v))
+		g.readPayload(&payload, f, v, raw("p_"+v))
 		// THE COUNT AND THE DAMAGE FLAG MOVE ONLY WHEN PRESENT: the payload's
 		// statements run against a fork of both, and the fork is kept only if
 		// the flag was set. An absent optional's payload is unspecified (§3.4)
@@ -782,8 +785,8 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 		for _, p := range payload.post {
 			out.post = append(out.post, postStmt{name: forkName(p.name, v), val: forkNode(p.val, v)})
 		}
-		out.stmt("c", rawf("if(p_%s != 0, do: c_%s, else: c)", v, v))
-		out.stmt("m", rawf("if(p_%s != 0, do: m_%s, else: m)", v, v))
+		out.stmt("c", rawf("if(p_%s, do: c_%s, else: c)", v, v))
+		out.stmt("m", rawf("if(p_%s, do: m_%s, else: m)", v, v))
 		out.keys = append(out.keys, payload.keys...)
 		out.vals = append(out.vals, payload.vals...)
 		return out
@@ -1024,9 +1027,14 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`, which is what a form that writes 0 or 1
-		// and reads anything owes a hostile writer.
-		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
+		// A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1 refuses any
+		// other byte as damage, and the whole read with it. An absent
+		// optional's payload is unspecified (§3.4) and takes the present
+		// test (R.flag/2), as a float's does.
+		if g.present != nil {
+			return leafDec{spec: name + "::unsigned-8", wrap: rawf("R.flag(%s, %s)", name, g.present.flat())}
+		}
+		return leafDec{spec: name + "::unsigned-8", wrap: call("R.flag", raw(name))}
 	case ir.TFloat32, ir.TFloat64:
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and
 		// R.f64_value/1 refuse a NaN or an infinity on its raw bits, before
@@ -1058,6 +1066,13 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		spec = fmt.Sprintf("%s::little-signed-%d", name, width)
 	}
 	lo, hi := fixedRangeOf(f)
+	if lo == "nil" && f.Type.Kind == ir.TBits && int64(f.Type.Width) < width {
+		// A bits(N) PAST 2^N - 1 REFUSES out_of_range
+		// (docs/FIXED-FORM-ALGORITHM.md §4.5), declared range or not: its
+		// storage is four or eight bytes, so the bits above N are the wire's
+		// and never the value's. A bits(N) that fills its storage has none.
+		lo, hi = "0", fixedIntLiteral(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)))
+	}
 	if lo == "nil" {
 		return leafDec{spec: spec, wrap: raw(name)}
 	}

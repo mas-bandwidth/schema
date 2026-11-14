@@ -165,9 +165,12 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_entity_id, 0, 4095)
     c = R.clamps(c, f_pos_x, -16_383, 16_383)
     c = R.clamps(c, f_pos_y, -16_383, 16_383)
     c = R.clamps(c, f_pos_z, -16_383, 16_383)
+    c = R.clamps(c, f_yaw, 0, 511)
+    c = R.clamps(c, f_pitch, 0, 511)
     c = R.clamps(c, f_vel_x, -2048, 2047)
     c = R.clamps(c, f_vel_y, -2048, 2047)
     c = R.clamps(c, f_vel_z, -2048, 2047)
@@ -175,20 +178,20 @@ defmodule Bench.BenchFixed do
     c = R.past(c, f_weapon, 15)
 
     {%Bench.MixedEntity{
-       entity_id: f_entity_id,
+       entity_id: min(max(f_entity_id, 0), 4095),
        pos_x: min(max(f_pos_x, -16_383), 16_383),
        pos_y: min(max(f_pos_y, -16_383), 16_383),
        pos_z: min(max(f_pos_z, -16_383), 16_383),
-       yaw: f_yaw,
-       pitch: f_pitch,
+       yaw: min(max(f_yaw, 0), 511),
+       pitch: min(max(f_pitch, 0), 511),
        vel_x: min(max(f_vel_x, -2048), 2047),
        vel_y: min(max(f_vel_y, -2048), 2047),
        vel_z: min(max(f_vel_z, -2048), 2047),
        health: min(max(f_health, 0), 1000),
        weapon: elem(Bench.MixedWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
        damage: f_damage,
-       moving: f_moving != 0,
-       firing: f_firing != 0
+       moving: R.flag(f_moving),
+       firing: R.flag(f_firing)
      }, c, m}
   end
 
@@ -209,9 +212,12 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_entity_id, 0, 4095)
     c = R.clamps(c, f_pos_x, -16_383, 16_383)
     c = R.clamps(c, f_pos_y, -16_383, 16_383)
     c = R.clamps(c, f_pos_z, -16_383, 16_383)
+    c = R.clamps(c, f_yaw, 0, 511)
+    c = R.clamps(c, f_pitch, 0, 511)
     c = R.clamps(c, f_vel_x, -2048, 2047)
     c = R.clamps(c, f_vel_y, -2048, 2047)
     c = R.clamps(c, f_vel_z, -2048, 2047)
@@ -220,20 +226,20 @@ defmodule Bench.BenchFixed do
 
     v =
       %Bench.MixedEntity{
-        entity_id: f_entity_id,
+        entity_id: min(max(f_entity_id, 0), 4095),
         pos_x: min(max(f_pos_x, -16_383), 16_383),
         pos_y: min(max(f_pos_y, -16_383), 16_383),
         pos_z: min(max(f_pos_z, -16_383), 16_383),
-        yaw: f_yaw,
-        pitch: f_pitch,
+        yaw: min(max(f_yaw, 0), 511),
+        pitch: min(max(f_pitch, 0), 511),
         vel_x: min(max(f_vel_x, -2048), 2047),
         vel_y: min(max(f_vel_y, -2048), 2047),
         vel_z: min(max(f_vel_z, -2048), 2047),
         health: min(max(f_health, 0), 1000),
         weapon: elem(Bench.MixedWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
         damage: f_damage,
-        moving: f_moving != 0,
-        firing: f_firing != 0
+        moving: R.flag(f_moving),
+        firing: R.flag(f_firing)
       }
 
     {tail, c, m} = mixed_entity_fixed_list(rest, n - 1, c, m)
@@ -265,9 +271,11 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_stat_id, 0, 255)
     c = R.clamps(c, f_delta, -512, 511)
 
-    {%Bench.MixedStat{stat_id: f_stat_id, delta: min(max(f_delta, -512), 511)}, c, m}
+    {%Bench.MixedStat{stat_id: min(max(f_stat_id, 0), 255), delta: min(max(f_delta, -512), 511)},
+     c, m}
   end
 
   # A RUN OF MixedStat: the LIVE elements walked into a list, the count riding beside
@@ -291,22 +299,78 @@ defmodule Bench.BenchFixed do
         m
       )
       when n >= 8 do
+    c = R.clamps(c, f_stat_id_0, 0, 255)
     c = R.clamps(c, f_delta_0, -512, 511)
-    v0 = %Bench.MixedStat{stat_id: f_stat_id_0, delta: min(max(f_delta_0, -512), 511)}
+
+    v0 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_0, 0), 255),
+        delta: min(max(f_delta_0, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_1, 0, 255)
     c = R.clamps(c, f_delta_1, -512, 511)
-    v1 = %Bench.MixedStat{stat_id: f_stat_id_1, delta: min(max(f_delta_1, -512), 511)}
+
+    v1 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_1, 0), 255),
+        delta: min(max(f_delta_1, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_2, 0, 255)
     c = R.clamps(c, f_delta_2, -512, 511)
-    v2 = %Bench.MixedStat{stat_id: f_stat_id_2, delta: min(max(f_delta_2, -512), 511)}
+
+    v2 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_2, 0), 255),
+        delta: min(max(f_delta_2, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_3, 0, 255)
     c = R.clamps(c, f_delta_3, -512, 511)
-    v3 = %Bench.MixedStat{stat_id: f_stat_id_3, delta: min(max(f_delta_3, -512), 511)}
+
+    v3 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_3, 0), 255),
+        delta: min(max(f_delta_3, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_4, 0, 255)
     c = R.clamps(c, f_delta_4, -512, 511)
-    v4 = %Bench.MixedStat{stat_id: f_stat_id_4, delta: min(max(f_delta_4, -512), 511)}
+
+    v4 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_4, 0), 255),
+        delta: min(max(f_delta_4, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_5, 0, 255)
     c = R.clamps(c, f_delta_5, -512, 511)
-    v5 = %Bench.MixedStat{stat_id: f_stat_id_5, delta: min(max(f_delta_5, -512), 511)}
+
+    v5 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_5, 0), 255),
+        delta: min(max(f_delta_5, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_6, 0, 255)
     c = R.clamps(c, f_delta_6, -512, 511)
-    v6 = %Bench.MixedStat{stat_id: f_stat_id_6, delta: min(max(f_delta_6, -512), 511)}
+
+    v6 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_6, 0), 255),
+        delta: min(max(f_delta_6, -512), 511)
+      }
+
+    c = R.clamps(c, f_stat_id_7, 0, 255)
     c = R.clamps(c, f_delta_7, -512, 511)
-    v7 = %Bench.MixedStat{stat_id: f_stat_id_7, delta: min(max(f_delta_7, -512), 511)}
+
+    v7 =
+      %Bench.MixedStat{
+        stat_id: min(max(f_stat_id_7, 0), 255),
+        delta: min(max(f_delta_7, -512), 511)
+      }
+
     {tail, c, m} = mixed_stat_fixed_list(rest, n - 8, c, m)
     {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
   end
@@ -317,9 +381,12 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_stat_id, 0, 255)
     c = R.clamps(c, f_delta, -512, 511)
 
-    v = %Bench.MixedStat{stat_id: f_stat_id, delta: min(max(f_delta, -512), 511)}
+    v =
+      %Bench.MixedStat{stat_id: min(max(f_stat_id, 0), 255), delta: min(max(f_delta, -512), 511)}
+
     {tail, c, m} = mixed_stat_fixed_list(rest, n - 1, c, m)
     {[v | tail], c, m}
   end
@@ -352,14 +419,15 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_target_id, 0, 4095)
     c = R.clamps(c, f_damage, 0, 4095)
     c = R.clamps(c, f_hit_kind, 0, 7)
 
     {%Bench.MixedHitEvent{
-       target_id: f_target_id,
+       target_id: min(max(f_target_id, 0), 4095),
        damage: min(max(f_damage, 0), 4095),
        hit_kind: min(max(f_hit_kind, 0), 7),
-       crit: f_crit != 0
+       crit: R.flag(f_crit)
      }, c, m}
   end
 
@@ -383,48 +451,52 @@ defmodule Bench.BenchFixed do
         m
       )
       when n >= 4 do
+    c = R.clamps(c, f_target_id_0, 0, 4095)
     c = R.clamps(c, f_damage_0, 0, 4095)
     c = R.clamps(c, f_hit_kind_0, 0, 7)
 
     v0 =
       %Bench.MixedHitEvent{
-        target_id: f_target_id_0,
+        target_id: min(max(f_target_id_0, 0), 4095),
         damage: min(max(f_damage_0, 0), 4095),
         hit_kind: min(max(f_hit_kind_0, 0), 7),
-        crit: f_crit_0 != 0
+        crit: R.flag(f_crit_0)
       }
 
+    c = R.clamps(c, f_target_id_1, 0, 4095)
     c = R.clamps(c, f_damage_1, 0, 4095)
     c = R.clamps(c, f_hit_kind_1, 0, 7)
 
     v1 =
       %Bench.MixedHitEvent{
-        target_id: f_target_id_1,
+        target_id: min(max(f_target_id_1, 0), 4095),
         damage: min(max(f_damage_1, 0), 4095),
         hit_kind: min(max(f_hit_kind_1, 0), 7),
-        crit: f_crit_1 != 0
+        crit: R.flag(f_crit_1)
       }
 
+    c = R.clamps(c, f_target_id_2, 0, 4095)
     c = R.clamps(c, f_damage_2, 0, 4095)
     c = R.clamps(c, f_hit_kind_2, 0, 7)
 
     v2 =
       %Bench.MixedHitEvent{
-        target_id: f_target_id_2,
+        target_id: min(max(f_target_id_2, 0), 4095),
         damage: min(max(f_damage_2, 0), 4095),
         hit_kind: min(max(f_hit_kind_2, 0), 7),
-        crit: f_crit_2 != 0
+        crit: R.flag(f_crit_2)
       }
 
+    c = R.clamps(c, f_target_id_3, 0, 4095)
     c = R.clamps(c, f_damage_3, 0, 4095)
     c = R.clamps(c, f_hit_kind_3, 0, 7)
 
     v3 =
       %Bench.MixedHitEvent{
-        target_id: f_target_id_3,
+        target_id: min(max(f_target_id_3, 0), 4095),
         damage: min(max(f_damage_3, 0), 4095),
         hit_kind: min(max(f_hit_kind_3, 0), 7),
-        crit: f_crit_3 != 0
+        crit: R.flag(f_crit_3)
       }
 
     {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 4, c, m)
@@ -438,15 +510,16 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_target_id, 0, 4095)
     c = R.clamps(c, f_damage, 0, 4095)
     c = R.clamps(c, f_hit_kind, 0, 7)
 
     v =
       %Bench.MixedHitEvent{
-        target_id: f_target_id,
+        target_id: min(max(f_target_id, 0), 4095),
         damage: min(max(f_damage, 0), 4095),
         hit_kind: min(max(f_hit_kind, 0), 7),
-        crit: f_crit != 0
+        crit: R.flag(f_crit)
       }
 
     {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 1, c, m)
@@ -479,8 +552,12 @@ defmodule Bench.BenchFixed do
         m
       ) do
     c = R.clamps(c, f_channel, 0, 3)
+    c = R.clamps(c, f_speaker, 0, 4095)
 
-    {%Bench.MixedChatEvent{channel: min(max(f_channel, 0), 3), speaker: f_speaker}, c, m}
+    {%Bench.MixedChatEvent{
+       channel: min(max(f_channel, 0), 3),
+       speaker: min(max(f_speaker, 0), 4095)
+     }, c, m}
   end
 
   # A RUN OF MixedChatEvent: the LIVE elements walked into a list, the count riding beside
@@ -505,21 +582,77 @@ defmodule Bench.BenchFixed do
       )
       when n >= 8 do
     c = R.clamps(c, f_channel_0, 0, 3)
-    v0 = %Bench.MixedChatEvent{channel: min(max(f_channel_0, 0), 3), speaker: f_speaker_0}
+    c = R.clamps(c, f_speaker_0, 0, 4095)
+
+    v0 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_0, 0), 3),
+        speaker: min(max(f_speaker_0, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_1, 0, 3)
-    v1 = %Bench.MixedChatEvent{channel: min(max(f_channel_1, 0), 3), speaker: f_speaker_1}
+    c = R.clamps(c, f_speaker_1, 0, 4095)
+
+    v1 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_1, 0), 3),
+        speaker: min(max(f_speaker_1, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_2, 0, 3)
-    v2 = %Bench.MixedChatEvent{channel: min(max(f_channel_2, 0), 3), speaker: f_speaker_2}
+    c = R.clamps(c, f_speaker_2, 0, 4095)
+
+    v2 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_2, 0), 3),
+        speaker: min(max(f_speaker_2, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_3, 0, 3)
-    v3 = %Bench.MixedChatEvent{channel: min(max(f_channel_3, 0), 3), speaker: f_speaker_3}
+    c = R.clamps(c, f_speaker_3, 0, 4095)
+
+    v3 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_3, 0), 3),
+        speaker: min(max(f_speaker_3, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_4, 0, 3)
-    v4 = %Bench.MixedChatEvent{channel: min(max(f_channel_4, 0), 3), speaker: f_speaker_4}
+    c = R.clamps(c, f_speaker_4, 0, 4095)
+
+    v4 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_4, 0), 3),
+        speaker: min(max(f_speaker_4, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_5, 0, 3)
-    v5 = %Bench.MixedChatEvent{channel: min(max(f_channel_5, 0), 3), speaker: f_speaker_5}
+    c = R.clamps(c, f_speaker_5, 0, 4095)
+
+    v5 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_5, 0), 3),
+        speaker: min(max(f_speaker_5, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_6, 0, 3)
-    v6 = %Bench.MixedChatEvent{channel: min(max(f_channel_6, 0), 3), speaker: f_speaker_6}
+    c = R.clamps(c, f_speaker_6, 0, 4095)
+
+    v6 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_6, 0), 3),
+        speaker: min(max(f_speaker_6, 0), 4095)
+      }
+
     c = R.clamps(c, f_channel_7, 0, 3)
-    v7 = %Bench.MixedChatEvent{channel: min(max(f_channel_7, 0), 3), speaker: f_speaker_7}
+    c = R.clamps(c, f_speaker_7, 0, 4095)
+
+    v7 =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel_7, 0), 3),
+        speaker: min(max(f_speaker_7, 0), 4095)
+      }
+
     {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 8, c, m)
     {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
   end
@@ -531,8 +664,14 @@ defmodule Bench.BenchFixed do
         m
       ) do
     c = R.clamps(c, f_channel, 0, 3)
+    c = R.clamps(c, f_speaker, 0, 4095)
 
-    v = %Bench.MixedChatEvent{channel: min(max(f_channel, 0), 3), speaker: f_speaker}
+    v =
+      %Bench.MixedChatEvent{
+        channel: min(max(f_channel, 0), 3),
+        speaker: min(max(f_speaker, 0), 4095)
+      }
+
     {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 1, c, m)
     {[v | tail], c, m}
   end
@@ -563,9 +702,13 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_item_id, 0, 1023)
     c = R.clamps(c, f_amount, 0, 255)
 
-    {%Bench.MixedPickupEvent{item_id: f_item_id, amount: min(max(f_amount, 0), 255)}, c, m}
+    {%Bench.MixedPickupEvent{
+       item_id: min(max(f_item_id, 0), 1023),
+       amount: min(max(f_amount, 0), 255)
+     }, c, m}
   end
 
   # A RUN OF MixedPickupEvent: the LIVE elements walked into a list, the count riding beside
@@ -589,22 +732,78 @@ defmodule Bench.BenchFixed do
         m
       )
       when n >= 8 do
+    c = R.clamps(c, f_item_id_0, 0, 1023)
     c = R.clamps(c, f_amount_0, 0, 255)
-    v0 = %Bench.MixedPickupEvent{item_id: f_item_id_0, amount: min(max(f_amount_0, 0), 255)}
+
+    v0 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_0, 0), 1023),
+        amount: min(max(f_amount_0, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_1, 0, 1023)
     c = R.clamps(c, f_amount_1, 0, 255)
-    v1 = %Bench.MixedPickupEvent{item_id: f_item_id_1, amount: min(max(f_amount_1, 0), 255)}
+
+    v1 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_1, 0), 1023),
+        amount: min(max(f_amount_1, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_2, 0, 1023)
     c = R.clamps(c, f_amount_2, 0, 255)
-    v2 = %Bench.MixedPickupEvent{item_id: f_item_id_2, amount: min(max(f_amount_2, 0), 255)}
+
+    v2 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_2, 0), 1023),
+        amount: min(max(f_amount_2, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_3, 0, 1023)
     c = R.clamps(c, f_amount_3, 0, 255)
-    v3 = %Bench.MixedPickupEvent{item_id: f_item_id_3, amount: min(max(f_amount_3, 0), 255)}
+
+    v3 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_3, 0), 1023),
+        amount: min(max(f_amount_3, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_4, 0, 1023)
     c = R.clamps(c, f_amount_4, 0, 255)
-    v4 = %Bench.MixedPickupEvent{item_id: f_item_id_4, amount: min(max(f_amount_4, 0), 255)}
+
+    v4 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_4, 0), 1023),
+        amount: min(max(f_amount_4, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_5, 0, 1023)
     c = R.clamps(c, f_amount_5, 0, 255)
-    v5 = %Bench.MixedPickupEvent{item_id: f_item_id_5, amount: min(max(f_amount_5, 0), 255)}
+
+    v5 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_5, 0), 1023),
+        amount: min(max(f_amount_5, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_6, 0, 1023)
     c = R.clamps(c, f_amount_6, 0, 255)
-    v6 = %Bench.MixedPickupEvent{item_id: f_item_id_6, amount: min(max(f_amount_6, 0), 255)}
+
+    v6 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_6, 0), 1023),
+        amount: min(max(f_amount_6, 0), 255)
+      }
+
+    c = R.clamps(c, f_item_id_7, 0, 1023)
     c = R.clamps(c, f_amount_7, 0, 255)
-    v7 = %Bench.MixedPickupEvent{item_id: f_item_id_7, amount: min(max(f_amount_7, 0), 255)}
+
+    v7 =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id_7, 0), 1023),
+        amount: min(max(f_amount_7, 0), 255)
+      }
+
     {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 8, c, m)
     {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
   end
@@ -615,9 +814,15 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_item_id, 0, 1023)
     c = R.clamps(c, f_amount, 0, 255)
 
-    v = %Bench.MixedPickupEvent{item_id: f_item_id, amount: min(max(f_amount, 0), 255)}
+    v =
+      %Bench.MixedPickupEvent{
+        item_id: min(max(f_item_id, 0), 1023),
+        amount: min(max(f_amount, 0), 255)
+      }
+
     {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 1, c, m)
     {[v | tail], c, m}
   end
@@ -728,9 +933,11 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
+    c = R.clamps(c, f_sequence, 0, 65_535)
     c = R.clamps(c, f_ack_sequence, 0, 65_535)
     c = R.clamps(c, f_nonce, 0, 18_446_744_073_709_551_615)
     c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
+    c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.clamps(c, f_server_time, 0, 16_776_960)
     c = R.clamps(c, n_entities, 0, 8)
     {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
@@ -756,18 +963,19 @@ defmodule Bench.BenchFixed do
       )
 
     c = R.clamps(c, f_ping, 0, 64_000)
+    c = R.clamps(c, f_crc_hint, 0, 16_777_215)
     c = R.clamps(c, f_extra, 0, 255)
     c = R.clamps(c, f_idle_ticks, 0, 15)
 
     {%Bench.BenchMixed{
-       sequence: f_sequence,
+       sequence: min(max(f_sequence, 0), 65_535),
        ack_sequence: min(max(f_ack_sequence, 0), 65_535),
        ack_bits: f_ack_bits,
        session_id: f_session_id,
        client_id: f_client_id,
        nonce: min(max(f_nonce, 0), 18_446_744_073_709_551_615),
        world_time: min(max(f_world_time, -1_000_000_000_000), 1_000_000_000_000),
-       frame_tick: f_frame_tick,
+       frame_tick: min(max(f_frame_tick, 0), 281_474_976_710_655),
        server_time: min(max(f_server_time, 0), 16_776_960),
        entities: l_entities,
        stats: l_stats,
@@ -787,8 +995,8 @@ defmodule Bench.BenchFixed do
            1_267_650_600_228_229_401_496_703_205_376
          ),
        ping: min(max(f_ping, 0), 64_000),
-       crc_hint: f_crc_hint,
-       has_extra: f_has_extra != 0,
+       crc_hint: min(max(f_crc_hint, 0), 16_777_215),
+       has_extra: R.flag(f_has_extra),
        extra: min(max(f_extra, 0), 255),
        idle_ticks: min(max(f_idle_ticks, 0), 15)
      }, c, m}

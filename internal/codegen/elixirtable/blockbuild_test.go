@@ -48,6 +48,19 @@ func pinOneCook(t *testing.T, elixirBin, root string, unit *ir.Unit, rootName, w
 	}
 	little := filepath.Join(root, "testdata", "conformance", "tables", "cook-write", cookName+".cook")
 	big := filepath.Join(root, "testdata", "conformance", "tables", "cook-write", cookName+"-be.cook")
+	if cookName == "blob_shared" {
+		// ONE BLOB NAMED FROM TWO SLOTS: every read refuses it (§2.5;
+		// docs/plans/strict-only.md), so there is no value to cook. The
+		// tolerant read that landed it is retired; the Go tool refuses to
+		// cook it too (TestCookNumbersABlobByItsSlotElixir).
+		runProbe(t, elixirBin, dir, names, `
+wire = File.read!(`+elixirString(wire)+`)
+{:error, _, report} = `+mod+`.load(`+elixirString(rootName)+`, wire)
+if report.reason == "", do: System.halt(1)
+IO.puts("ok")
+`)
+		return
+	}
 	littleOut := filepath.Join(dir, "little.cook")
 	bigOut := filepath.Join(dir, "big.cook")
 	probe := `

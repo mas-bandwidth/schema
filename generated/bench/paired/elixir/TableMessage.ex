@@ -1058,13 +1058,19 @@ defmodule Bench.TableMessage do
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
+        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
 
             case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
-              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc], depth)
-              :malformed -> :malformed
+              {:ok, value, rest2} ->
+                if List.keymember?(acc, ref, 0),
+                  do: :malformed,
+                  else: read_body(vocab, rest2, [{ref, value} | acc], depth)
+
+              :malformed ->
+                :malformed
             end
 
           _ ->
@@ -1130,10 +1136,13 @@ defmodule Bench.TableMessage do
 
   defp read_float(_shape, _r), do: :malformed
 
+  # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
+  # are well-formed UTF-8 with no NUL, or the batch refuses
   defp read_string(shape, r) do
     with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
          {:ok, rest2} <- align(rest),
-         {:ok, bytes, rest3} <- take_bytes(rest2, n) do
+         {:ok, bytes, rest3} <- take_bytes(rest2, n),
+         true <- String.valid?(bytes) and :binary.match(bytes, <<0>>) == :nomatch do
       {:ok, bytes, rest3}
     else
       _ -> :malformed

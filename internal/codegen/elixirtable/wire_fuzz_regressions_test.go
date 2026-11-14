@@ -20,8 +20,9 @@ import (
 //  2. Stopped bodies decode their framed field prefix before discarding the
 //     unterminated body, without running require_seen on the stopped body
 //     (mapdemo.Chunks retain mutant 68,210).
-//  3. Retaining capture requires exact content consumption in nested bodies
-//     and arrays (listdemo.Save retain mutant 87,889).
+//  3. Bytes after a nested unknown body's terminator refuse the whole load
+//     (§6.5; listdemo.Save retain mutant 87,889, which once counted
+//     retain_lost).
 //  4. A damaged child table element refuses the whole load with a named
 //     reason and no value
 //     (docs/SPEC-TABLES.md §4; listdemo.Save retain mutant 91,390,
@@ -117,13 +118,16 @@ case Fuzzprobe.Table.load_retain("Root", nan_then_stop_wire, store, empty) do
   other -> raise("expected retain non_finite_float on stopped body prefix, got " <> inspect(other))
 end
 
-# 3. Retaining capture requires exact consumption: an unknown kind-13 body with
-# trailing byte after its 0 terminator counts retain_lost=1, retained=0.
+# 3. An unknown kind-13 body with a trailing byte after its 0 terminator is
+# damage (SPEC-TABLES §6.5: the strict rules apply to every byte, a field the
+# reader does not declare too), so the retaining read refuses the whole load.
+# It used to load and count retain_lost=1, a tolerant read the one strict
+# read retired.
 unknown_id = 0x1122334455667788
 early_term_unknown_wire = <<1, 1, 13, 2, 0, 0xFF, 0, unknown_id::little-64, 1::little-64>>
 case Fuzzprobe.Table.load_retain("Root", early_term_unknown_wire, store, empty) do
-  {:ok, _v, %{unknown: 1, retained: 0, retain_lost: 1, reason: ""}, _rt} -> :ok
-  other -> raise("expected retain_lost=1 on early-terminated unknown body, got " <> inspect(other))
+  {:error, :malformed, %{reason: "wire_damaged"}, _rt} -> :ok
+  other -> raise("expected a refusal of an early-terminated unknown body, got " <> inspect(other))
 end
 
 # 4. list_damaged_child_reads_on vector: a damaged child body in a table array
@@ -197,6 +201,9 @@ IO.puts("WIRE_FUZZ_REGRESSIONS_OK")
 	badFiles := make(map[string][]byte, len(files))
 	maps.Copy(badFiles, files)
 	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
+	// the framing walk over every body refuses a bool byte above 1 too, so
+	// the control plants it out beside the read's own check
+	elixirPatch(t, badFiles, "        strict_syntax!(body, nodes, ids)\n", "")
 	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
 		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
 	}

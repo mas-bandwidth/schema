@@ -542,13 +542,15 @@ func TestElixirCellsStrictNegativeControl(t *testing.T) {
 		t.Fatalf("the unplanted fixed artifacts already fail the gate: %v\n%s", err, out)
 	}
 
-	// Plant the short-body tolerance on the framing read: variable_load
-	// no longer raises the strict framing flag, so the short rows land
-	// inert partial values there.
+	// Plant the short-body tolerance on the one read: an array body too
+	// short to carry its header reads as an empty list instead of refusing,
+	// so the short rows land partial values.
 	out, err := runCellsVTProbe(t, func(files map[string][]byte) {
 		elixirPatch(t, files,
-			"Process.put(:elixir_strict_framing, true)",
-			"Process.put(:elixir_strict_framing, false)")
+			"# a body too short to carry its header is damage (§3, §4)\n        {:cont, [], throw(:wire_damaged)}",
+			"# a body too short to carry its header is damage (§3, §4)\n        {:cont, [], report}")
+		// the framing walk over every body refuses a short body too
+		elixirPatch(t, files, "        strict_syntax!(body, nodes, ids)\n", "")
 	})
 	if err == nil {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the short-body plant left the variable probe green\n%s", out)
@@ -563,6 +565,8 @@ func TestElixirCellsStrictNegativeControl(t *testing.T) {
 		elixirPatch(t, files,
 			"defp clamp_count(n, %{max_count: max}, _report) when n > max,\n    do: {max, throw(:wire_damaged)}",
 			"defp clamp_count(n, %{max_count: max}, report) when n > max,\n    do: {max, report}")
+		// the framing walk over every body refuses this wire too
+		elixirPatch(t, files, "        strict_syntax!(body, nodes, ids)\n", "")
 	})
 	if err == nil {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the count-clamp plant left the variable probe green\n%s", out)
