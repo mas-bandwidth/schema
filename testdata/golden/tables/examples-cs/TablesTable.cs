@@ -3270,6 +3270,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RootConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4221,6 +4222,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             WeaponConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -5009,6 +5011,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             LoadoutConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -5943,6 +5946,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             ProfileConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
