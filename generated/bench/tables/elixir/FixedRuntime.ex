@@ -268,6 +268,11 @@ defmodule Benchtable.FixedRuntime do
   def flag(1), do: true
   def flag(_byte), do: throw({:refuse, :wire_damaged})
 
+  # AN ABSENT OPTIONAL'S PAYLOAD IS UNSPECIFIED (§3.4): nobody wrote it, so
+  # its byte is not a bool any read refuses.
+  def flag(byte, true), do: flag(byte)
+  def flag(byte, false), do: byte != 0
+
   @doc """
   ONE VALUE AGAINST ONE PAIR OF BOUNDS: `acc` and one more when the value lies
   outside them, `acc` unchanged when it does not.

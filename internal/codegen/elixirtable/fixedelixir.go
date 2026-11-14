@@ -1010,7 +1010,12 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 	switch f.Type.Kind {
 	case ir.TBool:
 		// A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1 refuses any
-		// other byte as damage, and the whole read with it.
+		// other byte as damage, and the whole read with it. An absent
+		// optional's payload is unspecified (§3.4) and takes the present
+		// test (R.flag/2), as a float's does.
+		if g.present != nil {
+			return leafDec{spec: name + "::unsigned-8", wrap: rawf("R.flag(%s, %s)", name, g.present.flat())}
+		}
 		return leafDec{spec: name + "::unsigned-8", wrap: call("R.flag", raw(name))}
 	case ir.TFloat32, ir.TFloat64:
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and

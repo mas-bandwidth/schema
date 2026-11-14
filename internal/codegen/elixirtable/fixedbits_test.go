@@ -52,3 +52,45 @@ func TestFixedBitsPastWidthRefuses(t *testing.T) {
 		t.Fatalf("REVERSED WITNESS FAILED: without the bound the probe stayed green\n%s", out)
 	}
 }
+
+// TestFixedAbsentOptionalBoolIsNotRefused pins docs/SPEC-TABLES.md §3.4 on the
+// Elixir fixed read: a bool is 0 or 1, but an absent optional's payload is
+// unspecified, so a stray byte there is not a bool the read refuses (the wire
+// fuzz's tabledemo.KeyedConfig mutant, a nonzero byte in an absent
+// ?GunnerConfig's tracking). A present one still refuses wire_damaged.
+//
+// REVERSED WITNESS: with the present test dropped from the payload's bool the
+// absent wire refuses, and the probe goes red.
+func TestFixedAbsentOptionalBoolIsNotRefused(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Elixir (native absent optional bool)")
+	bin := elixirBinary(t)
+	const schema = "package boolprobe\nfixed table Root { o ?bool\n w uint8 }"
+	body := `
+    header = Boolprobe.ProbeFixed.root_fixed_save([])
+    at = byte_size(header) + 8
+    absent = Boolprobe.ProbeFixed.root_fixed_save([%Boolprobe.Root{o_present: false, w: 7}])
+    <<pre::binary-size(at), 0, 0, rest::binary>> = absent
+    result = Boolprobe.ProbeFixed.root_fixed_load(pre <> <<0, 0xAF>> <> rest)
+    check(match?({:ok, [%{o_present: false, w: 7}], _}, result), "absent optional bool refused: " <> inspect(result))
+    result = Boolprobe.ProbeFixed.root_fixed_load(pre <> <<1, 0xAF>> <> rest)
+    check(match?({:error, :wire_damaged, _}, result), "present bool 0xAF loaded: " <> inspect(result))
+`
+	files := t14ElixirFiles(t, schema, nil)
+	if out, err := t14ElixirRunFiles(t, bin, files, body); err != nil {
+		t.Fatalf("native absent optional bool: %v\n%s", err, out)
+	}
+	n := 0
+	for name, data := range files {
+		if k := strings.Count(string(data), "R.flag(f_o, p_o)"); k > 0 {
+			n += k
+			files[name] = []byte(strings.ReplaceAll(string(data), "R.flag(f_o, p_o)", "R.flag(f_o)"))
+		}
+	}
+	if n == 0 {
+		t.Fatal("the witness found no present-tested bool in the generated fixed read")
+	}
+	if out, err := t14ElixirRunFiles(t, bin, files, body); err == nil || !strings.Contains(out, "absent optional bool refused") {
+		t.Fatalf("REVERSED WITNESS FAILED: without the present test the probe stayed green\n%s", out)
+	}
+}
