@@ -1034,11 +1034,14 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 			g.pf("                    case %s: { TableBlob * blob=(TableBlob *)value; blob->length=(uint32_t)body.size; blob->zero=0; memcpy(blob+1,body.buffer,(size_t)body.size); break; }\n", blob.name)
 		}
 	}
+	// A RECORD'S TERMINATOR IS THE END OF ITS PAYLOAD (docs/SPEC-TABLES.md §3,
+	// §3.1): a body that ends before its record's L is damage, as an element's is.
+	recordWhole := "if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }"
 	for _, t := range ir.PointerReachable(st) {
 		if g.retain {
-			g.pf("                    case UINT64_C(0x%016x):retention.path=table_retain_root(value,(uint32_t)k+2);%s(&body,(%s *)value);break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+			g.pf("                    case UINT64_C(0x%016x):retention.path=table_retain_root(value,(uint32_t)k+2);%s(&body,(%s *)value);%sbreak;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name, recordWhole)
 		} else {
-			g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+			g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); %s break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name, recordWhole)
 		}
 	}
 	retainedRoot := ""
