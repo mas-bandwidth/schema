@@ -2017,6 +2017,58 @@ final class TableWireReader {
     return false;
   }
 
+  // wireCycle reports whether the wire-alone pointer graph has a cycle
+  // (docs/SPEC-TABLES.md §3.1, §6.5; internal/tablewire/wirecheck.go graph):
+  // a walk from the root over every kind-17 payload, in fields this reader
+  // declares and in fields it only skips, that meets a node whose descent is
+  // still open (the root included) is damage. The walk keeps its own stack,
+  // so a long legal chain costs no recursion. An index past the node table is
+  // wireBadPointerIndex's to judge and is passed over here.
+  bool wireCycle() {
+    final children = _wireGraph();
+    if (children == null) return false;
+    final n = children.length;
+    final mark = List<int>.filled(n, 0);
+    final stackNode = <int>[0];
+    final stackNext = <int>[0];
+    mark[0] = 1;
+    while (stackNode.isNotEmpty) {
+      final top = stackNode.length - 1;
+      final out = children[stackNode[top]];
+      final next = stackNext[top];
+      if (next == out.length) {
+        mark[stackNode[top]] = 2;
+        stackNode.removeLast();
+        stackNext.removeLast();
+        continue;
+      }
+      stackNext[top] = next + 1;
+      final index = out[next];
+      if (index <= 0 || index > n) continue;
+      final t = index - 1;
+      if (mark[t] == 1) return true;
+      if (mark[t] == 2) continue;
+      mark[t] = 1;
+      stackNode.add(t);
+      stackNext.add(0);
+    }
+    return false;
+  }
+
+  // wireStringBlobBad reports whether any string blob record on the wire is
+  // not well-formed UTF-8 or holds a zero byte (docs/SPEC-TABLES.md §2.5,
+  // §6.5; internal/tablewire/wirecheck.go checkBody): the reserved type id is
+  // known to every reader, so the rule holds wherever the record is reached
+  // from, a field this reader only skips included.
+  bool wireStringBlobBad() {
+    for (var rec = 0; rec < nodes.length; rec++) {
+      if (nodeTypes[rec] == _kStringBlobId && !_lebValid(nodes[rec], 0, nodes[rec].length)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // wireBlobShared reports whether one blob record is named from two
   // slots anywhere on the wire (internal/tablewire/wirecheck.go graph;
   // docs/SPEC-TABLES.md §2.5): a blob is owned by one slot, and the slot
@@ -3560,6 +3612,11 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// internal/tablewire/wirecheck.go graph): the load stored every placed
 	// record, so one no resolved slot or edge names refuses the whole load.
 	g.pf("\tif (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }\n")
+	// THE GRAPH IS EVERY KIND-17 PAYLOAD (docs/SPEC-TABLES.md §6.5): a cycle
+	// or an ill-formed string blob reached through a pointer this reader only
+	// skips refuses the whole load as one this reader declares does.
+	g.pf("\tif (r.wireCycle()) { r.report.refuse('wire_damaged'); }\n")
+	g.pf("\tif (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireBlobShared()) { r.report.refuse('blob_shared'); }\n")
 	g.pf("\tif (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }\n")
