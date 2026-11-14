@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -12,12 +13,15 @@ import (
 )
 
 // manifestRow is one report or instance row of MANIFEST.txt: the case, the
-// unit, the root and the wire file.
+// unit, the root and the wire file, and whether the row carries the
+// wire-refused marker (every leg refuses the wire, so it has no value to
+// compare: a dead-byte vector, docs/SPEC-TABLES.md §3.4).
 type manifestRow struct {
-	caseName string
-	unit     string
-	root     string
-	wire     string
+	caseName    string
+	unit        string
+	root        string
+	wire        string
+	wireRefused bool
 }
 
 // manifestRows reads one row kind (report, instance) of the tables manifest.
@@ -34,7 +38,7 @@ func manifestRows(t *testing.T, path, kind string) []manifestRow {
 			continue
 		}
 		if f[0] == kind && len(f) >= 5 {
-			rows = append(rows, manifestRow{caseName: f[1], unit: f[2], root: f[3], wire: f[4]})
+			rows = append(rows, manifestRow{caseName: f[1], unit: f[2], root: f[3], wire: f[4], wireRefused: slices.Contains(f[5:], "wire-refused")})
 		}
 	}
 	return rows

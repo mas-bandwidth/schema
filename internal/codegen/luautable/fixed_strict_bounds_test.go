@@ -95,12 +95,20 @@ for _, c in cases do
 	local ok = pcall(F.load, T.SDescriptor, fixed, c[2])
 	check(not ok, c[1] .. ": F.load did not raise")
 end
--- THE SLACK RULE (§3.4): an absent optional's payload is slack, never read
+-- THE SLACK RULE (§3.4, the owner's ruling of 2026-11-10, "Every dead byte"):
+-- an absent optional's payload is slack, and slack is zero, so an absent
+-- optional over zeros reads and over anything else refuses wire_damaged,
+-- even where the junk would be in the payload's range
 local absent = forge(25, 0)
-buffer.writei32(absent, rec + 26, 0x7fffffff)
+buffer.writei32(absent, rec + 26, 0)
 local ra: any = {}
 local a = F.read(T.SDescriptor, fixed, absent, ra)
-check(a ~= nil and a[1].OPresent == false, "an absent optional over junk slack is refused: " .. tostring(ra.reason))
+check(a ~= nil and a[1].OPresent == false, "an absent optional over zero slack is refused: " .. tostring(ra.reason))
+buffer.writei32(absent, rec + 26, -3)
+local rj: any = {}
+local j = F.read(T.SDescriptor, fixed, absent, rj)
+check(j == nil and rj.reason == "wire_damaged", "an absent optional over junk slack: " .. tostring(rj.reason) .. ", want wire_damaged")
+check((rj.widened or 0) == 0 and (rj.unknown or 0) == 0, "a dead-byte refusal moved a counter")
 if fails == 0 then print("ok") end
 `
 
@@ -136,7 +144,9 @@ func fixedStrictRun(t *testing.T, from, to string) string {
 // and 16): a bool or present byte other than 0 or 1 refuses wire_damaged; a
 // ranged scalar outside its range, a bits(N) past 2^N - 1 and an ordinal past
 // the writer's variants refuse out_of_range; each refusal hands back nothing
-// and moves no counter, and an absent optional's slack is never read.
+// and moves no counter; and an absent optional's payload is slack, which reads
+// over zeros and refuses wire_damaged over anything else (§3.4, THE SLACK
+// RULE).
 func TestLuauFixedStrictBounds(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
@@ -156,6 +166,8 @@ func TestLuauFixedStrictBoundsNegativeControl(t *testing.T) {
 			"elseif false then\n\t\t\terror(outOfRange(f), 0)"},
 		{"bits", "if lessThan(top, v, false) then error(outOfRange(f), 0) end", "if false then error(outOfRange(f), 0) end"},
 		{"ordinal", "\t\tif raw > #w.children then\n", "\t\tif raw > 0xff then\n"},
+		{"dead-bytes", "local function deadZero(buf: buffer, at: number, n: number)\n\tlocal i = 0\n",
+			"local function deadZero(buf: buffer, at: number, n: number)\n\tlocal i = n\n"},
 	}
 	for _, p := range plants {
 		t.Run(p.name, func(t *testing.T) {

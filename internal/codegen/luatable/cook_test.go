@@ -55,6 +55,13 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 					if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
 						t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 					}
+					if r.wireRefused {
+						// every leg refuses this wire (a dead-byte vector,
+						// docs/SPEC-TABLES.md §3.4), so there is no value to
+						// cook; TestLuaTableLoadMatchesTheReports holds the
+						// Lua verdict
+						t.Skipf("the manifest marks %s wire-refused: %v", r.caseName, err)
+					}
 					t.Fatalf("decode %s: %v", r.caseName, err)
 				}
 				cooked, err := tablecook.Cook(m, inst, tablecook.Options{})

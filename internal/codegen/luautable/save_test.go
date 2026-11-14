@@ -149,7 +149,7 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 				// record from two slots: every writer refuses it (docs/SPEC-TABLES.md
 				// §2.5), as Go's does, and TestLuauBlobNamedTwice holds the
 				// refusal to the oracle's own value.
-				if row.blobShared {
+				if row.wireRefused {
 					refusedSaves++
 					continue
 				}

@@ -26,11 +26,12 @@ type reportRow struct {
 	unit     string
 	root     string
 	wire     string
-	// blobShared marks an instance whose wire names one blob from two slots
-	// (the manifest's wire-refused marker, formerly go-refusal=blob_shared):
-	// the strict read refuses it and every writer refuses
-	// it by name (docs/SPEC-TABLES.md §2.5).
-	blobShared bool
+	// wireRefused marks an instance every leg's strict read refuses (the
+	// manifest's wire-refused marker, formerly go-refusal=blob_shared): a wire
+	// that names one blob from two slots, which every writer also refuses by
+	// name (docs/SPEC-TABLES.md §2.5), or a fixed record with a non-zero dead
+	// byte (§3.4, THE SLACK RULE).
+	wireRefused bool
 }
 
 // manifestRows reads the report and instance lines of the tables manifest.
@@ -50,7 +51,7 @@ func manifestRows(t *testing.T) []reportRow {
 		}
 		if (fields[0] == "report" || fields[0] == "instance") && len(fields) >= 5 {
 			rows = append(rows, reportRow{kind: fields[0], caseName: fields[1], unit: fields[2], root: fields[3], wire: fields[4],
-				blobShared: slices.Contains(fields[5:], "go-refusal=blob_shared") || slices.Contains(fields[5:], "wire-refused")})
+				wireRefused: slices.Contains(fields[5:], "go-refusal=blob_shared") || slices.Contains(fields[5:], "wire-refused")})
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -263,9 +264,10 @@ func TestLuauTableLoadMatchesTheReports(t *testing.T) {
 		}
 		out := runCase(t, g, row, nil)
 		if row.kind == "instance" {
-			if row.blobShared {
-				// a wire-refused instance: one blob named from two slots, which
-				// the strict read refuses (docs/SPEC-TABLES.md §2.5)
+			if row.wireRefused {
+				// a wire-refused instance: one blob named from two slots
+				// (docs/SPEC-TABLES.md §2.5) or a non-zero dead byte in a fixed
+				// record (§3.4), which the strict read refuses
 				if out != "refused" {
 					t.Errorf("instance %s: the strict read did not refuse a wire-refused instance: %s", row.caseName, out)
 				}

@@ -84,7 +84,7 @@ v.none = { tag = 0 }; v.narrow = { tag = 1, narrow = 9 }; v.ping = { tag = 3 }; 
 		t.Fatalf("the writer's record:\n%x, want\n%x", saved, clean)
 	}
 	lineage := luaEvoLineage(t, older, "D")
-	reads :=[]struct {
+	reads := []struct {
 		name string
 		g    *luaEvoUnit
 		want string

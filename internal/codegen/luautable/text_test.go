@@ -165,7 +165,7 @@ func TestLuauBase64TextRoundTripsEveryInstance(t *testing.T) {
 				// a blob_shared wire (go-refusal=blob_shared) names one blob
 				// record from two slots: every writer refuses it (docs/SPEC-TABLES.md
 				// §2.5), so its binary load cannot SaveText.
-				if row.blobShared {
+				if row.wireRefused {
 					refusedTexts++
 					continue
 				}

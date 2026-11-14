@@ -79,7 +79,10 @@ func TestLuaCookWrite(t *testing.T) {
 			luarun.WriteHexProbe(t, dir)
 			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
+				// a fixed read refuses by raising its name (a dead-byte
+				// vector, docs/SPEC-TABLES.md §3.4), which is LOAD_REFUSED
+				loadLine = `local okFixed, v = pcall(T.ReadFixed, "` + r.root + `", inputs.wire)
+if not okFixed then v = nil end`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")

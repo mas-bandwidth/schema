@@ -489,9 +489,14 @@ func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
 func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
 	m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 	m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
+	if f.Type.Kind == ir.TString {
+		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
+	}
+	// the bytes past the used length are slack, and every dead byte is zero
+	// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+	m.Printf("%sif (!_rt_fixed.deadZero(b, at + %s + %d + n, %d - n)) return \"wire_damaged\";\n", ind, off, fixedCountBytes, f.Type.Size)
 	switch f.Type.Kind {
 	case ir.TString:
-		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
 		m.Printf("%slocal s = \"\";\n", ind)
 		m.Printf("%sfor (local i = 0; i < n; i++) s += b[at + %s + %d + i].tochar();\n", ind, off, fixedCountBytes)
 		m.Printf("%s%s = s;\n", ind, expr)
@@ -621,11 +626,31 @@ func fixedEmitDecodeField(m *Module, f *ir.Field, at int64, expr, ind string) {
 		m.Printf("%s  %sPresent = b[at + %d] != 0;\n", ind, expr, at)
 		m.Printf("%s  if (%sPresent) {\n", ind, expr)
 		fixedEmitDecodePayload(m, f, at+1, expr, ind+"    ")
-		m.Printf("%s  }\n", ind)
+		// the payload under an absent flag is slack, and every dead byte is
+		// zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+		m.Printf("%s  } else if (at + %d <= lim && !_rt_fixed.deadZero(b, at + %d, %d)) return \"wire_damaged\";\n", ind, at+fixedFieldBytes(f), at+1, fixedFieldBytes(f)-1)
 		m.Printf("%s}\n", ind)
 		return
 	}
 	fixedEmitDecodePayload(m, f, at, expr, ind)
+}
+
+// fixedDeadAt is the record offset `at + base [+ dyn]` a slack check starts
+// from, in the decode's own terms.
+func fixedDeadAt(base int64, dyn string) string {
+	if dyn == "0" {
+		return fmt.Sprintf("at + %d", base)
+	}
+	return fmt.Sprintf("at + %d + %s", base, dyn)
+}
+
+// fixedEmitDeadTail refuses a counted array whose elements past the live
+// count `c` (in scope) are not zero: the tail is slack, and every dead byte is
+// zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE). base is the first
+// element's offset, past the count.
+func fixedEmitDeadTail(m *Module, f *ir.Field, base int64, dyn, ind string) {
+	elem := fixedElementBytes(f)
+	m.Printf("%sif (!_rt_fixed.deadZero(b, %s + c * %d, (%d - c) * %d)) return \"wire_damaged\";\n", ind, fixedDeadAt(base, dyn), elem, f.ArrayBound, elem)
 }
 
 func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
@@ -657,6 +682,9 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 		}
 		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
 		m.Printf("%s  }\n", ind)
+		if f.Array == ir.ArrayCounted {
+			fixedEmitDeadTail(m, f, base, "0", ind+"  ")
+		}
 	case fixedIsText(f):
 		fixedEmitDecodeText(m, f, fmt.Sprint(at), expr, ind+"  ")
 	default:
@@ -684,6 +712,20 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			// A FORGED TAG, outside this reader's own set, refuses
 			// (docs/FIXED-FORM-ALGORITHM.md §5.4; tablewire fixed.go element)
 			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, len(r.Variants))
+			// the arm bytes behind the taken arm, up to the widest, are slack,
+			// all of them under tag 0 or a payload-free arm, and every dead
+			// byte is zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+			widest := fixedElementBytes(f) - tag
+			taken := "0"
+			for i := len(r.Variants) - 1; i >= 0; i-- {
+				if v := r.Variants[i]; v.F != nil {
+					taken = fmt.Sprintf("(%s.Type == %d ? %d : %s)", expr, i+1, fixedFieldBytes(v.F), taken)
+				}
+			}
+			m.Printf("%s{\n", ind)
+			m.Printf("%s  local taken = %s;\n", ind, taken)
+			m.Printf("%s  if (!_rt_fixed.deadZero(b, at + %s + %d + taken, %d - taken)) return \"wire_damaged\";\n", ind, off, tag, widest)
+			m.Printf("%s}\n", ind)
 			for i, v := range r.Variants {
 				if v.F == nil {
 					continue
@@ -710,6 +752,9 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					}
 					fixedEmitDecodeElement(m, v.F, base, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))), true)
 					m.Printf("%s}\n", armInd)
+					if v.F.Array == ir.ArrayCounted {
+						fixedEmitDeadTail(m, v.F, base, dyn, armInd)
+					}
 				case fixedIsText(v.F):
 					fixedEmitDecodeText(m, v.F, fmt.Sprintf("%s + %d", off, tag), armExpr, armInd)
 				default:

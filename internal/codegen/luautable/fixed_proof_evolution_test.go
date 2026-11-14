@@ -532,8 +532,16 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 		}
 		live := bytes.Clone(good)
 		at := len(live) - 13
-		// The unused array slots and absent optional payload are opaque.
-		live[at+5], live[at+6], live[at+8] = 99, 99, 99
+		// The unused array slots and the absent optional's payload are slack,
+		// and every dead byte is zero (docs/SPEC-TABLES.md §3.4, THE SLACK
+		// RULE): a stained image refuses, the clean one is the row's proof.
+		for _, off := range []int{5, 6, 8} {
+			stained := bytes.Clone(live)
+			stained[at+off] = 1
+			if n, reason, _, _, counters := r.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, stained, -1); n >= 0 || counters != (fixedproof.LoadCounters{}) {
+				t.Fatalf("live-extents: a stained slack byte at body offset %d read: n=%d reason=%q counters=%v", off, n, reason, counters)
+			}
+		}
 		badBody := bytes.Clone(live)
 		binary.LittleEndian.PutUint32(badBody[at:], 2)
 		badBody[at+5] = 2 // make the newly live element a valid Small.Two

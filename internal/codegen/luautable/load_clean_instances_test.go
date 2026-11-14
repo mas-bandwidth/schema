@@ -36,7 +36,7 @@ func TestLuauTableLoadReadsEveryCleanInstanceClean(t *testing.T) {
 		if g.err != nil {
 			continue
 		}
-		if row.blobShared {
+		if row.wireRefused {
 			continue // wire-refused by design (TestLuauTableLoadMatchesTheReports holds it)
 		}
 		instances++

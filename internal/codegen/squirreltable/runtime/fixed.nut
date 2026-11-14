@@ -56,6 +56,19 @@ _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
 
+// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+// docs/rulings.json fixed-dead-bytes-zero): the n bytes at `at` are slack, the
+// bytes past a counted array's live count, past a text's or a byte buffer's
+// used length, behind a narrower or absent union arm and under an absent
+// optional's present byte, all of them the WRITER's. A conforming writer
+// leaves zeros there, so the read refuses the whole record as wire_damaged
+// when deadZero answers false. Slack is checked for zero and for nothing
+// else: no bool, range, ordinal or text rule runs over it.
+_M.deadZero <- function(b, at, n) {
+  for (local i = 0; i < n; i++) { if (b[at + i] != 0) return false; }
+  return true;
+};
+
 // A FIXED-FORM FLOAT IS ITS IEEE-754 BIT PATTERN, AND FINITE
 // (docs/SPEC-TABLES.md §3.3, §3.4, the packet wire's rule): a writer refuses a NaN or an infinity, a float32 one that
 // narrows to an infinity included, and a read refuses one on its RAW BITS

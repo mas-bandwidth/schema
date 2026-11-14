@@ -235,6 +235,13 @@ func (s stubEvoRunner) loadLineage(t *testing.T, u *ir.Unit, root string, lineag
 		fields["r0.opt_present"] = "false"
 	}
 	if root == "T" && recSize == 8+13 {
+		// the live-extents row's slack (the array tail past a count of 1 and
+		// the absent optional's payload) is zero or the record is refused
+		// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+		body := wireBytes[20+layoutLen+8:]
+		if body[5] != 0 || body[6] != 0 || body[8] != 0 {
+			return -1, "leg_diagnostic_dead_byte", nil, nil
+		}
 		fields["r0.arr_count"] = "1"
 		fields["r0.arr[0]"] = "1"
 		fields["r0.opt_present"] = "false"

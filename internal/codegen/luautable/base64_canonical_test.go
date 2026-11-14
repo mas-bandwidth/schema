@@ -177,13 +177,20 @@ func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 			if fields[0] != "canonical" {
 				t.Fatalf("instance %s (%s/%s): first line %q", row.caseName, key, row.root, lines[0])
 			}
-			if row.blobShared {
+			if row.wireRefused {
 				// LoadText IS the strict read (§6.5), and one blob named from
 				// two slots is refused by name (docs/SPEC-TABLES.md §2.5): the
 				// canonical text is a readable wire whose strict read refuses
 				// blob_shared, so there is no value to SaveText. The damaged
 				// and non-canonical texts still name their carrier refusals.
-				if len(fields) != 3 || fields[1] != "REFUSED" || fields[2] != "blob_shared" {
+				// A fixed record with a non-zero dead byte (§3.4, THE SLACK
+				// RULE) is the other wire-refused row: its strict read refuses
+				// too, and only the verdict is the contract (docs/rulings.json
+				// refusal-verdict-only).
+				if len(fields) != 3 || fields[1] != "REFUSED" {
+					t.Fatalf("instance %s (%s/%s): the canonical text of a wire-refused instance did not refuse: %q", row.caseName, key, row.root, lines[0])
+				}
+				if strings.HasPrefix(row.caseName, "blob_shared") && fields[2] != "blob_shared" {
 					t.Fatalf("instance %s (%s/%s): the canonical blob_shared text did not refuse blob_shared: %q", row.caseName, key, row.root, lines[0])
 				}
 			} else {

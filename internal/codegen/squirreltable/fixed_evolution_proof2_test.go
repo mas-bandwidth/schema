@@ -74,7 +74,9 @@ func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 // field's capacity, or below zero, refuses length_over_bound; ill-formed UTF-8
 // or a zero in the USED bytes, and an unpaired surrogate (high or low) or a
 // zero unit in a wstring's used units, refuse text_ill_formed; a hostile byte
-// or unit in the slack past the used length is not read and not a refusal. On
+// or unit in the slack past the used length refuses wire_damaged, because
+// every dead byte is zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; the
+// owner's ruling of 2026-11-10, docs/rulings.json fixed-dead-bytes-zero). On
 // a compiled plan the WRITER's capacity bounds the length: string(4) read by a
 // string(8) reader refuses 5. The negative controls drop the UTF-8 check, the
 // narrow and the wide length checks, and the wide-unit check.
@@ -98,15 +100,16 @@ func TestSquirrelFixedEvolutionText(t *testing.T) {
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), refused("text_ill_formed")},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), refused("text_ill_formed")},
 		{"C4 a truncated two-byte sequence", cut(func(b []byte) { b[body+5] = 0xc3 }), refused("text_ill_formed")},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 w0"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), refused("wire_damaged")},
+		{"R24 0x01 in the last slack byte", cut(func(b []byte) { b[body+7] = 0x01 }), refused("wire_damaged")},
 	}
 	for _, c := range cases {
 		if got := g.load(t, "T", c.file); !strings.HasPrefix(got.head, c.want) {
 			t.Errorf("%s: %s, want %s", c.name, got.head, c.want)
 		}
 	}
-	if got := g.load(t, "T", cases[5].file); got.dump["r0.s"] != `"ab"` {
-		t.Errorf("R24: the used text with poisoned slack: %v", got.dump)
+	if got := g.load(t, "T", clean); got.head != "ok 1 w0" || got.dump["r0.s"] != `"ab"` {
+		t.Errorf("R24: the used text over zero slack: %s %v", got.head, got.dump)
 	}
 
 	// the writer's capacity governs a compiled plan
@@ -139,8 +142,8 @@ const sqEvoNormalOld = "package probe\nfixed table T\n{\n    flag bool\n    opt 
 // present byte of 0 or 1 land as false and true; any other byte — 0x02, 0x5a,
 // 0x7f, 0x80, 0xff — refuses wire_damaged, neither stored verbatim nor
 // normalized, on the identity plan and on a compiled plan; an absent optional's
-// payload bytes are not read. The negative controls drop the bool check and the
-// present-byte check.
+// payload bytes are slack, zero or the record refuses wire_damaged. The
+// negative controls drop the bool check and the present-byte check.
 func TestSquirrelFixedEvolutionNormalization(t *testing.T) {
 	sqrun.Require(t)
 	t.Parallel()
@@ -163,8 +166,15 @@ func TestSquirrelFixedEvolutionNormalization(t *testing.T) {
 		if got := gg.load(t, "T", with(0, 1, 42)); got.head != "ok 1 w0" || got.dump["r0.flag"] != "0" || got.dump["r0.opt"] != "42" {
 			t.Errorf("%s, false and present: %s %v", name, got.head, got.dump)
 		}
-		if got := gg.load(t, "T", with(1, 0, 0xFFFFFFFF)); got.head != "ok 1 w0" || got.dump["r0.opt_present"] != "0" {
-			t.Errorf("%s, an absent optional over a poisoned payload: %s %v", name, got.head, got.dump)
+		if got := gg.load(t, "T", with(1, 0, 0)); got.head != "ok 1 w0" || got.dump["r0.opt_present"] != "0" {
+			t.Errorf("%s, an absent optional over zeros: %s %v", name, got.head, got.dump)
+		}
+		// the payload under an absent flag is slack, and every dead byte is
+		// zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+		for _, p := range []uint32{0xFFFFFFFF, 1, 1 << 24} {
+			if got := gg.load(t, "T", with(1, 0, p)); !strings.HasPrefix(got.head, refused("wire_damaged")) {
+				t.Errorf("%s, an absent optional over a payload of 0x%08x: %s, want wire_damaged", name, p, got.head)
+			}
 		}
 		for _, x := range []byte{0x02, 0x5a, 0x7f, 0x80, 0xff} {
 			if got := gg.load(t, "T", with(x, 1, 42)); !strings.HasPrefix(got.head, refused("wire_damaged")) {

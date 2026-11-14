@@ -294,7 +294,7 @@ func vtCellFailures(t *testing.T, c luauVTCell, patches []vtPatch) (fails []stri
 			if got != want {
 				fails = append(fails, fmt.Sprintf("%s (%s/%s): Luau %s, the Go engine %s", name, row.unit, row.root, got, want))
 			}
-		case row.blobShared:
+		case row.wireRefused:
 			if kind != "REFUSED" {
 				fails = append(fails, fmt.Sprintf("%s (%s/%s): a wire-refused instance answered %s", name, row.unit, row.root, kind))
 			}

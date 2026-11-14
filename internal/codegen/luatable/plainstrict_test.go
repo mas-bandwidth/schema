@@ -155,7 +155,10 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 			t.Fatalf("the manifest has no %s rows", kind)
 		}
 		for _, row := range rows {
-			instance := kind == "instance"
+			// a wire-refused instance (a dead-byte vector, docs/SPEC-TABLES.md
+			// §3.4) is one every leg refuses, so it is not held to a read;
+			// the plain and strict names must still agree on it
+			instance := kind == "instance" && !row.wireRefused
 			g, ok := generate(t, row.unit)
 			if !ok {
 				continue
