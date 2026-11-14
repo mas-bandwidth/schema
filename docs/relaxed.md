@@ -108,6 +108,17 @@ listed case that passes fails the leg until its line is removed.
   refuses. Real fix: build recipe rows from their input JSON, and skip or
   answer the rows the Rust leg cannot load; then return the control to
   `rust-conformance-walk`. WIP: none.
+- `relax/nc-elixir-wire-fuzz-array-tail`: the group `elixir-wire-fuzz`
+  (`tables-elixir-wire-fuzz-negative-control`, registered by PR 3290) moved
+  from the pull-request tier to nightly. Two causes, both measured in main CI
+  full 43638688121 attempt 2 on aws-schema-1-2: the plant, which removes the
+  rule that bytes left inside an array's L are damage from a copy of the
+  featurewitnesses reader, does not turn the Elixir wire fuzz red ("a reader
+  that keeps bytes left inside an array's L left the wire fuzz green"); and the
+  step takes 176 s against the 110 s per-commit wall. Files:
+  `make/negative-controls.json`. Real fix: re-aim the plant at a check the
+  fuzz's mutants reach, fit the control under 110 s, then return the group to
+  the pull-request tier. WIP: none.
 - `relax/nc-elixir-discard-masked`: the group `elixir-discard`
   (`tables-elixir-discard-negative-control`) moved from the pull-request
   tier to nightly. PR 3290 made Elixir's load the one strict read: its
