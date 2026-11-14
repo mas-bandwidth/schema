@@ -107,6 +107,86 @@ func imageDstRows(u *ir.Unit, entries []ir.TableFixedLayoutEntry) []fixedDst {
 	return out
 }
 
+// fixedDstDeprecated rides in a row's counted column beside the counted bit:
+// the field this build declares deprecated. Its slot is not slack (docs/
+// SPEC-TABLES.md §3.4, THE SLACK RULE), so the slack checks skip it whole.
+const fixedDstDeprecated = 2
+
+// markDeprecatedRows sets fixedDstDeprecated on the first row of every field
+// of st, and of every type nested in it, that this build declares deprecated.
+// It walks the layout's own tree beside the declarations, and stops where the
+// two disagree, marking nothing it cannot place.
+func markDeprecatedRows(st *ir.Struct, entries []ir.TableFixedLayoutEntry, dst []fixedDst) {
+	subtree := func(i int) int {
+		n, pending := 0, 1
+		for at := i; pending > 0 && at < len(entries); at++ {
+			pending += entries[at].Children - 1
+			n++
+		}
+		return n
+	}
+	var markStruct func(s *ir.Struct, i int)
+	var markPayload func(f *ir.Field, r int)
+	markElement := func(t ir.FieldType, r int) {
+		if r >= len(entries) {
+			return
+		}
+		switch ref := t.Ref.(type) {
+		case *ir.Struct:
+			if entries[r].Kind == ir.TableKindTable {
+				markStruct(ref, r)
+			}
+		case *ir.Union:
+			if entries[r].Kind != ir.TableKindUnion || entries[r].Children != len(ref.Variants) {
+				return
+			}
+			k := r + 1
+			for _, v := range ref.Variants {
+				if v.F != nil {
+					markPayload(v.F, k)
+				}
+				k += subtree(k)
+			}
+		}
+	}
+	markPayload = func(f *ir.Field, r int) {
+		if r >= len(entries) {
+			return
+		}
+		switch entries[r].Kind {
+		case ir.TableKindArray:
+			markElement(f.Type, r+1)
+		case ir.TableKindKeyed:
+			markElement(f.Type, r+1+subtree(r+1))
+		default:
+			markElement(f.Type, r)
+		}
+	}
+	markStruct = func(s *ir.Struct, i int) {
+		if entries[i].Children != len(s.Fields) {
+			return
+		}
+		j := i + 1
+		for _, f := range s.Fields {
+			if j >= len(entries) {
+				return
+			}
+			if f.Deprecated {
+				dst[j].counted |= fixedDstDeprecated
+			}
+			r := j
+			if f.Type.Optional && entries[j].Kind == ir.TableKindOptional {
+				r = j + 1
+			}
+			markPayload(f, r)
+			j += subtree(j)
+		}
+	}
+	if len(entries) > 0 && len(dst) == len(entries) {
+		markStruct(st, 0)
+	}
+}
+
 func imageDstRow(u *ir.Unit, e ir.TableFixedLayoutEntry) fixedDst {
 	d := e.Dst
 	stride := int64(0)

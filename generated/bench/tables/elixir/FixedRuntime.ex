@@ -932,7 +932,8 @@ defmodule Benchtable.FixedRuntime do
   read's list. dead/2 runs it over a record body before the plan does.
   """
   def compile_dead(theirs, mine, dst) do
-    {{all, _}, _} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, report(), true)
+    dead_only = Map.put(report(), :dead_only, true)
+    {{all, _}, _} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, dead_only, true)
     all |> Enum.filter(&dead?/1) |> :lists.reverse()
   end
 
@@ -1001,12 +1002,13 @@ defmodule Benchtable.FixedRuntime do
     {Enum.map(new, fun) ++ rest, n}
   end
 
-  defp live_wrap_entry({:copy, _, _, _} = e, _dst, _src, _i), do: e
+  defp live_wrap_entry({:copy, _, _, _} = e, _dst, _i), do: e
+  defp live_wrap_entry(e, dst, i), do: {:live, dst, i, e}
 
-  defp live_wrap_entry(e, dst, src, i) do
-    # A SLACK CHECK INSIDE A LIVE ELEMENT answers to the WRITER's count in the
-    # record body, because it runs before the plan lands anything.
-    if dead?(e), do: {:live_src, src, i, e}, else: {:live, dst, i, e}
+  # A SLACK CHECK INSIDE A LIVE ELEMENT answers to the WRITER's count in the
+  # record body, because it runs before the plan lands anything.
+  defp live_wrap(e, dst, src, i) do
+    if dead?(e), do: {:live_src, src, i, e}, else: live_wrap_entry(e, dst, i)
   end
 
   defp present_wrap_entry({:copy, _, _, _} = e, _src), do: e
@@ -1096,6 +1098,11 @@ defmodule Benchtable.FixedRuntime do
     aux_at = my_at + elem(row, 2)
 
     cond do
+      # A FIELD THIS BUILD DECLARES DEPRECATED is no slack (§3.4): the slack
+      # checks skip its slot whole, and the projection keeps it as it was.
+      Map.get(report, :dead_only, false) and elem(row, 3) >= 2 ->
+        {acc, report}
+
       # T INTO ?T (bill §12.8): the reader wrapped a field in an OPTIONAL the
       # writer did not have. The present byte is a CONSTANT 1 — constant in its
       # VALUE and still carrying the row's own guard and ordinal (§5.9 #13), so
@@ -1323,12 +1330,12 @@ defmodule Benchtable.FixedRuntime do
        ) do
     their_elem = size_at(theirs, ti + 1)
     my_elem = size_at(mine, mi + 1)
-    head = if elem(row, 3) == 1, do: 4, else: 0
+    head = if rem(elem(row, 3), 2) == 1, do: 4, else: 0
     their_n = if their_elem == 0, do: 0, else: div(size_at(theirs, ti) - head, their_elem)
     my_n = if my_elem == 0, do: 0, else: div(size_at(mine, mi) - head, my_elem)
 
     acc =
-      if elem(row, 3) == 1 do
+      if rem(elem(row, 3), 2) == 1 do
         # THE BOUND IS THE WRITER'S their_n AND NOT MY OWN (§5.2 EMIT kind 14,
         # bill §12.5): the plan carries THAT ENDPOINT'S bounds for the hostile pass,
         # so a count forged past what the writer could have written clamps and
@@ -1344,7 +1351,7 @@ defmodule Benchtable.FixedRuntime do
 
     their_base = their_at + head
     stride = elem(row, 1)
-    counted = elem(row, 3) == 1
+    counted = rem(elem(row, 3), 2) == 1
     n = min(their_n, my_n)
 
     Enum.reduce(0..(n - 1)//1, {acc, report}, fn i, {acc, report} ->
@@ -1368,7 +1375,7 @@ defmodule Benchtable.FixedRuntime do
 
       acc =
         if counted do
-          wrap_new(acc, old_n, &live_wrap_entry(&1, aux_at, their_at, i))
+          wrap_new(acc, old_n, &live_wrap(&1, aux_at, their_at, i))
         else
           acc
         end

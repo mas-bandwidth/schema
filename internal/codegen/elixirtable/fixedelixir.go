@@ -1642,6 +1642,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	body := fixedTypeBytes(st)
 	plan := fixedIdentityPlan(st)
 	dst := imageDstRows(g.unit, entries)
+	markDeprecatedRows(st, entries, dst)
 
 	g.pf("  # ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("  # MEASURE IS A CONSTANT on this form: the body is the same size for every\n")
