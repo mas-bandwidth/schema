@@ -3554,7 +3554,7 @@ void layoutValidation() {
 // comparing the numbers the plan is built from against the compiler's own
 // `offsetof`/`sizeof` (internal/codegen/cpptable/fixedform.go,
 // emitFixedLayoutAsserts). Dart has no struct ABI to take an `offsetof` of, so
-// THIS leg's offsets are its own storage walk: the five-lane `FixedDst` rows,
+// THIS leg's offsets are its own storage walk: the `FixedDst` rows,
 // resolved through the pre-order layout into absolute body offsets, and
 // `FixedBodyBytes` for the sizeof. The assertion below is named: every
 // destination the identity plan lands must be one of those offsets and must
@@ -3562,21 +3562,21 @@ void layoutValidation() {
 // decoder use is caught HERE, at build time, and never on the wire.
 // ---------------------------------------------------------------------------
 
-// w14Offsets resolves the five-lane `FixedDst` rows — dst, stride, aux,
+// w14Offsets resolves the `FixedDst` rows — dst, stride, aux,
 // counted, arg — into the set of absolute byte offsets this build's storage
 // walk declares. The layout is a u32 count then 17-byte entries (id u64, kind
 // u8, size u32, children u32), pre-order: each entry's dst and aux are measured
 // from its PARENT, so the walk carries the parent's absolute offset down.
 Set<int> w14Offsets(Uint8List layout, Int32List dstRows) {
   final view = ByteData.sublistView(layout);
-  final rows = dstRows.length ~/ 5;
+  final rows = dstRows.length ~/ fx1home.TableFixedLane.dstLanes;
   final offsets = <int>{};
   var index = 0;
   void walk(int parent) {
     if (index >= rows) {
       return;
     }
-    final row = index * 5;
+    final row = index * fx1home.TableFixedLane.dstLanes;
     final at = parent + dstRows[row];
     offsets.add(at);
     // a text row's aux is the buffer, a counted array's aux is the count, an
@@ -3619,6 +3619,13 @@ void w14Check(
     final dst = plan[base + fx1home.TableFixedLane.dst];
     final size = plan[base + fx1home.TableFixedLane.size];
     final aux = plan[base + fx1home.TableFixedLane.aux];
+    if (op == fx1home.TableFixedOp.deadAbsent ||
+        op == fx1home.TableFixedOp.deadTail ||
+        op == fx1home.TableFixedOp.deadArm) {
+      // a dead-byte check reads the writer's slack and lands nothing, so it
+      // names no destination (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+      continue;
+    }
     check(
       dst >= 0 && dst < bodyBytes,
       'W14: $who entry $i dst $dst inside the body $bodyBytes',
