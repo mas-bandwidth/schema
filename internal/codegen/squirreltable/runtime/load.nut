@@ -15,6 +15,9 @@ local _M = vargv[0];
 local _require = vargv[1];
 // required once here, never per call (a require walks the name)
 local R = _require("schema_table_refusal");
+// the save's one key compare (docs/SPEC-TABLES.md §2.8), so the order the
+// writer sorts and the order this read checks are the same compare
+local S = _require("schema_table_save");
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 local NODE_TABLE_ID = 0xffffffffffffffff;
@@ -1036,15 +1039,6 @@ local readMapEntry = function(ed, es, T, table, ent, report, st) {
   return es.at == es.end;
 };
 
-local mapKeyCmp = function(a, b) {
-  if (a == null && b == null) return 0;
-  if (a == null) return -1;
-  if (b == null) return 1;
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-};
-
 // THE KEY SCAN (docs/SPEC-TABLES.md §2.8): the reader does not assume where
 // the key sits, so before an entry's body decodes it scans that body's field
 // headers for the key's id. The key's KIND is the reader's declaration: a
@@ -1167,7 +1161,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
       break;
     }
     local key = ent[fd.mapkey.member];
-    local cmp = haveLast ? mapKeyCmp(last, key) : -1;
+    local cmp = haveLast ? S.mapKeyCmp(last, key, fd.mapkey) : -1;
     if (cmp > 0) {
       // DESCENDING: not a body any conforming writer produced (§2.8)
       foreach (k, x in before) report[k] = x;

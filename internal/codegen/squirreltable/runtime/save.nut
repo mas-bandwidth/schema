@@ -243,13 +243,18 @@ local blobKey = function(kind, val) {
   return "b:" + hexBytes(val);
 };
 
-local mapKeyCmp = function(a, b) {
+// THE KEY COMPARE (docs/SPEC-TABLES.md §2.8): strings by their bytes, a signed
+// integer kind by its value, and an unsigned integer kind by its unsigned
+// value — a Squirrel int reads its high half as negative, so the unsigned
+// order is the bits with the sign bit flipped.
+local MIN = 0x8000000000000000;
+local mapKeyCmp = function(a, b, kd) {
   if (a == null && b == null) return 0;
   if (a == null) return -1;
   if (b == null) return 1;
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
+  if (a == b) return 0;
+  if (kd.shape == "str" || kd.signed) return a < b ? -1 : 1;
+  return (a ^ MIN) < (b ^ MIN) ? -1 : 1;
 };
 
 // THE ORDER A MAP'S ENTRIES RIDE (docs/SPEC-TABLES.md §2.8): ascending by key,
@@ -257,19 +262,19 @@ local mapKeyCmp = function(a, b) {
 // them in. The writer holds the sort, so the numbering walks this order and
 // the field writes it. The sort breaks a key tie on the entry's position, so
 // "last" is the caller's last however the sort is implemented.
-local mapWriteOrder = function(val, keyMember) {
+local mapWriteOrder = function(val, kd) {
   local order = [];
   for (local i = 0; i < val.len(); i++) order.append(i);
   order.sort(function(x, y) {
-    local c = mapKeyCmp(val[x][keyMember], val[y][keyMember]);
+    local c = mapKeyCmp(val[x][kd.member], val[y][kd.member], kd);
     return c != 0 ? c : (x < y ? -1 : (x > y ? 1 : 0));
   });
   local idx = [];
   local haveLast = false;
   local last = null;
   foreach (e in order) {
-    local key = val[e][keyMember];
-    if (haveLast && mapKeyCmp(last, key) == 0) { idx[idx.len() - 1] = e; }
+    local key = val[e][kd.member];
+    if (haveLast && mapKeyCmp(last, key, kd) == 0) { idx[idx.len() - 1] = e; }
     else { idx.append(e); haveLast = true; last = key; }
   }
   return idx;
@@ -305,7 +310,7 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
     // ascending by key (docs/SPEC-TABLES.md §2.8, §3.1)
     local kd = d.mapkey;
     local vd = d.mapvalue;
-    foreach (i in mapWriteOrder(val, kd.member)) {
+    foreach (i in mapWriteOrder(val, kd)) {
       local ent = val[i];
       shapeEdges(T, kd, ent[kd.member], out, ent, kd.member, every);
       shapeEdges(T, vd, ent[vd.member], out, ent, vd.member, every);
@@ -666,7 +671,7 @@ writeMapField = function(T, d, val, w, ids, nodes, root) {
   local n = val.len();
   // a present empty optional map writes its field header and `0d 00` (§2.8)
   if (n == 0 && !d.optional) return true;
-  local idx = mapWriteOrder(val, d.mapkey.member);
+  local idx = mapWriteOrder(val, d.mapkey);
   local mark = idsMark(ids);
   local field = newWriter();
   wleb(field, idsRef(ids, d.id)); wu8(field, 14);
@@ -1057,3 +1062,4 @@ _M.numberForCook <- function(T, root, value) {
   return number(T, tableDesc(T, root), value, true);
 };
 _M.mapWriteOrder <- mapWriteOrder;
+_M.mapKeyCmp <- mapKeyCmp;
