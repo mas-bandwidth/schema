@@ -1398,6 +1398,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             GunnerSettingsFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2002,6 +2003,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             ShipEntryFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2594,6 +2596,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             GlobalSettingsFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -3485,6 +3488,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PackConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }

@@ -2421,6 +2421,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Const:\n                {\n")
+	// THE UNION'S None CONST HOLDS THE WRITER'S ARM SET (§4.6), the twin of
+	// TableFixedWire.Run's Const case.
+	g.pf("                    if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return \"out_of_range\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")
