@@ -82,6 +82,19 @@ listed case that passes fails the leg until its line is removed.
   two new nightly groups, `js-write-refusal` and `lobster-write-refusal`,
   unmeasured. Real fix: measure them and move each group to the pull-request
   tier. WIP: none.
+- `relax/rust-cookwrite-test-red`: `tables-rust-cook-write-negative-control`
+  moved from `rust-conformance-walk` to the nightly group
+  `rust-cook-write-test`. The suite it plants into, `TestCookWriteRust`
+  (`internal/codegen/rusttable/cookwrite_rust_test.go`), is red on main
+  without the plant. Two causes are fixed in the same PR: the
+  featurewitnesses unit was not mapped, and the test's crate left out
+  `integrity_runtime.rs`. Two remain: the test reads every cook-write row from
+  its instance's wire, so a recipe row (`input=<json> share=<from>:<to>`,
+  blob_shared, whose wire is refused by design) fails, as moo's and JS's tests
+  do not; and the cook probe panics on a row whose form-1 load the Rust leg
+  refuses. Real fix: build recipe rows from their input JSON, and skip or
+  answer the rows the Rust leg cannot load; then return the control to
+  `rust-conformance-walk`. WIP: none.
 - `relax/nc-write-refusal-variable-unreachable`: the C, C++ and C#
   `conformance-negative-control-<lang>-write-refusal` controls (groups
   `base-c-write-refusal-b` and `cs-write-refusal` moved to the nightly; the C++

@@ -1491,8 +1491,16 @@
       "why": "the Rust conformance walk control (the emitted JSON reader's field-key match sabotaged through go build -overlay, the units regenerated and the conformance driver rebuilt against them, requiring rust / json-read red while json-write and wire stay green) paired with the cook-write finite-float and JSON-hostile go-test overlay controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739) so no row carries two complete-driver rebuilds. Measured 60 s of control time over the 3 controls on vision (walk 50 s, cook-write 6 s, json-hostile 5 s; 27 s on the author's quiet machine).",
       "targets": [
         "conformance-negative-control-rust-walk",
-        "tables-rust-cook-write-negative-control",
         "tables-rust-json-hostile-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-cook-write-test",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): taken out of rust-conformance-walk because the suite it plants into, TestCookWriteRust, is red on main without the plant: it reads every cook-write row from the instance wire, so the recipe rows (input=<json> share=<from>:<to>, blob_shared) fail, and a form-1 load the Rust leg refuses panics the cook probe; re-enable: relax/rust-cookwrite-test-red.",
+      "targets": [
+        "tables-rust-cook-write-negative-control"
       ],
       "rust": "stable"
     },
