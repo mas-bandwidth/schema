@@ -1470,6 +1470,10 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE WRITE CHECK, the same walk with the text content rule (§5.1).
+	for _, st := range bodies {
+		g.emitFixedWriteCheckBodyFn(st)
+	}
 	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
 	// runs it before the bounds pass and the writer before its first byte.
 	for _, st := range bodies {
@@ -1477,6 +1481,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
+		g.emitFixedWriteAdmits(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -1985,6 +1990,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+	}
+	if g.fixedWriteAdmits(st) != "" {
+		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
+		g.emitFixedWriteAssert(st, "values[k]", "        ")
+		g.pf("    }\n")
 	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")

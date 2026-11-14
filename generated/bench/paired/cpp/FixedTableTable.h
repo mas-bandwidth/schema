@@ -5855,6 +5855,8 @@ inline int64_t FixedTableMeasureBody( TableIds & ids, const FixedTable & value )
     return bytes;
 }
 
+inline bool FixedTableFixedWriteAdmits( const FixedTable & value );
+
 inline int64_t FixedTableMeasure( const FixedTable & value )
 {
     TableIds ids;
@@ -6212,6 +6214,7 @@ inline int64_t FixedTableMeasureMessages( const FixedTable * values, int64_t cou
     {
         const int64_t body = FixedTableMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( FixedTableFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -6230,6 +6233,7 @@ inline int64_t FixedTableSaveMessages( const FixedTable * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !FixedTableSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( FixedTableFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == FixedTableMeasureMessages( values, count, report )
@@ -6309,6 +6313,16 @@ TABLE_FIXED_INLINE bool FixedTableFixedInRange( const FixedTable & value )
     (void) value;
     int bad = 0;
     bad |= (int) !BenchMixedFixedInRange( value.value );
+    return bad == 0;
+}
+
+// FixedTable's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool FixedTableFixedWriteAdmits( const FixedTable & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !BenchMixedFixedWriteAdmits( value.value );
     return bad == 0;
 }
 
@@ -7154,6 +7168,10 @@ inline int64_t FixedTableFixedSave( const FixedTable * values, int64_t count, ui
 {
     const int64_t need = FixedTableFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( FixedTableFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, FixedTableFixedHash );

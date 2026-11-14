@@ -7757,6 +7757,8 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
     return bytes;
 }
 
+inline bool RenderShipFixedWriteAdmits( const RenderShip & value );
+
 inline int64_t RenderShipMeasure( const RenderShip & value )
 {
     TableIds ids;
@@ -9018,6 +9020,7 @@ inline int64_t RenderShipMeasureMessages( const RenderShip * values, int64_t cou
     {
         const int64_t body = RenderShipMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderShipFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9036,6 +9039,7 @@ inline int64_t RenderShipSaveMessages( const RenderShip * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderShipSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderShipFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderShipMeasureMessages( values, count, report )
@@ -9112,6 +9116,8 @@ inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & val
     if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
     return bytes;
 }
+
+inline bool RenderTurretFixedWriteAdmits( const RenderTurret & value );
 
 inline int64_t RenderTurretMeasure( const RenderTurret & value )
 {
@@ -10265,6 +10271,7 @@ inline int64_t RenderTurretMeasureMessages( const RenderTurret * values, int64_t
     {
         const int64_t body = RenderTurretMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderTurretFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10283,6 +10290,7 @@ inline int64_t RenderTurretSaveMessages( const RenderTurret * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderTurretSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderTurretFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderTurretMeasureMessages( values, count, report )
@@ -10371,6 +10379,8 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
     }
     return bytes;
 }
+
+inline bool RenderMissileFixedWriteAdmits( const RenderMissile & value );
 
 inline int64_t RenderMissileMeasure( const RenderMissile & value )
 {
@@ -11286,6 +11296,7 @@ inline int64_t RenderMissileMeasureMessages( const RenderMissile * values, int64
     {
         const int64_t body = RenderMissileMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderMissileFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11304,6 +11315,7 @@ inline int64_t RenderMissileSaveMessages( const RenderMissile * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderMissileSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderMissileFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderMissileMeasureMessages( values, count, report )
@@ -11392,6 +11404,8 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
     }
     return bytes;
 }
+
+inline bool RenderDynamicPropFixedWriteAdmits( const RenderDynamicProp & value );
 
 inline int64_t RenderDynamicPropMeasure( const RenderDynamicProp & value )
 {
@@ -12307,6 +12321,7 @@ inline int64_t RenderDynamicPropMeasureMessages( const RenderDynamicProp * value
     {
         const int64_t body = RenderDynamicPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12325,6 +12340,7 @@ inline int64_t RenderDynamicPropSaveMessages( const RenderDynamicProp * values, 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderDynamicPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderDynamicPropMeasureMessages( values, count, report )
@@ -12414,6 +12430,8 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
     }
     return bytes;
 }
+
+inline bool RenderStaticPropFixedWriteAdmits( const RenderStaticProp & value );
 
 inline int64_t RenderStaticPropMeasure( const RenderStaticProp & value )
 {
@@ -13376,6 +13394,7 @@ inline int64_t RenderStaticPropMeasureMessages( const RenderStaticProp * values,
     {
         const int64_t body = RenderStaticPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13394,6 +13413,7 @@ inline int64_t RenderStaticPropSaveMessages( const RenderStaticProp * values, in
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderStaticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderStaticPropMeasureMessages( values, count, report )
@@ -13484,6 +13504,8 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
     }
     return bytes;
 }
+
+inline bool RenderCosmeticPropFixedWriteAdmits( const RenderCosmeticProp & value );
 
 inline int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp & value )
 {
@@ -14522,6 +14544,7 @@ inline int64_t RenderCosmeticPropMeasureMessages( const RenderCosmeticProp * val
     {
         const int64_t body = RenderCosmeticPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14540,6 +14563,7 @@ inline int64_t RenderCosmeticPropSaveMessages( const RenderCosmeticProp * values
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderCosmeticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderCosmeticPropMeasureMessages( values, count, report )
@@ -14628,6 +14652,8 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
     }
     return bytes;
 }
+
+inline bool RenderLaserFixedWriteAdmits( const RenderLaser & value );
 
 inline int64_t RenderLaserMeasure( const RenderLaser & value )
 {
@@ -15487,6 +15513,7 @@ inline int64_t RenderLaserMeasureMessages( const RenderLaser * values, int64_t c
     {
         const int64_t body = RenderLaserMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderLaserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -15505,6 +15532,7 @@ inline int64_t RenderLaserSaveMessages( const RenderLaser * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderLaserSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderLaserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderLaserMeasureMessages( values, count, report )
@@ -15594,6 +15622,8 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
     }
     return bytes;
 }
+
+inline bool RenderExplosionFixedWriteAdmits( const RenderExplosion & value );
 
 inline int64_t RenderExplosionMeasure( const RenderExplosion & value )
 {
@@ -16568,6 +16598,7 @@ inline int64_t RenderExplosionMeasureMessages( const RenderExplosion * values, i
     {
         const int64_t body = RenderExplosionMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderExplosionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -16586,6 +16617,7 @@ inline int64_t RenderExplosionSaveMessages( const RenderExplosion * values, int6
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderExplosionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderExplosionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderExplosionMeasureMessages( values, count, report )
@@ -20763,6 +20795,17 @@ TABLE_FIXED_INLINE bool RenderShipFixedInRange( const RenderShip & value )
     return bad == 0;
 }
 
+// RenderShip's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderShipFixedWriteAdmits( const RenderShip & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.ship_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderShip's read-side bounds.
 inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20783,6 +20826,16 @@ TABLE_FIXED_INLINE bool RenderTurretFixedInRange( const RenderTurret & value )
     return bad == 0;
 }
 
+// RenderTurret's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderTurretFixedWriteAdmits( const RenderTurret & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderTurret's read-side bounds.
 inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20795,6 +20848,17 @@ inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CL
 // RenderMissile's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderMissileFixedInRange( const RenderMissile & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.missile_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderMissile's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderMissileFixedWriteAdmits( const RenderMissile & value )
 {
     (void) value;
     int bad = 0;
@@ -20824,6 +20888,17 @@ TABLE_FIXED_INLINE bool RenderDynamicPropFixedInRange( const RenderDynamicProp &
     return bad == 0;
 }
 
+// RenderDynamicProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderDynamicPropFixedWriteAdmits( const RenderDynamicProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderDynamicProp's read-side bounds.
 inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20837,6 +20912,17 @@ inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t 
 // RenderStaticProp's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderStaticPropFixedInRange( const RenderStaticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderStaticProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderStaticPropFixedWriteAdmits( const RenderStaticProp & value )
 {
     (void) value;
     int bad = 0;
@@ -20866,6 +20952,17 @@ TABLE_FIXED_INLINE bool RenderCosmeticPropFixedInRange( const RenderCosmeticProp
     return bad == 0;
 }
 
+// RenderCosmeticProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderCosmeticPropFixedWriteAdmits( const RenderCosmeticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderCosmeticProp's read-side bounds.
 inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20887,6 +20984,17 @@ TABLE_FIXED_INLINE bool RenderLaserFixedInRange( const RenderLaser & value )
     return bad == 0;
 }
 
+// RenderLaser's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderLaserFixedWriteAdmits( const RenderLaser & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.laser_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderLaser's read-side bounds.
 inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20900,6 +21008,17 @@ inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAM
 // RenderExplosion's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderExplosionFixedInRange( const RenderExplosion & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.explosion_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderExplosion's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderExplosionFixedWriteAdmits( const RenderExplosion & value )
 {
     (void) value;
     int bad = 0;
@@ -21780,6 +21899,10 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
 {
     const int64_t need = RenderShipFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderShipFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderShipFixedHash );
@@ -22327,6 +22450,10 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
 {
     const int64_t need = RenderTurretFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderTurretFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderTurretFixedHash );
@@ -22889,6 +23016,10 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
 {
     const int64_t need = RenderMissileFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderMissileFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderMissileFixedHash );
@@ -23456,6 +23587,10 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
 {
     const int64_t need = RenderDynamicPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderDynamicPropFixedHash );
@@ -24023,6 +24158,10 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
 {
     const int64_t need = RenderStaticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderStaticPropFixedHash );
@@ -24596,6 +24735,10 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
 {
     const int64_t need = RenderCosmeticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCosmeticPropFixedHash );
@@ -25146,6 +25289,10 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
 {
     const int64_t need = RenderLaserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderLaserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderLaserFixedHash );
@@ -25708,6 +25855,10 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
 {
     const int64_t need = RenderExplosionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderExplosionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderExplosionFixedHash );

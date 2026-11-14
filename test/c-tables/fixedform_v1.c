@@ -5,6 +5,14 @@
 
 #include <string.h>
 
+/* THE WRITER HERE IS BUILT THE WAY A RELEASE BUILD IS. The fixed writer's
+   value checks (docs/SPEC.md §5.1: range, bits width, enum, union tag,
+   ill-formed text) are debug asserts, the programmer's job, and in a release
+   build a caller CAN put a value past them on the wire. This unit writes such
+   values on purpose so the READER can be made to answer for them, so it
+   compiles the write assert out, exactly as a release build does. */
+#define schema_assert( x ) ( (void) 0 )
+
 #include "V1Table.h"
 #include "fixedform.h"
 

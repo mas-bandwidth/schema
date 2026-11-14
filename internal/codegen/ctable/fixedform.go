@@ -176,7 +176,13 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedClampBodyFn(st)
 	}
+	/* THE WRITE CHECK, the same bounds over const storage (docs/SPEC.md §5.1),
+	   in the same post-order. */
+	for _, st := range own {
+		g.emitFixedWriteCheckBodyFn(st)
+	}
 	for _, st := range roots {
+		g.emitWriteAdmits(st)
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
 	}
@@ -682,6 +688,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if a := g.writeAdmits(st); a != "" {
+		g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
+		g.pf("        schema_assert( %s( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */\n    }\n", a)
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): the whole batch is checked before one byte is written
@@ -1066,12 +1076,91 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	}
 	g.pf("/* %s's read-side bounds. */\n", st.Name)
 	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * out_of_range, int32_t * damaged )\n{\n",
-		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_clamp_body"), st.Name)
+		tableInlineMacro(g.unit.Package), g.fixedBoundsSym(st.Name), st.Name)
 	g.pf("    (void) value; (void) out_of_range; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value->", 4)
 	}
 	g.pf("}\n\n")
+}
+
+// fixedBoundsSym names a type's bounds body in the pass being emitted: the
+// read-side clamp, or the write check.
+func (g *tableGen) fixedBoundsSym(name string) string {
+	if g.fixedWriteCheck {
+		return g.sym(name, "fixed_write_check_body")
+	}
+	return g.sym(name, "fixed_clamp_body")
+}
+
+/* ---- the write check -------------------------------------------------------
+
+THE WRITE CONTRACT (docs/SPEC.md §5.1, docs/rulings.json `write-refusal`): every
+writer refuses a value its declaration does not admit, and C is an ASSERT LEG,
+so the check is schema_assert and nothing else — a debug build aborts at the
+call site, and NDEBUG removes the check and its cost entirely. The closed list
+it holds is the read side's: a ranged integer or float off its bounds, a
+`bits(N)` value wider than N, an enum ordinal or a union tag outside its set,
+and ill-formed text (not UTF-8, or a zero byte). So the write check IS the
+read-side bounds pass, emitted a second time over const storage.
+
+THE STORAGE BOUNDS ARE NOT HERE. A count or a length is the writer's own
+check, beside the store that would index past the array (§3.4); this pass
+only stays inside the storage while it walks — an element loop runs only for a
+count the array can hold and a text rule is asked only of a length the storage
+can hold — so a count off its bound reaches that check and nothing reads past
+the array first. */
+
+// emitFixedWriteCheckBodyFn is ONE type's write check, the const twin of its
+// read-side bounds.
+func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
+	if !ir.TableFixedClampNeeded(st) {
+		return
+	}
+	g.fixedWriteCheck = true
+	defer func() { g.fixedWriteCheck = false }()
+	g.pf("/* %s's write check (docs/SPEC.md §5.1). */\n", st.Name)
+	g.pf("static SCHEMA_UNUSED %s void %s( const %s * value, int32_t * out_of_range, int32_t * damaged )\n{\n",
+		tableInlineMacro(g.unit.Package), g.fixedBoundsSym(st.Name), st.Name)
+	g.pf("    (void) value; (void) out_of_range; (void) damaged;\n")
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value->", 4)
+	}
+	g.pf("}\n\n")
+}
+
+// writeAdmits is the one call a writer's schema_assert makes for a value of
+// table st, or "" when the fixed form bounds nothing in st's closure.
+func (g *tableGen) writeAdmits(st *ir.Struct) string {
+	if !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+		return ""
+	}
+	return g.sym(st.Name, "write_admits")
+}
+
+// emitWriteAdmitsDecl declares a table's write check ahead of the writers that
+// assert it; the definition stands in the fixed form, after the bodies.
+func (g *tableGen) emitWriteAdmitsDecl(st *ir.Struct) {
+	if a := g.writeAdmits(st); a != "" {
+		g.pf("static SCHEMA_UNUSED int %s( const %s * value );\n", a, st.Name)
+	}
+}
+
+// emitWriteAdmits is a ROOT's write check: true when the value is one its
+// declaration admits. Only a schema_assert calls it, so a release build
+// carries no call.
+func (g *tableGen) emitWriteAdmits(st *ir.Struct) {
+	a := g.writeAdmits(st)
+	if a == "" {
+		return
+	}
+	g.pf("/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value %s holds is\n", st.Name)
+	g.pf("   one its declaration admits. Every writer of %s asserts it; NDEBUG\n", st.Name)
+	g.pf("   removes the assert, the call and the cost. */\n")
+	g.pf("static SCHEMA_UNUSED int %s( const %s * value )\n{\n", a, st.Name)
+	g.pf("    int32_t out_of_range = 0;\n    int32_t damaged = 0;\n")
+	g.pf("    %s( value, &out_of_range, &damaged );\n", g.sym(st.Name, "fixed_write_check_body"))
+	g.pf("    return out_of_range == 0 && damaged == 0;\n}\n\n")
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
@@ -1127,7 +1216,14 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedClampLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
-		g.emitFixedClampLoop(f, fmt.Sprintf("(int64_t) %s%s_count", val, f.Name), val+f.Name, indent)
+		count := fmt.Sprintf("(int64_t) %s%s_count", val, f.Name)
+		if g.fixedWriteCheck {
+			// the walk stays inside the array; the count's own bound is the
+			// writer's storage check, not this pass's
+			count = fmt.Sprintf("( %s%s_count >= 0 && %s%s_count <= %d ? (int64_t) %s%s_count : 0 )",
+				val, f.Name, val, f.Name, f.ArrayBound, val, f.Name)
+		}
+		g.emitFixedClampLoop(f, count, val+f.Name, indent)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedTextContent(f, val, strings.Repeat(" ", indent))
 	default:
@@ -1177,6 +1273,14 @@ emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), the C
 */
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s%s_length )", val, f.Name, val, f.Name)
+	if g.fixedWriteCheck {
+		// the rule is asked only of a length the storage holds; the length's
+		// own bound is the writer's storage check
+		g.pf("%sif ( %s%s_length >= 0 && %s%s_length <= %d && !%s )\n%s{\n",
+			ind, val, f.Name, val, f.Name, f.Type.Size, call, ind)
+		g.pf("%s    (*damaged)++;\n%s}\n", ind, ind)
+		return
+	}
 	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
 	g.pf("%s    (*damaged)++;\n%s}\n", ind, ind)
 }
@@ -1187,7 +1291,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%s( &%s, out_of_range, damaged );\n", ind, g.sym(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s( &%s, out_of_range, damaged );\n", ind, g.fixedBoundsSym(r.Name), expr)
 			}
 			return
 		case *ir.Union:
@@ -1216,6 +1320,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
+	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
+		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
+		// §5.1): a quantized float past its range is the message form's to
+		// clamp, and the writers hold row 10 where the table says they do.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
 			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)

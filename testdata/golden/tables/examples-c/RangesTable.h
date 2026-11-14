@@ -5601,6 +5601,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_write_admits_( const tabledemo_ranged_signed_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_measure( const tabledemo_ranged_signed_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -6540,7 +6541,11 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_measure_messages(const tabl
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_ranged_signed_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_ranged_signed_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_ranged_signed_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6557,7 +6562,11 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_save_messages(const tablede
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_ranged_signed_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_ranged_signed_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_ranged_signed_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7105,6 +7114,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_write_admits_( const tabledemo_ranged_unsigned_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_measure( const tabledemo_ranged_unsigned_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -8050,7 +8060,11 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_measure_messages(const ta
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_ranged_unsigned_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_ranged_unsigned_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_ranged_unsigned_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8067,7 +8081,11 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_save_messages(const table
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_ranged_unsigned_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_ranged_unsigned_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_ranged_unsigned_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8526,6 +8544,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_body( tabledemo_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_ranged_widths_write_admits_( const tabledemo_ranged_widths_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_measure( const tabledemo_ranged_widths_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -8906,7 +8925,11 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_measure_messages(const tabl
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_ranged_widths_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_ranged_widths_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_ranged_widths_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8923,7 +8946,11 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_save_messages(const tablede
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_ranged_widths_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_ranged_widths_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_ranged_widths_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9279,6 +9306,79 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     (*out_of_range) += ( value->b48 > 281474976710655ull );
 }
 
+/* RangedSigned's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_signed_fixed_write_check_body_( const tabledemo_ranged_signed_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += ( value->i8_low > 126 );
+    (*out_of_range) += ( value->i8_high < -127 );
+    (*out_of_range) += (int) ( value->i8_inside < -127 ) | (int) ( value->i8_inside > 126 );
+    (*out_of_range) += ( value->i16_low > 32766 );
+    (*out_of_range) += ( value->i16_high < -32767 );
+    (*out_of_range) += (int) ( value->i16_inside < -32767 ) | (int) ( value->i16_inside > 32766 );
+    (*out_of_range) += ( value->i32_low > 2147483646 );
+    (*out_of_range) += ( value->i32_high < -2147483647 );
+    (*out_of_range) += (int) ( value->i32_inside < -2147483647 ) | (int) ( value->i32_inside > 2147483646 );
+    (*out_of_range) += ( value->i64_low > 9223372036854775806ll );
+    (*out_of_range) += ( value->i64_high < -9223372036854775807ll );
+    (*out_of_range) += (int) ( value->i64_inside < -9223372036854775807ll ) | (int) ( value->i64_inside > 9223372036854775806ll );
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->edges_count >= 0 && value->edges_count <= 4 ? (int64_t) value->edges_count : 0 ); ++i )
+        {
+        }
+    }
+}
+
+/* RangedUnsigned's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_unsigned_fixed_write_check_body_( const tabledemo_ranged_unsigned_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += ( value->u8_low > 254 );
+    (*out_of_range) += ( value->u8_high < 1 );
+    (*out_of_range) += (int) ( value->u8_inside < 1 ) | (int) ( value->u8_inside > 254 );
+    (*out_of_range) += ( value->u16_low > 65534 );
+    (*out_of_range) += ( value->u16_high < 1 );
+    (*out_of_range) += (int) ( value->u16_inside < 1 ) | (int) ( value->u16_inside > 65534 );
+    (*out_of_range) += ( value->u32_low > 4294967294 );
+    (*out_of_range) += ( value->u32_high < 1 );
+    (*out_of_range) += (int) ( value->u32_inside < 1 ) | (int) ( value->u32_inside > 4294967294 );
+    (*out_of_range) += ( value->u64_low > 18446744073709551614ull );
+    (*out_of_range) += ( value->u64_high < 1ull );
+    (*out_of_range) += (int) ( value->u64_inside < 1ull ) | (int) ( value->u64_inside > 18446744073709551614ull );
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->counts_count >= 0 && value->counts_count <= 4 ? (int64_t) value->counts_count : 0 ); ++i )
+        {
+        }
+    }
+}
+
+/* RangedWidths's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_widths_fixed_write_check_body_( const tabledemo_ranged_widths_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(8) width clamp */
+    (*out_of_range) += ( value->b8 > 255ull );
+    /* bits(16) width clamp */
+    (*out_of_range) += ( value->b16 > 65535ull );
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->b12 > 4095ull );
+    /* bits(48) width clamp */
+    (*out_of_range) += ( value->b48 > 281474976710655ull );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RangedSigned holds is
+   one its declaration admits. Every writer of RangedSigned asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_write_admits_( const tabledemo_ranged_signed_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_signed_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9443,6 +9543,10 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_save( const tabledemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_ranged_signed_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ranged_signed_fixed_hash );
@@ -9635,6 +9739,17 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_load( tabledemo_range
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RangedUnsigned holds is
+   one its declaration admits. Every writer of RangedUnsigned asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_write_admits_( const tabledemo_ranged_unsigned_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_unsigned_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9799,6 +9914,10 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_save( const tablede
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_ranged_unsigned_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ranged_unsigned_fixed_hash );
@@ -9991,6 +10110,17 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_load( tabledemo_ran
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RangedWidths holds is
+   one its declaration admits. Every writer of RangedWidths asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_ranged_widths_write_admits_( const tabledemo_ranged_widths_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_widths_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -10116,6 +10246,10 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_fixed_save( const tabledemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_ranged_widths_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_ranged_widths_fixed_hash );

@@ -5367,6 +5367,7 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body( tabledemo_table_wri
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_write_admits_( const tabledemo_archive_config_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_archive_config_measure( const tabledemo_archive_config_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5537,7 +5538,11 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_measure_messages(const tab
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_archive_config_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_archive_config_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_archive_config_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5554,7 +5559,11 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_save_messages(const tabled
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_archive_config_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_archive_config_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_archive_config_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5679,6 +5688,25 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive
     (void) value; (void) out_of_range; (void) damaged;
     schema_tabledemo_root_config_fixed_clamp_body_( &value->root, out_of_range, damaged );
     (*out_of_range) += (int) ( value->count < 0 ) | (int) ( value->count > 100 );
+}
+
+/* ArchiveConfig's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive_config_fixed_write_check_body_( const tabledemo_archive_config_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    schema_tabledemo_root_config_fixed_write_check_body_( &value->root, out_of_range, damaged );
+    (*out_of_range) += (int) ( value->count < 0 ) | (int) ( value->count > 100 );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value ArchiveConfig holds is
+   one its declaration admits. Every writer of ArchiveConfig asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_write_admits_( const tabledemo_archive_config_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_archive_config_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -6384,6 +6412,10 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_archive_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_archive_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
