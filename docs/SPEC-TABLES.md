@@ -7105,6 +7105,31 @@ caller's array of values is the whole of its storage.
   field. **So a hostile peer announcing a build version it does not have gains
   nothing.** The worst a lie achieves is a wrong build version beside a real
   vocabulary in a log.
+- **THE ANNOUNCEMENT GRAMMAR IS CLOSED** (docs/rulings.json
+  `message-announcement-closed`): **an announcement is refused unless a schema
+  the compiler accepts could announce it.** The conditions are ONE closed list,
+  and an announcement that breaks any of them is malformed and refused whole,
+  with no vocabulary set:
+  - an entry's KIND, and an array's or keyed array's element kind, is one of
+    §3's closed set;
+  - a SHAPE is nested at most 128 levels, and an array or keyed shape whose
+    element is itself an array or keyed shape is refused, because the compiler
+    refuses every field that would announce one: an array of arrays is not
+    supported in v1 (the parser refuses the second bracket), the checker
+    refuses an array of `bytes(N)`, which is itself a kind `14` array, and an
+    enum-keyed array whose value is an array or a map, and a map's element is
+    its entry table (kind `13`) whatever its value is;
+  - an array's `min` is at most its `max`;
+  - a packed `bits` and a `max` sit inside what the kind holds;
+  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
+    announced kind: a width the kind holds is not enough, because under a base
+    near the kind's edge a lawful-looking width names values the kind cannot
+    hold.
+
+  Two rules on the body complete it. An array element that consumes no bits is
+  refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS
+  REFUSES THE READ, above). And an integer that lands outside the READER's own
+  kind refuses `out_of_range` and is never masked or wrapped.
 - **A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked before it is
   used.** A `bits` above 128, a `max` above what the kind can hold, an array
   whose `min` exceeds its `max`, an element kind outside the closed set, a
@@ -8659,7 +8684,11 @@ hand-editable text form alone refuses an unknown name, §6.5):
 - **Unknown field** (newer writer): skipped by its length, counted `unknown`,
   or kept under the retain rules (§6.6). Skipped is not unread: the conditions
   decidable from the wire alone apply to its bytes as to every other byte
-  (§6.5), so damage inside an unknown field refuses the load. That walk, and
+  (§6.5), so damage inside an unknown field refuses the load. **A value a
+  reader skips is held to what a read of it would hold in every form** — the
+  variable form's unknown field here, the message form's skipped payload
+  (§3.3), and the JSON form's skipped value and every object key (§16.3) —
+  and damage inside it refuses the whole read. That walk, and
   every other walk of the binary forms, holds ONE NESTING BOUND, normative for
   every reader and every path: the root body is at depth 0, and each
   STRUCTURAL payload inside it is one level deeper: a table body, an array, a
@@ -10229,8 +10258,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   report empty. A nil report is allowed and refuses the same way. **On a
   refusal nothing the read produced is defined, and each call leaves its
   output in one stated state**: the value read and the value `FromJson` reset
-  the value to its declared defaults, `FixedLoad` resets every value it had
-  written, `LoadMessages` answers a count of `0` and resets every value it had
+  the value to its declared defaults, `FixedLoad` leaves every value as it was,
+  `LoadMessages` answers a count of `0` and resets every value it had
   written, the region read hands back no root, and a builder read leaves a
   builder whose root the caller does not use and shuts down. **There is no
   `*Tolerant` entry point**: `LoadTolerant`, `LoadBuilderTolerant`,
@@ -16184,7 +16213,9 @@ written as something else.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
-  ill-formed UTF-8 (below).
+  ill-formed UTF-8 or a zero byte (below): a zero byte is not text for this
+  writer either, and its reader refuses the `\u0000` text a writer would
+  otherwise spell (SPEC.md §5.1 row 8).
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
@@ -16232,23 +16263,26 @@ whatever the bound would have said (conformance row `json-hostile
 str-illformed-at-bound`).
 
 **THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
-one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,
-a perfectly good code point that JSON has an escape for, so it is written
-`\u0000` — only ever for storage a program built, because no read puts one
-there (below). A field's ill-formed UTF-8 sequence is not a code point at
-all, and the writer REFUSES it: `ToJsonMeasure` and `ToJson` return `-1` with
-the reason `invalid_value`, naming the field, and nothing is replaced. The
-binary writers hold the same rule (§3): `Measure` and `Save` refuse ill-formed
-text by the same name. So no writer turns storage that is not text into text
-that reads back as something else.
+one read: consistently refuse). A NARROW field's interior ZERO BYTE is storage
+that is not text for this writer too: the reader refuses a text that places
+`U+0000` (below), so `ToJsonMeasure` and `ToJson` REFUSE it by row 8 of
+docs/SPEC.md §5.1 — a debug assert in an assert leg, a refusal in every build
+in the every-build legs — rather than spelling a text their own reader
+refuses. A field's ill-formed UTF-8 sequence is not a code point at all, and
+the writer REFUSES it the same way: `-1` with the reason
+`invalid_value`, naming the field, and nothing is replaced. The binary writers
+hold the same rule (§3): `Measure` and `Save` refuse ill-formed text by the
+same name. So no writer turns storage that is not text into text that reads
+back as something else.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
-other byte below `0x20` is written `\u00xx` in LOWERCASE hex, so no `\u` escape
-names anything but a control byte and none names a surrogate; `/` is never
-escaped; and `DEL` (`0x7f`) and every non-ASCII code point are written RAW as
-UTF-8, as RFC 8259 permits. This is the whole escape vocabulary of both
-writers, `ToJson` and `schema unpack` alike (§16.12).
+other byte below `0x20` from `0x01` through `0x1F` is written `\u00xx` in
+LOWERCASE hex, so no `\u` escape names anything but a control byte and none
+names a surrogate; `/` is never escaped; and `DEL` (`0x7f`) and every
+non-ASCII code point are written RAW as UTF-8, as RFC 8259 permits. This is the
+whole escape vocabulary of both writers, `ToJson` and `schema unpack` alike
+(§16.12).
 
 **A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT** (ruled
 2026-10-17, from the Go fuzz campaign). `U+0000` is a code point, but no wire
@@ -16266,8 +16300,10 @@ name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
 of an unknown key, an object key, whether it names a field or none —
-stores nothing and is not this event, and a `\u0001` escape, or any escape
-but `\u0000`, is not affected. A map key past its bound (over a string key's bound, or too long to be any
+stores nothing and is not this event, but it is held to the grammar and text
+rules a placed value is held to, and one that decodes
+to `U+0000` refuses the read as a placed one does; a `\u0001` escape, or any
+escape but `\u0000`, is not affected. A map key past its bound (over a string key's bound, or too long to be any
 integer) refuses the read, and a zero in any map key refuses it
 the same way, in every Go reader alike. **The other answer, the wire
 and every writer carrying the zero, was considered and refused**: it would
@@ -16276,10 +16312,11 @@ every table reader and the packet wire already hold, and break `string(N)`'s
 C and C++ storage, which is a valid C string after every read (USAGE.md), to
 admit a value only one form could produce. With this rule an instance any read
 produced, wire or text, is one the writer re-saves and the strict reader
-accepts, which is §5's guarantee held across the forms. The writer half above
-is unchanged: storage a program built holding a zero still writes `\u0000`,
-and the text it writes is one this read refuses, which is the honest answer
-for a value no wire can carry. Held first in Go, in both of its text readers:
+accepts, which is §5's guarantee held across the forms. The writer half
+holds the same rule: storage a program built holding a zero is REFUSED,
+`invalid_value` (SPEC.md §5.1 row 8), so the two halves of the form agree and
+no writer produces a text its own reader refuses. Held first in Go, in both of
+its text readers:
 the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored`), which refuses with the same reason, so a pack
@@ -16299,6 +16336,7 @@ The field reads from and writes to `"type"`. Two fields of one table whose
 keys collide are refused at compile time, naming both, as wire ids are
 (§5); `json` on a field no table closure reaches is refused (§11); and
 `json = ""` is refused at compile time, because an empty key names nothing.
+A `json` key containing `U+0000` is also refused at compile time, because the text reader refuses that key (§16.3).
 **The attribute changes no byte on the wire**: keys are the text's business,
 ids are the wire's, and a schema may add, change or remove a `json` key
 without touching a stored file.
@@ -17531,11 +17569,12 @@ depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
 never replaced: the write returns `-1`, measure returns
-`-1`, and no prefix of a text is ever a result. A ZERO BYTE IS NOT
-ILL-FORMED HERE: W8 spells it `\u0000`, because JSON has a spelling for it.
-The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte
-is `invalid_value` (a reader of those forms refuses it as `text_ill_formed`).
-Measure returns exactly the length write produces.
+`-1`, and no prefix of a text is ever a result. A ZERO BYTE IS STORAGE THAT
+IS NOT TEXT HERE TOO: the reader refuses a text that places `U+0000` (§16.3),
+so the writer refuses it by row 8 of docs/SPEC.md §5.1 — a debug assert in an
+assert leg, a refusal in every build in the every-build legs — and a reader of
+the binary forms refuses it as `text_ill_formed`. Measure returns exactly the
+length write produces.
 
 **W1. The graph pass** (the variable class only, §16.7). Walk the value in
 W3's order and count, for every node, the slots that name it, visiting each
@@ -17642,14 +17681,16 @@ byte for a string (`string(N)`, `*string`, a key). Each byte is written as:
 | `"` `0x22` | `\"` |
 | `\` `0x5C` | `\\` |
 | `0x08`, `0x0C`, `0x0A`, `0x0D`, `0x09` | `\b`, `\f`, `\n`, `\r`, `\t` |
-| any other byte or code point below `0x20`, `U+0000` included | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
+| any other byte below `0x20`, `U+0001` through `U+001F` | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
 | `/`, `DEL` (`0x7F`), every other ASCII byte | itself, raw |
 | a well-formed UTF-8 sequence, or a code point at or above `U+0080` | its UTF-8 bytes, raw — `U+2028`, `U+2029`, `U+FEFF` and `U+FFFD` included |
 | an ill-formed UTF-8 sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
 
-No `\u` escape names anything at or above `0x20`, so none names a surrogate,
-no escape other than these seven short forms and `\u00XX` is ever written, and
-`U+FFFD` is written only where the storage holds `U+FFFD`.
+A zero byte is not escaped: it is storage that is not text for this writer,
+refused `invalid_value` (W0, §16.3). No `\u` escape names anything at or above
+`0x20`, so none names a surrogate, no escape other than these seven short forms
+and `\u00XX` is ever written, and `U+FFFD` is written only where the storage
+holds `U+FFFD`.
 
 **W9. A byte string** — `bytes(N)`, `*bytes` — is `"`, the bytes in base64,
 `"`: the standard alphabet of RFC 4648 §4 (`A`–`Z`, `a`–`z`, `0`–`9`, `+`,

@@ -10,7 +10,9 @@ import (
 // The reader is VNEW_array_bounded_grow ([..8]int32) and it is handed TWO lineage
 // endpoints with DIFFERENT bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE
 // the file, and VMID_array_bounded_grow ([..6]int32), the distractor, which did
-// not. The count word is forged to 7 — past the WRITING endpoint's bound of 4.
+// not. The count word is forged to 5 — past the WRITING endpoint's bound of 4
+// and inside the distractor's 6, so a reader that used its own bound (8) or the
+// distractor's would land it, and only the writer's bound refuses it.
 // The OWNER RULE (2026-10-15) replaced the count clamp with a NAMED REFUSAL: the
 // forged count refuses `count_over_bound` against the WRITER's bound carried by
 // the plan, before any destination byte is written — the Go oracle's row
@@ -32,8 +34,8 @@ func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
             {
                 if ( seen ) { printf( "the count word's needle matched twice: the forge has no single locator\n" ); return 1; }
                 seen = 1;
-                /* the forge */
-                data[at+4] = 0x07;
+                /* the forge: 5, past the writer's 4 but inside the distractor's 6 */
+                data[at+4] = 0x05;
                 data[at+5] = 0x00;
                 data[at+6] = 0x00;
                 data[at+7] = 0x00;

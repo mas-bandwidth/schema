@@ -609,7 +609,22 @@ func (g *tableGen) fixedLineagePlanStorage(st *ir.Struct, lineage []FixedLineage
 		plain := len(c.plan)
 		c.wantGuarded = true
 		c.matchChildren(0, 0, 0, 0, fixedNoGuard, 0)
-		if c.hostile || c.overflow {
+		if c.overflow {
+			continue
+		}
+		// A HOSTILE ENTRY STILL NEEDS ROOM TO BE FOUND HOSTILE. The runtime
+		// walk pushes the same entries this one did before it meets the
+		// condition it refuses (a third nested union, a guard or a reach past
+		// the record), so its storage holds them; sized any smaller, the walk
+		// overflows first and the entry is named plan_too_large instead of
+		// layout_record_too_large, the reference's name (§5.8 row 6).
+		if c.hostile {
+			if len(c.plan) > maxEntries {
+				maxEntries = len(c.plan)
+			}
+			if int(c.pool) > maxPool {
+				maxPool = int(c.pool)
+			}
 			continue
 		}
 		// THE ENTRIES ARE PUSHED BEFORE THEY ARE COALESCED, so the array the

@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xc60521112fb501a8)
-const _ = uint64(0xc60521112fb501a8 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x681ce543bdbbb046)
+const _ = uint64(0x681ce543bdbbb046 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 

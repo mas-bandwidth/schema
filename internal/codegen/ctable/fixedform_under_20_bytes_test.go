@@ -2,11 +2,11 @@ package ctable
 
 // TestCFixedFormUnder20Bytes is F7 of schema#876, the fixed_form_under_20_bytes
 // row: a file shorter than the twenty-byte header is MALFORMED, and no leg
-// tested it — a gap on all nine. The two answers are `refused` (plus a `reason`
-// name) and `malformed`, and they are NEVER both set; `reason` stays UNTOUCHED
-// here because a short file is the residue of a truncation, not a refusal by
-// name, so asserting layout_malformed would be wrong — that name is for a KNOWN
-// hash whose bytes lie. The destination is proved untouched by memcmp against
+// tested it — a gap on all nine. A short file is FRAMING DAMAGE: the strict
+// report refuses it `wire_damaged`, so `reason` stays UNTOUCHED — a short file
+// is the residue of a truncation, not a refusal by a layout name, and asserting
+// layout_malformed would be wrong — that name is for a KNOWN hash whose bytes
+// lie. The destination is proved untouched by memcmp against
 // `fresh`, the reader's own default image, memcpy'd back into slot 0 before
 // every short read.
 //
@@ -48,7 +48,7 @@ func TestCFixedFormUnder20Bytes(t *testing.T) {
         if ( r.refused != 1 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
             { printf( "under20: at k=%%d refused=%%d refuse_reason=%%d, not wire_damaged\n", k, r.refused, r.refuse_reason ); return 1; }
         if ( r.reason != 0 ) { printf( "under20: at k=%%d a short file is damage, never refused by name: reason=%%d\n", k, r.reason ); return 1; }
-        if ( r.widened != 0 || r.unknown != 0 )
+        if ( r.widened != 0 || r.unknown != 0 || r.layout_hash != 0 )
             { printf( "under20: at k=%%d damage is total: no counter moves (w=%%d u=%%d)\n", k, r.widened, r.unknown ); return 1; }
         if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "under20: at k=%%d a damaged read wrote destination bytes\n", k ); return 1; }
     }
