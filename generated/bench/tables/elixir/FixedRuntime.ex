@@ -933,7 +933,10 @@ defmodule Benchtable.FixedRuntime do
   """
   def compile_dead(theirs, mine, dst) do
     dead_only = Map.put(report(), :dead_only, true)
-    {{all, _}, _} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, dead_only, true)
+
+    {{all, _}, _} =
+      match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, dead_only, true)
+
     all |> Enum.filter(&dead?/1) |> :lists.reverse()
   end
 
