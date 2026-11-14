@@ -2450,6 +2450,67 @@ defmodule Benchtable.Table do
     end
   end
 
+  # EVERY BODY IS HELD TO ITS FRAMING (docs/SPEC-TABLES.md §3, §4: the strict
+  # read's rules are decidable from the wire alone and apply to every byte).
+  # After the read, the root body and each table record's body are walked as
+  # an unknown field's payload is, so an arm, a slot or a field the read
+  # skipped carries no damage the read stepped over. A non-finite float a
+  # known field holds has already refused by name.
+  defp strict_syntax!(body, nodes, ids) do
+    if not unknown_root_body?(body, ids, MapSet.new()), do: throw(:wire_damaged)
+
+    Enum.each(nodes, fn
+      {:table, _name, b} ->
+        if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
+
+      {:unknown, b} when is_binary(b) ->
+        if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
+
+      _ ->
+        :ok
+    end)
+
+    :ok
+  end
+
+  # the root body is a body whose node table field is its own: a text-kind
+  # payload the node records were read from
+  defp unknown_root_body?(b, ids, seen) do
+    case leb(b) do
+      {0, rest} ->
+        rest == <<>>
+
+      {ref, <<kind, rest::binary>>} ->
+        id = resolve(ids, ref)
+
+        cond do
+          id == :error or MapSet.member?(seen, id) ->
+            false
+
+          id == @node_id and kind == 12 ->
+            case leb(rest) do
+              {n, r} when byte_size(r) >= n ->
+                unknown_root_body?(binary_part(r, n, byte_size(r) - n), ids, MapSet.put(seen, id))
+
+              _ ->
+                false
+            end
+
+          id in [@build_version_id, @message_vocab_id, @node_id] ->
+            false
+
+          true ->
+            case unknown_payload(rest, kind, ids, 0) do
+              {:ok, after_payload} -> unknown_root_body?(after_payload, ids, MapSet.put(seen, id))
+              :error -> false
+            end
+        end
+
+      _ ->
+        false
+    end
+  end
+
   defp unknown_payload(buf, kind, ids, depth) do
     cond do
       kind in 1..11 or kind in 18..29 or kind == 36 ->
@@ -2978,6 +3039,8 @@ defmodule Benchtable.Table do
 
         if not terminated, do: throw(:wire_damaged)
 
+        strict_syntax!(body, nodes, ids)
+
         # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5)
         if shared > 0, do: throw(:wire_damaged)
 
@@ -3268,10 +3331,10 @@ defmodule Benchtable.Table do
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
             # no *string cannot place the record at all (§3.1)
-            if is_map(allowed) and allowed.string_blob do
-              if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
-            else
-              {:unknown, :blob}
+            cond do
+              not utf8_valid?(bytes) -> :malformed
+              is_map(allowed) and allowed.string_blob -> {:blob, :string, bytes}
+              true -> {:unknown, :blob}
             end
 
           tid ->
