@@ -262,6 +262,7 @@ var catalog = []Entry{
 	e("test/rust-hostile", "Rust hostile-corpus runner", "make schema-rust-runs-hostile-corpus", "make schema-rust-runs-hostile-corpus"),
 	e("test/rust-ludicrous", "Rust int128 tests", "make test-rust", "make test-rust"),
 	e("test/rust-soak", "Rust tables soak, allocator call count", "make tables-rust-soak", "make tables-rust-soak"),
+	e("test/skipped-value", "skipped-value validation fixtures", "go test -run TestSpecSkippedValueIsValidated ./compiler/", "go test -run TestSpecSkippedValueIsValidated ./compiler/"),
 	e("test/rust-view", "Rust unit-view listing driver", "make tables-rust-view", "make tables-rust-view"),
 	e("test/slowgate", "SCHEMA_SLOW proof wrapper", "make slow-gate-scan", "make slow-gate-scan"),
 	e("test/table-base64", "table base64 gates", "make test", "make test"),
