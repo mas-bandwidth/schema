@@ -1221,6 +1221,12 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
     if kind == 1:
         mw_put(w, if v.b: 1 else: 0, 1)
         return true
+    // A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC.md §5.1
+    // rows 1, 2, 7 and 10): the bounds the variable and fixed saves refuse,
+    // a NaN or an infinity included, are the message save's too, never
+    // masked, wrapped or clamped into the field's width
+    if not scalar_admitted(d, kind, v):
+        return false
     var lo = 0
     var hi = 0
     if kind == 10:
@@ -1238,19 +1244,24 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
         let borrow = if ult(lo, s.base_lo): 1 else: 0
         lo = lo - s.base_lo
         hi = hi - s.base_hi - borrow
-        // A file keeps all flags bits, but a message carries only W bits.
-        // Refuse an unrepresentable unsigned mask before mw_put narrows it.
-        if kind == 9 and s.bits < 64 and shr(lo, s.bits) != 0:
+        // A ranged value whose offset from its base does not fit its bits
+        // is refused, a flags bit past the declared W among them: a file
+        // keeps all flags bits, but a message carries only W bits, and a
+        // writer never truncates (Go's tableMessageWriteScalar)
+        if kind_wide(kind):
+            if s.bits < 64 and (hi != 0 or shr(lo, s.bits) != 0):
+                return false
+            if s.bits >= 64 and s.bits < 128 and shr(hi, s.bits - 64) != 0:
+                return false
+        elif s.bits < 64 and shr(lo, s.bits) != 0:
             return false
     if s.packing == 2:
+        // a quantized float off its range is refused, never clamped
+        // (docs/SPEC-TABLES.md §3.3)
         let value = fround(v.f)
-        var ratio = fround(fround(value - s.qmin) / s.qdelta)
-        if not (ratio >= 0.0):
-            ratio = 0.0
-            w.clamped++
-        elif not (ratio <= 1.0):
-            ratio = 1.0
-            w.clamped++
+        let ratio = fround(fround(value - s.qmin) / s.qdelta)
+        if not (ratio >= 0.0) or not (ratio <= 1.0):
+            return false
         let scaled = fround(ratio * fround(float(s.qcount)))
         lo = floor(fround(scaled + 0.5))
         if lo > s.qcount:
@@ -1329,6 +1340,11 @@ def mw_value(w:MessageWriter, sl:Slot, e:MessageEntry) -> bool:
     let count_bits = message_bits(s.max - s.min)
     if sh == "str" or sh == "text":
         if sh == "str" and length(sl.cell.s) > f.bound:
+            return false
+        // THE WRITE-SIDE TEXT RULE (docs/SPEC.md §5.1 row 8): text that is
+        // not well-formed UTF-8 or holds a zero byte is refused, never
+        // written as bytes this form's own read would refuse
+        if not text_valid(sl.cell.s, 0, length(sl.cell.s)):
             return false
         mw_put(w, length(sl.cell.s), count_bits)
         mw_raw(w, sl.cell.s)
