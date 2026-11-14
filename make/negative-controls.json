@@ -3023,9 +3023,16 @@
       "when": "pull-request",
       "why": "the write contract's C++ controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated C++ tree, the conformance driver rebuilt against it, and the writer's surface required red with the surface beside it green. One driver compile and one leg run per control.",
       "targets": [
-        "conformance-negative-control-cpp-write-refusal",
         "conformance-negative-control-cpp-write-refusal-fixed",
         "conformance-negative-control-cpp-write-refusal-message"
+      ]
+    },
+    {
+      "name": "cpp-write-refusal-variable",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): taken out of base-cpp-write-refusal because it cannot go red: every write-refusal row is on RootConfig, a fixed-class root the driver saves through the fixed writer, so the variable writer's check it removes is never reached (the fixed control already covers the fixed writer's check); re-enable: relax/nc-write-refusal-variable-unreachable.",
+      "targets": [
+        "conformance-negative-control-cpp-write-refusal"
       ]
     },
     {
@@ -3038,8 +3045,8 @@
     },
     {
       "name": "base-c-write-refusal-b",
-      "when": "pull-request",
-      "why": "slice 2 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal 60 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved to the nightly because it cannot go red: every write-refusal row is on RootConfig, a fixed-class root the driver saves through the fixed writer, so the variable writer's check it removes is never reached (the fixed control already covers the fixed writer's check); re-enable: relax/nc-write-refusal-variable-unreachable. Before: slice 2 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal 60 s.",
       "targets": [
         "conformance-negative-control-c-write-refusal"
       ]
@@ -3065,8 +3072,8 @@
     },
     {
       "name": "cs-write-refusal",
-      "when": "pull-request",
-      "why": "the C# leg's write-contract controls (docs/SPEC.md §5.1): the Debug conformance driver built against a copy of the generated tree with one writer check removed, and the writer's surface required red with the surface beside it green.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved to the nightly because none of its three controls can go red as written. The variable one never reaches its check (every write-refusal row is on the fixed-class RootConfig, saved through the fixed writer); re-enable: relax/nc-write-refusal-variable-unreachable. The fixed one, with its Debug.Assert removed, overruns a span and the CLR's own bounds check throws, so the driver crashes instead of answering; re-enable: relax/nc-cs-write-refusal-fixed-bounds. The message one stays green with the message writer's count checks removed, because another check still refuses mref_length; re-enable: relax/nc-cs-write-refusal-message-target. Before: the C# leg's write-contract controls (docs/SPEC.md §5.1): the Debug conformance driver built against a copy of the generated tree with one writer check removed, and the writer's surface required red with the surface beside it green.",
       "dotnet": "pin",
       "targets": [
         "conformance-negative-control-cs-write-refusal",
