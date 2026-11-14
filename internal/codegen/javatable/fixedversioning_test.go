@@ -1393,8 +1393,28 @@ public final class ArmProbe {
         }
 
         // 3. Real zero-byte control rules out treating every bool/presence as true.
+        // EVERY DEAD BYTE IS ZERO (docs/rulings.json fixed-dead-bytes-zero): an
+        // absent optional's payload is slack, so clearing note's presence byte
+        // alone leaves record 0's 44 behind as a stain, and both reads refuse
+        // the whole load as wireDamaged. Zeroing the payload too is the lawful
+        // absent note, and that file is the control.
         data[body] = 0;
         data[body + 1] = 0;
+        final tblfu1.TableFixed.Report s1 = new tblfu1.TableFixed.Report();
+        if (tblfu1.FuRootFixed.load(v1, v1.length, data,
+                tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), s1) != -1
+                || !s1.refused || s1.reason != tblfu1.TableFixed.Reason.wireDamaged) {
+            fail("FU1 stained absent payload: want a wireDamaged refusal, reason=" + s1.reason);
+        }
+        final tblfu2.TableFixed.Report s2 = new tblfu2.TableFixed.Report();
+        if (tblfu2.FuRootFixed.load(v2, v2.length, data,
+                tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), s2) != -1
+                || !s2.refused || s2.reason != tblfu2.TableFixed.Reason.wireDamaged) {
+            fail("FU2 stained absent payload: want a wireDamaged refusal, reason=" + s2.reason);
+        }
+        for (int i = 2; i < 6; ++i) {
+            data[body + i] = 0;
+        }
         if (tblfu1.FuRootFixed.load(v1, v1.length, data,
                 tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1) != 3) {
             fail("FU1 zero-byte control load");
