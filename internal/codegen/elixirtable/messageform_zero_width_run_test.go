@@ -157,18 +157,12 @@ Probe.run()
 		t.Fatalf("%v\n%s", err, out)
 	}
 
-	// THE ENGINE READS THE SAME BYTES: the nested run is a walked element that
-	// consumes no bits, and a remaining count the bits cannot back is damage.
-	m := tabletext.NewModel(u)
-	v := &tablewire.Vocabulary{}
+	// THE ENGINE IS STRICTER ON THE NESTED BYTES: an array's element kind is
+	// never 14 or 16 (docs/SPEC-TABLES.md §3.3), so the engine refuses the
+	// nested announcement itself as damage and never reaches the run.
 	var announced tabletext.Report
-	if err := v.AnnounceRead(nested, &announced); err != nil {
-		t.Fatalf("the announcement did not read: %v %+v", err, announced)
-	}
-	var report tabletext.Report
-	got, err := tablewire.DecodeMessage(m, m.New(m.Lookup("Probe")), []byte{2, 0, 1}, v, &report)
-	if got || err == nil {
-		t.Fatalf("the engine accepted a zero-width run the batch's bits cannot back: ok=%v err=%v report=%+v", got, err, report)
+	if err := (&tablewire.Vocabulary{}).AnnounceRead(nested, &announced); err == nil {
+		t.Fatalf("the engine accepted an announcement whose array element is an array: %+v", announced)
 	}
 }
 
