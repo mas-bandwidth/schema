@@ -2974,10 +2974,17 @@
     {
       "name": "write-refusal-storage-release-c",
       "when": "pull-request",
-      "why": "the C and C++ release storage gates (docs/SPEC.md §5.1): each generates a small table unit, compiles the message writer with the language's release flags (-DNDEBUG for both), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. Two small compiler runs, with no toolchain beyond the host C and C++ compilers.",
+      "why": "the C release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the message writer with the release flags (-DNDEBUG), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small compiler run, with no toolchain beyond the host C compiler.",
       "targets": [
-        "write-refusal-storage-release-c-negative-control",
-        "write-refusal-storage-release-cpp-negative-control"
+        "write-refusal-storage-release-c-negative-control"
+      ]
+    },
+    {
+      "name": "write-check-storage-debug-cpp",
+      "when": "pull-request",
+      "why": "the C++ debug storage gate (docs/SPEC.md §5.1): C++ is an assert leg, so a count or a wstring length past its storage is held by the writer's schema_assert in a debug build and a release build carries no write-side check. The gate generates a small table unit, compiles the message writer without NDEBUG, and requires Measure and Save each to die on the assert for an over-long count and an over-long length; the control runs that gate, then strips the generated storage asserts and requires the same gate to go red. Two small C++ compiler runs, with no toolchain beyond the host C++ compiler.",
+      "targets": [
+        "write-check-storage-debug-cpp-negative-control"
       ]
     },
     {
