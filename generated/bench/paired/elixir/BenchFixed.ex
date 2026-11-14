@@ -933,12 +933,11 @@ defmodule Bench.BenchFixed do
         c,
         m
       ) do
-    c = R.clamps(c, f_sequence, 0, 65535)
+    c = R.clamps(c, f_sequence, 0, 65_535)
     c = R.clamps(c, f_ack_sequence, 0, 65_535)
-    c = R.clamps(c, f_ack_bits, 0, 4294967295)
     c = R.clamps(c, f_nonce, 0, 18_446_744_073_709_551_615)
     c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
-    c = R.clamps(c, f_frame_tick, 0, 281474976710655)
+    c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.clamps(c, f_server_time, 0, 16_776_960)
     c = R.clamps(c, n_entities, 0, 8)
     {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
@@ -964,19 +963,19 @@ defmodule Bench.BenchFixed do
       )
 
     c = R.clamps(c, f_ping, 0, 64_000)
-    c = R.clamps(c, f_crc_hint, 0, 16777215)
+    c = R.clamps(c, f_crc_hint, 0, 16_777_215)
     c = R.clamps(c, f_extra, 0, 255)
     c = R.clamps(c, f_idle_ticks, 0, 15)
 
     {%Bench.BenchMixed{
-       sequence: min(max(f_sequence, 0), 65535),
+       sequence: min(max(f_sequence, 0), 65_535),
        ack_sequence: min(max(f_ack_sequence, 0), 65_535),
-       ack_bits: min(max(f_ack_bits, 0), 4294967295),
+       ack_bits: f_ack_bits,
        session_id: f_session_id,
        client_id: f_client_id,
        nonce: min(max(f_nonce, 0), 18_446_744_073_709_551_615),
        world_time: min(max(f_world_time, -1_000_000_000_000), 1_000_000_000_000),
-       frame_tick: min(max(f_frame_tick, 0), 281474976710655),
+       frame_tick: min(max(f_frame_tick, 0), 281_474_976_710_655),
        server_time: min(max(f_server_time, 0), 16_776_960),
        entities: l_entities,
        stats: l_stats,
@@ -996,7 +995,7 @@ defmodule Bench.BenchFixed do
            1_267_650_600_228_229_401_496_703_205_376
          ),
        ping: min(max(f_ping, 0), 64_000),
-       crc_hint: min(max(f_crc_hint, 0), 16777215),
+       crc_hint: min(max(f_crc_hint, 0), 16_777_215),
        has_extra: R.flag(f_has_extra),
        extra: min(max(f_extra, 0), 255),
        idle_ticks: min(max(f_idle_ticks, 0), 15)

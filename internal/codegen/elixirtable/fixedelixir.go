@@ -1043,12 +1043,12 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		spec = fmt.Sprintf("%s::little-signed-%d", name, width)
 	}
 	lo, hi := fixedRangeOf(f)
-	if lo == "nil" && f.Type.Kind == ir.TBits {
+	if lo == "nil" && f.Type.Kind == ir.TBits && int64(f.Type.Width) < width {
 		// A bits(N) PAST 2^N - 1 REFUSES out_of_range
 		// (docs/FIXED-FORM-ALGORITHM.md §4.5), declared range or not: its
 		// storage is four or eight bytes, so the bits above N are the wire's
-		// and never the value's.
-		lo, hi = "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)).String()
+		// and never the value's. A bits(N) that fills its storage has none.
+		lo, hi = "0", fixedIntLiteral(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)))
 	}
 	if lo == "nil" {
 		return leafDec{spec: spec, wrap: raw(name)}

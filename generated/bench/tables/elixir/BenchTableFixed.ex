@@ -993,12 +993,11 @@ defmodule Benchtable.BenchTableFixed do
         c,
         m
       ) do
-    c = R.clamps(c, f_sequence, 0, 65535)
+    c = R.clamps(c, f_sequence, 0, 65_535)
     c = R.clamps(c, f_ack_sequence, 0, 65_535)
-    c = R.clamps(c, f_ack_bits, 0, 4294967295)
     c = R.clamps(c, f_nonce, 1, 9_223_372_036_854_775_807)
     c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
-    c = R.clamps(c, f_frame_tick, 0, 281474976710655)
+    c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.fclamps(c, R.f32_value(f_server_time), 0.0, 65535.0)
     c = R.clamps(c, n_entities, 0, 8)
     {l_entities, c, m} = table_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
@@ -1016,20 +1015,20 @@ defmodule Benchtable.BenchTableFixed do
     c = R.fclamps(c, R.f32_value(f_aim_z), -1.0, 1.0)
     c = R.clamps(c, f_flux, -1_000_000_000_000_000_000, 1_000_000_000_000_000_000)
     c = R.fclamps(c, R.f32_value(f_ping), 0.0, 250.0)
-    c = R.clamps(c, f_crc_hint, 0, 16777215)
+    c = R.clamps(c, f_crc_hint, 0, 16_777_215)
     c = R.clamps(c, f_extra, 0, 255)
     c = R.clamps(c, f_idle_ticks, 0, 15)
 
     {%Benchtable.TableMixed{
        protocol_magic: f_protocol_magic,
-       sequence: min(max(f_sequence, 0), 65535),
+       sequence: min(max(f_sequence, 0), 65_535),
        ack_sequence: min(max(f_ack_sequence, 0), 65_535),
-       ack_bits: min(max(f_ack_bits, 0), 4294967295),
+       ack_bits: f_ack_bits,
        session_id: f_session_id,
        client_id: f_client_id,
        nonce: min(max(f_nonce, 1), 9_223_372_036_854_775_807),
        world_time: min(max(f_world_time, -1_000_000_000_000), 1_000_000_000_000),
-       frame_tick: min(max(f_frame_tick, 0), 281474976710655),
+       frame_tick: min(max(f_frame_tick, 0), 281_474_976_710_655),
        server_time: R.fclamp(R.f32_value(f_server_time), 0.0, 65535.0),
        entities: l_entities,
        stats: l_stats,
@@ -1045,7 +1044,7 @@ defmodule Benchtable.BenchTableFixed do
        wide_key: f_wide_key,
        flux: min(max(f_flux, -1_000_000_000_000_000_000), 1_000_000_000_000_000_000),
        ping: R.fclamp(R.f32_value(f_ping), 0.0, 250.0),
-       crc_hint: min(max(f_crc_hint, 0), 16777215),
+       crc_hint: min(max(f_crc_hint, 0), 16_777_215),
        has_extra: R.flag(f_has_extra),
        extra: min(max(f_extra, 0), 255),
        idle_ticks: min(max(f_idle_ticks, 0), 15)
