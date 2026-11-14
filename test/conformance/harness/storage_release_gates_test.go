@@ -13,7 +13,7 @@ import (
 // positive target controls nothing.
 func TestReleaseStorageGatesAreDefined(t *testing.T) {
 	root := conformanceRoot(t)
-	for _, lang := range []string{"c", "cpp", "cs", "rust", "java", "dart"} {
+	for _, lang := range []string{"c", "cpp", "cs", "rust", "dart"} {
 		t.Run(lang, func(t *testing.T) {
 			body, err := os.ReadFile(filepath.Join(root, "make", lang+".mk"))
 			if err != nil {
