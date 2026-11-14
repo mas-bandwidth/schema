@@ -147,6 +147,26 @@ pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, oor: &mut i32, da
     }
 }
 
+/// MixedEvent: true when every dead byte of one union image is zero (§3.4,
+/// THE SLACK RULE): the arm bytes behind the taken arm, all of them under
+/// tag 0, and the taken arm's own slack.
+pub fn mixed_event_fixed_dead(b: &[u8]) -> bool {
+    let tag = u64::from(b[0]);
+    let taken: usize = match tag {
+        0 => 0,
+        1 => 13,
+        2 => 8,
+        3 => 8,
+        // a forged tag: the scatter refuses it out of range, and no arm
+        // was taken to measure behind
+        _ => return true,
+    };
+    if !table_fixed_dead_zero(&b[1 + taken..]) {
+        return false;
+    }
+    true
+}
+
 /// MixedEntity's stores, at constant offsets into a body the caller zeroed.
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
@@ -269,6 +289,13 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     }
 }
 
+/// MixedEntity: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn mixed_entity_fixed_dead(b: &[u8]) -> bool {
+    let _ = b; // nothing in this table is ever slack
+    true
+}
+
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -323,6 +350,13 @@ pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut
         let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
         value.delta = raw as i32;
     }
+}
+
+/// MixedStat: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn mixed_stat_fixed_dead(b: &[u8]) -> bool {
+    let _ = b; // nothing in this table is ever slack
+    true
 }
 
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
@@ -381,6 +415,13 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
     }
 }
 
+/// MixedHitEvent: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn mixed_hit_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b; // nothing in this table is ever slack
+    true
+}
+
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -423,6 +464,13 @@ pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, r
     }
 }
 
+/// MixedChatEvent: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn mixed_chat_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b; // nothing in this table is ever slack
+    true
+}
+
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -461,6 +509,13 @@ pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRo
         let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
         value.amount = raw as i32;
     }
+}
+
+/// MixedPickupEvent: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn mixed_pickup_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b; // nothing in this table is ever slack
+    true
 }
 
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
@@ -738,6 +793,47 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
         value.idle_ticks = raw as i32;
     }
+}
+
+/// BenchMixed: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
+    // entities: the tail past the live count is slack
+    {
+        let raw = i32::from_le_bytes(b[52..56].try_into().expect("four bytes"));
+        let live = raw.clamp(0, 8) as usize;
+        if !table_fixed_dead_zero(&b[56 + live * 51..464]) {
+            return false;
+        }
+    }
+    // stats: the tail past the live count is slack
+    {
+        let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
+        let live = raw.clamp(0, 80) as usize;
+        if !table_fixed_dead_zero(&b[468 + live * 8..1108]) {
+            return false;
+        }
+    }
+    if !mixed_event_fixed_dead(&b[1108..1122]) {
+        return false;
+    }
+    // player_name: the bytes past the used length are slack
+    {
+        let raw = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes"));
+        let live = raw.clamp(0, 15) as usize;
+        if !table_fixed_dead_zero(&b[1130 + live..1145]) {
+            return false;
+        }
+    }
+    // payload: the bytes past the used length are slack
+    {
+        let raw = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes"));
+        let live = raw.clamp(0, 16) as usize;
+        if !table_fixed_dead_zero(&b[1149 + live..1165]) {
+            return false;
+        }
+    }
+    true
 }
 
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min

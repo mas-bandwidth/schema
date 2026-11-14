@@ -1772,6 +1772,32 @@ tables-rust-bool-byte-negative-control:
 		  cat $(RUST_BOOL_NC)/log; exit 1; }
 	@echo "negative control: a Rust fixed read that lands a bool byte of 2 turns TestFixedBoolByteIsDamageRust RED"
 
+# EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the
+# control makes the runtime's one zero test, table_fixed_dead_zero, answer true
+# for every span — which takes the check out of the identity read's generated
+# <type>_fixed_dead and out of the plan's Absent, Tail and Arm entries at once —
+# through a go test -overlay, and TestFixedDeadBytesRefusedRust must go red on
+# stained slack read as data.
+RUST_DEAD_NC := build/rust-dead-bytes-nc
+.PHONY: tables-rust-dead-bytes-negative-control
+tables-rust-dead-bytes-negative-control:
+	@mkdir -p $(RUST_DEAD_NC)
+	@sed -e 's/^    b\.iter()\.all(|&c| c == 0)$$/    b.is_empty() || !b.is_empty() \/\/ SABOTAGED: every span reads as zero/' \
+		internal/codegen/rusttable/fixedruntime.go > $(RUST_DEAD_NC)/fixedruntime.go.txt
+	@test "$$(grep -c SABOTAGED $(RUST_DEAD_NC)/fixedruntime.go.txt)" = 1 || \
+		{ echo "NEGATIVE CONTROL: the Rust dead-byte sabotage did not patch the zero test"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedruntime.go":"%s/$(RUST_DEAD_NC)/fixedruntime.go.txt"}}\n' \
+		"$$PWD" "$$PWD" > $(RUST_DEAD_NC)/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DEAD_NC)/overlay.json \
+			-run '^TestFixedDeadBytesRefusedRust$$' ./internal/codegen/rusttable > $(RUST_DEAD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the dead-byte check is gone and the gate stayed green"; \
+		cat $(RUST_DEAD_NC)/log; exit 1; \
+	fi
+	@grep -q "stained slack must be damage" $(RUST_DEAD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DEAD_NC)/log; exit 1; }
+	@echo "negative control: a Rust fixed read that lets stained slack through turns TestFixedDeadBytesRefusedRust RED"
+
 # THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
 # storage it indexes is refused in EVERY build, so this gate runs the generated
 # writer in --release, where every debug_assert! is gone, and requires the

@@ -53,6 +53,15 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
     }
 }
 
+/// FixedTable: true when every dead byte of one record image is zero (§3.4,
+/// THE SLACK RULE). A read that sees false refuses the whole load.
+pub fn fixed_table_fixed_dead(b: &[u8]) -> bool {
+    if !bench_mixed_fixed_dead(&b[0..1236]) {
+        return false;
+    }
+    true
+}
+
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -487,6 +496,13 @@ fn fixed_table_fixed_load_records(
             }
             report.widened = widened_before;
             return report.refuse(TableFixedReason::NoBlock);
+        }
+        // EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): this build's own
+        // record is held to it here, before a byte lands; a writer's older
+        // record is held to it by its plan's Absent, Tail and Arm entries.
+        if !fixed_table_fixed_dead(&record[8..]) {
+            report.damaged = true;
+            return None;
         }
         for h in holes {
             let o = h.off as usize;

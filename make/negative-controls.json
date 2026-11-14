@@ -1588,10 +1588,11 @@
     {
       "name": "rust-strict",
       "when": "pull-request",
-      "why": "the Rust leg's strict-read controls (STRICT 100), in a group of their own because the rust group already runs past the per-commit cap. The writer's-range control takes the fixed load's held refusal out through go test -overlay and requires TestFixedVersioningRangeWidenHostile red on a value past the writer's range: about 5 s on the studio once the fixed-form corpus is built. The bool-byte control takes the fixed scatter's two byte checks out and requires TestFixedBoolByteIsDamageRust red on a live byte of 2.",
+      "why": "the Rust leg's strict-read controls (STRICT 100), in a group of their own because the rust group already runs past the per-commit cap. The writer's-range control takes the fixed load's held refusal out through go test -overlay and requires TestFixedVersioningRangeWidenHostile red on a value past the writer's range: about 5 s on the studio once the fixed-form corpus is built. The bool-byte control takes the fixed scatter's two byte checks out and requires TestFixedBoolByteIsDamageRust red on a live byte of 2. The dead-byte control makes the runtime's slack zero test answer true and requires TestFixedDeadBytesRefusedRust red on stained slack (docs/SPEC-TABLES.md §3.4, THE SLACK RULE).",
       "targets": [
         "tables-rust-range-widen-negative-control",
-        "tables-rust-bool-byte-negative-control"
+        "tables-rust-bool-byte-negative-control",
+        "tables-rust-dead-bytes-negative-control"
       ],
       "rust": "stable"
     },

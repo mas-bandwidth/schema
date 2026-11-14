@@ -2239,15 +2239,18 @@ fn the_text_content_rule(dir: &str) {
         "the content rule: an interior NUL is damage too, and refuses by name to the cleared default",
     );
 
-    // AND THE SLACK CARRIES NO MEANING: the same byte PAST the used length is
-    // not read at all, so it is not damage.
+    // AND THE SLACK IS NOT TEXT, IT IS ZERO (§3.4, THE SLACK RULE; the owner's
+    // 2026-11-10 ruling): the same byte PAST the used length is not judged by
+    // the content rule — it is not text_ill_formed — but it is not zero, so the
+    // record is damage and the load hands back nothing.
     let mut forged = golden.clone();
     forged[body + 26 + 5] = 0x80; // past `label_length` of 3
     let mut report = tblfx1::TableFixedReport::default();
-    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    let n =
+        tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        !report.damaged && !report.refused && values[0].label[..3] == *b"fx1",
-        "the content rule: a byte past the USED LENGTH means nothing and is not judged",
+        n.is_none() && report.damaged && !report.refused && report.reason != tblfx1::TableFixedReason::TextIllFormed,
+        "the slack rule: a byte past the USED LENGTH is not judged as text, and it is not zero, so it is damage",
     );
 
     // AND `bytes(N)` IS BYTES. FX1's `blob` is a `bytes(6)` whose payload starts

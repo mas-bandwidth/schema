@@ -18,8 +18,9 @@ package rusttable
 // a counted array's LIVE elements, an optional's payload only when the present
 // byte says so, a union's arm only when the tag names it.
 //
-// rust/W4 [weak]: read slack is unspecified and validates the used units only;
-// non-zero slack is not malformed, not a refusal, and moves no counter.
+// rust/W4 [weak]: the content rules validate the used units only; the slack
+// behind them is zero, and non-zero slack refuses the record (the owner's
+// 2026-11-10 ruling, rulings.json fixed-dead-bytes-zero).
 //
 // rust/W9 [owed]: prefill the bytes the plan does not write; the identity
 // plan's list is empty.
@@ -155,13 +156,16 @@ fixed table Lineage
 
 // ---- rust/W4 -----------------------------------------------------------------
 
-// t07W4 holds rust/W4 to §3.1's read rule: "Slack is UNSPECIFIED on read and
-// not a refusal: a reader validates the USED UNITS only, and non-zero slack is
-// not `malformed`, not a refusal, and moves no counter." The text content rule
-// is applied over the used length (`..value.c_length.clamp(0, 8)`), never the
-// declared span, so the slack behind it is never read; a counted array's clamp
-// loop is the live count; and a `bytes(N)` has no content rule at all, so a
-// bytes-only unit emits no bounds body.
+// t07W4 holds rust/W4 to §3.1's read rule as the owner's 2026-11-10 ruling left
+// it ("Every dead byte", rulings.json fixed-dead-bytes-zero; the rule it
+// replaced said slack was unspecified on read and never a refusal): the
+// CONTENT rules run over the USED UNITS only, and the slack behind them is held
+// to ZERO by the dead-byte check and by nothing else. The text content rule is
+// applied over the used length (`..value.c_length.clamp(0, 8)`), never the
+// declared span; a counted array's clamp loop is the live count; a `bytes(N)`
+// has no content rule at all, so a bytes-only unit emits no bounds body; and
+// the dead-byte check zero-tests exactly the spans past the live count and
+// the used length.
 func t07W4(t *testing.T) {
 	text := t07Fixed(t, t07gen(t, `package probe
 
@@ -178,15 +182,24 @@ fixed table Lineage
 	t07Has(t, clamp, "table_utf8_valid(&value.c[..value.c_length.clamp(0, 8) as usize])", "W4 text is validated over the USED units")
 	t07Has(t, clamp, "for i in 0..value.a_count.clamp(0, 4) as usize {", "W4 a counted array's bounds cover its LIVE elements")
 	if strings.Contains(clamp, "value.c[..8]") {
-		t.Error("W4: the content rule is applied over the declared span, so the slack is being read")
+		t.Error("W4: the content rule is applied over the declared span, so it judges slack")
 	}
+	dead := t07Fn(text, "lineage_fixed_dead")
+	if dead == "" {
+		t.Fatal("W4: lineage_fixed_dead is not emitted")
+	}
+	t07Has(t, dead, "if !table_fixed_dead_zero(&b[4 + live * 4..20]) {", "W4 the counted array's tail is zero")
+	t07Has(t, dead, "if !table_fixed_dead_zero(&b[24 + live..32]) {", "W4 the text's bytes past the used length are zero")
+	t07Has(t, t07Fn(text, "lineage_fixed_load"), "if !lineage_fixed_dead(&record[8..]) {", "W4 the load holds the record to the slack rule")
 
 	// A bytes(N) HAS NO CONTENT RULE: it is bytes, so a unit whose only
-	// bounded thing is a bytes(N) emits no bounds body at all.
+	// bounded thing is a bytes(N) emits no bounds body at all — its slack is
+	// the dead-byte check's.
 	bs := t07Fixed(t, t07gen(t, "package probe\n\nfixed table Lineage\n{\n    d bytes(8)\n}\n"))
 	if got := t07Fn(bs, "lineage_fixed_clamp_body"); got != "" {
-		t.Errorf("W4: a bytes(N) emitted a content bounds body, so slack is being validated:\n%s", got)
+		t.Errorf("W4: a bytes(N) emitted a content bounds body:\n%s", got)
 	}
+	t07Has(t, t07Fn(bs, "lineage_fixed_dead"), "if !table_fixed_dead_zero(&b[4 + live..12]) {", "W4 the bytes past the used length are zero")
 }
 
 // ---- rust/W9 -----------------------------------------------------------------
