@@ -12,7 +12,9 @@
 // (test/conformance/harness/generate.go): they are form 1 bytes read through
 // the VARIABLE form's entry point (<Root>Load) at a fixed root, and the value
 // they leave is written back in the root's own form. `variableLoad` keeps
-// that read for surfaceFraming alone.
+// that read for surfaceFraming alone. Where the plain Load at a declared fixed
+// root refuses form 1 (tblr1 Cfg, the battery's one fixed root), the read is
+// the generated variable-class twin's (tblr1CfgVariableLoad).
 package main
 
 import (
@@ -33,6 +35,7 @@ import (
 	"tblp1"
 	"tblp3"
 	"tblr1"
+	tblr1variable "tblr1variable"
 	"tblr2"
 	tblscalars2 "tblscalars2"
 	"tblv1"
@@ -81,6 +84,45 @@ func fixedForm[T any, R any, E any](
 		return save(unsafe.Slice(value.(*T), 1), buffer)
 	}
 	return c
+}
+
+// tblr1CfgVariableLoad is the framing battery's read at its one fixed root.
+// The vectors are form-1 files at tblr1 Cfg, and the harness reads them
+// "through a fresh load of its unit with the root's class variable"
+// (framingVariableUnit, test/conformance/harness/generate.go). Go's plain
+// tblr1.CfgLoad is no such read: at a declared fixed root it refuses form 1 as
+// previous_form before it decodes a byte (docs/SPEC-TABLES.md §3.4). The read
+// is therefore tblr1variable.CfgLoad, the generated VARIABLE-class twin of the
+// same declaration (make/go.mk): same package, fields and ids, the root's
+// class variable. The value it leaves crosses into the fixed root's storage
+// through its §16 text, so the answer's text and its form-3 write-back are the
+// fixed root's own.
+func tblr1CfgVariableLoad(value any, wire []byte, rep *report) bool {
+	cfg := value.(*tblr1.Cfg)
+	tblr1.CfgReset(cfg)
+	n := tblr1variable.CfgLoadMeasure(wire)
+	if n < 0 {
+		*rep = report{refused: true}
+		return false
+	}
+	raw := make([]byte, n+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	var inner tblr1variable.TableReport
+	root := tblr1variable.CfgLoad(raw[off:off+uintptr(n)], wire, &inner)
+	*rep = snapReport(&inner)
+	rep.err = inner.Err()
+	if root == nil || rep.refused {
+		return false
+	}
+	text := make([]byte, tblr1variable.CfgToJSONMeasure(root))
+	if tblr1variable.CfgToJSON(root, text) != int64(len(text)) {
+		panic("tblr1 Cfg: the variable twin's ToJSON did not write ToJSONMeasure's answer")
+	}
+	var crossed tblr1.TableReport
+	if !tblr1.CfgFromJSON(cfg, text, &crossed) {
+		panic("tblr1 Cfg: the fixed root refused the variable twin's text: " + string(text))
+	}
+	return true
 }
 
 // noFileForm rebinds a declared fixed root past §3.4's 65536-byte record
@@ -140,7 +182,9 @@ func init() {
 		return fixedForm(c, tblp3.ChainFixedLoad, tblp3.ChainFixedMeasure, tblp3.ChainFixedSave)
 	})
 	bind("tblr1", "Cfg", func(c codec) codec {
-		return fixedForm(c, tblr1.CfgFixedLoad, tblr1.CfgFixedMeasure, tblr1.CfgFixedSave)
+		c = fixedForm(c, tblr1.CfgFixedLoad, tblr1.CfgFixedMeasure, tblr1.CfgFixedSave)
+		c.variableLoad = tblr1CfgVariableLoad
+		return c
 	})
 	bind("tblr2", "Cfg", func(c codec) codec {
 		return fixedForm(c, tblr2.CfgFixedLoad, tblr2.CfgFixedMeasure, tblr2.CfgFixedSave)

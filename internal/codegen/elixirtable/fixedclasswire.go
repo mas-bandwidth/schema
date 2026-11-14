@@ -91,18 +91,24 @@ const strictHelpers = `  defp strict_unknown!(13, payload, _nodes, ids) do
   # syntactic, over the wire's own pointer payloads in the root body and in
   # every reached node's body, known and unknown fields alike, so a node
   # named only by a skipped field still counts as reached and a node named
-  # by no payload at all refuses the whole load.
+  # by no payload at all refuses the whole load. A record of a type this
+  # reader cannot name is held to the same rule, and its body's payloads
+  # reach as a known record's do (internal/tablewire's wire check).
   defp strict_wire_reachable!(fields, node_fields, nodes, ids) do
-    node_indices =
-      nodes
-      |> Enum.with_index(2)
-      |> Enum.flat_map(fn {node, idx} ->
-        if match?({:table, _, _}, node) or match?({:blob, _, _}, node),
-          do: [idx],
-          else: []
-      end)
+    indexed = Enum.with_index(nodes, 2)
 
-    bodies = Map.put(node_fields, 1, fields)
+    node_indices =
+      for {node, idx} <- indexed, node != :malformed, do: idx
+
+    unknown_fields =
+      for {{:unknown, body}, idx} <- indexed, is_binary(body), into: %{} do
+        case entries(body, ids, false, :nested) do
+          {:ok, fs, []} -> {idx, fs}
+          _ -> throw(:wire_damaged)
+        end
+      end
+
+    bodies = node_fields |> Map.merge(unknown_fields) |> Map.put(1, fields)
     seen = wire_reach([1], bodies, MapSet.new(), ids)
 
     if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
