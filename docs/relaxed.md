@@ -19,19 +19,6 @@ and a relaxed cell that is no longer red refuses the proof until its entry is
 removed, so a fixed cell cannot hide in the list. `tools/matrix` refuses a
 relaxed cell whose slug has no entry here.
 
-## Wire fuzz
-
-- `relax/dead-bytes`: the C# wire fuzz (`make tables-cs-wire-fuzz`, and its
-  smoke) passes `--relax-dead-bytes`, so a fixed-class mutant that the leg
-  refuses and the oracle accepts, and whose oracle re-encoding has the input's
-  length but different bytes (the array tail past a counted array's live
-  count, an absent optional's payload, a text tail, an inactive union arm), is
-  counted and not compared. Every other mutant is compared. Files:
-  `test/conformance/harness/main.go`, `test/conformance/harness/wirefuzz.go`,
-  `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
-  bytes (the maintainer's ruling: absent-optional dead bytes are refused);
-  then drop the flag. WIP: `fix/main-red/dead-bytes`.
-
 ## Conformance cases and rows
 
 Relaxed conformance cases are `test/conformance/relaxed.txt`, one line per

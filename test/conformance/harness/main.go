@@ -157,8 +157,6 @@ func main() {
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
-	// RELAXED 2026-11-14 (maintainer: get main green): --relax-dead-bytes skips the fixed-form dead-byte mutants; re-enable: relax/dead-bytes
-	relaxDeadBytes := fs.Bool("relax-dead-bytes", false, "RELAXED 2026-11-14, relax/dead-bytes (docs/relaxed.md): a fixed-class mutant the leg refuses and the oracle accepts, whose oracle re-encoding has the same length but different bytes (dead bytes the value does not carry), is counted and not compared (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
@@ -258,7 +256,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":
-		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
 		}
 	case "cook-differential":
