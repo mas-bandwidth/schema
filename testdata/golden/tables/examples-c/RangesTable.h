@@ -5458,7 +5458,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_message_body(tabledemo_t
 static SCHEMA_UNUSED int tabledemo_ranged_widths_load_message_body(tabledemo_table_message_reader_t *,tabledemo_ranged_widths_t *);
 static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_wire_edges_( tabledemo_table_writer_t * w, const tabledemo_ranged_signed_t * value )
 {
-    if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 3 ); tabledemo_table_writer_leb( w, (uint64_t) value->edges_count );
     for ( i = 0; i < value->edges_count; i++ )
@@ -5584,7 +5584,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
         }
     }
     { /* edges */
-        if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
         if ( value->edges_count > 0 )
         {
             tabledemo_table_writer_header_at( w, 117, 0xc70cde6b85b6197dull, 14 );
@@ -6521,10 +6521,10 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  }
  }
  { /* edges */
- if(value->edges_count<0 || value->edges_count>4) return 0;
+ schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
  if(value->edges_count>0) {
   tabledemo_table_bit_put(w,61,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->edges_count<0 || value->edges_count>4) return 0;
+  schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->edges_count-0,3);
   { int32_t i;
   for(i=0;i<value->edges_count;i++) {
@@ -6971,7 +6971,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_messages(tabledemo_ranged_
 }
 static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_wire_counts_( tabledemo_table_writer_t * w, const tabledemo_ranged_unsigned_t * value )
 {
-    if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 9 ); tabledemo_table_writer_leb( w, (uint64_t) value->counts_count );
     for ( i = 0; i < value->counts_count; i++ )
@@ -7097,7 +7097,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
         }
     }
     { /* counts */
-        if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
         if ( value->counts_count > 0 )
         {
             tabledemo_table_writer_header_at( w, 112, 0xc341febe5aae51e5ull, 14 );
@@ -8040,10 +8040,10 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  }
  }
  { /* counts */
- if(value->counts_count<0 || value->counts_count>4) return 0;
+ schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
  if(value->counts_count>0) {
   tabledemo_table_bit_put(w,78,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->counts_count<0 || value->counts_count>4) return 0;
+  schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->counts_count-0,3);
   { int32_t i;
   for(i=0;i<value->counts_count;i++) {
@@ -10458,8 +10458,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_wire_edges__retain( tabl
 {
     (void)retention;
 
-    if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 3 );
     tabledemo_table_writer_leb( w, (uint64_t) value->edges_count );
@@ -10622,8 +10621,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body_retain( tabledemo_tab
     }
     { /* edges */
     retention=tabledemo_table_retain_step(body_keep,16,0);
-        if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
         if ( value->edges_count > 0 )
         {
             tabledemo_table_retain_writer_id( w, 0xc70cde6b85b6197dull , retention);
@@ -11771,8 +11769,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_wire_counts__retain( t
 {
     (void)retention;
 
-    if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 9 );
     tabledemo_table_writer_leb( w, (uint64_t) value->counts_count );
@@ -11935,8 +11932,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body_retain( tabledemo_t
     }
     { /* counts */
     retention=tabledemo_table_retain_step(body_keep,16,0);
-        if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
         if ( value->counts_count > 0 )
         {
             tabledemo_table_retain_writer_id( w, 0xc341febe5aae51e5ull , retention);
