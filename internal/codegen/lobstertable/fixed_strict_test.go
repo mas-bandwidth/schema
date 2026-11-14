@@ -297,7 +297,7 @@ union Pick
     assert_eq(back[0].Seq, 9, "the older record keeps its seq")
     for(["a.bin", "b.bin", "c.bin", "d.bin", "e.bin"]) f:
         assert_eq(slackline.RowFixedLoad(back, read_in(f), plan, report), -1, f)
-        assert_eq(report.reason, "wire_damaged", f)
+        assert_eq(int(report.reason == "wire_damaged"), 1, f + " refuses wire_damaged")
         assert_eq(back[0].Seq, 7, "refusal restores defaults")
     print "PASS"
 `, inputs)
