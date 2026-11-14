@@ -1701,10 +1701,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
          true <- byte_size(r2) >= len do
       bytes = binary_part(r2, 0, len)
 
+      # A RECORD THIS READER CANNOT NAME keeps its body ({:unknown, body}):
+      # the value reads it as nothing, but the reach walk still reads its
+      # pointer payloads, as every record's are (§3.1, §4)
       node =
         case resolve(ids, sref) do
           :error ->
-            :unknown
+            {:unknown, bytes}
 
           @string_id ->
             # a *string blob this reader can name is its UTF-8 bytes; a record
@@ -1713,7 +1716,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             if is_map(allowed) and allowed.string_blob do
               if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
             else
-              :unknown
+              {:unknown, :blob}
             end
 
           tid ->
@@ -1721,15 +1724,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               {:ok, :bytes} ->
                 if is_map(allowed) and allowed.bytes_blob,
                   do: {:blob, :bytes, bytes},
-                  else: :unknown
+                  else: {:unknown, :blob}
 
               {:ok, name} ->
                 if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
                   do: {:table, name, bytes},
-                  else: :unknown
+                  else: {:unknown, bytes}
 
               :error ->
-                :unknown
+                {:unknown, bytes}
             end
         end
 
@@ -1893,11 +1896,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           # body was read (directory_report), so this is never taken
           :null
 
-        _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+        {:unknown, _body} ->
+          # A NODE WHOSE TYPE ID THIS READER CANNOT NAME is skipped by its
+          # length, counted unknown, keeps its index, and every pointer
+          # naming it reads null (docs/SPEC-TABLES.md §3.1), as the
+          # retaining read and Go's oracle (internal/tablewire) already do
+          :null
       end
     end
   end
@@ -1915,7 +1919,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp directory_report(nodes, report, retaining) do
     if :malformed in nodes, do: throw(:wire_damaged)
 
-    unknown = Enum.count(nodes, &(&1 == :unknown))
+    unknown = Enum.count(nodes, &match?({:unknown, _}, &1))
 
     %{
       report
@@ -2298,11 +2302,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {n, bytes} when actual == 6 ->
             if n > f.size, do: throw(:wire_damaged)
 
-            keep = min(n, f.size)
-            report = report
-
-            if byte_size(bytes) >= keep do
-              {:cont, binary_part(bytes, 0, keep), report}
+            # a count the body cannot cover, and bytes left inside the L after
+            # the count's bytes, are both damage (§3, §4)
+            if byte_size(bytes) == n do
+              {:cont, bytes, report}
             else
               {:cont, bytes, throw(:wire_damaged)}
             end
@@ -2405,7 +2408,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+              reader = %{f | elem_kind: elem_kind}
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -2806,12 +2809,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
-    # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and the rest of the L
-    # is the writer's wider slots, skipped with the body (§2.9, §4).
-    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
-      do: throw(:wire_damaged)
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
+    # Bytes left inside an array's L after its elements are damage (§3, §4),
+    # a widened element kind's too: its elements read at the wire kind's
+    # width and fill the L exactly, as Go's oracle holds (internal/tablewire).
+    if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
   end
@@ -7089,7 +7091,9 @@ const variableRetainSource = `
     value =
       case node_value(nodes, idx, ids, f) do
         {:value, :wrong_type} ->
-          if Enum.at(nodes, idx - 2) in [:unknown, :malformed],
+          node = Enum.at(nodes, idx - 2)
+
+          if match?({:unknown, _}, node) or node == :malformed,
             do: :null,
             else: {:value, :wrong_type}
 
