@@ -664,6 +664,20 @@ const boundsElixirHelpers = `
     Process.put(:failed, true)
   end
 
+  # The writer refuses a count off its shape (docs/SPEC.md §5.1 row 3), so a
+  # probe that needs a wire count the reader must refuse writes it under a
+  # zero-width shape: a min == max count spends no bits on the wire, so the
+  # bytes are the ones the announced shape would have given an empty list.
+  def forge(vocab) do
+    entries =
+      Enum.map(vocab.entries, fn
+        %{shape: %{min: m, max: m} = s} = e -> %{e | shape: %{s | min: 0, max: 0}}
+        e -> e
+      end)
+
+    %{vocab | entries: entries}
+  end
+
   defp leb(v) when v < 0x80, do: <<v>>
 
   defp leb(v) do
@@ -712,7 +726,7 @@ const boundsElixirHelpers = `
   end
 
   defp refuse_wide(vocab) do
-    case M.save_messages(vocab, [[{1, []}]]) do
+    case M.save_messages(forge(vocab), [[{1, []}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
           {:malformed, 0, []} -> :ok
@@ -841,7 +855,7 @@ const boundsValueFns = boundsElixirHelpers + `
 
     vocab = read!(words)
 
-    case M.save_messages(vocab, [[{1, "hi"}], [{2, []}]]) do
+    case M.save_messages(forge(vocab), [[{1, "hi"}], [{2, []}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
           {:malformed, 0, []} -> :ok
@@ -976,7 +990,7 @@ const boundsCountFn = boundsElixirHelpers + `
     vocab = read!(words)
 
     try do
-      case M.save_messages(vocab, [[{1, []}]]) do
+      case M.save_messages(forge(vocab), [[{1, []}]]) do
         {:ok, batch} ->
           case M.load_messages(vocab, batch) do
             other ->

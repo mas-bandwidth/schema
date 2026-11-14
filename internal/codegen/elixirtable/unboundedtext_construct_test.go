@@ -106,14 +106,16 @@ P.ok(Probe.ProbeCook.keys_node_names_find(region,0,%q)==:error,"absent prefix ke
  for bad<-["x"<><<0>><>"y",<<255>>] do
   value=%{field=>[%{"value"=>bad}]}
   P.ok(T.save("Lists",value)=={:error,:invalid_value},"bad unbounded wire")
-  P.ok(T.to_json("Lists",value)=={:error,:invalid_value},"bad unbounded JSON")
+  j=T.to_json("Lists",value)
+  P.ok(if(String.contains?(bad,<<0>>),do: match?({:ok,_},j) and String.contains?(elem(j,1),"\\u0000"),else: j=={:error,:invalid_value}),"bad unbounded JSON (a zero byte writes \\u0000, SPEC-TABLES W8)")
   P.ok(T.cook_measure("Lists",value)==-1,"bad unbounded cook")
  end
 end
 for bad<-["x"<><<0>><>"y",<<255>>] do
  value=%{"names"=>%{bad=>1}}
  P.ok(T.save("Keys",value)=={:error,:invalid_value},"bad unbounded key wire")
- P.ok(T.to_json("Keys",value)=={:error,:invalid_value},"bad unbounded key JSON")
+ j=T.to_json("Keys",value)
+ P.ok(if(String.contains?(bad,<<0>>),do: match?({:ok,_},j) and String.contains?(elem(j,1),"\\u0000"),else: j=={:error,:invalid_value}),"bad unbounded key JSON (a zero byte writes \\u0000, SPEC-TABLES W8)")
  P.ok(T.cook_measure("Keys",value)==-1,"bad unbounded key cook")
 end
 case T.from_json("ArrayRoot","[\"\\ud800\"]") do

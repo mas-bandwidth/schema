@@ -894,9 +894,10 @@
     {
       "row": "surface json-read",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: json-read/graph_chain_text",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-json-read-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 108 case(s) pass, e.g. json-read/archive",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "surface json-read",
@@ -2282,9 +2283,10 @@
     {
       "row": "surface write-refusal",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "surface write-refusal",
@@ -2401,9 +2403,10 @@
     {
       "row": "surface write-refusal-fixed",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "surface write-refusal-fixed",
@@ -2520,9 +2523,10 @@
     {
       "row": "surface write-refusal-message",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/mref_enum and 10 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "surface write-refusal-message",
@@ -2639,9 +2643,10 @@
     {
       "row": "surface write-refusal-json",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "surface write-refusal-json",
@@ -2884,9 +2889,10 @@
     {
       "row": "cases tabledemo",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "cases tabledemo",
@@ -3631,9 +3637,10 @@
     {
       "row": "cases graphdemo",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: json-read/graph_chain_text",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-graphdemo-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "job": "CI full / conformance (elixir)",
+      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
     {
       "row": "cases graphdemo",
