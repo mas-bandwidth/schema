@@ -1089,11 +1089,11 @@ fn retain_path_eq(rec: &[u8], depth: usize, path: &TableRetainPath) -> bool {
     if depth != path.depth as usize {
         return false;
     }
-    for i in 0..depth {
+    for (i, step) in path.steps.iter().enumerate().take(depth) {
         let base = 17 + 8 * i;
         let o = u32::from_le_bytes(rec[base..base + 4].try_into().unwrap());
         let x = u32::from_le_bytes(rec[base + 4..base + 8].try_into().unwrap());
-        if o != path.steps[i].0 || x != path.steps[i].1 {
+        if o != step.0 || x != step.1 {
             return false;
         }
     }
@@ -1108,11 +1108,11 @@ fn retain_under(rec: &[u8], depth: usize, path: &TableRetainPath, field: bool, o
     if depth <= path.depth as usize {
         return false;
     }
-    for i in 0..path.depth as usize {
+    for (i, step) in path.steps.iter().enumerate().take(path.depth as usize) {
         let base = 17 + 8 * i;
         let o = u32::from_le_bytes(rec[base..base + 4].try_into().unwrap());
         let x = u32::from_le_bytes(rec[base + 4..base + 8].try_into().unwrap());
-        if o != path.steps[i].0 || x != path.steps[i].1 {
+        if o != step.0 || x != step.1 {
             return false;
         }
     }
