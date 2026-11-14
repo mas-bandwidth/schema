@@ -15,11 +15,12 @@ import (
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
 // shared cross-version vectors every leg reads (fixedvector.WriterRange): an
 // OLD writer's file with one ranged value forged past that writer's range, read
-// by the NEW reader whose own range is wider. The reader clamps to the WRITER's
-// range and counts `clamped` once: a scalar, one element of a ranged fixed
-// array (held the same as a scalar), and a uint64 at or above 2^63 (compared
-// unsigned, so it lands the max). The answer is the manifest's `expect=`, which
-// is what the C++ reference's own NEW reader landed from the same bytes.
+// by the NEW reader whose own range is wider: a scalar, one element of a ranged
+// fixed array (held the same as a scalar), and a uint64 at or above 2^63
+// (compared unsigned). Under the strict read the value past the WRITER's range
+// refuses the whole load and never clamps; the answer is the manifest's, which
+// carries no `expect=` when the C++ reference's own NEW reader refused the bytes
+// (fixedvector.Read answers Refused), and the landed values when it did not.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "dotnet (it runs the generated NEW reader over the forged file)")
 	corpus := csFixedCorpus(t)
@@ -47,27 +48,44 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 				fmt.Fprintf(&checks, `
             if (%[1]s.ToString() != %[2]q)
             {
-                bad += ProbeLog.Fail(@NAME@, %[3]q + " landed " + %[1]s + ", want %[2]s: the forged value clamps to the WRITER's range");
+                bad += ProbeLog.Fail(@NAME@, %[3]q + " landed " + %[1]s + ", want %[2]s: the reference landed it from the same bytes");
             }`, expr, fmt.Sprint(l.Value), l.Path)
 			}
 			dir := t.TempDir()
 			p := csVersionProbe{name: vec.Name + "/hostile", reader: "VNEW_" + vec.Row,
 				older: []string{"VOLD_" + vec.Row}, suffix: "h", file: vec.File,
 				body: csVersionHead + fmt.Sprintf(`            _ = want;
-            if (n != 1 || r.Refused || r.Malformed || r.Reason != null)
+            if (n != 1 || r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
                 bad += ProbeLog.Fail(@NAME@, "the forged file reads one record: n=" + n + " reason=" + r.Reason);
             }%[1]s
-            if (r.Clamped != %[2]d)
+            if (r.Widened != 0 || r.Unknown != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "clamped=" + r.Clamped + ", want exactly %[2]d: one forged value, one clamp");
+                bad += ProbeLog.Fail(@NAME@, "a counter moved");
+            }`, checks.String())}
+			if want.Refused || want.Clamped > 0 {
+				// A value past the WRITER's range refuses the whole load and the
+				// destination holds its declared defaults (FIXED-FORM-ALGORITHM
+				// §4.6, "REFUSE is total"); it never clamps.
+				p.body = `            @TABLE@ fresh = new @TABLE@();
+` + csVersionHead + `            _ = want;
+            if (n != -1 || !r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
+            {
+                bad += ProbeLog.Fail(@NAME@, "a value past the WRITER's range must refuse the load, never clamp: n=" + n + " verdict=" + r.Verdict);
             }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0)
+            if (r.Widened != 0 || r.Unknown != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved");
-            }`, checks.String(), want.Clamped)}
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves");
+            }
+@JSON@`
+			}
 			ns, table, files := csVersionGenerate(t, p)
 			csVersionWrite(t, filepath.Join(dir, "gen", "u000"), files)
+			joined := ""
+			for _, data := range files {
+				joined += string(data)
+			}
+			p.body = strings.ReplaceAll(p.body, "@JSON@", csVersionJSON(joined, table))
 			body := strings.NewReplacer(
 				"@NAME@", fmt.Sprintf("%q", p.name),
 				"@TABLE@", table,

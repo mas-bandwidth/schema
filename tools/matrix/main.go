@@ -113,8 +113,9 @@ func proofCommand(root string, args []string) int {
 	if err != nil || string(committed) != string(MarshalProof(p)) {
 		stale = proofPath + " is stale: it is not the proof these results compute; run `go run ./tools/matrix proof -write` and commit it"
 	}
+	parity := parityError(AtParity(p, in.InProgress))
 	if *report != "" {
-		rep := Report{Commit: *commit, Cells: len(p.Cells), Red: p.Red(), Stale: stale}
+		rep := Report{Commit: *commit, Cells: len(p.Cells), Red: p.Red(), InProgress: p.InProgress(), Stale: stale, Parity: parity}
 		data, _ := json.MarshalIndent(rep, "", "  ")
 		if err := os.MkdirAll(filepath.Dir(*report), 0o755); err != nil {
 			fail(err)
@@ -123,17 +124,25 @@ func proofCommand(root string, args []string) int {
 			fail(err)
 		}
 	}
+	if open := p.InProgress(); len(open) > 0 {
+		fmt.Printf("in progress, reported and not gated (%s):\n", inProgressPath)
+		fmt.Print(InProgressList(p))
+	}
 	fmt.Print(RedList(p))
 	code := 0
 	if stale != "" {
 		fmt.Fprintln(os.Stderr, "proof:", stale)
 		code = 1
 	}
+	if parity != "" {
+		fmt.Fprintln(os.Stderr, "proof:", parity)
+		code = 1
+	}
 	if red := len(p.Red()); red > 0 {
 		fmt.Fprintf(os.Stderr, "proof: RED, %d of %d cells (listed above)\n", red, len(p.Cells))
 		code = 1
 	} else {
-		fmt.Printf("proof: green, %d cells\n", len(p.Cells))
+		fmt.Printf("proof: no red cell of %d (%d in progress, listed above)\n", len(p.Cells), len(p.InProgress()))
 	}
 	return code
 }
