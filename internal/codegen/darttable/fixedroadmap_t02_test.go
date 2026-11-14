@@ -445,10 +445,14 @@ func t02W14(t *testing.T) {
 	plower := lowerFirst(pst.Name)
 	pidentity := t02Rows(t, psrc, "final Int32List "+plower+"FixedIdentity")
 	playout := t02Rows(t, psrc, "final Int32List "+plower+"FixedDst")
-	// a's copy, m's count and m's two elements are three plan entries; the walk
-	// is root, a, m and m's element.
-	if len(pidentity) != 3 {
-		t.Fatalf("W14: a, m's count and m's elements are three plan entries; got %d", len(pidentity))
+	// a's copy, m's count and m's two elements are three plan entries, and
+	// behind them m's DEAD-TAIL check (docs/SPEC-TABLES.md §3.4, every dead
+	// byte is zero), which lands nothing; the walk is root, a, m and m's element.
+	if len(pidentity) != 4 {
+		t.Fatalf("W14: a, m's count, m's elements and m's dead tail are four plan entries; got %d", len(pidentity))
+	}
+	if pidentity[3][0] != fixedOpDeadTail || pidentity[3][1] != playout[2][2] {
+		t.Errorf("W14: the fourth entry must be m's dead-tail check at its count (%d); got %v", playout[2][2], pidentity[3])
 	}
 	if len(playout) != 4 {
 		t.Fatalf("W14: the walk is root, a, m and m's element; got %d layout rows", len(playout))

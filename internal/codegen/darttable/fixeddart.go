@@ -875,6 +875,20 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 		g.pf("%s  %s.%sPresent = p != 0;\n", ind, val, name)
 		g.pf("%s}\n", ind)
 		at += fixedPresentBytes
+		// AN ABSENT PAYLOAD IS SLACK, and slack is checked for zero and for
+		// nothing else (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the plan
+		// held its bytes to zero, and they land as the zeros they are, but
+		// no range, ordinal, bool or text rule may refuse them. A refusal
+		// the payload's decode names is dropped when the flag is clear.
+		held := "held" + capitalize(name)
+		g.pf("%s{\n", ind)
+		g.pf("%s  final %s = report.refused;\n", ind, held)
+		g.emitDecodeValue(f, base, at, val+"."+name, ind+"  ")
+		g.pf("%s  if (!%s.%sPresent) {\n", ind, val, name)
+		g.pf("%s    report.refused = %s;\n", ind, held)
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+		return
 	}
 	g.emitDecodeValue(f, base, at, val+"."+name, ind)
 }

@@ -1792,13 +1792,23 @@ void textLengthClampCase() {
 
   // AND THE CONTROL: EVERY length the rule ADMITS lands whole. The cap
   // itself, zero, and anything between land WHOLE and refuse nothing; a
-  // refusal here would be a refusal of a clean read.
+  // refusal here would be a refusal of a clean read. A CLEAN record is what a
+  // conforming writer lays: the used units, then zeros to the cap, because
+  // every dead byte is zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE) and a
+  // unit past the length that is not zero refuses wire_damaged.
   for (final legit in <int>[0, 3, cap]) {
+    for (var i = 0; i < cap; i++) {
+      file[body + labelAt + 4 + i] = i < legit ? 0x61 + i : 0;
+    }
     final (landed, why) = loopRun(legit);
     check(
       landed == legit && why == fx1home.TableFixedRefusal.none,
-      'CONTROL: a length of $legit is in range and refuses NOTHING',
+      'CONTROL: a length of $legit is in range and refuses NOTHING '
+      '(got ${fx1home.TableFixedRefusal.name(why)})',
     );
+  }
+  for (var i = 0; i < cap; i++) {
+    file[body + labelAt + 4 + i] = 0x61 + i;
   }
 
   // THE FULL READ, the two paths together: a forged length refuses the whole
@@ -2236,22 +2246,21 @@ void writeSlackCase() {
   quiet(r, 'W1 slack');
 }
 
-// W4: READ SLACK IS UNSPECIFIED (docs/FIXED-FORM-ALGORITHM.md §3.1). The rule,
-// by name: "Slack is UNSPECIFIED on read and not a refusal: a reader validates
-// the USED UNITS only, and non-zero slack is not `malformed`, not a refusal,
-// and moves no counter." `absentOptionalCase` above is the WRITE half of the
-// same rule; this is the read half, and the one that faces a STRANGER's bytes.
+// W4: EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; the
+// owner's ruling of 2026-11-10, docs/rulings.json fixed-dead-bytes-zero). The
+// read checks slack for zero and for nothing else: a byte of slack that is not
+// zero refuses the whole read wire_damaged, lands nothing and moves no
+// counter. `absentOptionalCase` above is the WRITE half of the same rule; this
+// is the read half, and the one that faces a STRANGER's bytes.
 //
 // THE STAIN IS ON THE WIRE, which is what separates this from every other slack
-// case in this file. A clean writer lays the template's zeros in the slack, so
-// reading a record THIS BUILD wrote cannot tell a reader that walks the USED
-// UNITS from one that walks the DECLARED BOUND. Here the slack of V1's
-// `items [..8]int32` (a RANGED element: | min = 0, max = 255) is stained AFTER
-// the write with four 0xFF bytes per unused slot — a value past the range — so
-// a decode that walked the bound would clamp seven times and a decode that
-// walks the live count clamps none. `clamped` is the observable, and the doc's
-// "moves no counter" is the claim.
-void readSlackUnspecified() {
+// case in this file. A clean writer lays the template's zeros in the slack.
+// Here the slack of V1's `items [..8]int32` (a RANGED element: | min = 0,
+// max = 255) is stained AFTER the write with four 0xFF bytes per unused slot —
+// a value past the range — so the refusal must be wire_damaged and never
+// out_of_range: no range rule runs on slack. The same record with its slack
+// clean is the control, and it reads.
+void readSlackRefused() {
   // THE COUNT'S OFFSET IS FOUND, NOT SPELLED: two saves that differ only in the
   // live count, and the first byte that differs is the count's own. A hardcoded
   // offset here would quietly stop naming `items` the day a field moves.
@@ -2286,13 +2295,33 @@ void readSlackUnspecified() {
     'read slack: the wire count is the live 1, found by shape and not spelled',
   );
 
+  // THE CONTROL: the record as the writer laid it, slack clean, reads.
+  {
+    final back = <v1home.Cfg>[v1home.Cfg()];
+    final r = v1home.TableFixedReport();
+    final n = v1.cfgFixedLoad(
+      back,
+      1,
+      live,
+      live.length,
+      v1.cfgFixedNewPlan(),
+      r,
+    );
+    check(
+      n == 1 &&
+          r.refused == 0 &&
+          back[0].itemsCount == 1 &&
+          back[0].items[0] == 7,
+      'CONTROL: the clean record reads (got $n, refused ${r.refused})',
+    );
+  }
+
   // STAIN THE SLACK: every byte of the seven unused int32 slots, past the count
   // word and the one live element, to the end of the declared eight.
   final slackAt = countAt + 4 + 4;
   final slackEnd = countAt + 4 + 8 * 4;
-  // ONE BYTE, SO CONTROL 1 IS ONE LINE: point it at the conforming zero a
-  // clean writer lays there and the case must stay green; 0xFF is the hostile
-  // value past the ranged element's bound that a bound-walker would clamp.
+  // 0xFF is a value past the ranged element's bound: a reader that ran the
+  // range rule on slack would refuse out_of_range, not wire_damaged.
   const stain = 0xFF;
   for (var i = slackAt; i < slackEnd; i++) {
     live[i] = stain;
@@ -2309,6 +2338,7 @@ void readSlackUnspecified() {
   );
 
   final back = <v1home.Cfg>[v1home.Cfg()];
+  final fresh = v1home.Cfg();
   final r = v1home.TableFixedReport();
   final n = v1.cfgFixedLoad(
     back,
@@ -2318,19 +2348,20 @@ void readSlackUnspecified() {
     v1.cfgFixedNewPlan(),
     r,
   );
-  check(n == 1, 'read slack: the record reads (got $n)');
+  check(n == -1, 'read slack: the stained record is refused (got $n)');
   check(
-    r.refused == 0,
-    'SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal',
+    r.refused == v1home.TableFixedRefusal.damaged,
+    'EVERY DEAD BYTE IS ZERO: stained slack refuses wire_damaged, never '
+    'out_of_range (refused ${v1home.TableFixedRefusal.name(r.refused)})',
   );
   check(
-    back[0].itemsCount == 1 && back[0].items[0] == 7,
-    'SLACK IS UNSPECIFIED: the USED UNITS land and the slack behind them is not read',
+    back[0].itemsCount == fresh.itemsCount &&
+        back[0].items[0] == fresh.items[0],
+    'EVERY DEAD BYTE IS ZERO: a refused read lands nothing',
   );
   check(
-    r.refused == 0 && r.unknown == 0 && r.widened == 0,
-    'SLACK IS UNSPECIFIED: a reader validates the USED UNITS only and moves no '
-    'counter (refused ${r.refused})',
+    r.unknown == 0 && r.widened == 0,
+    'EVERY DEAD BYTE IS ZERO: the refusal moves no counter',
   );
 }
 
@@ -3136,8 +3167,10 @@ void negativeControl() {
 // zeros are in range, so a pass that walked the bound would count nothing
 // there and `clamped == 0` would still hold. That is detection, not assertion.
 // This case STAINs the slack THROUGH STORAGE, with the same out-of-range value
-// CONTROL 1 puts in a live element, and holds the read to `clamped == 0` — the
-// number only a pass that walks the LIVE COUNT can produce.
+// CONTROL 1 puts in a live element. Under the slack rule (docs/SPEC-TABLES.md
+// §3.4) that stain is dead bytes: the plan's dead-byte check refuses it
+// wire_damaged before the decode runs, and the refusal must never be
+// out_of_range, which would mean a range rule ran on slack.
 void boundsCase() {
   // a record with a PARTLY-FILLED counted array: reservesCount = 2, and the
   // third ShipEntry is slack. Every LIVE value is in range, so a clean read
@@ -3192,19 +3225,21 @@ void boundsCase() {
     pack.packConfigFixedNewPlan(),
     r,
   );
-  check(n == 1, 'bounds: the stained record still reads (got $n)');
+  // EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the
+  // stained slack element refuses the read wire_damaged, and NEVER out_of_range,
+  // because the bounds pass still walks only the live elements and no range
+  // rule runs on slack.
+  check(n == -1, 'bounds: the stained record is refused (got $n)');
   check(
-    back[0].reservesCount == 2 &&
-        back[0].reserves[0].hardpoints[0] == 1 &&
-        back[0].reserves[1].hardpoints[0] == 2,
-    'bounds: the two live elements land, and the slack\'s stain is never decoded',
+    back[0].reservesCount == demo.PackConfig().reservesCount,
+    'bounds: a refused read lands nothing',
   );
   check(
-    r.refused == 0,
+    r.refused == demo.TableFixedRefusal.damaged,
     'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
-    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): checking storage nobody wrote '
-    'would refuse every clean read — the out-of-range value stained into the '
-    'slack refuses nothing (refused=${r.refused})',
+    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): the out-of-range value stained '
+    'into the slack is dead bytes, refused wire_damaged and never out_of_range '
+    '(refused=${demo.TableFixedRefusal.name(r.refused)})',
   );
 
   // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its
@@ -3523,7 +3558,7 @@ void layoutValidation() {
 // comparing the numbers the plan is built from against the compiler's own
 // `offsetof`/`sizeof` (internal/codegen/cpptable/fixedform.go,
 // emitFixedLayoutAsserts). Dart has no struct ABI to take an `offsetof` of, so
-// THIS leg's offsets are its own storage walk: the five-lane `FixedDst` rows,
+// THIS leg's offsets are its own storage walk: the `FixedDst` rows,
 // resolved through the pre-order layout into absolute body offsets, and
 // `FixedBodyBytes` for the sizeof. The assertion below is named: every
 // destination the identity plan lands must be one of those offsets and must
@@ -3531,21 +3566,21 @@ void layoutValidation() {
 // decoder use is caught HERE, at build time, and never on the wire.
 // ---------------------------------------------------------------------------
 
-// w14Offsets resolves the five-lane `FixedDst` rows — dst, stride, aux,
+// w14Offsets resolves the `FixedDst` rows — dst, stride, aux,
 // counted, arg — into the set of absolute byte offsets this build's storage
 // walk declares. The layout is a u32 count then 17-byte entries (id u64, kind
 // u8, size u32, children u32), pre-order: each entry's dst and aux are measured
 // from its PARENT, so the walk carries the parent's absolute offset down.
 Set<int> w14Offsets(Uint8List layout, Int32List dstRows) {
   final view = ByteData.sublistView(layout);
-  final rows = dstRows.length ~/ 5;
+  final rows = dstRows.length ~/ fx1home.TableFixedLane.dstLanes;
   final offsets = <int>{};
   var index = 0;
   void walk(int parent) {
     if (index >= rows) {
       return;
     }
-    final row = index * 5;
+    final row = index * fx1home.TableFixedLane.dstLanes;
     final at = parent + dstRows[row];
     offsets.add(at);
     // a text row's aux is the buffer, a counted array's aux is the count, an
@@ -3588,6 +3623,13 @@ void w14Check(
     final dst = plan[base + fx1home.TableFixedLane.dst];
     final size = plan[base + fx1home.TableFixedLane.size];
     final aux = plan[base + fx1home.TableFixedLane.aux];
+    if (op == fx1home.TableFixedOp.deadAbsent ||
+        op == fx1home.TableFixedOp.deadTail ||
+        op == fx1home.TableFixedOp.deadArm) {
+      // a dead-byte check reads the writer's slack and lands nothing, so it
+      // names no destination (docs/SPEC-TABLES.md §3.4, THE SLACK RULE)
+      continue;
+    }
     check(
       dst >= 0 && dst < bodyBytes,
       'W14: $who entry $i dst $dst inside the body $bodyBytes',
@@ -3820,7 +3862,7 @@ void main(List<String> args) {
   rangedScalarClampCase();
   hostileBytesCase();
   writeSlackCase();
-  readSlackUnspecified();
+  readSlackRefused();
   planPartitionCase();
   writeChecksDebugOnlyCase();
   w9PrefillUnwrittenOnly();

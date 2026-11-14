@@ -112,9 +112,12 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 				r.refusal = name
 			}
 			if a == "wire-refused" {
-				// A wire-refused row names one blob from two slots; every
-				// writer refuses it as blob_shared (SPEC §2.5).
-				r.refusal = "blob_shared"
+				// A wire-refused row requires A REFUSAL from every port and
+				// names no reason (testdata/conformance/tables/FORMAT.md):
+				// a blob named from two slots, which every writer refuses as
+				// blob_shared (SPEC §2.5), or a fixed record with a dead byte
+				// set, which every reader refuses (§3.4, THE SLACK RULE).
+				r.refusal = "*"
 			}
 		}
 		rows = append(rows, r)
@@ -237,7 +240,8 @@ func resaveOracleProbe(wireName string, files map[string][]byte, rows []oracleRo
 			sw.WriteString("        final report = f.TableFixedReport();\n")
 			sw.WriteString("        if (f." + fn + "FixedLoad(values, 1, wire, wire.length, plan, report) != 1 ||\n")
 			sw.WriteString("            report.refused != 0) {\n")
-			sw.WriteString("          throw StateError('fixed load refused');\n")
+			sw.WriteString("          throw StateError(\n")
+			sw.WriteString("              'fixed load refused: ${f.TableFixedRefusal.name(report.refused)}');\n")
 			sw.WriteString("        }\n")
 			sw.WriteString("        final out = Uint8List(f." + fn + "FixedMeasure(1));\n")
 			sw.WriteString("        if (f." + fn + "FixedSave(values, 1, out) < 0) {\n")
@@ -276,7 +280,7 @@ void main(List<String> args) {
     try {
       saved = resave(args[i + 1], wire);
     } catch (e) {
-      if (refusal != '-' && e.toString().contains(refusal)) continue;
+      if (refusal == '*' || (refusal != '-' && e.toString().contains(refusal))) continue;
       stderr.writeln('FAIL $name: $e');
       bad++;
       continue;
