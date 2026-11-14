@@ -2894,8 +2894,9 @@ end
 function J.ToJson(T, name, v)
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, v)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, v, true)
   if refused ~= nil then return nil, refused end
   local g = count_nodes(T, desc, v)
   if g == nil then return nil end
