@@ -8,6 +8,8 @@
 package example
 
 import (
+	"math"
+
 	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
@@ -30,7 +32,13 @@ const Vec2MaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteVec2(stream *serialize.WriteStream, value *Vec2) error {
+	if math.Float64bits(value.X)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.X)
+	if math.Float64bits(value.Y)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.Y)
 	return stream.Err()
 }
@@ -63,6 +71,9 @@ const SpanF64MaxBytes = 16
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanF64(stream *serialize.WriteStream, value *SpanF64) error {
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.Values[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	return stream.Err()
@@ -250,6 +261,9 @@ const SpanTailMaxBytes = 24
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanTail(stream *serialize.WriteStream, value *SpanTail) error {
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.Values[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	stream.SerializeBits(&value.Tail, 32)
@@ -287,9 +301,15 @@ const SpanTwiceMaxBytes = 32
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanTwice(stream *serialize.WriteStream, value *SpanTwice) error {
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.A[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.A[i])
 	}
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.B[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.B[i])
 	}
 	return stream.Err()
