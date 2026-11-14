@@ -192,7 +192,9 @@ jobs:
     # cannot ride `go test ./...` at all. Every step below is the step it was;
     # what is new is which row runs it, and no step runs in none of them or in
     # two.
-    #   unit-codegen    — go test ./internal/codegen/... less elixirtable
+    #   unit-codegen    — go test ./internal/codegen/... less elixirtable and
+    #                     cpptable
+    #   unit-codegen-cpp-1..3 — go test internal/codegen/cpptable, in rows
     #   unit-compiler-1..17 — go test ./compiler, the tests one pattern names
     #   unit-compiler-18 — go test ./compiler, every other test
     #   unit-vet        — go vet ./...
@@ -255,7 +257,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
         # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
         # request (the events the 110 s PGROUP_WALL applies to) these rows are
         # excluded, because their median job wall over four CI full runs on
@@ -263,6 +265,8 @@ jobs:
         # versioning-cs 193 s, versioning-rust 131 s, versioning-java 129 s,
         # versioning-c 128 s, unit-rest-ci 118 s, unit-rest-fuzz-2 115 s. The
         # nightly schedule and a dispatch run them unchanged and at full strength.
+        # internal/codegen/cpptable left unit-codegen for unit-codegen-cpp-1..3,
+        # which are each under the budget and are not excluded.
         # re-enable: relax/ci-time-unit-codegen, relax/ci-time-versioning-cs,
         # relax/ci-time-versioning-rust, relax/ci-time-versioning-java,
         # relax/ci-time-versioning-c, relax/ci-time-unit-rest-ci,
@@ -483,7 +487,38 @@ jobs:
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
+        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$')
+
+      # internal/codegen/cpptable has rows of its own (2026-11-14). It is the
+      # heaviest emitter package (about 220 s of CPU on the Studio: some sixty
+      # parallel tests each compiling a C++ probe, and the conformance driver
+      # built from every table source), and inside the unit-codegen row it
+      # shared the runner with every other emitter package's compilers and
+      # died at go test's ten-minute limit on runs 43570208757 (intel-3) and
+      # the 2026-11-10 nightly (vision-3), where the Studio runs it in 83 s.
+      # As one row it ran 80 s on amd-2-2 and past the 110 s step rule on a
+      # loaded intel-1 (PR #3275), so it is three, packed from a -v timing on
+      # hetzner2 (per-test seconds summed): the conformance driver and its
+      # control (33 s), the rest of the Cpp/CPP families with Generated and
+      # Message (65 s), and every other test (40 s). Row 3 -skips the other
+      # two, so a new test lands there with no edit here.
+      - name: go test the C++ table emitter package, row 1 of 3
+        if: matrix.group == 'unit-codegen-cpp-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cpptable -run '^Test(CppDriver)'
+
+      - name: go test the C++ table emitter package, row 2 of 3
+        if: matrix.group == 'unit-codegen-cpp-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cpptable -run '^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)'
+
+      - name: go test the C++ table emitter package, row 3 of 3
+        if: matrix.group == 'unit-codegen-cpp-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cpptable -skip '^Test(CppDriver)|^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)'
 
       # THE LOBSTER FIXED FORM AGAINST THE REFERENCE'S BYTES. The step above
       # runs internal/codegen/lobstertable without build/fixedform-corpus, so
