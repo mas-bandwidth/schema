@@ -44,7 +44,7 @@ at R0, with no seed to remove and no hand-written codec to replace.
 | R1 | **The toolchain pin.** `make/ruby-toolchain.mk`: `dist-ruby` builds the pinned floor and current CRuby from their ruby-lang.org source tarballs into `dist/ruby-<ver>/`, refusing any other sha256 by name. `toolchain-ruby` probes each pin; A standalone control checks the floor, current interpreter and analyzer-lock pins. Aggregate registration waits until R3, when `TEST_LEGS` also knows Ruby. The analyzers (RuboCop and Steep with RBS) install offline from `make/ruby-analyzers.lock`, one sha256 per gem. A `.github/actions/ruby` step caches the build keyed by the pin | Every Ruby process the build starts is the pinned interpreter or the analyzer lock, and a missing pin refuses by name; no PATH lookup, no `RUBYOPT`, no user gem directory | `make toolchain-ruby`; the standalone toolchain negative control (each pin pointed at a missing path in turn must refuse naming that pin, with the other pins resolving); a grep gate showing no bare `ruby` in `make/ruby*.mk` or the leg's tests; `ruby-toolchain-check` | R0 | M | `port/ruby/r1-toolchain` |
 | R2 | **serialize.rb, the bit layer.** A sibling repository that ports `serialize.h` to format 2.0 (STANDARD.md), vendors the standard and the corpus at COMPATIBILITY.md's commit, releases through the release tooling, and joins the COMPATIBILITY table. Until the repository exists it is staged in `third_party/serialize.rb/`, laid out as its own repository, and vendored into `internal/codegen/ruby/runtime/` by sha256 with `SERIALIZE_PIN` and `make/ruby-serialize.mk` | The bits are right before schema stands on them: every family vector writes its bytes and every refuse vector refuses, including finite-only floats and canonical encodings | The family corpus in serialize.rb's own CI; in schema, `TestVendoredRubySerializeIsThePin` (the files and sums match the pin, and one int and one float round-trip against the vendored corpus), as `TestVendoredLuaSerializeIsThePin` does | R1; decision D4 | M | `port/ruby/r2-serialize` |
 | R3 | **The skeleton.** `schema new-leg ruby`: `compiler/target_ruby.go` behind `schema_leg_ruby`, `internal/codegen/ruby` (the type surface: values, constructors, descriptors, no codec), `internal/codegen/rubytable` (the table surface, no codec), the `rubyrun` test helper, `internal/tablenames/ruby.go`, `compiler/tablesruby_test.go`, `make/ruby.mk` registering `test-ruby`, `TOOLCHAIN_LEGS += ruby` and `TOOLCHAIN_PINS_ruby` together, `test/conformance/ruby/{driver,ci.json,main.rb}` answering every surface absent, the PORTING.md column (every technique ✅, — with the platform's reason, or ❌ citing its roadmap entry), and the `ruby` column on all three roadmap tables with `port/ruby/*` cells, all `:todo` | The leg is discovered by every registry with no shared file edited, and every construct the target does not carry is refused by name at compile time | The registry gate (`test/conformance/harness/registry_test.go`); `make test-ruby`; the aggregate toolchain negative control, including its all-legs-skipped positive half; identifier tests: Ruby keywords, core-constant and runtime-name collisions, dunder names, invalid constant spellings, generated-member collisions, package-constant collisions, reserved `_schema`/`serialize` basenames, and case-folding file collisions each refused or mangled by rule; the PORTING column gate | R1 (R2 for the vendored runtime directory) | M | `port/ruby/r3-skeleton` |
-| R4 | **The packet wire.** `ruby/read.rb` and `ruby/write.rb` over the vendored serialize.rb; the generated tree under `generated/ruby`; the ruby legs of `test/packet-text`, `packet-wide`, `packet-defaults` and `packet-finite`; the ludicrous goldens; the analyzer gate over generated code; the packet bench leg, measured with YJIT on and off for both Ruby code shapes, against a Ruby C API extension around the generated C codec on the same pinned interpreter and byte-checked workload, including call and value conversion costs (D1). The build tag is dropped and the target joins the builtins | Every packet type reads and writes the 14 C++-pinned goldens byte for byte, packet reads report bits consumed and permit subsequent objects in the buffer, truncation and hostile values refuse, and writes refuse out-of-contract values (out-of-range integers, non-finite floats, a float32 that overflows, invalid UTF-8, text where bytes belong) | `TestRubyTypeWireReadsTheGoldens` and `...WritesTheGoldens`, each with a negative control; each packet gate with its control; the analyzer gate with its control; the packet-wire column at 100%; the straight-line/descriptor, YJIT-on/off and C-extension comparison receipts on the same workload | R2, R3 | L | `port/ruby/r4-packet` |
+| R4 | **The packet wire.** `ruby/read.rb` and `ruby/write.rb` over the vendored serialize.rb; the generated tree under `generated/ruby`; the ruby legs of `test/packet-text`, `packet-wide`, `packet-defaults` and `packet-finite`; the ludicrous goldens; the analyzer gate over generated code; the packet bench leg, measured with YJIT on and off for both pure-Ruby code shapes on the same pinned interpreter and byte-checked workload, keeping the faster (D1). The build tag is dropped and the target joins the builtins | Every packet type reads and writes the 14 C++-pinned goldens byte for byte, packet reads report bits consumed and permit subsequent objects in the buffer, truncation and hostile values refuse, and writes refuse out-of-contract values (out-of-range integers, non-finite floats, a float32 that overflows, invalid UTF-8, text where bytes belong) | `TestRubyTypeWireReadsTheGoldens` and `...WritesTheGoldens`, each with a negative control; each packet gate with its control; the analyzer gate with its control; the packet-wire column at 100%; the straight-line/descriptor and YJIT-on/off comparison receipts on the same workload | R2, R3 | L | `port/ruby/r4-packet` |
 | R5 | **Fixed tables, form 3.** The fixed plan, lineage and plan selection by hash, the bounds pass, file save and load, measurement. Built to FIXED-FORM-ALGORITHM as the strict-only spec states it: the bounds pass and forged ordinals refuse `out_of_range`, a bool byte past 1 is `wire_damaged`, and there is no `malformed` flag | Ruby's fixed bytes equal C++'s for every row, and each side loads and re-saves the other's bytes byte-equal; every refusal the algorithm names refuses | The per-row fixed proof suite against a live C++ reference (the shared suite of remaining-legs-100.md X1), file and writer negative controls per row, `fixedversioning_ruby_test.go`; the fixed-tables column | R4; the cut's spec layer ruled | L | `port/ruby/r5-fixed` |
 | R6 | **Variable tables: the one read.** Form 1 load and save, a port of `internal/tablewire`: the variable class and node table, optionals, keyed arrays, maps, blobs, unions and any-type arms, wide and 128-bit kinds, the id-table wire, unbounded arrays, UTF-8 text, defaults and renames, widening, and the report (`unknown`, `widened`, `retained`, `retain_lost`) on success only | Every manifest input is either read, with its value written back byte-identical to the canonical wire, or refused; a refusal leaves no partial value and does not touch the caller's objects | The read-then-write harness against the Go engine on the tables manifest; per-construct tests with negative controls; the `carries` tests (`target_ruby_carries_*_test.go`) | R5; **`strict-only/engine` and `strict-only/harness`** | L | `port/ruby/r6-variable` |
 | R7 | **The message form and retain-unknown.** Form 2: the announcement, `load_messages`, `measure_messages` and `save_messages` (fixed tables only). Retention on load and save | The batch reads in phase order or refuses whole; retained unknowns are saved back byte-exact | The message and retain-save surfaces; the retain negative control | R6 | M | `port/ruby/r7-message-retain` |
@@ -71,7 +71,7 @@ sockets and no network, and every test calls `t.Parallel()`. Anything timed
 (the bench, a soak) is a functional test. A test that runs the interpreter is
 behind `SCHEMA_SLOW`, as the DONE-WHEN sets it.
 
-**Order.** R0 waits only on the owner's answers. R1 and R2 follow, then R3.
+**Order.** R0's answers are in (2026-11-14). R1 and R2 follow, then R3.
 R4 can proceed once the packet surface is settled. R5 waits for the cut's spec
 layer, and R6 and everything above it wait for `strict-only/engine` and
 `strict-only/harness`. Ruby then joins the cut's leg order as a new column,
@@ -79,9 +79,11 @@ with nothing to delete.
 
 ## Decisions for the owner
 
-The same eight decisions as THE DECISIONS in `docs/PORT-RUBY.md`. Each is
-marked **recommended, awaiting the ruling**; nothing is built on an unruled
-decision.
+The same eight decisions as THE DECISIONS in `docs/PORT-RUBY.md`. All eight
+were ruled on 2026-11-14: D1 by the maintainer (docs/rulings.json
+`ruby-pure-ruby`), and D2-D8 by Rowan, applying the maintainer's standing
+principles, each as its recommendation stands below (docs/rulings.json
+`ruby-port-decisions`).
 
 **D1. What runs.** The house rule is the fastest correct implementation in
 each language.
@@ -97,17 +99,16 @@ each language.
   implementation in C that has to agree with the first, and the call overhead
   per field cancels much of the win.
 
-**Recommendation: (a), with the comparison against (b) required in R4;
-shipping (b) is a separate, later decision.** In R4, emit two shapes for one
-type (straight-line generated code with locals bound, and a descriptor walk)
-and keep the faster, with YJIT on and off. Build the comparison extension
-with the pinned interpreter's headers and `mkmf`, and the bench's pinned C
-compiler, around that type's generated C codec. Measure it through the Ruby
-call boundary, including value conversion, on the same workload and pinned
-interpreter; byte-check every variant before recording numbers. R4 carries
-the two Ruby shapes, both YJIT settings, and the C-extension receipt. A
-standalone C-leg baseline may accompany them but does not replace the
-extension comparison. **recommended, awaiting the ruling**
+**Ruling: (a), pure Ruby, standard library only.** No C extension is built,
+shipped or benchmarked, and (b) and (c) are closed. Performance work stays
+within pure Ruby: in R4, emit two shapes for one type (straight-line
+generated code with locals bound, and a descriptor walk), measure them
+against each other with YJIT on and off on the same pinned interpreter and
+workload, byte-check every variant before recording numbers, and keep the
+faster. R4 carries the two Ruby shapes and both YJIT settings. **Ruled
+2026-11-14 by the maintainer:** "i want it to be pure ruby."; "I mean we can
+do performance work, *within the constraints of pure ruby*"; "As fast as ruby
+can be, but no faster."
 
 **D2. Which Ruby.**
 
@@ -120,8 +121,8 @@ extension comparison. **recommended, awaiting the ruling**
 **Recommendation: (b).** The generated code and runtime use nothing newer
 than the floor, and the leg runs on both, as the Lua and Python version
 differentials do. Both releases are confirmed on ruby-lang.org on the day they
-are pinned, never recalled from an earlier reading. **recommended, awaiting
-the ruling**
+are pinned, never recalled from an earlier reading. **Ruled 2026-11-14 by
+Rowan, as recommended.**
 
 **D3. The toolchain pin.**
 
@@ -133,7 +134,7 @@ the ruling**
 **Recommendation: (a).** Build from pinned source. The analyzers (RuboCop and
 Steep with RBS) install offline from a hash-locked list into the pinned
 interpreter; they add no second runtime and both run over the same generated
-tree. **recommended, awaiting the ruling**
+tree. **Ruled 2026-11-14 by Rowan, as recommended.**
 
 **D4. A serialize-family sibling, serialize.rb.** Every leg stands on its own
 `serialize.<lang>`:
@@ -152,7 +153,7 @@ Options:
 under its own outside judge (the family corpus) before schema is built on top,
 and the bit layer is useful to Ruby users without schema. Until the repository
 exists it is staged in `third_party/serialize.rb/`. Creating the public
-repository is a separate, later decision. **recommended, awaiting the ruling**
+repository is a separate, later decision. **Ruled 2026-11-14 by Rowan, as recommended.**
 
 **D5. Packaging.**
 
@@ -164,7 +165,7 @@ repository is a separate, later decision. **recommended, awaiting the ruling**
 
 **Recommendation: (a) for the leg.** Publishing a gem (the runtime, or
 serialize.rb) is a later decision, and the owner's: the accounts and tokens
-are the owner's, never delegated. **recommended, awaiting the ruling**
+are the owner's, never delegated. **Ruled 2026-11-14 by Rowan, as recommended.**
 
 **D6. Errors and the strict read.**
 
@@ -183,7 +184,7 @@ classes whose fields are methods; `Integer` everywhere, with range checks on
 write (128-bit is native); `Float` with float32 fields packed through `pack`
 and checked; enums as `Integer` constants on a module with a frozen name
 table, not an object per variant; UTF-8 `String` for text, validated strictly;
-ASCII-8BIT `String` for bytes. **recommended, awaiting the ruling**
+ASCII-8BIT `String` for bytes. **Ruled 2026-11-14 by Rowan, as recommended.**
 
 **D7. The JSON reader.**
 
@@ -195,7 +196,7 @@ ASCII-8BIT `String` for bytes. **recommended, awaiting the ruling**
 
 **Recommendation: (a).** The JSON writer is the deterministic-JSON algorithm
 in any case. Ruby's own Float formatting should be checked against it, not
-assumed to match it. **recommended, awaiting the ruling**
+assumed to match it. **Ruled 2026-11-14 by Rowan, as recommended.**
 
 **D8. Ruby and the v3.0.0 gate.**
 
@@ -204,4 +205,4 @@ assumed to match it. **recommended, awaiting the ruling**
   release.
 
 **Recommendation: (b).** The other legs are mostly acceptance work away from
-100%, and Ruby is the full stack. **recommended, awaiting the ruling**
+100%, and Ruby is the full stack. **Ruled 2026-11-14 by Rowan, as recommended.**
