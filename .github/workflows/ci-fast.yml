@@ -739,6 +739,8 @@ jobs:
           # the version test/conformance/js/ci.json names
           node-version: '26'
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
@@ -802,7 +804,10 @@ jobs:
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
                     make tables-c-clean tables-c-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
-            rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
+            # the fixed form and the framing-text versioning rows, which drive
+            # tables-rust-fixedform again on the build it just made; the probe
+            # workspace's half is leg-gate-rust below
+            rust)   make tables-rust-fixedform tables-rust-versioning-t12 RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
             cs)     make tables-cs-leg-debug tables-cs-versioning ;;
             java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
@@ -868,7 +873,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, wire-fuzz, packages, gates ]
+        part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -906,12 +911,14 @@ jobs:
           set -euo pipefail
           a="conformance-negative-control-lobster conformance-negative-control-lobster-walk"
           b="conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle"
+          c="conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-message"
           w="tables-lobster-wire-fuzz"
           p="test-lobster-packages"
           nightly="tables-lobster-fuzz tables-lobster-fuzz-negative-control"
           case "$PART" in
             conformance-a) make toolchain-lobster $a ;;
             conformance-b) make toolchain-lobster $b ;;
+            conformance-c) make toolchain-lobster $c ;;
             wire-fuzz)     make toolchain-lobster $w ;;
             packages)      make $p ;;
             gates)
@@ -921,7 +928,7 @@ jobs:
               [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
               rest=""
               for t in $all; do
-                case " $a $b $w $p $nightly " in *" $t "*) continue ;; esac
+                case " $a $b $c $w $p $nightly " in *" $t "*) continue ;; esac
                 rest="$rest $t"
               done
               echo "gates:$rest"
@@ -929,6 +936,54 @@ jobs:
               make $rest ;;
             *) echo "::error::leg-gate-lobster has no part '$PART'"; exit 1 ;;
           esac
+
+  # THE RUST LEG'S VERSIONING PROBES, A ROW OF THEIR OWN. As one leg-gate row
+  # the Rust leg ran the C++ oracle's build (16 s), tables-rust-fixedform in
+  # debug and release (26 s) and both halves of tables-rust-versioning one
+  # after another, and the fleet killed it at two minutes with the versioning
+  # half a minute in (run 43608353108). The leg-gate rust arm keeps the fixed
+  # form and tables-rust-versioning-t12; this job is the other half,
+  # tables-rust-versioning-probes: the probe workspace's one cargo build and
+  # run, in parallel with it.
+  leg-gate-rust:
+    needs: plan
+    if: contains(needs.plan.outputs.legs, '"rust"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    name: fixed form + versioning (rust probes)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ reference dumps build/fixedform-corpus, the probes' oracle, and
+      # the probes link the Rust runtime beside this tree
+      - name: Check out the C++ serialize reference and the Rust runtime (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: runner.environment == 'github-hosted'
+
+      - name: the rust leg's versioning probes
+        run: |
+          set -euo pipefail
+          make tables-rust-versioning-probes RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
   # THE SQUIRREL CARD LEG, IN ROWS. The leg-gate squirrel arm keeps
   # dist-squirrel and cards-squirrel-test (row-seconds test 93). These two

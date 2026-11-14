@@ -39,8 +39,8 @@ var luaModuleKeys = map[string][]string{
 	"descriptor.lua": {
 		"F32_EXP", "F64_EXP", "ID_TABLE_BOUND", "by_id", "bytes_less", "check_defaults", "count_of", "cyclic", "deprecated_variant", "field",
 		"fingerprint", "finite", "fresh", "guard_holds", "keyed", "list_layout", "map_entries", "number_nodes",
-		"pointer_reachable", "prepare", "record_size", "refuse_deprecated", "refuse_non_finite", "region_align",
-		"cyclic", "reset", "reset_elem", "seal",
+		"pointer_reachable", "prepare", "record_size", "refuse_deprecated", "refuse_invalid", "refuse_non_finite", "refuse_write", "region_align",
+		"cyclic", "reset", "reset_elem", "seal", "text_ok",
 	},
 	"fixed.lua":         {"load", "measure", "read", "save", "write"},
 	"json.lua":          {"FromJson", "ToJson", "fromJsonWalk"},

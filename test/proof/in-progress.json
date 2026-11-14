@@ -1,0 +1,492 @@
+{
+  "note": "Ports still being built (tools/matrix proof). A cell of a port listed here that would be red is reported as in progress with its reason and the port's issue, and does not hold the proof red. A listed port whose column has no cell left in progress is at parity: the proof refuses until it is removed from this list, and from then on it is gated like every other port. The maintainer's ruling, 2026-11-14: a port still being built must not hold the proof red, and a port at parity must.",
+  "ports": [
+    {
+      "lang": "python",
+      "issue": "#381",
+      "plan": "docs/PORT-PYTHON.md"
+    }
+  ],
+  "relaxed": [
+    {
+      "row": "surface cook-write",
+      "lang": "java",
+      "slug": "relax/proof-cook-write-java"
+    },
+    {
+      "row": "cases graphdemo",
+      "lang": "elixir",
+      "slug": "relax/proof-graphdemo-elixir"
+    },
+    {
+      "row": "porting I15",
+      "lang": "elixir",
+      "slug": "relax/proof-i15-elixir"
+    },
+    {
+      "row": "porting I3",
+      "lang": "luau",
+      "slug": "relax/proof-i3-luau"
+    },
+    {
+      "row": "porting I3",
+      "lang": "moo",
+      "slug": "relax/proof-i3-moo"
+    },
+    {
+      "row": "porting I3",
+      "lang": "squirrel",
+      "slug": "relax/proof-i3-squirrel"
+    },
+    {
+      "row": "cases backenddemo",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases messagedemo",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases scalars",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblm1",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblm2",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblp1",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblp3",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblr1",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblr2",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblv1",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases tblv2",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases vocab9demo",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "cases vocabdemo",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "surface json-read",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "surface json-write",
+      "lang": "java",
+      "slug": "relax/proof-json-java"
+    },
+    {
+      "row": "surface json-read",
+      "lang": "elixir",
+      "slug": "relax/proof-json-read-elixir"
+    },
+    {
+      "row": "cases backenddemo",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases blobdemo",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases featurewitnesses",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases messagedemo",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases scalars",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblm1",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblm2",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblp1",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblp3",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblr1",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblr2",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblv1",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tblv2",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases vocab9demo",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases vocabdemo",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "surface json-read",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "surface json-write",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "surface report",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "surface wire",
+      "lang": "rust",
+      "slug": "relax/proof-rust-fixed-roots"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "c",
+      "slug": "relax/proof-write-refusal-c"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "c",
+      "slug": "relax/proof-write-refusal-c"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "c",
+      "slug": "relax/proof-write-refusal-c"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "c",
+      "slug": "relax/proof-write-refusal-c"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "cpp",
+      "slug": "relax/proof-write-refusal-cpp"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "cpp",
+      "slug": "relax/proof-write-refusal-cpp"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "cpp",
+      "slug": "relax/proof-write-refusal-cpp"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "cpp",
+      "slug": "relax/proof-write-refusal-cpp"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "cs",
+      "slug": "relax/proof-write-refusal-cs"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "cs",
+      "slug": "relax/proof-write-refusal-cs"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "cs",
+      "slug": "relax/proof-write-refusal-cs"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "cs",
+      "slug": "relax/proof-write-refusal-cs"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "cs",
+      "slug": "relax/proof-write-refusal-cs"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "dart",
+      "slug": "relax/proof-write-refusal-dart"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "dart",
+      "slug": "relax/proof-write-refusal-dart"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "dart",
+      "slug": "relax/proof-write-refusal-dart"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "dart",
+      "slug": "relax/proof-write-refusal-dart"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "dart",
+      "slug": "relax/proof-write-refusal-dart"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "elixir",
+      "slug": "relax/proof-write-refusal-elixir"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "elixir",
+      "slug": "relax/proof-write-refusal-elixir"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "elixir",
+      "slug": "relax/proof-write-refusal-elixir"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "elixir",
+      "slug": "relax/proof-write-refusal-elixir"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "elixir",
+      "slug": "relax/proof-write-refusal-elixir"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "goose",
+      "slug": "relax/proof-write-refusal-goose"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "goose",
+      "slug": "relax/proof-write-refusal-goose"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "goose",
+      "slug": "relax/proof-write-refusal-goose"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "goose",
+      "slug": "relax/proof-write-refusal-goose"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "goose",
+      "slug": "relax/proof-write-refusal-goose"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "java",
+      "slug": "relax/proof-write-refusal-java"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "java",
+      "slug": "relax/proof-write-refusal-java"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "java",
+      "slug": "relax/proof-write-refusal-java"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "java",
+      "slug": "relax/proof-write-refusal-java"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "java",
+      "slug": "relax/proof-write-refusal-java"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "luau",
+      "slug": "relax/proof-write-refusal-luau"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "luau",
+      "slug": "relax/proof-write-refusal-luau"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "luau",
+      "slug": "relax/proof-write-refusal-luau"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "luau",
+      "slug": "relax/proof-write-refusal-luau"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "luau",
+      "slug": "relax/proof-write-refusal-luau"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "moo",
+      "slug": "relax/proof-write-refusal-moo"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "moo",
+      "slug": "relax/proof-write-refusal-moo"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "moo",
+      "slug": "relax/proof-write-refusal-moo"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "moo",
+      "slug": "relax/proof-write-refusal-moo"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "moo",
+      "slug": "relax/proof-write-refusal-moo"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "rust",
+      "slug": "relax/proof-write-refusal-rust"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "rust",
+      "slug": "relax/proof-write-refusal-rust"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "rust",
+      "slug": "relax/proof-write-refusal-rust"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "rust",
+      "slug": "relax/proof-write-refusal-rust"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "rust",
+      "slug": "relax/proof-write-refusal-rust"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "squirrel",
+      "slug": "relax/proof-write-refusal-squirrel"
+    },
+    {
+      "row": "surface write-refusal-fixed",
+      "lang": "squirrel",
+      "slug": "relax/proof-write-refusal-squirrel"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "squirrel",
+      "slug": "relax/proof-write-refusal-squirrel"
+    },
+    {
+      "row": "surface write-refusal-message",
+      "lang": "squirrel",
+      "slug": "relax/proof-write-refusal-squirrel"
+    },
+    {
+      "row": "surface write-refusal",
+      "lang": "squirrel",
+      "slug": "relax/proof-write-refusal-squirrel"
+    }
+  ]
+}

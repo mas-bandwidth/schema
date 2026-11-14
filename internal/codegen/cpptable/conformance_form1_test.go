@@ -33,13 +33,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// cppFramingStrictRows are the form-1 rows that must refuse and that only
-// the strict walk refuses: the negative control below is held to turning
-// exactly these back into reads when the walk is taken out of the driver.
-// The first ten are the rows the walk was written for; the last four
-// (8ad2632bc, docs/LAYERS/1-framing.md L3 and L6: bytes inside L past a
-// count's elements, or after a node record's terminator) came to the
-// manifest after it, and the walk refuses them where the readers read on.
+// cppFramingStrictRows are the form-1 rows that must refuse and did not:
+// the negative control below is held to turning exactly these back into
+// reads when the strict walk is taken out of the driver. The four rows of
+// bytes inside L past a count and after a record terminator (8ad2632bc) are
+// refused by the same walk.
 var cppFramingStrictRows = []string{
 	"array_L0_inert",
 	"array_L1_inert",
@@ -47,8 +45,8 @@ var cppFramingStrictRows = []string{
 	"frame_repeat_last_wins",
 	"frame_unknown_id_length",
 	"frame_unknown_id_reference",
-	"keyed_L1_inert",
 	"keyed_slots_past_count",
+	"keyed_L1_inert",
 	"map_L1_inert",
 	"map_entries_past_count",
 	"node_index_null",
@@ -205,7 +203,7 @@ func cppConformanceRoot(t *testing.T) string {
 
 // TestCppDriverRefusesFormOneFraming holds the built C++ conformance
 // driver to the whole framing battery: every damaged form-1 row refuses
-// (the ten strict rows among them), and every readable row reads with its
+// (the strict rows among them), and every readable row reads with its
 // value and its write-back wire.
 func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 	root := cppConformanceRoot(t)

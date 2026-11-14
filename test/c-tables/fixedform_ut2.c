@@ -100,7 +100,7 @@ void fixed_ut2_shared_lane_control( void )
         tblut2_ut_root_reset( &read );
         memset( read.pick.as.b.label, 'X', sizeof( read.pick.as.b.label ) );
         memset( &r, 0, sizeof( r ) );
-        tblut2_table_fixed_run( plan, tblut2_ut_root_fixed_plan_count, tblut2_ut_root_fixed_plan_guarded, body, (uint8_t *) &read, &r, tblut2_ut_root_fixed_guards );
+        tblut2_table_fixed_run( plan, tblut2_ut_root_fixed_plan_count, tblut2_ut_root_fixed_plan_guarded, body, (uint8_t *) &read, &r, tblut2_ut_root_fixed_guards, NULL );
         whole = read.pick.as.b.label_length == 8 && memcmp( read.pick.as.b.label, "eighteen", 9 ) == 0;
         if ( lanes == 2 ) { fixed_check( whole, "C two lanes: the full-length string reads terminated" ); }
         else { fixed_check( !whole, "C NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" ); }
