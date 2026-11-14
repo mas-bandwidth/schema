@@ -26,6 +26,7 @@ package elixirtable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -1552,7 +1553,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 			for id := range r.ids {
 				ids = append(ids, id)
 			}
-			sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+			slices.Sort(ids)
 			for _, id := range ids {
 				rows = append(rows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.what, id))
 			}
