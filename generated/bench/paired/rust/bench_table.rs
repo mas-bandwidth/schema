@@ -330,8 +330,7 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -573,8 +572,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -688,8 +686,7 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -782,8 +779,7 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -876,8 +872,7 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
