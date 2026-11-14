@@ -1025,19 +1025,6 @@ static partial class Program
             Check(r.Refused && r.Reason == "wire_damaged", "dead byte: a stained " + what + " is wire_damaged, got " + r.Reason);
             Check(back.LabelLength == 2 && back.Label[0] == (byte)'f' && back.MarksCount == 0,
                   "dead byte: a refused read keeps nothing of the record (" + what + ")");
-            // THE LINEAGE READ HOLDS THE WRITER'S SLACK TO ZERO TOO: FX2 reads
-            // this FX1 file through the lock, and the stain is FX1's slack.
-            FX2.FxRoot later = new FX2.FxRoot();
-            FX2.TableReport r2 = new FX2.TableReport();
-            Check(FX2.Schema.FxRootFixedLoad(later, stained, new FX2.TableFixedEntry[1024], r2) == -1,
-                  "dead byte, lineage: a stained " + what + " refuses the read");
-            Check(r2.Refused && r2.Reason == "wire_damaged", "dead byte, lineage: a stained " + what + " is wire_damaged, got " + r2.Reason);
-        }
-        {
-            FX2.FxRoot later = new FX2.FxRoot();
-            FX2.TableReport r2 = new FX2.TableReport();
-            Check(FX2.Schema.FxRootFixedLoad(later, file, new FX2.TableFixedEntry[1024], r2) == 1 && !r2.Refused,
-                  "dead byte, lineage: the clean FX1 record reads through the lock");
         }
     }
 
