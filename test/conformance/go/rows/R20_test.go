@@ -1,15 +1,17 @@
 package main
 
-// R20 — §21.2's landing rules, the Go leg (docs/SPEC-TABLES.md:16452).
+// R20 — §21.2's landing rules, the Go leg (docs/SPEC-TABLES.md §21.2).
 //
-// The law:
+// The law (docs/SPEC-TABLES.md §21.2, "What a newer reader does with an
+// older file"):
 //
-//	"A field the reader added: its declared default. A field the reader
-//	 deprecated: dropped, counted once under `unknown` per plan. A narrower
-//	 integer or float: widened exactly, `widened` counts. A shorter array or
-//	 string: landed, the reader's slack is template zeros. An older enum: its
-//	 ordinals are the reader's, the list being a prefix. Everything else:
-//	 copied."                              (docs/SPEC-TABLES.md:16452-16455)
+//	"A field the reader added: its declared default. ... In the FIXED FORM,
+//	 §3.4 takes precedence: the writer emits the deprecated field's declared
+//	 default into its retained slot and the reader yields that default
+//	 whatever the record carries. A narrower integer or float: widened
+//	 exactly, `widened` counts. ... A shorter `[..N]`: the writer's elements
+//	 and count land, and the slack past the count is zeros, as is a text
+//	 field's slack past its length ..."
 //
 // WHERE THIS FILE PROVES IT. §21.2's "per plan" / "ordinals" / "template"
 // vocabulary is the FIXED form's, and a fixed-class root reads form 3 only
@@ -20,12 +22,12 @@ package main
 // is §21.2's "newer reader, older file"; the lineage is the lock's, exactly
 // as a production build hands it to internal/codegen/gotable (§5.2).
 //
-// ONE CLAUSE IS GOVERNED ELSEWHERE, and this file asserts the governed law
-// (docs/FIXED-FORM-BILL-READS-BACKWARD.md:328-331, ruling 12.3 #3): a
-// deprecated field "keeps its slot and is landed by every plan, identity
-// included; nothing is dropped and `unknown` does not move for it." That
-// supersedes §21.2's "dropped, counted once under unknown per plan". The
-// pair's old schema predates the deprecation, so its value must still land.
+// THE DEPRECATED-FIELD CLAUSE is the FIXED form's sentence of §21.2 above,
+// which is what the generated Go reader implements (internal/codegen/gotable
+// fixedform.go fixedDeprecatedDefault): the deprecated slot reads its declared
+// default whatever the old record carries, and `unknown` does not move for it.
+// The VARIABLE form's sentence (read into its slot on every plan, bill 12.3
+// #3) is not this row's surface.
 //
 // The old generation's file is written by its own writer and read by the new
 // generation's FixedLoad, the `one()` shape of test/conformance/cpp/rows/
@@ -154,6 +156,7 @@ func r20FixedProbe(t *testing.T, row, probe string) {
 // ---------------------------------------------------------------------------
 
 func TestRowR20AddedFieldDefault(t *testing.T) {
+	t.Parallel() // each probe builds two generated modules in its own temp tree
 	r20FixedProbe(t, "field_append", `package rowfixprobe
 
 import (
@@ -196,6 +199,7 @@ func TestProbe(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRowR20DroppedFieldUnknown(t *testing.T) {
+	t.Parallel() // each probe builds two generated modules in its own temp tree
 	r20FixedProbe(t, "field_deprecate", `package rowfixprobe
 
 import (
@@ -317,6 +321,7 @@ func TestRowR20SameWidthBaseline(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRowR20ShortStringSlackZeros(t *testing.T) {
+	t.Parallel() // each probe builds two generated modules in its own temp tree
 	r20FixedProbe(t, "string_grow", `package rowfixprobe
 
 import (
@@ -420,6 +425,7 @@ func TestProbe(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRowR20VocabularyIdentity(t *testing.T) {
+	t.Parallel() // each probe builds two generated modules in its own temp tree
 	r20FixedProbe(t, "enum_append", `package rowfixprobe
 
 import (
