@@ -237,12 +237,14 @@ static int surface_wire( const char * out )
         if ( !codec->load( value, wire, (int64_t) bytes, &report ) )
         {
             /* AN INSTANCE THE WIRE READ REFUSES (FORMAT.md, `wire-refused`):
-               a blob named from two slots (docs/SPEC-TABLES.md §2.5), which no
-               writer writes, so its answer is the refusal and no bytes */
+               a blob named from two slots (docs/SPEC-TABLES.md §2.5), or a
+               fixed record with a dead byte that is not zero (§3.4), which no
+               writer writes, so its answer is the refusal and no bytes. A
+               refusal of any other instance is the same answer, and the
+               harness holds it against the row's flag, as the C++ driver's. */
             free( wire );
-            if ( report.blob_shared > 0 ) { if ( !spill_absent_reason( out, f->field[1], "blob_shared" ) ) { return 1; } continue; }
-            fprintf( stderr, "driver: %s: load refused %s\n", f->field[1], f->field[4] );
-            return 1;
+            if ( !spill_absent_reason( out, f->field[1], report.blob_shared > 0 ? "blob_shared" : "refused" ) ) { return 1; }
+            continue;
         }
         free( wire );
         if ( !save_into( codec, value, out, f->field[1] ) ) { fprintf( stderr, "driver: %s: the write-back refused\n", f->field[1] ); return 1; }
