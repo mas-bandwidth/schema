@@ -2204,7 +2204,7 @@
     {
       "name": "elixir-nightly-conformance",
       "when": "nightly",
-      "why": "the Elixir conformance harness's controls, each of which rebuilds the whole corpus through a sabotaged compiler (walk, shared, label, ids, arm, order, mapsort and framing; framing does two builds) and runs the harness's Elixir leg against it. They are structurally identical to the alloc/soak/block controls that measure 95-173 s on the fleet runner, so every one of them exceeds the 75 s control budget the per-commit rule leaves after ~30 s of setup and shared build, and none can be split further by grouping. They moved from the pull request to the nightly tier on 2026-11-09 for that reason; the harness's cheap sibling surfaces (cards, packets, keyed, cook-blob, versioning, fixed-form) remain per commit, and no control was dropped.",
+      "why": "the Elixir conformance harness's controls, each of which rebuilds the whole corpus through a sabotaged compiler (walk, shared, label, ids, arm, order, mapsort, framing and the three write-refusal surfaces; framing does two builds) and runs the harness's Elixir leg against it. They are structurally identical to the alloc/soak/block controls that measure 95-173 s on the fleet runner, so every one of them exceeds the 75 s control budget the per-commit rule leaves after ~30 s of setup and shared build, and none can be split further by grouping. They moved from the pull request to the nightly tier on 2026-11-09 for that reason; the harness's cheap sibling surfaces (cards, packets, keyed, cook-blob, versioning, fixed-form) remain per commit, and no control was dropped.",
       "targets": [
         "conformance-negative-control-elixir-walk",
         "conformance-negative-control-elixir-shared",
@@ -2213,7 +2213,10 @@
         "conformance-negative-control-elixir-arm",
         "conformance-negative-control-elixir-order",
         "conformance-negative-control-elixir-mapsort",
-        "conformance-negative-control-elixir-framing"
+        "conformance-negative-control-elixir-framing",
+        "conformance-negative-control-elixir-write-refusal",
+        "conformance-negative-control-elixir-write-refusal-fixed",
+        "conformance-negative-control-elixir-write-refusal-message"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
