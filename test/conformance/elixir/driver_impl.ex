@@ -983,14 +983,7 @@ defmodule Driver do
   # reports.txt spells as a read with malformed set. Any other named refusal
   # (missing_required, count_over_extent_cap, non_finite_float) is refused.
   defp report_line(mod, root, wire) do
-    loaded =
-      if function_exported?(mod, :strict_load, 2) do
-        mod.strict_load(root, File.read!(wire))
-      else
-        mod.load(root, File.read!(wire))
-      end
-
-    case loaded do
+    case mod.load(root, File.read!(wire)) do
       {:ok, value, _report} ->
         {"read\n", value}
 

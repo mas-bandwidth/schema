@@ -1407,7 +1407,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
 
-  def load(table, data) when is_binary(data) do
+  # THE ONE READ (docs/plans/strict-only.md; docs/SPEC-TABLES.md §4): a load
+  # returns the whole value or refuses the whole load, and nothing between.
+  def load(table, data) when is_binary(data), do: variable_read(table, data)
+
+  # variable_load is the same read with a declared fixed root's own clauses
+  # passed over: the root is read as the variable class, its form-1 wire
+  # included. The conformance framing battery reads through it.
+  def variable_load(table, data) when is_binary(data), do: variable_read(table, data)
+
+  defp variable_read(table, data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
@@ -1416,7 +1425,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:ok, body, ids} ->
         {fields, nodes, terminated} =
-          case entries(body, ids, desc, desc.variable) do
+          case entries(body, ids, desc, true) do
             {:ok, fields, nodes} -> {fields, nodes, true}
             {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
           end
@@ -2055,7 +2064,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
-            if strict_flag?() and payload != :unframed,
+            if payload != :unframed,
               do: strict_unknown!(kind, payload, nodes, ids)
 
             if payload == :unframed,
@@ -2063,7 +2072,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               else: {:cont, {:cont, value, report}}
 
           f ->
-            if strict_flag?() and Map.has_key?(value, f.name), do: throw(:wire_damaged)
+            if Map.has_key?(value, f.name), do: throw(:wire_damaged)
 
             cond do
               payload == :unframed ->
@@ -2083,10 +2092,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
-                  {:cont, :inert, report} ->
-                    if strict_flag?(), do: throw(:wire_damaged)
-                    {:cont, {:cont, inert_required_field(f, value), report}}
-
                   {:cont, v, report} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report}}
 
@@ -2127,21 +2132,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
-
-  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
-  # array, map or keyed body too short to carry its own header, fewer than two
-  # bytes, decodes nothing, counts nothing, and the field keeps the value it
-  # has. The field rode, so an optional one is present: empty, when no earlier
-  # occurrence set it.
-  defp inert_field(f, value) do
-    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
-      do: Map.put(value, f.name, inert_empty(f)),
-      else: value
-  end
-
-  defp inert_empty(%{t: :bytes}), do: <<>>
-  defp inert_empty(%{t: :list}), do: []
-  defp inert_empty(_f), do: %{}
 
   defp find_field(desc, id) do
     Enum.find(desc.fields, fn f -> f.id == id end)
@@ -2290,8 +2280,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # declared size clamps.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
+      # a body too short to carry its own header is damage (§3, §4)
       {_len, arr} when byte_size(arr) < 2 ->
-        {:cont, :inert, report}
+        {:cont, <<>>, throw(:wire_damaged)}
 
       {_len, <<actual, count_rest::binary>>} ->
         case leb(count_rest) do
@@ -2331,9 +2322,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:cont, :map_key_mismatch, report} ->
         {:cont, %{}, report}
 
-      {:cont, :inert, report} ->
-        {:cont, :inert, report}
-
       {:cont, entries, report} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
         keys = Enum.map(entries, &Map.get(&1, "key", kf.default))
@@ -2358,14 +2346,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): the element kind, the
   # pair count, then (key reference, L, element) pairs. A key this reader cannot
   # name counts unknown and its element is skipped by its L.
-  # A body of fewer than two bytes is inert (§4); a foreign element kind is
+  # A body of fewer than two bytes is damage (§3, §4); a foreign element kind is
   # a kind mismatch; a count that does not complete
   # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
   # the parent, it is a count the body cannot cover).
   defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
-        {:cont, :inert, report}
+        {:cont, %{}, throw(:wire_damaged)}
 
       {_len, <<ek, rest::binary>>} ->
         case leb(rest) do
@@ -2387,8 +2375,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} when byte_size(arr) < 2 ->
-        # a body too short to carry its header is inert (§4, H2)
-        {:cont, :inert, report}
+        # a body too short to carry its header is damage (§3, §4)
+        {:cont, [], throw(:wire_damaged)}
 
       {_len, <<elem_kind, count_rest::binary>>} ->
         case leb(count_rest) do
@@ -2405,7 +2393,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+              reader = %{f | elem_kind: elem_kind}
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -2614,7 +2602,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
-      {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
       {:cont, v, report} -> {:cont, {name, v}, report}
       {:halt, v, report} -> {:halt, {name, v}, report}
     end
@@ -2806,12 +2793,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
-    # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and the rest of the L
-    # is the writer's wider slots, skipped with the body (§2.9, §4).
-    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
-      do: throw(:wire_damaged)
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
+    # Bytes left inside an array's L after its elements are damage (§3, §4),
+    # a widened element kind's included: it reads at the wire kind's width.
+    if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
   end
@@ -3197,11 +3182,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: rest == <<>> or crosses_l?(rest, i + 1)
 
   defp crosses_l?(_bin, _i), do: false
-
-  defp inert_required_field(%{required: true} = f, value),
-    do: Map.put_new(value, f.name, f.default)
-
-  defp inert_required_field(f, value), do: inert_field(f, value)
 
   defp malformed_report, do: throw(:wire_damaged)
 
@@ -6432,9 +6412,6 @@ const variableRetainSource = `
 
               kind == f.kind ->
                 case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
-                  {:cont, :inert, report, retain} ->
-                    {:cont, {:cont, inert_required_field(f, value), report, retain}}
-
                   {:cont, v, report, retain} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report, retain}}
 
@@ -6467,18 +6444,18 @@ const variableRetainSource = `
     desc.name <> ".0x" <> hex
   end
 
-  # Inert headers preserve both the prior value and its retained records.
+  # A body too short to carry its own header is damage (§3, §4).
   defp read_payload_retain(
          %{t: t},
          <<len, body::binary>>,
          _nodes,
          _ids,
-         report,
-         retain,
+         _report,
+         _retain,
          _path
        )
        when t in [:list, :map, :keyed, :bytes] and len < 2 and byte_size(body) == len,
-       do: {:cont, :inert, report, retain}
+       do: throw(:wire_damaged)
 
   # an array of tables: element i is the step pair {ordinal, i}. A later
   # occurrence of the field resets the earlier one's records (§6.6).
@@ -6952,7 +6929,6 @@ const variableRetainSource = `
     {nodes, ids, report, retain} = c
 
     case read_payload_retain(a, framed, nodes, ids, report, retain, arm_path) do
-      {:cont, :inert, report, retain} -> {:cont, {name, inert_empty(a)}, report, retain}
       {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
     end
   end

@@ -31,24 +31,17 @@ func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 		save.WriteString("  # variable roots, including one that holds a fixed table.\n\n")
 		save.WriteString(fixedClassHelpers(u))
 	}
-	load.WriteString("  # variable_load is the strict variable-form read for the framing\n")
-	load.WriteString("  # vectors; strict_load is that read beside the fixed roots' own form.\n\n")
-	load.WriteString("  def variable_load(table, data) when is_binary(data) do\n")
-	load.WriteString("    Process.put(:elixir_strict_framing, true)\n\n")
-	load.WriteString("    try do\n")
-	load.WriteString("      variable_load_impl(table, data)\n")
-	load.WriteString("    after\n")
-	load.WriteString("      Process.delete(:elixir_strict_framing)\n")
-	load.WriteString("    end\n")
-	load.WriteString("  end\n\n")
-	for _, st := range roots {
-		fmt.Fprintf(&load, "  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name)
+	load.WriteString(strictHelpers)
+	// THE ONE READ (docs/plans/strict-only.md; docs/SPEC-TABLES.md §4): load/2
+	// returns the whole value or refuses the whole load. A declared fixed root
+	// with no file form refuses every file wire (§3.4). Its clauses sit with
+	// the other load clauses, just before the variable read's own.
+	if len(noFile) > 0 {
+		load.WriteString("  # A declared fixed root past the fixed-form ceiling has no file form.\n\n")
 	}
 	for _, st := range noFile {
-		fmt.Fprintf(&load, "  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name)
+		fmt.Fprintf(&load, "  def load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name)
 	}
-	load.WriteString("  def strict_load(table, data) when is_binary(data), do: variable_load(table, data)\n\n")
-	load.WriteString(strictHelpers)
 	if len(roots) > 0 {
 		load.WriteString("  # A declared fixed root is read as form 3, one record or a refusal.\n")
 		load.WriteString("  # Form 1 is previous_form: the form byte is named and nothing is decoded.\n\n")
@@ -62,32 +55,10 @@ func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 	if len(roots) > 0 {
 		runtime = insertOnce(runtime, "  # ---- the write side (docs/SPEC-TABLES.md §3) ----\n", save.String())
 	}
-	runtime = insertOnce(runtime, "  # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----\n", load.String())
-	if strings.Count(runtime, variableLoadEnd) != 1 {
-		panic("elixirtable: variable load clause not found exactly once")
-	}
-	runtime = strings.Replace(runtime, variableLoadEnd, variableLoadEnd+"\n"+variableLoadImpl(runtime), 1)
-	return runtime
+	return insertOnce(runtime, "  # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----\n", load.String())
 }
 
-const variableLoadHead = "  def load(table, data) when is_binary(data) do\n"
-
-const variableLoadEnd = "    :wire_damaged ->\n      {:error, :malformed, reasoned(empty_report(), :malformed)}\n  end\n"
-
-func variableLoadImpl(runtime string) string {
-	if strings.Count(runtime, variableLoadHead) != 1 || strings.Count(runtime, variableLoadEnd) != 1 {
-		panic("elixirtable: variable load clause not found exactly once")
-	}
-	start := strings.Index(runtime, variableLoadHead)
-	end := strings.Index(runtime, variableLoadEnd) + len(variableLoadEnd)
-	impl := strings.Replace(runtime[start:end], variableLoadHead, "  defp variable_load_impl(table, data) when is_binary(data) do\n", 1)
-	impl = strings.Replace(impl, "case entries(body, ids, desc, desc.variable) do", "case entries(body, ids, desc, true) do", 1)
-	return impl + "\n"
-}
-
-const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
-
-  defp strict_unknown!(13, payload, _nodes, ids) do
+const strictHelpers = `  defp strict_unknown!(13, payload, _nodes, ids) do
     case leb(payload) do
       {l, body} when byte_size(body) >= l ->
         case entries(binary_part(body, 0, l), ids, false, :nested) do
