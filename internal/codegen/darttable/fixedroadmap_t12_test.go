@@ -163,11 +163,13 @@ fixed table Root
 		}
 	})
 
-	// dart/W4 "read slack unspecified" — §3.1: "Slack is UNSPECIFIED on read
-	// and not a refusal: a reader validates the USED UNITS only, and non-zero
-	// slack is not `malformed`, not a refusal, and moves no counter." Poison
-	// the unused tail of a text(8) field past its used length; the read still
-	// succeeds cleanly.
+	// dart/W4 "read slack" — THE OWNER'S RULING OF 2026-11-10 ("Every dead
+	// byte", "Be strict") replaced §3.1's old "slack is unspecified on read":
+	// every dead byte is ZERO, and a reader refuses the whole record when one
+	// is not (docs/SPEC-TABLES.md §3.4, THE SLACK RULE; docs/rulings.json
+	// fixed-dead-bytes-zero). Poison the unused tail of a text(8) field past
+	// its used length; the read refuses wire_damaged, lands nothing and moves
+	// no counter. The same file with clean slack reads.
 	t.Run("dart/W4", func(t *testing.T) {
 		t.Parallel()
 		t12Capability(t, `package probe
@@ -184,22 +186,29 @@ fixed table Root
   values[0].t[1] = 0x42;
   final wrote = t.rootFixedSave(values, 1, bytes);
   check(wrote == bytes.length, 'the writer wrote $wrote of ${bytes.length} bytes');
-  final body = t.rootFixedHeaderBytes + 8;
-  for (var i = body + 10; i < body + 16; i++) {
-    bytes[i] = 0xA5;
-  }
   final plan = t.rootFixedNewPlan();
   final rep = t.TableFixedReport();
   final back = [t.Root()];
   t.initRoot(back[0]);
-  final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
-  check(n == 1, 'the dirty-slack file must read: n=$n ${rep.refused}');
-  check(rep.refused == 0,
-      'non-zero slack is not a refusal and moves no counter: '
-      '${rep.refused}');
+  final clean = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
+  check(clean == 1 && rep.refused == 0,
+      'the clean-slack file must read: n=$clean ${rep.refused}');
   check(back[0].a == 7 && back[0].tLength == 2 && back[0].t[0] == 0x41 &&
       back[0].t[1] == 0x42,
       'the used units landed: a=${back[0].a} len=${back[0].tLength}');
+  final body = t.rootFixedHeaderBytes + 8;
+  for (var i = body + 10; i < body + 16; i++) {
+    bytes[i] = 0xA5;
+  }
+  t.initRoot(back[0]);
+  final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
+  check(n == -1, 'the dirty-slack file must refuse: n=$n ${rep.refused}');
+  check(rep.refused == t.TableFixedRefusal.damaged &&
+      rep.unknown == 0 && rep.widened == 0,
+      'non-zero slack refuses wire_damaged and moves no counter: '
+      '${rep.refused}');
+  check(back[0].a == 0 && back[0].tLength == 0,
+      'nothing landed: a=${back[0].a} len=${back[0].tLength}');
 `, 1)
 	})
 

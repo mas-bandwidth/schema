@@ -315,93 +315,93 @@ final Int32List fixedTableFixedCover = Int32List.fromList(const <int>[
 // dart format on
 const int fixedTableFixedCoverCount = 1;
 
-/// MY SIDE of the layout, five lanes per entry: the storage facts a layout
+/// MY SIDE of the layout, six lanes per entry: the storage facts a layout
 /// entry cannot carry. In C++ these are offsetof rows; the reader's own
 /// storage in Dart is the canonical image, so they are its offsets.
 // dart format off
 final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
-  0, 0, 0, 0, 0, // 0 FixedTable
-  0, 0, 0, 0, 0, // 1 value
-  0, 0, 0, 0, 0, // 2 sequence
-  4, 0, 0, 0, 0, // 3 ack_sequence
-  8, 0, 0, 0, 0, // 4 ack_bits
-  12, 0, 0, 0, 0, // 5 session_id
-  20, 0, 0, 0, 0, // 6 client_id
-  24, 0, 0, 0, 0, // 7 nonce
-  32, 0, 0, 0, 0, // 8 world_time
-  40, 0, 0, 0, 0, // 9 frame_tick
-  48, 0, 0, 0, 0, // 10 server_time
-  56, 51, 52, 1, 0, // 11 entities
-  0, 0, 0, 0, 0, // 12 element
-  0, 0, 0, 0, 0, // 13 entity_id
-  4, 0, 0, 0, 0, // 14 pos_x
-  8, 0, 0, 0, 0, // 15 pos_y
-  12, 0, 0, 0, 0, // 16 pos_z
-  16, 0, 0, 0, 0, // 17 yaw
-  20, 0, 0, 0, 0, // 18 pitch
-  24, 0, 0, 0, 0, // 19 vel_x
-  28, 0, 0, 0, 0, // 20 vel_y
-  32, 0, 0, 0, 0, // 21 vel_z
-  36, 0, 0, 0, 0, // 22 health
-  40, 0, 0, 0, 0, // 23 weapon
-  0, 0, 0, 0, 0, // 24 Fists
-  0, 0, 0, 0, 0, // 25 Pistol
-  0, 0, 0, 0, 0, // 26 Shotgun
-  0, 0, 0, 0, 0, // 27 Rifle
-  0, 0, 0, 0, 0, // 28 Sniper
-  0, 0, 0, 0, 0, // 29 Smg
-  0, 0, 0, 0, 0, // 30 Rocket
-  0, 0, 0, 0, 0, // 31 Grenade
-  0, 0, 0, 0, 0, // 32 Plasma
-  0, 0, 0, 0, 0, // 33 Railgun
-  0, 0, 0, 0, 0, // 34 Flamer
-  0, 0, 0, 0, 0, // 35 Mine
-  0, 0, 0, 0, 0, // 36 Turret
-  0, 0, 0, 0, 0, // 37 Drone
-  0, 0, 0, 0, 0, // 38 Repair
-  41, 0, 0, 0, 0, // 39 damage
-  49, 0, 0, 0, 0, // 40 moving
-  50, 0, 0, 0, 0, // 41 firing
-  468, 8, 464, 1, 0, // 42 stats
-  0, 0, 0, 0, 0, // 43 element
-  0, 0, 0, 0, 0, // 44 stat_id
-  4, 0, 0, 0, 0, // 45 delta
-  1108, 0, 1108, 0, 0, // 46 game_event
-  1, 0, 0, 0, 0, // 47 hit
-  0, 0, 0, 0, 0, // 48 target_id
-  4, 0, 0, 0, 0, // 49 damage
-  8, 0, 0, 0, 0, // 50 hit_kind
-  12, 0, 0, 0, 0, // 51 crit
-  1, 0, 0, 0, 0, // 52 chat
-  0, 0, 0, 0, 0, // 53 channel
-  4, 0, 0, 0, 0, // 54 speaker
-  1, 0, 0, 0, 0, // 55 pickup
-  0, 0, 0, 0, 0, // 56 item_id
-  4, 0, 0, 0, 0, // 57 amount
-  1122, 1, 0, 0, 0, // 58 loadout
-  0, 0, 0, 0, 0, // 59 element
-  1126, 0, 1130, 0, 1, // 60 player_name
-  1149, 1, 1145, 1, 3, // 61 payload
-  0, 0, 0, 0, 0, // 62 u8
-  1165, 0, 0, 0, 0, // 63 aim_x
-  1169, 0, 0, 0, 0, // 64 aim_y
-  1173, 0, 0, 0, 0, // 65 aim_z
-  1177, 0, 0, 0, 0, // 66 recoil
-  1181, 0, 0, 0, 0, // 67 drift
-  1189, 0, 0, 0, 0, // 68 wide_key
-  1205, 0, 0, 0, 0, // 69 flux
-  1221, 0, 0, 0, 0, // 70 ping
-  1223, 0, 0, 0, 0, // 71 crc_hint
-  1227, 0, 0, 0, 0, // 72 has_extra
-  1228, 0, 0, 0, 0, // 73 extra
-  1232, 0, 0, 0, 0, // 74 idle_ticks
+  0, 0, 0, 0, 0, 0, // 0 FixedTable
+  0, 0, 0, 0, 0, 0, // 1 value
+  0, 0, 0, 0, 0, 0, // 2 sequence
+  4, 0, 0, 0, 0, 0, // 3 ack_sequence
+  8, 0, 0, 0, 0, 0, // 4 ack_bits
+  12, 0, 0, 0, 0, 0, // 5 session_id
+  20, 0, 0, 0, 0, 0, // 6 client_id
+  24, 0, 0, 0, 0, 0, // 7 nonce
+  32, 0, 0, 0, 0, 0, // 8 world_time
+  40, 0, 0, 0, 0, 0, // 9 frame_tick
+  48, 0, 0, 0, 0, 0, // 10 server_time
+  56, 51, 52, 1, 0, 0, // 11 entities
+  0, 0, 0, 0, 0, 0, // 12 element
+  0, 0, 0, 0, 0, 0, // 13 entity_id
+  4, 0, 0, 0, 0, 0, // 14 pos_x
+  8, 0, 0, 0, 0, 0, // 15 pos_y
+  12, 0, 0, 0, 0, 0, // 16 pos_z
+  16, 0, 0, 0, 0, 0, // 17 yaw
+  20, 0, 0, 0, 0, 0, // 18 pitch
+  24, 0, 0, 0, 0, 0, // 19 vel_x
+  28, 0, 0, 0, 0, 0, // 20 vel_y
+  32, 0, 0, 0, 0, 0, // 21 vel_z
+  36, 0, 0, 0, 0, 0, // 22 health
+  40, 0, 0, 0, 0, 0, // 23 weapon
+  0, 0, 0, 0, 0, 0, // 24 Fists
+  0, 0, 0, 0, 0, 0, // 25 Pistol
+  0, 0, 0, 0, 0, 0, // 26 Shotgun
+  0, 0, 0, 0, 0, 0, // 27 Rifle
+  0, 0, 0, 0, 0, 0, // 28 Sniper
+  0, 0, 0, 0, 0, 0, // 29 Smg
+  0, 0, 0, 0, 0, 0, // 30 Rocket
+  0, 0, 0, 0, 0, 0, // 31 Grenade
+  0, 0, 0, 0, 0, 0, // 32 Plasma
+  0, 0, 0, 0, 0, 0, // 33 Railgun
+  0, 0, 0, 0, 0, 0, // 34 Flamer
+  0, 0, 0, 0, 0, 0, // 35 Mine
+  0, 0, 0, 0, 0, 0, // 36 Turret
+  0, 0, 0, 0, 0, 0, // 37 Drone
+  0, 0, 0, 0, 0, 0, // 38 Repair
+  41, 0, 0, 0, 0, 0, // 39 damage
+  49, 0, 0, 0, 0, 0, // 40 moving
+  50, 0, 0, 0, 0, 0, // 41 firing
+  468, 8, 464, 1, 0, 0, // 42 stats
+  0, 0, 0, 0, 0, 0, // 43 element
+  0, 0, 0, 0, 0, 0, // 44 stat_id
+  4, 0, 0, 0, 0, 0, // 45 delta
+  1108, 0, 1108, 0, 0, 0, // 46 game_event
+  1, 0, 0, 0, 0, 0, // 47 hit
+  0, 0, 0, 0, 0, 0, // 48 target_id
+  4, 0, 0, 0, 0, 0, // 49 damage
+  8, 0, 0, 0, 0, 0, // 50 hit_kind
+  12, 0, 0, 0, 0, 0, // 51 crit
+  1, 0, 0, 0, 0, 0, // 52 chat
+  0, 0, 0, 0, 0, 0, // 53 channel
+  4, 0, 0, 0, 0, 0, // 54 speaker
+  1, 0, 0, 0, 0, 0, // 55 pickup
+  0, 0, 0, 0, 0, 0, // 56 item_id
+  4, 0, 0, 0, 0, 0, // 57 amount
+  1122, 1, 0, 0, 0, 0, // 58 loadout
+  0, 0, 0, 0, 0, 0, // 59 element
+  1126, 0, 1130, 0, 1, 0, // 60 player_name
+  1149, 1, 1145, 1, 3, 0, // 61 payload
+  0, 0, 0, 0, 0, 0, // 62 u8
+  1165, 0, 0, 0, 0, 0, // 63 aim_x
+  1169, 0, 0, 0, 0, 0, // 64 aim_y
+  1173, 0, 0, 0, 0, 0, // 65 aim_z
+  1177, 0, 0, 0, 0, 0, // 66 recoil
+  1181, 0, 0, 0, 0, 0, // 67 drift
+  1189, 0, 0, 0, 0, 0, // 68 wide_key
+  1205, 0, 0, 0, 0, 0, // 69 flux
+  1221, 0, 0, 0, 0, 0, // 70 ping
+  1223, 0, 0, 0, 0, 0, // 71 crc_hint
+  1227, 0, 0, 0, 0, 0, // 72 has_extra
+  1228, 0, 0, 0, 0, 0, // 73 extra
+  1232, 0, 0, 0, 0, 0, // 74 idle_ticks
 ]);
 // dart format on
 
 /// THE IDENTITY PLAN, coalesced HERE rather than at run time: when a record's
 /// hash is this build's own the plan is the one the compiler already wrote.
 /// Because the reader's own storage in this language IS the wire's layout,
-/// source and destination advance together and the walk collapses to 12
+/// source and destination advance together and the walk collapses to 17
 /// entries — the same coalescer the plan compiler runs, reaching its best
 /// case
 /// rather than skipping a step. A COUNT and a TEXT LENGTH keep entries of
@@ -419,17 +419,24 @@ final Int32List fixedTableFixedIdentity = Int32List.fromList(const <int>[
   2, 1126, 1126, 15, 1130, -1, 0, 1, 1, 0, 0, // player_name
   2, 1145, 1145, 16, 1149, -1, 0, 3, 1, 0, 0, // payload
   0, 1165, 1165, 71, 0, -1, 0, 0, 1, 0, 0,
+  9, 52, 0, 8, 51, -1, 0, 0, 1, 0, 0, // entities tail
+  9, 464, 0, 80, 8, -1, 0, 0, 1, 0, 0, // stats tail
+  10, 1108, 0, 14, 0, -1, 0, 1, 1, 0, 0, // game_event arms
+  9, 1126, 0, 15, 1, -1, 0, 0, 1, 0, 0, // player_name tail
+  9, 1145, 0, 16, 1, -1, 0, 0, 1, 0, 0, // payload tail
   0, 1109, 1109, 13, 0, 1108, 1, 0, 1, 0, 0,
   0, 1109, 1109, 8, 0, 1108, 2, 0, 1, 0, 0,
   0, 1109, 1109, 8, 0, 1108, 3, 0, 1, 0, 0,
 ]);
 // dart format on
-const int fixedTableFixedIdentityCount = 12;
+const int fixedTableFixedIdentityCount = 17;
 
 /// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an
 /// entry's guards lanes, (guard, arg, argw) a link, outermost first.
 // dart format off
 final Int32List fixedTableFixedIdentityGuards = Int32List.fromList(const <int>[
+  3, 13, 8,
+  8,
 ]);
 // dart format on
 
@@ -438,7 +445,7 @@ final Int32List fixedTableFixedIdentityGuards = Int32List.fromList(const <int>[
 /// §5.9 #42). Every entry below it carries no guard and every entry at or
 /// above it carries one; the run loop tests the guard per entry, which #42
 /// allows, but the plan is still partitioned and states its split.
-const int fixedTableFixedIdentitySplit = 9;
+const int fixedTableFixedIdentitySplit = 14;
 
 /// THE LINEAGE: every layout of FixedTable this build serves, OLDEST FIRST and
 /// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash

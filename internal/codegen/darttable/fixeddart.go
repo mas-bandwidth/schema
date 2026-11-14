@@ -875,6 +875,17 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 		g.pf("%s  %s.%sPresent = p != 0;\n", ind, val, name)
 		g.pf("%s}\n", ind)
 		at += fixedPresentBytes
+		// AN ABSENT PAYLOAD IS SLACK, and slack is checked for zero and for
+		// nothing else (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the plan
+		// held its bytes to zero, so no range, ordinal, bool or text rule
+		// runs on it here. The field restores its construction value, as
+		// the engine leaves an absent optional (tablewire fixed.go, field).
+		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
+		g.emitDecodeValue(f, base, at, val+"."+name, ind+"  ")
+		g.pf("%s} else {\n", ind)
+		g.emitFieldReset(f, ind+"  ", val)
+		g.pf("%s}\n", ind)
+		return
 	}
 	g.emitDecodeValue(f, base, at, val+"."+name, ind)
 }

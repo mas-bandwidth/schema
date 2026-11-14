@@ -468,7 +468,10 @@ fixed table T
 // t05R24 holds dart/R24 to all three clauses: "ill-formed text in the USED units
 // refuses by name (text_ill_formed); text is counted in bytes; slack is
 // unspecified on read and not a refusal". §4.5 fix 11 and §5.8
-// row 8 are the ruling where that page and SPEC-TABLES §3.4 disagree.
+// row 8 are the ruling where that page and SPEC-TABLES §3.4 disagree. The
+// third clause now reads as the owner's 2026-11-10 ruling has it ("Every dead
+// byte"): no CONTENT rule runs on slack, and the slack is held to ZERO by the
+// plan's dead-tail check, which refuses wire_damaged (SPEC-TABLES §3.4).
 func t05R24(t *testing.T) {
 	runtime := t05Runtime()
 	// (1) ILL-FORMED IN THE USED UNITS REFUSES BY NAME: UTF-8 with no zero
@@ -496,10 +499,13 @@ func t05R24(t *testing.T) {
 	t05Has(t, runtime, "final cap = size;", "R24 the clamp is in bytes")
 	t05Has(t, runtime, "if (meta == TableFixedOp.textBytes) {\n    return false;",
 		"R24 bytes(N) carries no content rule")
-	// (3) SLACK IS UNSPECIFIED AND NOT A REFUSAL: the content check is handed
-	// the USED units (the clamped length), never `size` or the whole payload.
+	// (3) NO CONTENT RULE RUNS ON SLACK: the content check is handed the USED
+	// units (the clamped length), never `size` or the whole payload; the slack
+	// is held to zero and to nothing else (§3.4, every dead byte is zero).
 	t05Has(t, runtime, "if (tableFixedTextIllFormed(\n          plan[b + TableFixedLane.meta],\n          used,",
 		"R24 the content check holds the used units and not the slack")
+	t05Has(t, runtime, "!tableFixedZero(source, s + 4 + live * unit, s + 4 + size * unit)",
+		"R24 the slack past the used length is held to zero")
 }
 
 // ---- the card's test --------------------------------------------------------

@@ -421,13 +421,13 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("%s", fixedFormatOn)
 	g.pf("const int %sFixedCoverCount = %d;\n\n", lower, len(cover))
 
-	g.pf("/// MY SIDE of the layout, five lanes per entry: the storage facts a layout\n")
+	g.pf("/// MY SIDE of the layout, six lanes per entry: the storage facts a layout\n")
 	g.pf("/// entry cannot carry. In C++ these are offsetof rows; the reader's own\n")
 	g.pf("/// storage in Dart is the canonical image, so they are its offsets.\n")
 	g.pf("%s", fixedFormatOff)
 	g.pf("final Int32List %sFixedDst = Int32List.fromList(const <int>[\n", lower)
 	for i, d := range w.dst {
-		g.pf("  %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
+		g.pf("  %d, %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, d.deprecated, i, w.entries[i].note)
 	}
 	g.pf("]);\n")
 	g.pf("%s\n", fixedFormatOn)
@@ -466,8 +466,14 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// entry's guards lanes, (guard, arg, argw) a link, outermost first.\n")
 	g.pf("%s", fixedFormatOff)
 	g.pf("final Int32List %sFixedIdentityGuards = Int32List.fromList(const <int>[\n", lower)
-	for i := 0; i+2 < len(guardPool); i += 3 {
-		g.pf("  %d, %d, %d,\n", guardPool[i], guardPool[i+1], guardPool[i+2])
+	// three ints a line: a chain's links, then the dead arms' width tables
+	for i := 0; i < len(guardPool); i += 3 {
+		row := guardPool[i:min(i+3, len(guardPool))]
+		g.pf(" ")
+		for _, v := range row {
+			g.pf(" %d,", v)
+		}
+		g.pf("\n")
 	}
 	g.pf("]);\n")
 	g.pf("%s\n", fixedFormatOn)

@@ -42,8 +42,9 @@ const int tableFixedForm = 3;
 /// The guard offset an entry that belongs to no union arm carries.
 const int tableFixedNoGuard = -1;
 
-/// THE OPS ARE THE WHOLE SET. The identity plan carries the first three; the
-/// other four are what a plan compiled from another writer's layout adds.
+/// THE OPS ARE THE WHOLE SET. The identity plan carries the first three and
+/// the three dead-byte checks; the other four are what a plan compiled from
+/// another writer's layout adds.
 abstract final class TableFixedOp {
   static const int copy = 0; // move size bytes
   static const int count = 1; // a count: clamp it to the reader's own bound
@@ -53,6 +54,14 @@ abstract final class TableFixedOp {
   static const int constant = 5; // a constant this reader's storage takes
   static const int widenFloat = 6; // f32 into f64, §4's float rung
   static const int present = 7; // a constant 1 into the reader's present byte
+
+  // EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the
+  // three checks read the WRITER's record, land nothing, and refuse the read
+  // wire_damaged when a byte of slack is not zero. Slack is checked for zero
+  // and for nothing else: no bool, range, ordinal or text rule runs on it.
+  static const int deadAbsent = 8; // under a present byte of 0, size bytes
+  static const int deadTail = 9; // past the live count, (size - count) * aux
+  static const int deadArm = 10; // behind the taken arm, up to the widest
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
@@ -83,15 +92,17 @@ abstract final class TableFixedLane {
   static const int guards = 9;
   static const int guardCount = 10;
 
-  // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
+  // MY SIDE of the layout, six lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
   // storage in Dart is the canonical image, so they are its offsets.
-  static const int dstLanes = 5;
+  static const int dstLanes = 6;
   static const int dstOffset = 0;
   static const int dstStride = 1;
   static const int dstAux = 2;
   static const int dstCounted = 3;
   static const int dstArg = 4;
+  // a deprecated field: its slot is not read, so its slack is not checked
+  static const int dstDeprecated = 5;
 }
 
 /// The bounds this reader holds a layout to. THE LAYOUT'S OWN FORMAT NEVER
@@ -800,6 +811,11 @@ final class TableFixedPlan {
   /// layout_record_too_large (§5.2) and never lands a short read
   bool tooLarge = false;
 
+  /// THE DEPTH OF DEPRECATED SLOTS the compile is inside: non-zero while it
+  /// walks a deprecated field, whose slot is not read and so pushes no
+  /// dead-byte check (the engine's lineage read skips it whole)
+  int noDead = 0;
+
   /// the sixteen-byte conversion scratch the float rung widens through
   final ByteData conv = ByteData(16);
 }
@@ -1189,6 +1205,40 @@ int tableFixedRun(
         // counter — the op lands its value and nothing happened (§5.4).
         image[d] = 1;
         break;
+      case TableFixedOp.deadAbsent:
+        // AN ABSENT OPTIONAL'S PAYLOAD IS SLACK, AND SLACK IS ZERO (§3.4). A
+        // present byte other than 0 or 1 is the decode's damage, not this.
+        if (source[s] == 0 && !tableFixedZero(source, s + 1, s + 1 + size)) {
+          return TableFixedRefusal.damaged;
+        }
+        break;
+      case TableFixedOp.deadTail:
+        // THE TAIL PAST THE LIVE COUNT OR USED LENGTH IS SLACK (§3.4). A count
+        // past its bound is not this check's to judge: the count, the text or
+        // the decode refuses it by its own name.
+        final live = sourceView.getInt32(s, Endian.little);
+        final unit = plan[b + TableFixedLane.aux];
+        if (live >= 0 &&
+            live <= size &&
+            !tableFixedZero(source, s + 4 + live * unit, s + 4 + size * unit)) {
+          return TableFixedRefusal.damaged;
+        }
+        break;
+      case TableFixedOp.deadArm:
+        // A UNION'S ARM BYTES UNDER TAG 0, AND BEHIND THE TAKEN ARM UP TO THE
+        // WIDEST, ARE SLACK (§3.4); size is the whole union, the arm widths
+        // are the WRITER's, in the pool at aux. A tag past the writer's arms is
+        // refused out_of_range by the tag's own check.
+        final tagWidth = plan[b + TableFixedLane.meta];
+        final tag = tableFixedTagAt(source, s, tagWidth);
+        final table = plan[b + TableFixedLane.aux];
+        if (tag >= 0 && tag <= remap[table]) {
+          final taken = tag == 0 ? 0 : remap[table + tag];
+          if (!tableFixedZero(source, s + tagWidth + taken, s + size)) {
+            return TableFixedRefusal.damaged;
+          }
+        }
+        break;
       default:
         break;
     }
@@ -1196,11 +1246,23 @@ int tableFixedRun(
   return TableFixedRefusal.none;
 }
 
+/// tableFixedZero reports whether every byte of source[from, to) is zero: the
+/// one question a dead-byte check asks of slack (docs/SPEC-TABLES.md §3.4).
+bool tableFixedZero(Uint8List source, int from, int to) {
+  for (var i = from; i < to; i++) {
+    if (source[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
 /// well-formed UTF-8 with no zero byte for string(N). bytes(N) carries no
-/// content rule at all, and the SLACK past the used bytes is unspecified and
-/// never a refusal. used is the clamped length; at is the first byte.
+/// content rule at all, and the SLACK past the used bytes is no text: it is
+/// held to zero by the plan's dead-tail check and to nothing else (§3.4). used
+/// is the clamped length; at is the first byte.
 bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
     return false;
@@ -1344,7 +1406,13 @@ abstract final class TableFixedCompiler {
       case TableFixedOp.text:
         end = src + 4 + size;
         break;
-      default:
+      case TableFixedOp.deadAbsent:
+        end = src + 1 + size;
+        break;
+      case TableFixedOp.deadTail:
+        end = src + 4 + size * aux;
+        break;
+      default: // deadArm too: its size is the whole union, tag and arms
         end = src + size;
     }
     if (guard != tableFixedNoGuard) {
@@ -1429,6 +1497,23 @@ abstract final class TableFixedCompiler {
     plan.count++;
   }
 
+  /// A DEAD-BYTE CHECK (§3.4, THE SLACK RULE) over the WRITER's record: it
+  /// lands nothing, and none is pushed inside a deprecated slot.
+  static void pushDead(
+    TableFixedPlan plan,
+    int op,
+    int src,
+    int size,
+    int aux,
+    int guard,
+    int arg,
+    int meta,
+  ) {
+    if (plan.noDead == 0) {
+      push(plan, op, src, 0, size, aux, guard, arg, meta);
+    }
+  }
+
   static int layRemap(TableFixedPlan plan, Int32List values, int n) {
     final need = n + 1;
     if (plan.remapUsed + need > plan.remap.length) {
@@ -1467,6 +1552,15 @@ abstract final class TableFixedCompiler {
       var theirOff = theirAt;
       for (var j = 0; j < theirChildren; j++) {
         if (theirs.id(theirChild) == mine.id(myChild)) {
+          // A DEPRECATED SLOT IS NOT READ, so its slack is not checked: the
+          // engine's lineage read skips the field whole (§3.4).
+          final deprecated =
+              dst[myChild * TableFixedLane.dstLanes +
+                  TableFixedLane.dstDeprecated] !=
+              0;
+          if (deprecated) {
+            plan.noDead++;
+          }
           compileEntry(
             plan,
             theirChild,
@@ -1479,6 +1573,9 @@ abstract final class TableFixedCompiler {
             report,
             census,
           );
+          if (deprecated) {
+            plan.noDead--;
+          }
           break;
         }
         theirOff += theirs.size(theirChild);
@@ -1572,6 +1669,17 @@ abstract final class TableFixedCompiler {
     switch (myKind) {
       case 35: // the OPTIONAL wrapper: the present byte, then the payload
         push(plan, TableFixedOp.copy, theirAt, auxAt, 1, 0, guard, arg, 0);
+        // the payload under the WRITER's absent flag is slack (§3.4)
+        pushDead(
+          plan,
+          TableFixedOp.deadAbsent,
+          theirAt,
+          theirSize - 1,
+          0,
+          guard,
+          arg,
+          0,
+        );
         compileEntry(
           plan,
           ti + 1,
@@ -1618,6 +1726,18 @@ abstract final class TableFixedCompiler {
             auxAt,
             theirN,
             0,
+            guard,
+            arg,
+            0,
+          );
+          // the WRITER's tail past its live count is slack (§3.4), and a
+          // bytes(N) is this array of u8
+          pushDead(
+            plan,
+            TableFixedOp.deadTail,
+            theirAt,
+            theirN,
+            theirElem,
             guard,
             arg,
             0,
@@ -1674,6 +1794,37 @@ abstract final class TableFixedCompiler {
       case 15: // a union: the tag, remapped, then each arm matched by id
         final theirTag = theirs.tagBytes(ti);
         final myTag = mine.tagBytes(mi);
+        // THE WRITER'S ARM BYTES under its tag 0, and behind its taken arm up
+        // to its widest, are slack (§3.4), whether or not this reader names
+        // the arm. The check answers to the OUTER guard, at the outer width.
+        if (plan.noDead == 0 && keeping(plan, guard)) {
+          final arms = theirs.children(ti);
+          if (plan.remapUsed + arms + 1 > plan.remap.length) {
+            plan.overflow = true;
+            return;
+          }
+          final table = plan.remapUsed;
+          plan.remap[table] = arms;
+          var armAt = ti + 1;
+          for (var j = 0; j < arms; j++) {
+            plan.remap[table + 1 + j] = theirs.kind(armAt) == 32
+                ? 0
+                : theirs.size(armAt);
+            armAt += theirs.subtree(armAt);
+          }
+          plan.remapUsed += arms + 1;
+          push(
+            plan,
+            TableFixedOp.deadArm,
+            theirAt,
+            0,
+            theirSize,
+            table,
+            guard,
+            arg,
+            theirTag,
+          );
+        }
         // THE GUARD IS THE WRITER'S TAG AND IS COMPARED AT ITS WIDTH (§5.2).
         final savedArgw = plan.argw;
         plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
@@ -1817,6 +1968,17 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
+        // the WRITER's bytes past the used length are slack (§3.4)
+        pushDead(
+          plan,
+          TableFixedOp.deadTail,
+          theirAt,
+          theirSize - 4,
+          1,
+          guard,
+          arg,
+          0,
+        );
         // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
         // would otherwise TEXT every bound slot, and slack lengths would
         // count. The decode both paths share clamps LIVE used-lengths.
@@ -1868,9 +2030,31 @@ abstract final class TableFixedCompiler {
   /// (§5.9 #42).
   static void coalesce(TableFixedPlan plan, int from) {
     final e = plan.entries;
+    // THE DEAD-BYTE CHECKS GO TO THE BACK OF THE HALF, in their order, so no
+    // check splits a run of moves the coalescer would have merged: they land
+    // nothing, and the read refuses whole whichever entry finds the damage.
+    var dead = 0;
+    for (var i = from; i < plan.count; i++) {
+      if (isDead(e[i * TableFixedLane.lanes + TableFixedLane.op])) {
+        dead++;
+      }
+    }
+    final held = Int32List(dead * TableFixedLane.lanes);
+    var h = 0;
+    for (var i = from; i < plan.count; i++) {
+      final b = i * TableFixedLane.lanes;
+      if (isDead(e[b + TableFixedLane.op])) {
+        for (var k = 0; k < TableFixedLane.lanes; k++) {
+          held[h++] = e[b + k];
+        }
+      }
+    }
     var out = from;
     for (var i = from; i < plan.count; i++) {
       final b = i * TableFixedLane.lanes;
+      if (isDead(e[b + TableFixedLane.op])) {
+        continue;
+      }
       if (out > from) {
         final p = (out - 1) * TableFixedLane.lanes;
         if (e[p + TableFixedLane.op] == TableFixedOp.copy &&
@@ -1894,8 +2078,19 @@ abstract final class TableFixedCompiler {
       }
       out++;
     }
-    plan.count = out;
+    e.setRange(
+      out * TableFixedLane.lanes,
+      (out + dead) * TableFixedLane.lanes,
+      held,
+    );
+    plan.count = out + dead;
   }
+
+  /// A DEAD-BYTE CHECK: an op that reads the writer's slack and lands nothing.
+  static bool isDead(int op) =>
+      op == TableFixedOp.deadAbsent ||
+      op == TableFixedOp.deadTail ||
+      op == TableFixedOp.deadArm;
 
   /// TableFixedEntryLands is the bytes of the READER'S OWN IMAGE one entry
   /// writes — TWO runs, because a text entry lands a length and a buffer and
@@ -1929,6 +2124,10 @@ abstract final class TableFixedCompiler {
       case TableFixedOp.ordinal:
         lands[1] = dst + (plan[b + TableFixedLane.meta] & 0xff);
         break;
+      case TableFixedOp.deadAbsent:
+      case TableFixedOp.deadTail:
+      case TableFixedOp.deadArm:
+        break; // a dead-byte check reads the record and lands nothing
       default:
         lands[1] = dst + size;
         break;
@@ -2018,6 +2217,7 @@ abstract final class TableFixedCompiler {
     plan.record = plan.theirs.size(0);
     plan.fillCount = 0;
     plan.argw = 1;
+    plan.noDead = 0;
     // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING
     // NOTHING (§5.2 PLAN, §5.9 #42): the census is once per endpoint, so a second
     // walk of the same pairs must not count them twice — the second report is
@@ -5129,41 +5329,41 @@ final Int32List tableEntityFixedCover = Int32List.fromList(const <int>[
 // dart format on
 const int tableEntityFixedCoverCount = 1;
 
-/// MY SIDE of the layout, five lanes per entry: the storage facts a layout
+/// MY SIDE of the layout, six lanes per entry: the storage facts a layout
 /// entry cannot carry. In C++ these are offsetof rows; the reader's own
 /// storage in Dart is the canonical image, so they are its offsets.
 // dart format off
 final Int32List tableEntityFixedDst = Int32List.fromList(const <int>[
-  0, 0, 0, 0, 0, // 0 TableEntity
-  0, 0, 0, 0, 0, // 1 entity_id
-  4, 0, 0, 0, 0, // 2 pos_x
-  8, 0, 0, 0, 0, // 3 pos_y
-  12, 0, 0, 0, 0, // 4 pos_z
-  16, 0, 0, 0, 0, // 5 yaw
-  20, 0, 0, 0, 0, // 6 pitch
-  24, 0, 0, 0, 0, // 7 vel_x
-  28, 0, 0, 0, 0, // 8 vel_y
-  32, 0, 0, 0, 0, // 9 vel_z
-  36, 0, 0, 0, 0, // 10 health
-  40, 0, 0, 0, 0, // 11 weapon
-  0, 0, 0, 0, 0, // 12 Fists
-  0, 0, 0, 0, 0, // 13 Pistol
-  0, 0, 0, 0, 0, // 14 Shotgun
-  0, 0, 0, 0, 0, // 15 Rifle
-  0, 0, 0, 0, 0, // 16 Sniper
-  0, 0, 0, 0, 0, // 17 Smg
-  0, 0, 0, 0, 0, // 18 Rocket
-  0, 0, 0, 0, 0, // 19 Grenade
-  0, 0, 0, 0, 0, // 20 Plasma
-  0, 0, 0, 0, 0, // 21 Railgun
-  0, 0, 0, 0, 0, // 22 Flamer
-  0, 0, 0, 0, 0, // 23 Mine
-  0, 0, 0, 0, 0, // 24 Turret
-  0, 0, 0, 0, 0, // 25 Drone
-  0, 0, 0, 0, 0, // 26 Repair
-  41, 0, 0, 0, 0, // 27 damage
-  49, 0, 0, 0, 0, // 28 moving
-  50, 0, 0, 0, 0, // 29 firing
+  0, 0, 0, 0, 0, 0, // 0 TableEntity
+  0, 0, 0, 0, 0, 0, // 1 entity_id
+  4, 0, 0, 0, 0, 0, // 2 pos_x
+  8, 0, 0, 0, 0, 0, // 3 pos_y
+  12, 0, 0, 0, 0, 0, // 4 pos_z
+  16, 0, 0, 0, 0, 0, // 5 yaw
+  20, 0, 0, 0, 0, 0, // 6 pitch
+  24, 0, 0, 0, 0, 0, // 7 vel_x
+  28, 0, 0, 0, 0, 0, // 8 vel_y
+  32, 0, 0, 0, 0, 0, // 9 vel_z
+  36, 0, 0, 0, 0, 0, // 10 health
+  40, 0, 0, 0, 0, 0, // 11 weapon
+  0, 0, 0, 0, 0, 0, // 12 Fists
+  0, 0, 0, 0, 0, 0, // 13 Pistol
+  0, 0, 0, 0, 0, 0, // 14 Shotgun
+  0, 0, 0, 0, 0, 0, // 15 Rifle
+  0, 0, 0, 0, 0, 0, // 16 Sniper
+  0, 0, 0, 0, 0, 0, // 17 Smg
+  0, 0, 0, 0, 0, 0, // 18 Rocket
+  0, 0, 0, 0, 0, 0, // 19 Grenade
+  0, 0, 0, 0, 0, 0, // 20 Plasma
+  0, 0, 0, 0, 0, 0, // 21 Railgun
+  0, 0, 0, 0, 0, 0, // 22 Flamer
+  0, 0, 0, 0, 0, 0, // 23 Mine
+  0, 0, 0, 0, 0, 0, // 24 Turret
+  0, 0, 0, 0, 0, 0, // 25 Drone
+  0, 0, 0, 0, 0, 0, // 26 Repair
+  41, 0, 0, 0, 0, 0, // 27 damage
+  49, 0, 0, 0, 0, 0, // 28 moving
+  50, 0, 0, 0, 0, 0, // 29 firing
 ]);
 // dart format on
 
@@ -5655,14 +5855,14 @@ final Int32List tableStatFixedCover = Int32List.fromList(const <int>[
 // dart format on
 const int tableStatFixedCoverCount = 1;
 
-/// MY SIDE of the layout, five lanes per entry: the storage facts a layout
+/// MY SIDE of the layout, six lanes per entry: the storage facts a layout
 /// entry cannot carry. In C++ these are offsetof rows; the reader's own
 /// storage in Dart is the canonical image, so they are its offsets.
 // dart format off
 final Int32List tableStatFixedDst = Int32List.fromList(const <int>[
-  0, 0, 0, 0, 0, // 0 TableStat
-  0, 0, 0, 0, 0, // 1 stat_id
-  4, 0, 0, 0, 0, // 2 delta
+  0, 0, 0, 0, 0, 0, // 0 TableStat
+  0, 0, 0, 0, 0, 0, // 1 stat_id
+  4, 0, 0, 0, 0, 0, // 2 delta
 ]);
 // dart format on
 
@@ -6315,93 +6515,93 @@ final Int32List tableMixedFixedCover = Int32List.fromList(const <int>[
 // dart format on
 const int tableMixedFixedCoverCount = 1;
 
-/// MY SIDE of the layout, five lanes per entry: the storage facts a layout
+/// MY SIDE of the layout, six lanes per entry: the storage facts a layout
 /// entry cannot carry. In C++ these are offsetof rows; the reader's own
 /// storage in Dart is the canonical image, so they are its offsets.
 // dart format off
 final Int32List tableMixedFixedDst = Int32List.fromList(const <int>[
-  0, 0, 0, 0, 0, // 0 TableMixed
-  0, 0, 0, 0, 0, // 1 protocol_magic
-  2, 0, 0, 0, 0, // 2 sequence
-  6, 0, 0, 0, 0, // 3 ack_sequence
-  10, 0, 0, 0, 0, // 4 ack_bits
-  14, 0, 0, 0, 0, // 5 session_id
-  22, 0, 0, 0, 0, // 6 client_id
-  26, 0, 0, 0, 0, // 7 nonce
-  34, 0, 0, 0, 0, // 8 world_time
-  42, 0, 0, 0, 0, // 9 frame_tick
-  50, 0, 0, 0, 0, // 10 server_time
-  58, 51, 54, 1, 0, // 11 entities
-  0, 0, 0, 0, 0, // 12 element
-  0, 0, 0, 0, 0, // 13 entity_id
-  4, 0, 0, 0, 0, // 14 pos_x
-  8, 0, 0, 0, 0, // 15 pos_y
-  12, 0, 0, 0, 0, // 16 pos_z
-  16, 0, 0, 0, 0, // 17 yaw
-  20, 0, 0, 0, 0, // 18 pitch
-  24, 0, 0, 0, 0, // 19 vel_x
-  28, 0, 0, 0, 0, // 20 vel_y
-  32, 0, 0, 0, 0, // 21 vel_z
-  36, 0, 0, 0, 0, // 22 health
-  40, 0, 0, 0, 0, // 23 weapon
-  0, 0, 0, 0, 0, // 24 Fists
-  0, 0, 0, 0, 0, // 25 Pistol
-  0, 0, 0, 0, 0, // 26 Shotgun
-  0, 0, 0, 0, 0, // 27 Rifle
-  0, 0, 0, 0, 0, // 28 Sniper
-  0, 0, 0, 0, 0, // 29 Smg
-  0, 0, 0, 0, 0, // 30 Rocket
-  0, 0, 0, 0, 0, // 31 Grenade
-  0, 0, 0, 0, 0, // 32 Plasma
-  0, 0, 0, 0, 0, // 33 Railgun
-  0, 0, 0, 0, 0, // 34 Flamer
-  0, 0, 0, 0, 0, // 35 Mine
-  0, 0, 0, 0, 0, // 36 Turret
-  0, 0, 0, 0, 0, // 37 Drone
-  0, 0, 0, 0, 0, // 38 Repair
-  41, 0, 0, 0, 0, // 39 damage
-  49, 0, 0, 0, 0, // 40 moving
-  50, 0, 0, 0, 0, // 41 firing
-  470, 8, 466, 1, 0, // 42 stats
-  0, 0, 0, 0, 0, // 43 element
-  0, 0, 0, 0, 0, // 44 stat_id
-  4, 0, 0, 0, 0, // 45 delta
-  1110, 0, 1110, 0, 0, // 46 game_event
-  1, 0, 0, 0, 0, // 47 hit
-  0, 0, 0, 0, 0, // 48 target_id
-  4, 0, 0, 0, 0, // 49 damage
-  8, 0, 0, 0, 0, // 50 hit_kind
-  12, 0, 0, 0, 0, // 51 crit
-  1, 0, 0, 0, 0, // 52 chat
-  0, 0, 0, 0, 0, // 53 channel
-  4, 0, 0, 0, 0, // 54 speaker
-  1, 0, 0, 0, 0, // 55 pickup
-  0, 0, 0, 0, 0, // 56 item_id
-  4, 0, 0, 0, 0, // 57 amount
-  1124, 1, 0, 0, 0, // 58 loadout
-  0, 0, 0, 0, 0, // 59 element
-  1128, 0, 1132, 0, 1, // 60 player_name
-  1151, 1, 1147, 1, 3, // 61 payload
-  0, 0, 0, 0, 0, // 62 u8
-  1167, 0, 0, 0, 0, // 63 aim_x
-  1171, 0, 0, 0, 0, // 64 aim_y
-  1175, 0, 0, 0, 0, // 65 aim_z
-  1179, 0, 0, 0, 0, // 66 recoil
-  1183, 0, 0, 0, 0, // 67 drift
-  1191, 0, 0, 0, 0, // 68 wide_key
-  1199, 0, 0, 0, 0, // 69 flux
-  1207, 0, 0, 0, 0, // 70 ping
-  1211, 0, 0, 0, 0, // 71 crc_hint
-  1215, 0, 0, 0, 0, // 72 has_extra
-  1216, 0, 0, 0, 0, // 73 extra
-  1220, 0, 0, 0, 0, // 74 idle_ticks
+  0, 0, 0, 0, 0, 0, // 0 TableMixed
+  0, 0, 0, 0, 0, 0, // 1 protocol_magic
+  2, 0, 0, 0, 0, 0, // 2 sequence
+  6, 0, 0, 0, 0, 0, // 3 ack_sequence
+  10, 0, 0, 0, 0, 0, // 4 ack_bits
+  14, 0, 0, 0, 0, 0, // 5 session_id
+  22, 0, 0, 0, 0, 0, // 6 client_id
+  26, 0, 0, 0, 0, 0, // 7 nonce
+  34, 0, 0, 0, 0, 0, // 8 world_time
+  42, 0, 0, 0, 0, 0, // 9 frame_tick
+  50, 0, 0, 0, 0, 0, // 10 server_time
+  58, 51, 54, 1, 0, 0, // 11 entities
+  0, 0, 0, 0, 0, 0, // 12 element
+  0, 0, 0, 0, 0, 0, // 13 entity_id
+  4, 0, 0, 0, 0, 0, // 14 pos_x
+  8, 0, 0, 0, 0, 0, // 15 pos_y
+  12, 0, 0, 0, 0, 0, // 16 pos_z
+  16, 0, 0, 0, 0, 0, // 17 yaw
+  20, 0, 0, 0, 0, 0, // 18 pitch
+  24, 0, 0, 0, 0, 0, // 19 vel_x
+  28, 0, 0, 0, 0, 0, // 20 vel_y
+  32, 0, 0, 0, 0, 0, // 21 vel_z
+  36, 0, 0, 0, 0, 0, // 22 health
+  40, 0, 0, 0, 0, 0, // 23 weapon
+  0, 0, 0, 0, 0, 0, // 24 Fists
+  0, 0, 0, 0, 0, 0, // 25 Pistol
+  0, 0, 0, 0, 0, 0, // 26 Shotgun
+  0, 0, 0, 0, 0, 0, // 27 Rifle
+  0, 0, 0, 0, 0, 0, // 28 Sniper
+  0, 0, 0, 0, 0, 0, // 29 Smg
+  0, 0, 0, 0, 0, 0, // 30 Rocket
+  0, 0, 0, 0, 0, 0, // 31 Grenade
+  0, 0, 0, 0, 0, 0, // 32 Plasma
+  0, 0, 0, 0, 0, 0, // 33 Railgun
+  0, 0, 0, 0, 0, 0, // 34 Flamer
+  0, 0, 0, 0, 0, 0, // 35 Mine
+  0, 0, 0, 0, 0, 0, // 36 Turret
+  0, 0, 0, 0, 0, 0, // 37 Drone
+  0, 0, 0, 0, 0, 0, // 38 Repair
+  41, 0, 0, 0, 0, 0, // 39 damage
+  49, 0, 0, 0, 0, 0, // 40 moving
+  50, 0, 0, 0, 0, 0, // 41 firing
+  470, 8, 466, 1, 0, 0, // 42 stats
+  0, 0, 0, 0, 0, 0, // 43 element
+  0, 0, 0, 0, 0, 0, // 44 stat_id
+  4, 0, 0, 0, 0, 0, // 45 delta
+  1110, 0, 1110, 0, 0, 0, // 46 game_event
+  1, 0, 0, 0, 0, 0, // 47 hit
+  0, 0, 0, 0, 0, 0, // 48 target_id
+  4, 0, 0, 0, 0, 0, // 49 damage
+  8, 0, 0, 0, 0, 0, // 50 hit_kind
+  12, 0, 0, 0, 0, 0, // 51 crit
+  1, 0, 0, 0, 0, 0, // 52 chat
+  0, 0, 0, 0, 0, 0, // 53 channel
+  4, 0, 0, 0, 0, 0, // 54 speaker
+  1, 0, 0, 0, 0, 0, // 55 pickup
+  0, 0, 0, 0, 0, 0, // 56 item_id
+  4, 0, 0, 0, 0, 0, // 57 amount
+  1124, 1, 0, 0, 0, 0, // 58 loadout
+  0, 0, 0, 0, 0, 0, // 59 element
+  1128, 0, 1132, 0, 1, 0, // 60 player_name
+  1151, 1, 1147, 1, 3, 0, // 61 payload
+  0, 0, 0, 0, 0, 0, // 62 u8
+  1167, 0, 0, 0, 0, 0, // 63 aim_x
+  1171, 0, 0, 0, 0, 0, // 64 aim_y
+  1175, 0, 0, 0, 0, 0, // 65 aim_z
+  1179, 0, 0, 0, 0, 0, // 66 recoil
+  1183, 0, 0, 0, 0, 0, // 67 drift
+  1191, 0, 0, 0, 0, 0, // 68 wide_key
+  1199, 0, 0, 0, 0, 0, // 69 flux
+  1207, 0, 0, 0, 0, 0, // 70 ping
+  1211, 0, 0, 0, 0, 0, // 71 crc_hint
+  1215, 0, 0, 0, 0, 0, // 72 has_extra
+  1216, 0, 0, 0, 0, 0, // 73 extra
+  1220, 0, 0, 0, 0, 0, // 74 idle_ticks
 ]);
 // dart format on
 
 /// THE IDENTITY PLAN, coalesced HERE rather than at run time: when a record's
 /// hash is this build's own the plan is the one the compiler already wrote.
 /// Because the reader's own storage in this language IS the wire's layout,
-/// source and destination advance together and the walk collapses to 12
+/// source and destination advance together and the walk collapses to 17
 /// entries — the same coalescer the plan compiler runs, reaching its best
 /// case
 /// rather than skipping a step. A COUNT and a TEXT LENGTH keep entries of
@@ -6419,17 +6619,24 @@ final Int32List tableMixedFixedIdentity = Int32List.fromList(const <int>[
   2, 1128, 1128, 15, 1132, -1, 0, 1, 1, 0, 0, // player_name
   2, 1147, 1147, 16, 1151, -1, 0, 3, 1, 0, 0, // payload
   0, 1167, 1167, 57, 0, -1, 0, 0, 1, 0, 0,
+  9, 54, 0, 8, 51, -1, 0, 0, 1, 0, 0, // entities tail
+  9, 466, 0, 80, 8, -1, 0, 0, 1, 0, 0, // stats tail
+  10, 1110, 0, 14, 0, -1, 0, 1, 1, 0, 0, // game_event arms
+  9, 1128, 0, 15, 1, -1, 0, 0, 1, 0, 0, // player_name tail
+  9, 1147, 0, 16, 1, -1, 0, 0, 1, 0, 0, // payload tail
   0, 1111, 1111, 13, 0, 1110, 1, 0, 1, 0, 0,
   0, 1111, 1111, 8, 0, 1110, 2, 0, 1, 0, 0,
   0, 1111, 1111, 8, 0, 1110, 3, 0, 1, 0, 0,
 ]);
 // dart format on
-const int tableMixedFixedIdentityCount = 12;
+const int tableMixedFixedIdentityCount = 17;
 
 /// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an
 /// entry's guards lanes, (guard, arg, argw) a link, outermost first.
 // dart format off
 final Int32List tableMixedFixedIdentityGuards = Int32List.fromList(const <int>[
+  3, 13, 8,
+  8,
 ]);
 // dart format on
 
@@ -6438,7 +6645,7 @@ final Int32List tableMixedFixedIdentityGuards = Int32List.fromList(const <int>[
 /// §5.9 #42). Every entry below it carries no guard and every entry at or
 /// above it carries one; the run loop tests the guard per entry, which #42
 /// allows, but the plan is still partitioned and states its split.
-const int tableMixedFixedIdentitySplit = 9;
+const int tableMixedFixedIdentitySplit = 14;
 
 /// THE LINEAGE: every layout of TableMixed this build serves, OLDEST FIRST and
 /// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash

@@ -307,6 +307,10 @@ type fixedDst struct {
 	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
 	counted int   // an array that carries a live count
 	arg     int   // a text field's flavour
+	// a `| deprecated` field's top entry: the reader yields the declared
+	// default out of the slot and reads nothing in it, so the dead-byte checks
+	// (§3.4, THE SLACK RULE) skip it on a compiled plan as the identity one does
+	deprecated int
 }
 
 type fixedWalk struct {
@@ -344,6 +348,10 @@ func fixedWalkRoot(st *ir.Struct) *fixedWalk {
 func fixedWalkField(w *fixedWalk, f *ir.Field, at int64) {
 	id := ir.TableFieldWireId(f)
 	size := fixedFieldBytes(f)
+	if f.Deprecated {
+		top := len(w.dst)
+		defer func() { w.dst[top].deprecated = 1 }()
+	}
 	if f.Type.Optional {
 		// the OPTIONAL WRAPPER: the present flag rides at the field's own
 		// offset and the payload WHOLE behind it, present or not

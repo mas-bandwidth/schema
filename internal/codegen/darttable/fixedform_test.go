@@ -540,7 +540,8 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 	st := findTable(t, u, "FixedTable")
 	plan, _ := fixedIdentityPlan(st)
 
-	counts, texts := 0, 0
+	counts, texts, tails := 0, 0, 0
+	var moves []fixedPlanEntry
 	for _, e := range plan {
 		switch e.op {
 		case fixedOpCount:
@@ -548,9 +549,15 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 		case fixedOpText:
 			texts++
 		case fixedOpCopy:
+		case fixedOpDeadTail:
+			tails++
+			continue
+		case fixedOpDeadAbsent, fixedOpDeadArm:
+			continue
 		default:
-			t.Fatalf("the identity plan carries op %d; only copy, count and text belong in it", e.op)
+			t.Fatalf("the identity plan carries op %d; only copy, count, text and the dead-byte checks belong in it", e.op)
 		}
+		moves = append(moves, e)
 	}
 	// BenchMixed declares two counted arrays (entities, stats) and two text
 	// fields (player_name, payload)
@@ -560,6 +567,13 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 	if texts != 2 {
 		t.Errorf("the identity plan carries %d text entries; the type declares 2 text fields", texts)
 	}
+	// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): each
+	// of those four has its tail past the live count or used length checked
+	if tails < 4 {
+		t.Errorf("the identity plan carries %d dead-tail checks; the two counted arrays and two texts need 4", tails)
+	}
+	// the coverage walk below is over the MOVES: a dead-byte check lands nothing
+	plan = moves
 
 	// AND IT COVERS THE BODY WITH NO GAP. The identity plan is PARTITIONED
 	// (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, §5.9 #42) — unguarded entries

@@ -34,6 +34,12 @@ const (
 	fixedOpWiden   = 4 // a narrower source into a wider destination
 	fixedOpConst   = 5 // a constant this reader's own storage takes: a remapped union tag
 	fixedOpWidenF  = 6 // f32 into f64, §4's float rung
+	// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the
+	// three checks land nothing and refuse the read wire_damaged when a byte of
+	// slack is not zero. Both plans carry them; 7 is the runtime's present op.
+	fixedOpDeadAbsent = 8  // under a present byte of 0, size payload bytes are zero
+	fixedOpDeadTail   = 9  // past the live count at src, (size - count) * aux bytes are zero
+	fixedOpDeadArm    = 10 // behind the taken arm, to the union's end (size, tag included), the bytes are zero
 )
 
 // fixedNoGuard is the guard an entry that belongs to no union arm carries.
@@ -68,6 +74,9 @@ type fixedPlanEntry struct {
 	links  []fixedLink
 	guards int
 	gcount int
+	// table is a DEAD ARM entry's taken-arm widths, laid into the identity
+	// pool by fixedIdentityGuards as [n, taken(1) .. taken(n)] and named by aux.
+	table []int64
 }
 
 // fixedLink is ONE LINK of a guard chain: the tag's offset, the ordinal it must
@@ -120,7 +129,102 @@ func fixedIdentityPlan(st *ir.Struct) ([]fixedPlanEntry, int) {
 		fixedPlanField(p, f, at)
 		at += fixedFieldBytes(f)
 	}
+	// THE DEAD-BYTE CHECKS RIDE BEHIND EVERY MOVE, so no check splits a run the
+	// coalescer would have merged (each half keeps its own order).
+	fixedDeadStruct(p, st, 0, fixedNoGuard)
 	return fixedCoalesce(p.entries)
+}
+
+// ---- EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE) ----
+//
+// The identity read's slack checks, the engine's (internal/tablewire/fixed.go)
+// walk spelled as plan entries: an absent optional's payload, a counted
+// array's tail past its live count, text and bytes past the used length, and
+// a union's arm bytes under tag 0 or behind a narrower arm. A deprecated
+// field's slot is not read at all, so it is not checked either. Slack nested
+// inside live data is checked as that value's slack; a check that lands inside
+// an outer region of slack meets zeros and passes, so the outer check is the
+// one that answers for it.
+
+func fixedDeadStruct(p *fixedPlanBuild, st *ir.Struct, at, guard int64) {
+	for _, f := range st.Fields {
+		if !f.Deprecated {
+			fixedDeadField(p, f, at, guard)
+		}
+		at += fixedFieldBytes(f)
+	}
+}
+
+func fixedDeadField(p *fixedPlanBuild, f *ir.Field, at, guard int64) {
+	if f.Type.Optional {
+		p.push(fixedPlanEntry{op: fixedOpDeadAbsent, src: at, size: fixedFieldBytes(f) - fixedPresentBytes,
+			guard: guard, note: f.Name + " absent"})
+		at += fixedPresentBytes
+	}
+	fixedDeadPayload(p, f, at, guard)
+}
+
+func fixedDeadPayload(p *fixedPlanBuild, f *ir.Field, at, guard int64) {
+	elem := fixedElementBytes(f)
+	switch {
+	case f.KeyEnum != "":
+		for i := int64(0); i < f.KeyEnumRef.Max; i++ {
+			fixedDeadElement(p, f, at+i*elem, guard)
+		}
+	case f.Array == ir.ArrayFixed:
+		for i := int64(0); i < f.ArrayBound; i++ {
+			fixedDeadElement(p, f, at+i*elem, guard)
+		}
+	case f.Array == ir.ArrayCounted:
+		p.push(fixedPlanEntry{op: fixedOpDeadTail, src: at, size: f.ArrayBound, aux: elem,
+			guard: guard, note: f.Name + " tail"})
+		for i := int64(0); i < f.ArrayBound; i++ {
+			fixedDeadElement(p, f, at+fixedCountBytes+i*elem, guard)
+		}
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		p.push(fixedPlanEntry{op: fixedOpDeadTail, src: at, size: f.Type.Size, aux: 1,
+			guard: guard, note: f.Name + " tail"})
+	default:
+		fixedDeadElement(p, f, at, guard)
+	}
+}
+
+func fixedDeadElement(p *fixedPlanBuild, f *ir.Field, at, guard int64) {
+	if f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		fixedDeadStruct(p, r, at, guard)
+	case *ir.Union:
+		tag := ir.TableFixedUnionTagBytes(r)
+		table := []int64{int64(len(r.Variants))}
+		for _, v := range r.Variants {
+			taken := int64(0) // a payload-free arm takes no byte, so all of them are slack
+			if v.F != nil {
+				taken = ir.TableFixedFieldBytes(v.F)
+			}
+			table = append(table, taken)
+		}
+		p.push(fixedPlanEntry{op: fixedOpDeadArm, src: at, size: ir.TableFixedUnionBytes(r),
+			guard: guard, meta: int(tag), table: table, note: f.Name + " arms"})
+		saved := p.argw
+		p.argw = int(tag)
+		for i, v := range r.Variants {
+			if v.F == nil {
+				continue
+			}
+			// the arm's own slack answers to this tag and to every tag outside it
+			p.chain = append(p.chain, fixedLink{guard: at, arg: i + 1, argw: int(tag)})
+			if st, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" && !v.F.Type.Optional {
+				fixedDeadStruct(p, st, at+tag, at)
+			} else {
+				fixedDeadPayload(p, v.F, at+tag, at)
+			}
+			p.chain = p.chain[:len(p.chain)-1]
+		}
+		p.argw = saved
+	}
 }
 
 // fixedPlanField walks one field of a table at its offset in the body image.
@@ -359,6 +463,8 @@ type fixedFill struct {
 // no terminator past the bound the way C++ storage has one.
 func fixedEntryLands(e fixedPlanEntry) []fixedFill {
 	switch e.op {
+	case fixedOpDeadAbsent, fixedOpDeadTail, fixedOpDeadArm:
+		return nil // a dead-byte check reads the record and lands nothing
 	case fixedOpCount:
 		return []fixedFill{{dst: e.dst, size: fixedCountBytes}}
 	case fixedOpText:
@@ -435,6 +541,22 @@ func fixedIdentityGuards(plan []fixedPlanEntry) []int64 {
 		}
 		plan[i].guards = at
 		plan[i].gcount = len(plan[i].links)
+	}
+	// A DEAD ARM's taken-arm widths ride the same pool, behind every chain,
+	// deduped by content; the entry's aux names its table.
+	tables := map[string]int{}
+	for i := range plan {
+		if plan[i].op != fixedOpDeadArm {
+			continue
+		}
+		key := fmt.Sprint(plan[i].table)
+		at, ok := tables[key]
+		if !ok {
+			at = len(pool)
+			tables[key] = at
+			pool = append(pool, plan[i].table...)
+		}
+		plan[i].aux = int64(at)
 	}
 	return pool
 }
