@@ -41,7 +41,11 @@ private_driver() {
         ;;
     esac
     if cmp -s "$source" "$main"; then echo "$variant changed nothing" >&2; exit 1; fi
-    "$dart" compile exe -o "$target/driver" "$main" > "$target/compile.log" 2>&1 || { cat "$target/compile.log"; exit 1; }
+    # a kernel, not an AOT exe: the same program on the Dart VM, compiled in
+    # a fifth of the time, which keeps this control inside the job budget
+    "$dart" compile kernel -o "$target/driver.dill" "$main" > "$target/compile.log" 2>&1 || { cat "$target/compile.log"; exit 1; }
+    printf '#!/bin/sh\nexec "%s" "%s" "$@"\n' "$(command -v "$dart")" "$root/$target/driver.dill" > "$target/driver"
+    chmod +x "$target/driver"
     binary="$root/$target/driver"
 }
 
