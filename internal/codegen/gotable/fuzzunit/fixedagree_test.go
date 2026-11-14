@@ -128,16 +128,21 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	}
 }
 
-// TestGeneratedFixedSlackNegativeControl makes the generated pre-scan read the
-// slack (every slack span dropped) and requires the differential red on a
-// verdict the engine does not share.
+// TestGeneratedFixedSlackNegativeControl makes the generated pre-scan pass
+// every span of slack as zero (the retired rule, slack unspecified on read)
+// and requires the differential red on a verdict the engine does not share:
+// the engine refuses a mutant whose slack is not zero (docs/SPEC-TABLES.md
+// §3.4; the owner, 2026-11-10: "Every dead byte") and the sabotaged read
+// accepts it. Until that ruling this control dropped the slack spans and
+// required the read to refuse slack; a zero slack now passes every content
+// rule these units carry, so that sabotage has nothing left to show.
 func TestGeneratedFixedSlackNegativeControl(t *testing.T) {
 	t.Parallel()
 	out, failed := slowtest.RunSabotaged(t, "../../../..", "./internal/codegen/gotable/fuzzunit", "^TestGeneratedFixedAgreesWithEngine$",
 		slowtest.Sabotage{File: "tables/goruntime/goruntime.go",
-			From: "\tfor _, d := range dead {", To: "\tfor _, d := range dead[:0] {"})
-	if !failed || !strings.Contains(out, "verdict gen=false") {
-		t.Errorf("negative control: the generated read refuses slack and the differential did not go red on a verdict\n%s", out)
+			From: "\treturn acc == 0\n}", To: "\treturn true\n}"})
+	if !failed || !strings.Contains(out, "verdict gen=true") {
+		t.Errorf("negative control: the generated read passes non-zero slack and the differential did not go red on a verdict\n%s", out)
 	}
 }
 

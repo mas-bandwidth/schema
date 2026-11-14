@@ -49,6 +49,7 @@ import (
 
 const (
 	w7OpText     = 2          // tableFixedText
+	w7OpDeadZero = 9          // tableFixedDeadZero
 	w7TextUtf8   = 1          // tableFixedTextUtf8
 	w7NoGuard    = 0xFFFFFFFF // tableFixedNoGuard
 	w7BodyTagAt  = 4          // src offset of Msg's body tag byte (seq is u32 at 0)
@@ -89,7 +90,10 @@ func TestRowW7(t *testing.T) {
 		if e.Meta != 0 && e.Op != w7OpText {
 			t.Errorf("entry %d: Meta=%d on op %d — the flavour lane carries a non-text fact", i, e.Meta, e.Op)
 		}
-		if e.Guard != w7NoGuard && (e.Arg < 1 || e.Arg > 3) {
+		// A dead-zero entry (every dead byte is zero, the owner 2026-11-10)
+		// also guards on the tag value 0, under which every arm byte is slack:
+		// its Arg is still the tag's own value, never a flavour.
+		if e.Guard != w7NoGuard && (e.Arg > 3 || (e.Arg < 1 && e.Op != w7OpDeadZero)) {
 			t.Errorf("entry %d: guarded entry's Arg=%d is no arm ordinal of Body — the ordinal lane carries something else", i, e.Arg)
 		}
 		if e.Guard == w7NoGuard && e.Arg != 0 {
