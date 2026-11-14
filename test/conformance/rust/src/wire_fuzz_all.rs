@@ -290,10 +290,10 @@ const FIXED_RECORDS: usize = 64;
 const FIXED_PLAN: usize = 1 << 14;
 
 macro_rules! fixed_arm {
-    ($unit:ident, $load:ident, $save:ident, $measure:ident, $row:ident, $wire:expr, $plan:expr) => {{
+    ($unit:ident, $load:ident, $save:ident, $measure:ident, $row:ident, $wire:expr) => {{
         let mut values = vec![$unit::$row::default(); FIXED_RECORDS];
-        let mut plan = vec![$unit::TableFixedEntry::default(); $plan];
-        let mut remap = vec![0u16; $plan];
+        let mut plan = vec![$unit::TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = $unit::TableFixedReport::default();
         let read = $unit::$load(&mut values, $wire, &mut plan, &mut remap, &mut report);
         let read = read.filter(|_| !report.refused && !report.damaged);
@@ -323,35 +323,51 @@ macro_rules! fixed_arm {
 // when this leg reaches no fixed codec for the root.
 fn fixed_drive(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
     match (unit, root) {
-        ("backenddemo", "LoginRequest") => fixed_arm!(backenddemo, login_request_fixed_load, login_request_fixed_save, login_request_fixed_measure, LoginRequestRow, wire, FIXED_PLAN),
-        ("backenddemo", "MatchResult") => fixed_arm!(backenddemo, match_result_fixed_load, match_result_fixed_save, match_result_fixed_measure, MatchResultRow, wire, FIXED_PLAN),
-        ("backenddemo", "StorePurchase") => fixed_arm!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, wire, FIXED_PLAN),
-        ("messagedemo", "ToolMessage") => fixed_arm!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, wire, FIXED_PLAN),
-        ("scalars", "SimState") => fixed_arm!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire, FIXED_PLAN),
-        ("tblscalars2", "SimState") => fixed_arm!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire, FIXED_PLAN),
-        ("tabledemo", "ArchiveConfig") => fixed_arm!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, wire, FIXED_PLAN),
-        ("tabledemo", "KeyedConfig") => fixed_arm!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, wire, FIXED_PLAN),
-        ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire, FIXED_PLAN),
-        ("tabledemo", "ProfileConfig") => fixed_arm!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, wire, FIXED_PLAN),
-        ("tabledemo", "RootConfig") => fixed_arm!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, wire, FIXED_PLAN),
-        // the conformance driver's own capacity for this root: a one-entry plan
-        // the layout does not fit, so the read refuses by name
-        ("tabledemo", "WideBlob") => fixed_arm!(tabledemo, wide_blob_fixed_load, wide_blob_fixed_save, wide_blob_fixed_measure, WideBlobRow, wire, 1),
-        ("tbla2", "Root") => fixed_arm!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire, FIXED_PLAN),
-        ("tblk1", "Root") => fixed_arm!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire, FIXED_PLAN),
-        ("tblk2", "Root") => fixed_arm!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire, FIXED_PLAN),
-        ("tblm1", "Msg") => fixed_arm!(tblm1, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire, FIXED_PLAN),
-        ("tblm2", "Msg") => fixed_arm!(tblm2, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire, FIXED_PLAN),
-        ("tblp1", "Chain") => fixed_arm!(tblp1, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire, FIXED_PLAN),
-        ("tblp3", "Chain") => fixed_arm!(tblp3, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire, FIXED_PLAN),
-        ("tblr1", "Cfg") => fixed_arm!(tblr1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
-        ("tblr2", "Cfg") => fixed_arm!(tblr2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
-        ("tblv1", "Cfg") => fixed_arm!(tblv1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
-        ("tblv2", "Cfg") => fixed_arm!(tblv2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire, FIXED_PLAN),
-        ("vocabdemo", "Wide00") => fixed_arm!(vocabdemo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire, FIXED_PLAN),
-        ("vocabdemo", "Wide09") => fixed_arm!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, wire, FIXED_PLAN),
-        ("vocab9demo", "Wide00") => fixed_arm!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire, FIXED_PLAN),
-        ("vocab9demo", "Wide19") => fixed_arm!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, wire, FIXED_PLAN),
+        ("backenddemo", "LoginRequest") => fixed_arm!(backenddemo, login_request_fixed_load, login_request_fixed_save, login_request_fixed_measure, LoginRequestRow, wire),
+        ("backenddemo", "MatchResult") => fixed_arm!(backenddemo, match_result_fixed_load, match_result_fixed_save, match_result_fixed_measure, MatchResultRow, wire),
+        ("backenddemo", "StorePurchase") => fixed_arm!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, wire),
+        ("messagedemo", "ToolMessage") => fixed_arm!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, wire),
+        ("scalars", "SimState") => fixed_arm!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
+        ("tblscalars2", "SimState") => fixed_arm!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
+        ("tabledemo", "ArchiveConfig") => fixed_arm!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, wire),
+        ("tabledemo", "KeyedConfig") => fixed_arm!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, wire),
+        ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire),
+        ("tabledemo", "ProfileConfig") => fixed_arm!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, wire),
+        ("tabledemo", "RootConfig") => fixed_arm!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, wire),
+        // no fixed writer exists for this root; the conformance driver's own
+        // capacity, a one-entry plan the layout does not fit, refuses by name
+        ("tabledemo", "WideBlob") => {
+            let mut values = vec![tabledemo::WideBlobRow::default(); 1];
+            let mut plan = [tabledemo::TableFixedEntry::default(); 1];
+            let mut remap = [0u16; 1];
+            let mut report = tabledemo::TableFixedReport::default();
+            let _ = tabledemo::wide_blob_fixed_load(&mut values, wire, &mut plan, &mut remap, &mut report);
+            Some(Reply {
+                loaded: true,
+                unknown: u64::from(report.unknown),
+                widened: u64::from(report.widened),
+                damaged: report.damaged,
+                refused: !report.damaged,
+                measure: -1,
+                save_fail: true,
+                ..Default::default()
+            })
+        }
+        ("tbla2", "Root") => fixed_arm!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
+        ("tblk1", "Root") => fixed_arm!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
+        ("tblk2", "Root") => fixed_arm!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
+        ("tblm1", "Msg") => fixed_arm!(tblm1, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire),
+        ("tblm2", "Msg") => fixed_arm!(tblm2, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire),
+        ("tblp1", "Chain") => fixed_arm!(tblp1, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire),
+        ("tblp3", "Chain") => fixed_arm!(tblp3, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire),
+        ("tblr1", "Cfg") => fixed_arm!(tblr1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("tblr2", "Cfg") => fixed_arm!(tblr2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("tblv1", "Cfg") => fixed_arm!(tblv1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("tblv2", "Cfg") => fixed_arm!(tblv2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("vocabdemo", "Wide00") => fixed_arm!(vocabdemo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire),
+        ("vocabdemo", "Wide09") => fixed_arm!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, wire),
+        ("vocab9demo", "Wide00") => fixed_arm!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire),
+        ("vocab9demo", "Wide19") => fixed_arm!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, wire),
         _ => None,
     }
 }
