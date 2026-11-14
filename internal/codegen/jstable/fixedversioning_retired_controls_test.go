@@ -79,8 +79,12 @@ const data = new Uint8Array(readFileSync(%q));
 const at = 20 + new DataView(data.buffer).getUint32(16, true) + 8;
 const back = [new T(), new T(), new T()];
 const plan = TNewPlan(4096, 4096);
+// note's payload rides at at+2. Every dead byte is zero (owner, 2026-11-10):
+// an absent optional's payload must be zero or the whole record refuses.
+const note = data.slice(at+2, at+6);
 for (const [flag, present] of [[1,1],[0,0]]) {
   data[at] = flag; data[at+1] = present;
+  data.set(present ? note : [0,0,0,0], at+2);
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back, 3, data, data.length, plan, r);
@@ -97,6 +101,15 @@ for (const [flag, present] of [[1,1],[0,0]]) {
   if (c.pick.type !== 2 || c.pick.labelled.labelLength !== 0 || c.pick.labelled.lead !== -5 ||
       c.pick.labelled.trail !== 606 || c.tail !== 13) { fail("empty text arm: " + show(c)); }
   %s
+}
+{
+  data[at] = 0; data[at+1] = 0; data.set(note, at+2);
+  plan.image.fill(0x5A);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 3, data, data.length, plan, r);
+  if (n !== -1 || r.refused !== TableFixedRefusal.WireDamaged || r.damaged || r.oor) {
+    fail("absent optional over a written payload must refuse wire_damaged: " + n + " " + reason(r));
+  }
 }
 for (const [flag, present] of [[2,1],[1,7],[2,7],[255,128]]) {
   data[at] = flag; data[at+1] = present;
@@ -258,13 +271,17 @@ for (const [off, bad] of [[20,7],[48,255],[37,2],[42,128]]) {
   data[body+off] = bad;
   refuse(data, TableFixedRefusal.WireDamaged);
 }
-{
-  const data = one(1), v = new DataView(data.buffer);
-  v.setInt32(body+21,2147483647,true); v.setInt32(body+49,2147483647,true);
-  v.setInt32(body+38,123,true); data[body+43]=9;
-  const got=load(data);
-  if (got.optPresent || got.opt.v!==7 || got.wrap.leafPresent || got.wrap.leaf.v!==7 ||
-      got.numberPresent || got.number!==0 || got.markPresent || got.mark!==0) { fail("absent poison projected: "+show(got)); }
+// Every dead byte is zero (owner, 2026-11-10): each absent payload stained on
+// its own refuses the whole record wire_damaged.
+for (const poison of [
+  v => v.setInt32(body+21,2147483647,true),
+  v => v.setInt32(body+49,2147483647,true),
+  v => v.setInt32(body+38,123,true),
+  v => v.setUint8(body+43,9),
+]) {
+  const data = one(1);
+  poison(new DataView(data.buffer));
+  refuse(data, TableFixedRefusal.WireDamaged);
 }
 for (const [input,want] of [[1000,1000],[0,0]]) {
   const data=one(1); new DataView(data.buffer).setInt32(body+16,input,true);
@@ -342,7 +359,9 @@ const data = new Uint8Array(readFileSync(%q));
 const at=20+new DataView(data.buffer).getUint32(16,true)+8;
 if ([1,1,1,2].some((v,i)=>data[at+4+i]!==v)) { fail("C++ optional/union fixture positions"); }
 const back=[new T()], plan=TNewPlan(4096,4096);
-for (const [outer,tag,inner,ordinal] of [[1,1,1,2],[0,9,7,9],[1,1,0,9],[1,2,7,9]]) {
+// Dead bytes under an absent guard are zero (owner, 2026-11-10); the stained
+// forms of these reads refuse wire_damaged below.
+for (const [outer,tag,inner,ordinal] of [[1,1,1,2],[0,0,0,0],[1,1,0,0],[1,2,0,0]]) {
   data.set([outer,tag,inner,ordinal],at+4); plan.image.fill(0x5A);
   const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r), got=back[0];
   if(n!==1 || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor) {
@@ -356,6 +375,10 @@ for (const [outer,tag,inner,ordinal] of [[1,1,1,2],[0,9,7,9],[1,1,0,9],[1,2,7,9]
   %s
 }
 for (const [outer,tag,inner,ordinal,wantRefused] of [
+  [0,9,7,9,TableFixedRefusal.WireDamaged],
+  [1,1,0,9,TableFixedRefusal.WireDamaged],
+  [1,2,7,9,TableFixedRefusal.WireDamaged],
+  [1,2,0,9,TableFixedRefusal.WireDamaged],
   [2,1,7,9,TableFixedRefusal.WireDamaged],
   [2,1,255,2,TableFixedRefusal.WireDamaged],
   [1,1,255,2,TableFixedRefusal.WireDamaged],
