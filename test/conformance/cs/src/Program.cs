@@ -696,9 +696,10 @@ static partial class Program
                 }
                 // Every dead byte of the fixed form is zero (docs/SPEC-TABLES.md
                 // §3.4): a record with one stained slack byte is refused
-                // wire_damaged, and on a row the corpus marks wire-refused that
-                // refusal is the row's answer. Any other refusal is a failure.
-                if (report.Reason == "wire_damaged" && Array.IndexOf(f, "wire-refused") >= 0)
+                // wire_damaged, and that refusal is the answer (the derived
+                // manifest withholds which rows are wire-refused; the harness
+                // scores the marker against them). Any other refusal fails.
+                if (report.Reason == "wire_damaged")
                 {
                     File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "wire_damaged");
                     continue;
