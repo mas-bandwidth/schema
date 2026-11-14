@@ -19,10 +19,10 @@ private_driver() {
     main="$target/tree/test/conformance/dart/main.dart"
     case "$variant" in
       replacement)
-        anchor='    return utf8.decode(bytes, allowMalformed: false);'
+        anchor='    final text = utf8.decode(bytes, allowMalformed: false);'
         matches=$(grep -Fxc "$anchor" "$source" || true)
         [ "$matches" = 1 ] || { echo "decoder anchor matched $matches times, want 1" >&2; exit 1; }
-        sed 's/return utf8.decode(bytes, allowMalformed: false);/return utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
+        sed 's/final text = utf8.decode(bytes, allowMalformed: false);/final text = utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
         ;;
       reader)
         anchor='        final v = tabledemo.rootConfigFromJson(text, r);'
@@ -30,9 +30,14 @@ private_driver() {
         [ "$matches" = 1 ] || { echo "reader anchor matched $matches times, want 1" >&2; exit 1; }
         sed "s/final v = tabledemo.rootConfigFromJson(text, r);/final v = tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
         ;;
-      bom-preserve)
-        # Restore the decoded leading mark solely for this private control.
-        sed 's/return utf8.decode(bytes, allowMalformed: false);/return (bytes.length >= 3 \&\& bytes[0] == 0xEF \&\& bytes[1] == 0xBB \&\& bytes[2] == 0xBF ? String.fromCharCode(0xFEFF) : "") + utf8.decode(bytes, allowMalformed: false);/' "$source" > "$main"
+      bom-strip)
+        # Let the boundary drop the leading mark as well, solely for this
+        # private control: the generated reader then skips a second one.
+        anchor="    return bom ? '\\uFEFF\$text' : text;"
+        matches=$(grep -Fxc "$anchor" "$source" || true)
+        [ "$matches" = 1 ] || { echo "bom anchor matched $matches times, want 1" >&2; exit 1; }
+        [ "$(grep -c '^    return bom ? ' "$source")" = 1 ] || { echo "bom return matched more than once" >&2; exit 1; }
+        sed 's/^    return bom ? .*$/    return text;/' "$source" > "$main"
         ;;
     esac
     if cmp -s "$source" "$main"; then echo "$variant changed nothing" >&2; exit 1; fi
@@ -64,15 +69,23 @@ printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers"
 rc=0
 build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
 if [ "$mode" = replacement ]; then
-    [ "$rc" -ne 0 ] || { cat "$out/log"; echo 'replacement decoding stayed green' >&2; exit 1; }
-    grep -q 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
     if grep '^  dart / ' "$out/log" | grep -v 'dart / json-hostile: str-illformed-at-bound:'; then
         cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
     fi
     grep -Eq '^json-read +pass ' "$out/log"
     grep -Eq '^json-write +pass ' "$out/log"
-    grep 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
-    echo 'Dart replacement-decoder control: only invalid UTF-8 fails; read/write remain green'
+    # The corpus's str-illformed-at-bound row refuses under replacement too:
+    # U+FFFD spells three bytes where 0xFF was one, and an over-bound string
+    # refuses on its own (§16.3). A short ill-formed string tells the two
+    # decoders apart: the strict boundary refuses it, replacement reads it.
+    mkdir -p "$out/ill/input" "$out/ill/strict" "$out/ill/replaced"
+    printf '{"version_note":"\377"}\n' > "$out/ill/input/RootConfig.json"
+    printf 'json-hostile short-illformed tabledemo RootConfig %s/ill/input refused\n' "$out" > "$out/ill/manifest"
+    "$root/build/conformance-dart" "$out/ill/manifest" json-hostile "$out/ill/strict"
+    grep -qx 'refused' "$out/ill/strict/short-illformed" || { echo 'the strict boundary read invalid UTF-8' >&2; exit 1; }
+    "$binary" "$out/ill/manifest" json-hostile "$out/ill/replaced"
+    grep -qx '0,0,0,0,0,false,read' "$out/ill/replaced/short-illformed" || { echo 'NEGATIVE CONTROL FAILED: replacement decoding still refused invalid UTF-8' >&2; exit 1; }
+    echo 'Dart replacement-decoder control: replacement reads invalid UTF-8 the strict boundary refuses; read/write remain green'
     exit 0
 fi
 rows=$(grep -c '^json-hostile ' testdata/conformance/tables/MANIFEST.txt)
@@ -95,8 +108,8 @@ done
 "$binary" "$out/bom/manifest" json-hostile "$out/bom/answers"
 for name in plain leading-bom; do grep -qx '0,0,0,0,0,false,read' "$out/bom/answers/$name"; done
 for name in double-bom space-bom cut-bom; do grep -qx 'refused' "$out/bom/answers/$name"; done
-private_driver bom-preserve
-mkdir -p "$out/bom/retained"
-"$binary" "$out/bom/manifest" json-hostile "$out/bom/retained"
-grep -qx 'refused' "$out/bom/retained/leading-bom"
-echo 'Dart BOM control: exactly one leading mark is skipped; preserving it changes the generated reader result'
+private_driver bom-strip
+mkdir -p "$out/bom/stripped"
+"$binary" "$out/bom/manifest" json-hostile "$out/bom/stripped"
+grep -qx '0,0,0,0,0,false,read' "$out/bom/stripped/double-bom" || { echo 'NEGATIVE CONTROL FAILED: a boundary that also drops the mark still refused double-bom' >&2; exit 1; }
+echo 'Dart BOM control: exactly one leading mark is skipped, by the generated reader; a boundary that drops one too reads a double mark'
