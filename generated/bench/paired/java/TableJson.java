@@ -16,6 +16,7 @@ public final class TableJson {
     private TableJson() {}
 
     static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
+        assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
         for (int i = 0; i < names.length; i++)
