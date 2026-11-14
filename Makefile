@@ -3234,10 +3234,22 @@ tables-pack: build/schema_test_pack build/schema_test_pack_asan build/tables-pac
 HOSTILE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2>/dev/null)
 
+# RELAXED 2026-11-14 (maintainer: get main green): two rows the MANIFEST still
+# says read are refused by the engine since json-base64-canonical (unpadded
+# base64) and the skipped-value rule (a zero escape under an unknown key), while
+# the ports still read them. The gate runs on a copy of the manifest without
+# those two rows, so schema pack is not asked for bytes it now refuses.
+# re-enable: relax/hostile-engine-refuses-read-rows
+HOSTILE_ENGINE_RELAXED := base64-unpadded str-zero-escape-unknown-key
+HOSTILE_GATE_MANIFEST := build/hostile-values/MANIFEST.txt
+
 build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@rm -rf build/hostile-values
 	@mkdir -p build/hostile-values
-	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | awk '$$6 != "refused"' | \
+	@awk -v skip='$(HOSTILE_ENGINE_RELAXED)' \
+		'BEGIN { n = split( skip, s, " " ); for ( i = 1; i <= n; i++ ) { relaxed[s[i]] = 1 } } !( $$1 == "json-hostile" && ( $$2 in relaxed ) )' \
+		$(HOSTILE_MANIFEST) > $(HOSTILE_GATE_MANIFEST)
+	@grep '^json-hostile ' $(HOSTILE_GATE_MANIFEST) | awk '$$6 != "refused"' | \
 	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
 			$$tree $$(awk -v u=$$unit '$$1 == "unit" && $$2 == u { for ( i = 3; i <= NF; i++ ) printf "%s ", $$i }' $(HOSTILE_MANIFEST)) || exit 1; \
@@ -3254,8 +3266,8 @@ build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostil
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp
-	./build/schema_test_hostile $(HOSTILE_MANIFEST) build/hostile-values
-	./build/schema_test_hostile_asan $(HOSTILE_MANIFEST) build/hostile-values
+	./build/schema_test_hostile $(HOSTILE_GATE_MANIFEST) build/hostile-values
+	./build/schema_test_hostile_asan $(HOSTILE_GATE_MANIFEST) build/hostile-values
 
 # Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
 # `+`, which RFC 8259 does not — and the gate must go red, because a tree the

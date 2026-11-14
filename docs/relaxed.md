@@ -121,6 +121,17 @@ listed case that passes fails the leg until its line is removed.
   red. Files: `make/negative-controls.json`. Real fix: aim the sabotage at the
   check that now holds the whole-load discard (or drop the discard if it is
   dead code), then return the group to the pull-request tier. WIP: none.
+- `relax/hostile-engine-refuses-read-rows`: the pack hostile-value gate
+  (`tables-hostile-values`, under the control group `base-hostile`) runs on
+  `build/hostile-values/MANIFEST.txt`, a copy of the conformance manifest
+  without the json-hostile rows `base64-unpadded` and
+  `str-zero-escape-unknown-key`. The manifest says both read; the engine
+  refuses both since the rulings json-base64-canonical (#3401) and the
+  skipped-value rule (dc06421b6), while every port still reads them, so the
+  rows cannot simply flip to `refused` without turning every port's
+  conformance red. Files: `Makefile` (`HOSTILE_ENGINE_RELAXED`). Real fix: the
+  ports carry both rules, the two rows flip to `refused`, and the filter goes.
+  WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 
