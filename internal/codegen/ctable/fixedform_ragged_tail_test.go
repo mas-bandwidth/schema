@@ -7,7 +7,7 @@ package ctable
 // only the short-file half of the malformed row and the refusal rows read the
 // true length — so this leg still owes the tail. It is F7's DIRECT SIBLING:
 // the very next guard in the same emitted load. The two answers are `refused`
-// (plus a `reason`) and `malformed`, and they are NEVER both set; a ragged tail
+// (plus a `reason`) and framing damage, and they are NEVER both set; a ragged tail
 // is the RESIDUE of a bad file, not a refusal by name, so refused stays 0 and
 // reason stays 0. `record_bytes` is the SELECTED lineage entry's record size
 // (`{snake}_fixed_known[pick].record_bytes`), compiled into the reader, so the
@@ -50,7 +50,7 @@ func TestCFixedFormRaggedTail(t *testing.T) {
         if ( r.refused != 1 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
             { printf( "ragged: at extra=%%d refused=%%d refuse_reason=%%d, not wire_damaged\n", k, r.refused, r.refuse_reason ); return 1; }
         if ( r.reason != 0 ) { printf( "ragged: at extra=%%d a ragged tail is damage, never refused by name: reason=%%d\n", k, r.reason ); return 1; }
-        if ( r.widened != 0 || r.unknown != 0 )
+        if ( r.widened != 0 || r.unknown != 0 || r.layout_hash != 0 )
             { printf( "ragged: at extra=%%d damage is total: no counter moves (w=%%d u=%%d)\n", k, r.widened, r.unknown ); return 1; }
         if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "ragged: at extra=%%d a damaged read wrote destination bytes\n", k ); return 1; }
     }

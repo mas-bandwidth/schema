@@ -10,9 +10,9 @@ import (
 // the NEW reader's `aim` resolution REFINES 0.1 -> 0.01, this form's widening.
 // The forged bytes are NONE — a value off the old grid is still a float32 the
 // reader lands, and a moved step is the LOCK's and the HASH's refusal, not a
-// counter's. `clamped` is asserted == 0 EXACTLY: the old 0.3 sits on a whole
-// multiple of 0.01 so nothing requantizes, and a leg that re-quantized anyway
-// would move `clamped` to 1 — a looser read would pass that re-quantize-and-count bug.
+// counter's. The strict read is asserted clean EXACTLY: the old 0.3 sits on a
+// whole multiple of 0.01 so nothing requantizes, and a leg that re-quantized
+// anyway would refuse `out_of_range` — a looser read would pass that bug.
 //
 // `aim` IS COMPARED BY BITS, AGAINST THE CORPUS MANIFEST (schema#1164, Glenn
 // 2026-09-19: "do whatever is needed to make sure that a new reader can read an
