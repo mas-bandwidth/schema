@@ -1862,11 +1862,13 @@ function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
   }
 }
 
-// LIVE-COUNT: decode walks MarksCount, never the bound. Constructed count=1,
-// wire slack poisoned after write (write already walks MarksCount, so the
-// template's zeros are what the writer put there). A fresh object after load
-// has template zeros in the slack and oor 0, not 3. Walking the bound
-// would have copied the poison into the object.
+// LIVE-COUNT: decode walks MarksCount, never the bound. Constructed count=1:
+// the writer walks MarksCount, so the template's zeros are what it put in the
+// slack, and that record reads with its live prefix and oor 0, not 3. Then the
+// slack is poisoned after the write: THE SLACK RULE (docs/SPEC-TABLES.md §3.4;
+// owner, 2026-11-10: "Every dead byte") holds every byte past the live count
+// to zero, so the poisoned record refuses wire_damaged whole, and walking the
+// bound would never be reached.
 function liveCountSlack(check, fx1, fx1home) {
   const one = new fx1home.FxRoot();
   one.marksCount = 1;
@@ -1887,20 +1889,25 @@ function liveCountSlack(check, fx1, fx1home) {
     view.getInt32(recBody + marksAt + 12, true) === 0 &&
     view.getInt32(recBody + marksAt + 16, true) === 0,
     "live-count: write left slack as the template's zeros");
-  view.setInt32(recBody + marksAt + 8, 999, true);
-  view.setInt32(recBody + marksAt + 12, 888, true);
-  view.setInt32(recBody + marksAt + 16, 777, true);
 
   const back = [new fx1home.FxRoot()];
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(back, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r);
-  check(n === 1 && !r.damaged && r.refused === 0, `live-count: load of the poisoned-slack record, got ${n}`);
+  check(n === 1 && !r.damaged && r.refused === 0, `live-count: load of the zero-slack record, got ${n}`);
   check(back[0].marksCount === 1 && back[0].marks[0] === 42,
     `live-count: live prefix lands — got count ${back[0].marksCount} [${back[0].marks[0]}]`);
   check(back[0].marks[1] === 0 && back[0].marks[2] === 0 && back[0].marks[3] === 0,
-    `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].marks[1]}, ${back[0].marks[2]}, ${back[0].marks[3]}]`);
+    `live-count: object slack is template zeros — got [${back[0].marks[1]}, ${back[0].marks[2]}, ${back[0].marks[3]}]`);
   check(r.oor === 0,
     `live-count: oor counts 0 not 3 (got ${r.oor})`);
+
+  view.setInt32(recBody + marksAt + 8, 999, true);
+  view.setInt32(recBody + marksAt + 12, 888, true);
+  view.setInt32(recBody + marksAt + 16, 777, true);
+  const poisoned = new fx1home.TableFixedReport();
+  const m = fx1.FxRootFixedLoad([new fx1home.FxRoot()], 1, buf, buf.length, fx1.FxRootFixedNewPlan(), poisoned);
+  check(m === -1 && poisoned.refused === fx1home.TableFixedRefusal.WireDamaged,
+    `live-count: poisoned slack past the live count refuses wire_damaged, got ${m} refused ${poisoned.refused}`);
 }
 
 // ---------------------------------------------------------------------------
