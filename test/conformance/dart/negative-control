@@ -18,8 +18,9 @@
 # zero: the ZERO RULE (docs/SPEC-TABLES.md §16.3, text_holds_zero) is taken
 # out of _jsonText, the one helper every text-storage read goes through
 # (tools/sabotage table-dart-text-zero), the same way. The matrix must go red on
-# `dart / json-hostile` and on exactly the two carried rows,
-# str-zero-escape-value and str-zero-escape-map-key; the skipped unknown-key
+# `dart / json-hostile` and on exactly the carried zero rows,
+# str-zero-escape-value, str-zero-escape-map-key, str-zero-byte-bounded and
+# str-zero-byte-bounded-nested; the skipped unknown-key
 # zero, json-read and every other surface stay green.
 #
 # wire: the counted list's `widened` count is taken out of the WIRE emitter
