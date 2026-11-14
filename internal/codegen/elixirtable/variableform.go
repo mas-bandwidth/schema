@@ -1443,6 +1443,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         if not terminated, do: throw(:wire_damaged)
 
+        strict_syntax!(body, nodes, ids)
+
         # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5)
         if shared > 0, do: throw(:wire_damaged)
 
@@ -1733,10 +1735,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
             # no *string cannot place the record at all (§3.1)
-            if is_map(allowed) and allowed.string_blob do
-              if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
-            else
-              {:unknown, :blob}
+            cond do
+              not utf8_valid?(bytes) -> :malformed
+              is_map(allowed) and allowed.string_blob -> {:blob, :string, bytes}
+              true -> {:unknown, :blob}
             end
 
           tid ->
@@ -5962,6 +5964,8 @@ const variableRetainSource = `
           end)
 
         if not terminated, do: throw(:wire_damaged)
+
+        strict_syntax!(body, nodes, ids)
 
         # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5)
         if shared > 0, do: throw(:wire_damaged)

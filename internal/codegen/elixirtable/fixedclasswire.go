@@ -72,6 +72,67 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
     end
   end
 
+  # EVERY BODY IS HELD TO ITS FRAMING (docs/SPEC-TABLES.md §3, §4: the strict
+  # read's rules are decidable from the wire alone and apply to every byte).
+  # After the read, the root body and each table record's body are walked as
+  # an unknown field's payload is, so an arm, a slot or a field the read
+  # skipped carries no damage the read stepped over. A non-finite float a
+  # known field holds has already refused by name.
+  defp strict_syntax!(body, nodes, ids) do
+    if not unknown_root_body?(body, ids, MapSet.new()), do: throw(:wire_damaged)
+
+    Enum.each(nodes, fn
+      {:table, _name, b} ->
+        if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
+
+      {:unknown, b} when is_binary(b) ->
+        if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
+
+      _ ->
+        :ok
+    end)
+
+    :ok
+  end
+
+  # the root body is a body whose node table field is its own: a text-kind
+  # payload the node records were read from
+  defp unknown_root_body?(b, ids, seen) do
+    case leb(b) do
+      {0, rest} ->
+        rest == <<>>
+
+      {ref, <<kind, rest::binary>>} ->
+        id = resolve(ids, ref)
+
+        cond do
+          id == :error or MapSet.member?(seen, id) ->
+            false
+
+          id == @node_id and kind == 12 ->
+            case leb(rest) do
+              {n, r} when byte_size(r) >= n ->
+                unknown_root_body?(binary_part(r, n, byte_size(r) - n), ids, MapSet.put(seen, id))
+
+              _ ->
+                false
+            end
+
+          id in [@build_version_id, @message_vocab_id, @node_id] ->
+            false
+
+          true ->
+            case unknown_payload(rest, kind, ids, 0) do
+              {:ok, after_payload} -> unknown_root_body?(after_payload, ids, MapSet.put(seen, id))
+              :error -> false
+            end
+        end
+
+      _ ->
+        false
+    end
+  end
+
   defp unknown_payload(buf, kind, ids, depth) do
     cond do
       kind in 1..11 or kind in 18..29 or kind == 36 ->

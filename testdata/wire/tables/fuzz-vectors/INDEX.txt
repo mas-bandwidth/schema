@@ -344,3 +344,13 @@ id_table_4097_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4
 # never met the index and loaded. From mapdemo.Chunks, random #20608 of seed 2.
 map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_duplicate_pointer_past_table.bin
 
+
+# AN ARM THIS READER CANNOT NAME IS STILL HELD TO ITS FRAMING (§6.5, the strict
+# read's rules are decidable from the wire alone and apply to every byte, in
+# fields and records a reader declares and in those it does not). streamdemo.Feed's
+# known union field `frame` carries an arm whose id Feed cannot name, of the text
+# kind, and its text holds a NUL: ill-formed text, so the whole read refuses.
+# The Elixir read skipped an unknown arm's payload by its L without walking it,
+# counted two unknowns and loaded. From streamdemo.Feed (stream_header),
+# random #3851 of seed 24845619678.
+unknown_arm_text_nul streamdemo Feed testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin
