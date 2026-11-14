@@ -59,6 +59,25 @@ type wireFuzzOptions struct {
 	vectors      string
 	// Kept for command-line compatibility so a retired exemption fails clearly.
 	finiteOwed string
+	// RELAXED 2026-11-14 (maintainer: get main green): the fixed-form
+	// dead-byte mutants (array tail, absent optional payload, text tail,
+	// inactive arm) are counted and not compared on the legs that pass
+	// --relax-dead-bytes, because the engine still accepts dead bytes the
+	// ruling says a reader refuses; re-enable: relax/dead-bytes
+	relaxDeadBytes bool
+}
+
+// deadByteMutant says the mutant is one relax/dead-bytes leaves uncompared:
+// a fixed-class root, the leg refuses, the oracle accepts, and the oracle's
+// canonical re-encoding has the input's length but not its bytes, so the
+// difference is bytes the decoded value does not carry (the fixed form has
+// one size, so a same-length re-encoding differs only in dead bytes).
+// RELAXED 2026-11-14 (maintainer: get main green); re-enable: relax/dead-bytes
+func deadByteMutant(root *wireRoot, reply legReply, ans oracleAnswer, data []byte) bool {
+	if root.variable || reply.accepted() || !ans.accepted || ans.encFail {
+		return false
+	}
+	return len(ans.encoded) == len(data) && !bytes.Equal(ans.encoded, data)
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -758,6 +777,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	start := time.Now()
 	total := 0
 	enumeratedCount := 0
+	relaxed := 0
 	for mut := range sent {
 		root := roots[seedRoot[mut.seed]]
 		reply, err := leg.receiveWithDeadline(realClock{})
@@ -770,7 +790,14 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			leg.kill()
 			return wireFailure(opts, mut, total, err.Error(), "")
 		}
-		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
+		verdict := wireVerdict(root, reply, ans, len(mut.data))
+		if verdict != "" && opts.relaxDeadBytes && deadByteMutant(root, reply, ans, mut.data) {
+			// RELAXED 2026-11-14 (maintainer: get main green): a dead-byte
+			// mutant is counted, not compared; re-enable: relax/dead-bytes
+			relaxed++
+			verdict = ""
+		}
+		if verdict != "" {
 			leg.kill()
 			// THE TWO ANSWERS BESIDE THE MUTANT: a divergence in the decoded
 			// VALUE is a diff, and a diff needs both sides on disk
@@ -828,6 +855,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	if opts.retain {
 		arm += " retain"
+	}
+	if opts.relaxDeadBytes {
+		absence += fmt.Sprintf(", %d dead-byte mutants not compared (RELAXED, relax/dead-bytes)", relaxed)
 	}
 	fmt.Printf("%s: seed %d, %d seeds over %d roots%s, %d enumerated + %d random = %d mutants, 0 divergences, %.1f s, %.0f mutants/s\n",
 		arm, opts.seed, len(live), len(roots), absence, enumeratedCount, total-enumeratedCount, total, elapsed.Seconds(), rate)

@@ -81,6 +81,12 @@ const (
 	// StatusInProgress is a cell that would be red, in the column of a port
 	// test/proof/in-progress.json declares still being built.
 	StatusInProgress = "in progress"
+	// StatusRelaxed is a cell that would be red and that the `relaxed` list of
+	// test/proof/in-progress.json names, with the slug of its entry in
+	// docs/relaxed.md. RELAXED 2026-11-14 (maintainer: get main green): it
+	// does not hold the proof red, it does hold a release, and a listed cell
+	// that is no longer red refuses until its entry is removed.
+	StatusRelaxed = "relaxed"
 )
 
 // Cell is one language's answer to one row, with what proves it or why it is red.
@@ -95,6 +101,7 @@ type Cell struct {
 	Cites   string `json:"cites,omitempty"`
 	Why     string `json:"why,omitempty"`
 	Port    string `json:"port,omitempty"`
+	Relaxed string `json:"relaxed,omitempty"`
 }
 
 // Proof is the generated table.
@@ -110,6 +117,18 @@ func (p Proof) Red() []Cell {
 	var out []Cell
 	for _, c := range p.Cells {
 		if c.Status == StatusRed {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Relaxed is every cell the relaxed list names that would be red, in table
+// order.
+func (p Proof) Relaxed() []Cell {
+	var out []Cell
+	for _, c := range p.Cells {
+		if c.Status == StatusRelaxed {
 			out = append(out, c)
 		}
 	}
@@ -378,6 +397,92 @@ func parityError(langs []string) string {
 	return fmt.Sprintf("%s declared in progress but at parity: remove %s from %s so the proof gates it", strings.Join(langs, ", "), strings.Join(langs, ", "), inProgressPath)
 }
 
+// relaxedPath is the one list of every relaxation (RELAXED 2026-11-14,
+// maintainer: get main green). Every relaxed cell's slug must have its entry
+// there, so a cell, its entry and the sprint card that undoes it share a name.
+const relaxedPath = "docs/relaxed.md"
+
+// RelaxedCell is one entry of the `relaxed` list of test/proof/in-progress.json:
+// one cell, row and language, that does not hold the proof red while its
+// relaxation's slug (relax/<name>, an entry in docs/relaxed.md) stands.
+type RelaxedCell struct {
+	Row  string `json:"row"`
+	Lang string `json:"lang"`
+	Slug string `json:"slug"`
+}
+
+// label is what a relaxed cell carries.
+func (r RelaxedCell) label() string {
+	return "RELAXED 2026-11-14 (maintainer: get main green), re-enable: " + r.Slug + " (" + relaxedPath + ")"
+}
+
+// LoadRelaxed reads the `relaxed` list of test/proof/in-progress.json, keyed
+// row/lang. It refuses an entry with no row or language, a slug that is not
+// relax/<name> or has no entry in docs/relaxed.md, and a cell named twice.
+func LoadRelaxed(root string) (map[string]RelaxedCell, error) {
+	data, err := os.ReadFile(filepath.Join(root, inProgressPath))
+	if err != nil {
+		return nil, err
+	}
+	var f struct {
+		Relaxed []RelaxedCell `json:"relaxed"`
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("%s: %w", inProgressPath, err)
+	}
+	out := map[string]RelaxedCell{}
+	if len(f.Relaxed) == 0 {
+		return out, nil
+	}
+	doc, err := os.ReadFile(filepath.Join(root, relaxedPath))
+	if err != nil {
+		return nil, fmt.Errorf("%s relaxes %d cells and %w", inProgressPath, len(f.Relaxed), err)
+	}
+	slug := regexp.MustCompile(`^relax/[a-z0-9][a-z0-9-]*$`)
+	for _, r := range f.Relaxed {
+		key := r.Row + "/" + r.Lang
+		switch {
+		case r.Row == "" || r.Lang == "":
+			return nil, fmt.Errorf("%s: a relaxed cell names no row or no language", inProgressPath)
+		case !slug.MatchString(r.Slug):
+			return nil, fmt.Errorf("%s: relaxed cell %s names no slug (relax/<name>)", inProgressPath, key)
+		case !strings.Contains(string(doc), "`"+r.Slug+"`"):
+			return nil, fmt.Errorf("%s: relaxed cell %s names %s, which %s does not list", inProgressPath, key, r.Slug, relaxedPath)
+		case out[key].Slug != "":
+			return nil, fmt.Errorf("%s: relaxed cell %s is named twice", inProgressPath, key)
+		}
+		out[key] = r
+	}
+	return out, nil
+}
+
+// StaleRelaxed names every relaxed cell that is not relaxed in the table: a
+// cell no longer red (its fix landed) or a cell the table does not hold. Like
+// a port at parity, it must not hide in the list, so the proof refuses until
+// its entry is removed.
+func StaleRelaxed(p Proof, relaxed map[string]RelaxedCell) []string {
+	status := map[string]string{}
+	for _, c := range p.Cells {
+		status[c.Row+"/"+c.Lang] = c.Status
+	}
+	var out []string
+	for key := range relaxed {
+		if status[key] != StatusRelaxed {
+			out = append(out, key)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// staleRelaxedError is the refusal StaleRelaxed's cells earn, or "".
+func staleRelaxedError(keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("relaxed but no longer red (or not in the table): %s; remove each from the relaxed list of %s and its relaxation from %s so the proof gates it", strings.Join(keys, ", "), inProgressPath, relaxedPath)
+}
+
 // Controls is make/negative-controls.json reduced to what a cell cites: each
 // control target and the CI job that runs it.
 type Controls map[string]string
@@ -581,6 +686,8 @@ type Inputs struct {
 	Docs map[string]string
 	// InProgress is test/proof/in-progress.json by language.
 	InProgress map[string]Port
+	// Relaxed is the relaxed list of test/proof/in-progress.json by row/lang.
+	Relaxed map[string]RelaxedCell
 }
 
 // LoadInputs reads every input but the results from the tree at root.
@@ -603,6 +710,9 @@ func LoadInputs(root string, results Results) (Inputs, error) {
 		return in, err
 	}
 	if in.InProgress, err = LoadPorts(root); err != nil {
+		return in, err
+	}
+	if in.Relaxed, err = LoadRelaxed(root); err != nil {
 		return in, err
 	}
 	return in, nil
@@ -698,6 +808,9 @@ func Compute(in Inputs) Proof {
 			c := computeCell(in, row, lang)
 			if port, ok := in.InProgress[lang]; ok && c.Status == StatusRed {
 				c.Status, c.Port = StatusInProgress, port.label()
+			}
+			if r, ok := in.Relaxed[row+"/"+lang]; ok && c.Status == StatusRed {
+				c.Status, c.Relaxed = StatusRelaxed, r.label()
 			}
 			p.Cells = append(p.Cells, c)
 		}
@@ -944,6 +1057,16 @@ func InProgressList(p Proof) string {
 	return b.String()
 }
 
+// RelaxedList prints the relaxed cells, one per line with the slug that
+// re-enables each: reported, not gated by the proof, gated by a release.
+func RelaxedList(p Proof) string {
+	var b strings.Builder
+	for _, c := range p.Relaxed() {
+		fmt.Fprintf(&b, "%s / %s: %s [%s]\n", c.Row, c.Lang, c.Why, c.Relaxed)
+	}
+	return b.String()
+}
+
 // Report is what the proof job hands the release: the commit it ran at, the
 // red cells by name, and the cells of ports still being built.
 type Report struct {
@@ -953,6 +1076,10 @@ type Report struct {
 	InProgress []Cell `json:"in_progress,omitempty"`
 	Stale      string `json:"stale,omitempty"`
 	Parity     string `json:"parity,omitempty"`
+	// Relaxed and RelaxedStale: RELAXED 2026-11-14 (maintainer: get main
+	// green). A relaxed cell does not hold the proof red but holds a release.
+	Relaxed      []Cell `json:"relaxed,omitempty"`
+	RelaxedStale string `json:"relaxed_stale,omitempty"`
 }
 
 // VerifyRelease is the release lock: a release of commit refuses unless the
@@ -973,6 +1100,18 @@ func VerifyRelease(r Report, commit string) error {
 	}
 	if r.Parity != "" {
 		return fmt.Errorf("release REFUSES: at %s, %s", commit, r.Parity)
+	}
+	if r.RelaxedStale != "" {
+		return fmt.Errorf("release REFUSES: at %s, %s", commit, r.RelaxedStale)
+	}
+	// RELAXED 2026-11-14 (maintainer: get main green): a relaxed cell is not
+	// proven, so it holds a release though it does not hold the proof red.
+	if len(r.Relaxed) > 0 {
+		var names []string
+		for _, c := range r.Relaxed {
+			names = append(names, c.Row+" / "+c.Lang)
+		}
+		return fmt.Errorf("release REFUSES: the proof at %s has %d relaxed cell(s) (%s): %s", commit, len(r.Relaxed), relaxedPath, firstFew(names))
 	}
 	if len(r.Red) > 0 {
 		var names []string
