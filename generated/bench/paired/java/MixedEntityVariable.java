@@ -1175,7 +1175,7 @@ public final class MixedEntityVariable {
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
-        if (loadMeasure(data, measure) < 0) {
+        if (loadMeasure(data, measure, false) < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
@@ -1251,7 +1251,13 @@ public final class MixedEntityVariable {
     }
 
     public static long loadMeasure(byte[] data, TableVariable.Measure m) {
-        TableVariable.Reader r = m.open(data);
+        return loadMeasure(data, m, true);
+    }
+
+    // A load whose open already proved the id table distinct over these bytes
+    // passes distinct false, so a load runs the bounded walk exactly once (§3).
+    static long loadMeasure(byte[] data, TableVariable.Measure m, boolean distinct) {
+        TableVariable.Reader r = m.open(data, distinct);
         if (r == null) {
             return -1;
         }
