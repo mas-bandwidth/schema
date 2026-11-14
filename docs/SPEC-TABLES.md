@@ -15854,9 +15854,21 @@ terminate — and it carries this section's depth cap, because a pointer chain
 nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-- limit name=json_max_depth value=128 -->
 `malformed`, and a write that would nest deeper returns -1 (§16.3).
 **The read's cap counts every object and array the reader walks, placed or skipped**,
-the value under an unknown key included: 128 container levels are read and 129
-refuse. The write's cap at the same number counts table and type values only
-(W2), so the two caps share a number and not a unit.
+the value under an unknown key included, the root at depth 0: 128 container
+levels are read and 129 refuse. The write's cap at the same number counts
+table and type values only (W2), so the two caps share a number and not a unit.
+
+**A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
+an object key that names a field, an enum variant name, a flags element, a
+union arm key and an `&node` name, in every object and inside a skipped value:
+a longer one refuses the read, and an unknown enum name over 255 bytes refuses
+and never reads `None`. The cap never reaches a map key or a string value —
+those are data a conforming writer emits — and the `map[string]V` row's "no
+key is refused for its length" stands (§2.13.1).
+
+**Every JSON read is handed BYTES and validates UTF-8 itself.** A leg whose
+read takes its language's string also offers a bytes entry, and that string
+entry refuses a lone surrogate, as the bytes entry does (§16.3).
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2

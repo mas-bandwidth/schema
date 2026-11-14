@@ -589,9 +589,12 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// not hold, and the numbering has to survive the drop (§16.7).
 			// Anywhere but first, the prefix is the reserved key out of place
 			// — in a pointered root; a fixed root skips the value whole.
-			key, _, ok := in.scanString(maxJsonKey)
+			key, tooLong, ok := in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			if in.peek() != ':' {
 				in.bad = true
@@ -1412,9 +1415,12 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.readTable(cell.Tab, depth+1)
 	}
 	if e := EnumOf(f); e != nil {
-		name, _, ok := in.scanString(maxJsonKey)
+		name, tooLong, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
+		}
+		if tooLong {
+			return in.fail("length_over_bound: JSON key")
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
 			if VariantDeprecated(e, v) {
@@ -1678,9 +1684,12 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		in.pos++
 		return true
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanString(maxJsonKey)
 	if !ok {
 		return false
+	}
+	if tooLong {
+		return in.fail("length_over_bound: JSON key")
 	}
 	if in.peek() != ':' {
 		in.bad = true
@@ -1783,9 +1792,12 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		if c != '"' {
 			return in.fail("kind_mismatch: " + fl.Name)
 		} else {
-			name, _, ok := in.scanString(maxJsonKey)
+			name, tooLong, ok := in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			found := false
 			for bit, v := range fl.Variants {
