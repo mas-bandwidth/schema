@@ -2649,7 +2649,7 @@
     {
       "name": "squirrel-conformance",
       "when": "pull-request",
-      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur (report red, wire green), the walk saboteur (json-read red, json-write and wire green), the block saboteur (forgery red, block and block-dump green) and the retain saboteur (retain red, wire and report green), each rebuilding the compiler under an overlay and regenerating the corpus, about 12 s on the studio. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 4 conformance controls.",
+      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur (report red, wire green), the walk saboteur (json-read red, json-write and wire green), the block saboteur (forgery red, block and block-dump green) and the retain saboteur (retain-save red, retain, wire and report green), each rebuilding the compiler under an overlay and regenerating the corpus, about 12 s on the studio. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 4 conformance controls.",
       "targets": [
         "conformance-negative-control-squirrel",
         "conformance-negative-control-squirrel-block",
