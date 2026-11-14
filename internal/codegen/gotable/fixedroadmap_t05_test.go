@@ -263,10 +263,14 @@ func TestIllFormed(t *testing.T) {
 		pdst[i] = 0x5A
 	}
 	pw := append([]byte(nil), wire...)
+	// the shortened lengths leave the old units behind them as slack, which
+	// is held to zero, so they are cleared and the refusal is u's content
 	binary.LittleEndian.PutUint32(pw[sBase:], 1)
 	pw[sPayload] = 'a'
+	pw[sPayload+1], pw[sPayload+2] = 0, 0
 	binary.LittleEndian.PutUint32(pw[uBase:], 1)
 	pw[uPayload] = 0xFF
+	pw[uPayload+1] = 0
 	var pr TableReport
 	if got := TFixedLoad(poison, pw, plan, &pr); got >= 0 || pr.Reason != "text_ill_formed" {
 		t.Fatalf("poison: n=%d reason=%q, want text_ill_formed", got, pr.Reason)

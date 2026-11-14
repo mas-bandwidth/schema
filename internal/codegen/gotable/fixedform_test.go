@@ -1071,8 +1071,21 @@ func TestTagPastTheArmsRefuses(t *testing.T) {
 		}
 	}
 
-	none := append([]byte(nil), buf...)
-	none[len(none)-HostFixedRecordBytes+8] = 0
+	// Under tag 0 every arm byte is slack, and every dead byte is zero (the
+	// owner, 2026-11-10): None with its arm bytes zero reads, and None over the
+	// chat arm's stale bytes refuses wire_damaged, never out_of_range.
+	tagAt := len(buf) - HostFixedRecordBytes + 8
+	stale := append([]byte(nil), buf...)
+	stale[tagAt] = 0
+	got = make([]Host, 1)
+	r = TableReport{}
+	if n := HostFixedLoad(got, stale, plan, &r); n != -1 || r.Reason != "wire_damaged" {
+		t.Fatalf("None over stale arm bytes: n=%d %+v %+v, want wire_damaged", n, got[0], r)
+	}
+	none := append([]byte(nil), stale...)
+	for i := 1; i <= 4; i++ {
+		none[tagAt+i] = 0
+	}
 	got = make([]Host, 1)
 	r = TableReport{}
 	if n := HostFixedLoad(got, none, plan, &r); n != 1 || got[0].Pick.Type != PickTypeNone || r != (TableReport{}) {

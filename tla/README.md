@@ -434,10 +434,19 @@ offset `1 + i`, live while `i < min(count, B)`; `b` under the guard chain
 `<<t1 = 1, u0 = 1>>`, outermost first; `c` under `<<t1 = 2>>`. A bool byte other
 than `0` or `1` in live data refuses, a count outside `0..B` refuses, a tag past
 the writer's arms is refused by the bounds pass after landing and the landing is
-reset, and slack is never read and never refused. The entries run in any order
-and the first condition met refuses. The ORACLE is written from the record's
-MEANING — the first `count` elements, the arm the tags select, the payloads
-under it — and not from offsets.
+reset. EVERY DEAD BYTE IS ZERO (the owner, 2026-11-10; docs/rulings.json
+fixed-dead-bytes-zero): the slack — the element slots at and past the count,
+`u0` and `u1` under an outer tag 0, `u1` under arm 1 with an inner tag 0 or
+inner arm 2 (payload-free), and `u1` behind arm 2's one-byte bool — is held to
+zero and to nothing else, and a non-zero slack byte refuses the whole record
+`wire_damaged`. The reader holds it with DEAD-ZERO entries: the count entry,
+once in bound, zero-checks the tail `1 + count .. B`, and each union carries
+one entry per tag value the writer can write (0 included), under that tag's
+own guard chain, over the bytes from the end of that arm to the widest. The
+entries run in any order and the first condition met refuses. The ORACLE is
+written from the record's MEANING — the first `count` elements, the arm the
+tags select, the payloads under it, and every byte nothing taken covers — and
+not from offsets.
 
 ## Properties
 
@@ -448,6 +457,10 @@ under it — and not from offsets.
   meaning.
 - **InsideArray** — no element entry reads outside the array's own `B` slots.
 - **NoSlackRead** — every offset an element entry reads is a live element.
+- **ZeroReadsSlack** — a dead-zero entry reads slack and nothing else, so a
+  live value is never asked the zero rule.
+- **ArmReadsLive** — an arm's bool entry reads its byte only under the arm the
+  meaning selects.
 
 ## Reversed witnesses
 

@@ -187,7 +187,9 @@ func TestOuterTagConjunction(t *testing.T) {
 	body[8+2] = 0xde
 	body[8+3] = 0xad
 	body[8+4] = 0xbe
-	body[8+5] = 0xef
+	// byte 5 is behind q's four bytes, so it is slack and stays zero (every
+	// dead byte is zero, the owner 2026-11-10); x's entry would still land
+	// 0x00beadde from bytes 2..5 if it ran
 	only := make([]T, 1)
 	r = TableReport{}
 	if n := TFixedLoad(only, buf, plan, &r); n != 1 {

@@ -356,7 +356,7 @@ func TestProbe(t *testing.T) {
 	}
 }
 `
-		if out, err := runFixedProbe(t, unitFrom(t, schema), nil, nil, src); err != nil {
+		if out, err := runGeneratedUnit(t, unitFrom(t, schema), src, nil); err != nil {
 			t.Fatalf("the live-extents read: %v\n%s", err, out)
 		}
 	})
@@ -432,12 +432,12 @@ func TestProbe(t *testing.T) {
 	}
 }
 `
-		out, err := runFixedProbe(t, unitFrom(t, schema), nil, func(files map[string][]byte) {
+		out, err := runGeneratedUnit(t, unitFrom(t, schema), src, func(files map[string][]byte) {
 			sabotageGenerated(t, files, "live array extents", [2]string{
 				"for i := range int64(value.ValsCount)",
 				"for i := range int64(4)",
 			})
-		}, src)
+		})
 		requireRed(t, "the live array extent", out, err, "the clean record refused")
 	})
 }

@@ -120,7 +120,9 @@ func chainOf(t *testing.T, plan []TableFixedEntry, count int32) []TableFixedGuar
 	t.Helper()
 	for i := int32(0); i < count; i++ {
 		e := plan[i]
-		if e.GuardCount != depth {
+		// a dead-zero entry rides a chain as deep, ending at its own tag
+		// value (0 or a narrower arm), so the leaf's chain is a value entry's
+		if e.GuardCount != depth || e.Op == tableFixedDeadZero {
 			continue
 		}
 		links := make([]TableFixedGuardLink, e.GuardCount)
@@ -135,6 +137,15 @@ func chainOf(t *testing.T, plan []TableFixedEntry, count int32) []TableFixedGuar
 	}
 	t.Fatalf("no plan entry carries a %%d-link chain (offset+count into the pool)", depth)
 	return nil
+}
+
+// inSlack says whether poisoning tag poison-1 to arm b (a four-byte leaf at
+// poison .. poison+3) leaves the deepest leaf's first byte, the 42 at offset
+// depth behind the depth one-byte tags, in that union's slack. Every dead byte
+// is zero (the owner, 2026-11-10), so such a record refuses wire_damaged and
+// the leaf never lands; otherwise the record reads and the leaf must not land.
+func inSlack(poison int) bool {
+	return poison > 0 && depth >= poison+4
 }
 
 func outermostFirst(t *testing.T, links []TableFixedGuardLink) {
@@ -170,7 +181,14 @@ func TestGuardChain(t *testing.T) {
 		}
 		got := make([]Root, 1)
 		var r TableReport
-		if n := RootFixedLoad(got, file, make([]TableFixedEntry, 1<<16), &r); n != 1 || r.Reason != "" {
+		n := RootFixedLoad(got, file, make([]TableFixedEntry, 1<<16), &r)
+		if inSlack(poison) {
+			if n != -1 || r.Reason != "wire_damaged" {
+				t.Fatalf("identity poison %%d: the leaf's 42 is slack behind the four-byte arm b, so the record refuses wire_damaged: load %%d %%+v", poison, n, r)
+			}
+			continue
+		}
+		if n != 1 || r.Reason != "" {
 			t.Fatalf("identity poison %%d: load %%d %%+v", poison, n, r)
 		}
 		if poison == 0 && leafOf(&got[0]) != 42 {
@@ -201,7 +219,14 @@ func TestGuardChain(t *testing.T) {
 		var got Root
 		RootReset(&got)
 		var r TableReport
-		if why := tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r); why != "" {
+		why := tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+		if inSlack(poison) {
+			if why != "wire_damaged" {
+				t.Fatalf("compiled poison %%d: the leaf's 42 is slack behind arm b, want wire_damaged, got %%q", poison, why)
+			}
+			continue
+		}
+		if why != "" {
 			t.Fatalf("compiled poison %%d: %%s", poison, why)
 		}
 		if poison == 0 && leafOf(&got) != 42 {
