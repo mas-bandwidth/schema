@@ -280,14 +280,13 @@ local function wireRefusal(why)
   return type(why) == "string" and why:find("blob_shared", 1, true) ~= nil
 end
 
--- a row the manifest marks `wire-refused` is one every reader refuses: a
--- fixed record with a non-zero dead byte (docs/SPEC-TABLES.md §3.4, THE SLACK
--- RULE) as much as a blob two slots name. Its refusal is the named absence.
-local function markedWireRefused(f)
-  for i = 6, #f do
-    if f[i] == "wire-refused" then return true end
-  end
-  return false
+-- a fixed record whose slack is not zero is refused whole as wire_damaged
+-- (docs/SPEC-TABLES.md §3.4, THE SLACK RULE), and the corpus's fixed_dead_*
+-- rows are those records: that refusal is their answer, a named absence the
+-- harness holds against the row's wire-refused flag (on any other row it
+-- scores as an absence, never a pass).
+local function deadByteRefusal(why)
+  return type(why) == "string" and why:find("wire_damaged", 1, true) ~= nil
 end
 
 local function surfaceWire(all, outdir)
@@ -300,8 +299,8 @@ local function surfaceWire(all, outdir)
       if v == nil then
         if wireRefusal(why) then
           absent(outdir, f[2], "blob_shared")
-        elseif markedWireRefused(f) then
-          absent(outdir, f[2], tostring(why))
+        elseif deadByteRefusal(why) then
+          absent(outdir, f[2], "wire_damaged")
         else
           io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
         end

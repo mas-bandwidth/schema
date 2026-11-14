@@ -302,13 +302,14 @@ if (mode == "wire") {
         writeText(outdir + "/" + cname + ".absent", "blob_shared");
         continue;
       }
-      // a row the manifest marks wire-refused is one every reader refuses: a
-      // fixed record with a non-zero dead byte (docs/SPEC-TABLES.md §3.4, THE
-      // SLACK RULE). Its refusal is the named absence.
-      local marked = false;
-      for (local i = 5; i < f.len(); i++) if (f[i] == "wire-refused") marked = true;
-      if (marked) {
-        writeText(outdir + "/" + cname + ".absent", report.reason == null ? "refused" : report.reason);
+      // a fixed record whose slack is not zero is refused whole as
+      // wire_damaged (docs/SPEC-TABLES.md §3.4, THE SLACK RULE), and the
+      // corpus's fixed_dead_* rows are those records: that refusal is their
+      // answer, a named absence the harness holds against the row's
+      // wire-refused flag (on any other row it scores as an absence, never a
+      // pass).
+      if (report.reason == "wire_damaged") {
+        writeText(outdir + "/" + cname + ".absent", "wire_damaged");
         continue;
       }
       throw cname + ": load refused " + wirepath;

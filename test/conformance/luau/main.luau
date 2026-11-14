@@ -216,11 +216,14 @@ local function surfaceWire(lines: { { string } })
 					-- one blob named from two slots (docs/SPEC-TABLES.md §2.5)
 					-- is a NAMED refusal, and the harness holds the name
 					print(f[2] .. " absent blob_shared")
-				elseif table.find(f, "wire-refused", 6) ~= nil then
-					-- a row the manifest marks wire-refused is one every reader
-					-- refuses: a fixed record with a non-zero dead byte
-					-- (docs/SPEC-TABLES.md §3.4, THE SLACK RULE), a named refusal
-					print(f[2] .. " absent " .. tostring(r.reason))
+				elseif r.reason == "wire_damaged" then
+					-- a fixed record whose slack is not zero is refused whole
+					-- as wire_damaged (docs/SPEC-TABLES.md §3.4, THE SLACK
+					-- RULE), and the corpus's fixed_dead_* rows are those
+					-- records: a named absence the harness holds against the
+					-- row's wire-refused flag (on any other row it scores as an
+					-- absence, never a pass)
+					print(f[2] .. " absent wire_damaged")
 				else
 					error(f[2] .. ": load refused " .. f[5])
 				end
