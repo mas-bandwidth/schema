@@ -2209,9 +2209,15 @@ define conformance-negative-control-c-wref
 	@echo "negative control: the C $(5) writer without its $(1) check turns the harness RED on $(5)"
 endef
 
+# Each control's sabotage is aimed at a check the writer its surface drives
+# actually runs. RootConfig is a FIXED root, so the `write-refusal` surface's
+# file write is its fixed_save (test/conformance/c/unit.h), and what it holds
+# there beside the length assert is the value write check (docs/SPEC.md §5.1);
+# the message surface's writer is save_messages, whose length check is the
+# message body's.
 .PHONY: conformance-negative-control-c-write-refusal
 conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal,value->version_note_length < 0 || value->version_note_length > 16,false /* SABOTAGED: no variable length check */,SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-c-wref,write-refusal,schema_assert( schema_tabledemo_root_config_write_admits_( values + k ) );,(void) 0; /* SABOTAGED: no value write check */,SABOTAGED: no value write check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-c-write-refusal-fixed
 conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
@@ -2219,4 +2225,4 @@ conformance-negative-control-c-write-refusal-fixed: build/conformance-harness bu
 
 .PHONY: conformance-negative-control-c-write-refusal-message
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal-message,value->sku_length<0 || value->sku_length>32,false /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-c-wref,write-refusal-message,if(value->sku_length<0 || value->sku_length>32) return 0;,if(0) return 0; /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)

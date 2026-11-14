@@ -6028,6 +6028,8 @@ inline int64_t PaddedRowMeasureBody( TableIds & ids, const PaddedRow & value )
     return bytes;
 }
 
+inline bool PaddedRowFixedWriteAdmits( const PaddedRow & value );
+
 inline int64_t PaddedRowMeasure( const PaddedRow & value )
 {
     TableIds ids;
@@ -7450,6 +7452,7 @@ inline int64_t PaddedRowMeasureMessages( const PaddedRow * values, int64_t count
     {
         const int64_t body = PaddedRowMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( PaddedRowFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -7468,6 +7471,7 @@ inline int64_t PaddedRowSaveMessages( const PaddedRow * values, int64_t count, u
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !PaddedRowSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( PaddedRowFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == PaddedRowMeasureMessages( values, count, report )
@@ -7543,6 +7547,8 @@ inline int64_t PaddedFrameMeasureBody( TableIds & ids, const PaddedFrame & value
     }
     return bytes;
 }
+
+inline bool PaddedFrameFixedWriteAdmits( const PaddedFrame & value );
 
 inline int64_t PaddedFrameMeasure( const PaddedFrame & value )
 {
@@ -8327,6 +8333,7 @@ inline int64_t PaddedFrameMeasureMessages( const PaddedFrame * values, int64_t c
     {
         const int64_t body = PaddedFrameMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( PaddedFrameFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8345,6 +8352,7 @@ inline int64_t PaddedFrameSaveMessages( const PaddedFrame * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !PaddedFrameSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( PaddedFrameFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == PaddedFrameMeasureMessages( values, count, report )
@@ -8481,6 +8489,16 @@ TABLE_FIXED_INLINE bool PaddedRowFixedInRange( const PaddedRow & value )
     return bad == 0;
 }
 
+// PaddedRow's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool PaddedRowFixedWriteAdmits( const PaddedRow & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.label_length >= 0 && value.label_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) );
+    return bad == 0;
+}
+
 // PaddedRow's read-side bounds.
 inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -8502,6 +8520,19 @@ TABLE_FIXED_INLINE bool PaddedFrameFixedInRange( const PaddedFrame & value )
     for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
     {
         bad |= (int) !PaddedRowFixedInRange( value.rows[i] );
+    }
+    return bad == 0;
+}
+
+// PaddedFrame's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool PaddedFrameFixedWriteAdmits( const PaddedFrame & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < ( value.rows_count >= 0 && value.rows_count <= 64 ? (int64_t) value.rows_count : 0 ); ++i )
+    {
+        bad |= (int) !PaddedRowFixedWriteAdmits( value.rows[i] );
     }
     return bad == 0;
 }
@@ -8760,6 +8791,10 @@ inline int64_t PaddedRowFixedSave( const PaddedRow * values, int64_t count, uint
 {
     const int64_t need = PaddedRowFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( PaddedRowFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PaddedRowFixedHash );
@@ -10474,6 +10509,10 @@ inline int64_t PaddedFrameFixedSave( const PaddedFrame * values, int64_t count, 
 {
     const int64_t need = PaddedFrameFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( PaddedFrameFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PaddedFrameFixedHash );

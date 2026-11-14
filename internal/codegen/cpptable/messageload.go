@@ -661,6 +661,9 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
 	g.pf("        const int64_t body = %sMeasureMessageBody( bits, values[i] );\n", n)
 	g.pf("        if ( body < 0 ) { return -1; }\n")
+	// THE WRITE CONTRACT (docs/SPEC.md §5.1) on a value the body ACCEPTED:
+	// what it refuses in every build still answers -1 first
+	g.emitWriteAssert(st, "values[i]", "        ")
 	g.pf("        bits += body;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    return 1 + ( bits + 7 ) / 8 + 4; // the form byte, then the stream padded to a byte, plus the integrity trailer (§2.14)\n}\n\n")
@@ -679,6 +682,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	}
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
 	g.pf("        if ( !%sSaveMessageBody( batch.w, values[i] ) ) { return -1; }\n", n)
+	g.emitWriteAssert(st, "values[i]", "        ")
 	g.pf("        batch.written++;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    const int64_t end = TableMessageBatchEnd( batch );\n")

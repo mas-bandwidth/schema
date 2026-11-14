@@ -8388,6 +8388,8 @@ inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
     return bytes;
 }
 
+inline bool MetaFixedWriteAdmits( const Meta & value );
+
 inline int64_t MetaMeasure( const Meta & value )
 {
     TableIds ids;
@@ -8932,6 +8934,7 @@ inline int64_t MetaMeasureMessages( const Meta * values, int64_t count, TableRep
     {
         const int64_t body = MetaMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MetaFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8950,6 +8953,7 @@ inline int64_t MetaSaveMessages( const Meta * values, int64_t count, uint8_t * b
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MetaSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MetaFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MetaMeasureMessages( values, count, report )
@@ -9006,6 +9010,8 @@ inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     return bytes;
 }
+
+inline bool SettingsFixedWriteAdmits( const Settings & value );
 
 inline int64_t SettingsMeasure( const Settings & value )
 {
@@ -9551,6 +9557,7 @@ inline int64_t SettingsMeasureMessages( const Settings * values, int64_t count, 
     {
         const int64_t body = SettingsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( SettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9569,6 +9576,7 @@ inline int64_t SettingsSaveMessages( const Settings * values, int64_t count, uin
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !SettingsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( SettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == SettingsMeasureMessages( values, count, report )
@@ -11858,6 +11866,17 @@ TABLE_FIXED_INLINE bool MetaFixedInRange( const Meta & value )
     return bad == 0;
 }
 
+// Meta's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MetaFixedWriteAdmits( const Meta & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
+    bad |= (int) ( value.tag_length >= 0 && value.tag_length <= 8 && !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) );
+    return bad == 0;
+}
+
 // Meta's read-side bounds.
 inline void MetaFixedClampBody( Meta & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -11880,6 +11899,17 @@ TABLE_FIXED_INLINE bool SettingsFixedInRange( const Settings & value )
     int bad = 0;
     bad |= (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
+}
+
+// Settings's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool SettingsFixedWriteAdmits( const Settings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
+    bad |= (int) ( value.label_length >= 0 && value.label_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) );
     return bad == 0;
 }
 
@@ -12034,6 +12064,10 @@ inline int64_t MetaFixedSave( const Meta * values, int64_t count, uint8_t * buff
 {
     const int64_t need = MetaFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( MetaFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, MetaFixedHash );
@@ -12487,6 +12521,10 @@ inline int64_t SettingsFixedSave( const Settings * values, int64_t count, uint8_
 {
     const int64_t need = SettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( SettingsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SettingsFixedHash );

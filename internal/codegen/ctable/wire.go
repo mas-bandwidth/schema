@@ -84,7 +84,7 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), ir.TableFixedHasWriteBound(g.unit))
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), ir.TableFixedHasWriteCheck(g.unit))
 }
 
 const fileWireRuntime = `
@@ -956,6 +956,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
+	g.emitWriteAdmitsDecl(st)
 	for _, measure := range []bool{true, false} {
 		verb, args, buffer, cap := "save", ", uint8_t * buffer, int64_t capacity", "buffer", "capacity"
 		if measure {

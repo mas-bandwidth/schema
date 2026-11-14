@@ -878,6 +878,11 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	}
 	// the buffer-level entry: the FORM BYTE, the ROOT BODY and the ID TABLE,
 	// which is the whole of a saved table (docs/SPEC-TABLES.md §3)
+	if a := g.writeAdmits(st); a != "" {
+		// declared here, ahead of every writer that asserts it; defined in
+		// the fixed form beside the read-side bounds it shares a walk with
+		g.pf("inline bool %s( const %s & value );\n\n", a, st.Name)
+	}
 	g.pf("inline int64_t %sMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    TableIds ids;\n")
 	g.pf("    const int64_t body = %sMeasureBody( ids, value );\n", st.Name)

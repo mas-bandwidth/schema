@@ -279,9 +279,9 @@ var runPatternExceptions = []runPatternException{
 	{"make/moo-readiness.mk:35", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
 	{"Makefile:5894", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
 	{"make/js.mk:1541", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
-	{"Makefile:7446", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7474", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7478", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7455", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7483", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7487", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every

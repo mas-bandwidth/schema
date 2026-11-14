@@ -6610,6 +6610,15 @@ FIXEDFORM_INCLUDES = -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) -I$(SERIALIZE)
 FIXEDFORM_ASAN_FLAGS = -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
+# THE HOSTILE-VALUE WRITERS ARE BUILT THE WAY A RELEASE BUILD IS. The fixed
+# writer's value checks (docs/SPEC.md §5.1: range, bits width, enum, union tag,
+# ill-formed text) are debug asserts, the programmer's job, so a release build
+# CAN put a value past them on the wire. These binaries write such values on
+# purpose so the READER can be made to answer for them, and compile the write
+# assert out the way a release build does: the same flag on every unit of a
+# binary, so no inline function differs between two of them.
+FIXEDFORM_RELEASE_WRITE := '-Dschema_assert(x)=((void)0)'
+
 # ONE OBJECT PER TRANSLATION UNIT, for the plain binary and its sanitized twin
 # alike: the three sources compile side by side under `make -j` rather than one
 # after another inside a single compiler command (the sanitized build of the
@@ -6619,11 +6628,11 @@ FIXEDFORM_UNITS := fixedform_main versioning_lists versioning_numbers
 
 build/fixedform-objs/%.o: test/tables/%.cpp build/tables-generated/.stamp
 	@mkdir -p $(@D)
-	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) $(FIXEDFORM_INCLUDES) -c $< -o $@
 
 build/fixedform-objs-asan/%.o: test/tables/%.cpp build/tables-generated/.stamp
 	@mkdir -p $(@D)
-	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_RELEASE_WRITE) $(FIXEDFORM_INCLUDES) -c $< -o $@
 
 build/schema_test_fixedform: $(FIXEDFORM_UNITS:%=build/fixedform-objs/%.o)
 	@mkdir -p build
@@ -6778,7 +6787,7 @@ tables-fixedform-run-copy-negative-control:
 # packages, one of which runs `make tables-rust-fixedform`).
 build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp | tables-fixedform-corpus-check
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/examples \

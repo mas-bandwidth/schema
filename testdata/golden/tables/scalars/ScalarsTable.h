@@ -5937,6 +5937,8 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     return bytes;
 }
 
+inline bool SimStateFixedWriteAdmits( const SimState & value );
+
 inline int64_t SimStateMeasure( const SimState & value )
 {
     TableIds ids;
@@ -8738,6 +8740,7 @@ inline int64_t SimStateMeasureMessages( const SimState * values, int64_t count, 
     {
         const int64_t body = SimStateMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( SimStateFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8756,6 +8759,7 @@ inline int64_t SimStateSaveMessages( const SimState * values, int64_t count, uin
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !SimStateSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( SimStateFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == SimStateMeasureMessages( values, count, report )
@@ -9545,6 +9549,18 @@ TABLE_FIXED_INLINE bool PoseFixedInRange( const Pose & value )
     return bad == 0;
 }
 
+// Pose's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool PoseFixedWriteAdmits( const Pose & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.x < -1966080000ll ) | (int) ( value.x > 1966080000ll );
+    bad |= (int) ( value.y < -1966080000ll ) | (int) ( value.y > 1966080000ll );
+    bad |= (int) ( value.heading > 23592960 );
+    return bad == 0;
+}
+
 // Pose's read-side bounds.
 inline void PoseFixedClampBody( Pose & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -9593,6 +9609,44 @@ TABLE_FIXED_INLINE bool SimStateFixedInRange( const SimState & value )
     if ( value.spawn_present )
     {
         bad |= (int) !PoseFixedInRange( value.spawn );
+    }
+    return bad == 0;
+}
+
+// SimState's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool SimStateFixedWriteAdmits( const SimState & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tilt > 112 );
+    bad |= (int) ( value.angle < -11796480 ) | (int) ( value.angle > 11796480 );
+    bad |= (int) ( value.position < -1966080000ll ) | (int) ( value.position > 1966080000ll );
+    bad |= (int) ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) | (int) ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) );
+    bad |= (int) ( value.ticks < 0 ) | (int) ( value.ticks > 1000000 );
+    bad |= (int) ( value.ratio > 240 );
+    bad |= (int) ( value.speed > 65536000 );
+    bad |= (int) ( value.span > 18446744073709486080ull );
+    bad |= (int) ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) );
+    bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    bad |= (int) ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) | (int) ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) );
+    bad |= (int) ( value.scale < -524288 ) | (int) ( value.scale > 524288 );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.samples[i] < -524288 ) | (int) ( value.samples[i] > 524288 );
+    }
+    for ( int64_t i = 0; i < ( value.weights_count >= 0 && value.weights_count <= 4 ? (int64_t) value.weights_count : 0 ); ++i )
+    {
+        bad |= (int) ( value.weights[i] > 25600 );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.axes.slots[i] < -429496729600ll ) | (int) ( value.axes.slots[i] > 429496729600ll );
+    }
+    bad |= (int) !PoseFixedWriteAdmits( value.pose );
+    if ( value.spawn_present )
+    {
+        bad |= (int) !PoseFixedWriteAdmits( value.spawn );
     }
     return bad == 0;
 }
@@ -9997,6 +10051,10 @@ inline int64_t SimStateFixedSave( const SimState * values, int64_t count, uint8_
 {
     const int64_t need = SimStateFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( SimStateFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SimStateFixedHash );

@@ -9349,6 +9349,8 @@ inline int64_t ArchiveConfigMeasureBody( TableIds & ids, const ArchiveConfig & v
     return bytes;
 }
 
+inline bool ArchiveConfigFixedWriteAdmits( const ArchiveConfig & value );
+
 inline int64_t ArchiveConfigMeasure( const ArchiveConfig & value )
 {
     TableIds ids;
@@ -9867,6 +9869,7 @@ inline int64_t ArchiveConfigMeasureMessages( const ArchiveConfig * values, int64
     {
         const int64_t body = ArchiveConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ArchiveConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9885,6 +9888,7 @@ inline int64_t ArchiveConfigSaveMessages( const ArchiveConfig * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ArchiveConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ArchiveConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ArchiveConfigMeasureMessages( values, count, report )
@@ -9966,6 +9970,17 @@ TABLE_FIXED_INLINE bool ArchiveConfigFixedInRange( const ArchiveConfig & value )
     (void) value;
     int bad = 0;
     bad |= (int) !RootConfigFixedInRange( value.root );
+    bad |= (int) ( value.count < 0 ) | (int) ( value.count > 100 );
+    return bad == 0;
+}
+
+// ArchiveConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ArchiveConfigFixedWriteAdmits( const ArchiveConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !RootConfigFixedWriteAdmits( value.root );
     bad |= (int) ( value.count < 0 ) | (int) ( value.count > 100 );
     return bad == 0;
 }
@@ -10937,6 +10952,10 @@ inline int64_t ArchiveConfigFixedSave( const ArchiveConfig * values, int64_t cou
 {
     const int64_t need = ArchiveConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ArchiveConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ArchiveConfigFixedHash );

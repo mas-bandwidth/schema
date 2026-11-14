@@ -5497,6 +5497,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body( tabledemo_table_writer
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_team_config_write_admits_( const tabledemo_team_config_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_team_config_measure( const tabledemo_team_config_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5676,7 +5677,11 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_measure_messages(const tabled
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_team_config_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_team_config_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_team_config_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5693,7 +5698,11 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_save_messages(const tabledemo
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_team_config_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_team_config_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_team_config_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7057,6 +7066,7 @@ static SCHEMA_UNUSED int tabledemo_keyed_config_save_body( tabledemo_table_write
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_keyed_config_write_admits_( const tabledemo_keyed_config_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_keyed_config_measure( const tabledemo_keyed_config_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -7350,7 +7360,11 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_measure_messages(const table
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_keyed_config_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_keyed_config_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_keyed_config_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7367,7 +7381,11 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_save_messages(const tabledem
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_keyed_config_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_keyed_config_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_keyed_config_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8094,6 +8112,55 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
     schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, out_of_range, damaged );
 }
 
+/* TeamConfig's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_write_check_body_( const tabledemo_team_config_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += (int) ( value->spawn_count < 0 ) | (int) ( value->spawn_count > 64 );
+    if ( value->banner_length >= 0 && value->banner_length <= 16 && !tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) )
+    {
+        (*damaged)++;
+    }
+}
+
+/* ScoreBoard's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_write_check_body_( const tabledemo_score_board_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            (*out_of_range) += (int) ( value->per_team[i] < 0 ) | (int) ( value->per_team[i] > 100000 );
+        }
+    }
+}
+
+/* KeyedConfig's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_write_check_body_( const tabledemo_keyed_config_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            schema_tabledemo_team_config_fixed_write_check_body_( &value->teams[i], out_of_range, damaged );
+        }
+    }
+    schema_tabledemo_score_board_fixed_write_check_body_( &value->scores, out_of_range, damaged );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TeamConfig holds is
+   one its declaration admits. Every writer of TeamConfig asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_team_config_write_admits_( const tabledemo_team_config_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_team_config_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -8206,6 +8273,10 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_save( const tabledemo_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_team_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_team_config_fixed_hash );
@@ -9310,6 +9381,17 @@ static SCHEMA_UNUSED int64_t tabledemo_hull_config_fixed_load( tabledemo_hull_co
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value KeyedConfig holds is
+   one its declaration admits. Every writer of KeyedConfig asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_keyed_config_write_admits_( const tabledemo_keyed_config_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_keyed_config_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9568,6 +9650,10 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_fixed_save( const tabledemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_keyed_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_keyed_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
