@@ -1400,6 +1400,22 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
 // THE COALESCER, and it is the only optimization a plan compiler performs: two
 // neighbouring COPY entries whose source and destination both advance together
 // are one entry. It is performed identically on both sides.
+// THE SPLIT HOLDS OVER THE SLACK CHECKS: every entry below it carries no guard
+// and every entry at or above it carries one. A slack check with no guard moves
+// down to the split; a check writes nothing, so its place among the others is
+// free.
+function TableFixedResplit(plan, from) {
+  const e = plan.entries;
+  for (let i = from | 0; i < plan.count; i++) {
+    const b = i * TableFixedLanes;
+    if (e[b + TableFixedLaneGuard] !== TableFixedNoGuard) { continue; }
+    const row = e.slice(b, b + TableFixedLanes);
+    e.copyWithin((plan.split + 1) * TableFixedLanes, plan.split * TableFixedLanes, b);
+    e.set(row, plan.split * TableFixedLanes);
+    plan.split++;
+  }
+}
+
 function TableFixedCoalesce(plan, from) {
   const e = plan.entries;
   let out = from | 0;
@@ -1581,7 +1597,9 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   // the checks that every dead byte is zero, each under its own guard, after
   // every entry that lands a value and before the projection reads one.
   plan.pass = 2;
+  const slackFrom = plan.count;
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
+  TableFixedResplit(plan, slackFrom);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
   if (plan.overflow) { return -1; }
