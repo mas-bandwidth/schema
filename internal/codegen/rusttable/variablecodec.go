@@ -1005,10 +1005,17 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);\n")
 	// A FIELD ID APPEARS AT MOST ONCE IN A BODY (docs/SPEC-TABLES.md §4, §6.5):
 	// `seen` tracks the ids this reader declares, `seen_unknown` the ones it
-	// cannot name, and `seen_node` the reserved node-table id.
+	// cannot name, and `seen_node` the reserved node-table id. Every id the
+	// body carries, whichever of those it is, is also held once to refuse a
+	// repeat: on the stack for as many ids as an undamaged body this reader
+	// names in full can carry (its fields and the node table), so that load
+	// never touches the heap (test/rust-alloc), and in `seen_ids` past that.
+	inline := len(st.Fields) + 1
 	fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
 	fmt.Fprintf(b, "    let mut seen_unknown: Vec<u64> = Vec::new();\n")
 	fmt.Fprintf(b, "    let mut seen_node = false;\n")
+	fmt.Fprintf(b, "    let mut seen_ids_inline = [0u64; %d];\n", inline)
+	fmt.Fprintf(b, "    let mut seen_ids_len = 0usize;\n")
 	fmt.Fprintf(b, "    let mut seen_ids: Vec<u64> = Vec::new();\n")
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };\n")
@@ -1021,7 +1028,8 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        if r == 0 { return true; }\n")
 	}
 	fmt.Fprintf(b, "        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };\n")
-	fmt.Fprintf(b, "        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }\n")
+	fmt.Fprintf(b, "        if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }\n")
+	fmt.Fprintf(b, "        else if seen_ids_len < %d { seen_ids_inline[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids.push(id); }\n", inline)
 	fmt.Fprintf(b, "        if *off >= end { report.damaged = true; return false; }\n")
 	fmt.Fprintf(b, "        let kind = wire[*off]; *off += 1;\n")
 	fmt.Fprintf(b, "        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)\n")
@@ -1980,6 +1988,57 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        None => return None,\n")
 		fmt.Fprintf(b, "    };\n")
 	}
+	if st.FixedDeclared {
+		// A fixed table holds no pointer in its by-value closure (SPEC-TABLES
+		// §2.2), and a fixed-class root owns no node table, so its graph is the
+		// root alone: no stub, no record, no edge, no cycle and nothing
+		// unreached. The pass below would only allocate to prove that, on a
+		// load the allocation gate holds at zero (test/rust-alloc).
+		fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
+		fmt.Fprintf(b, "    let mut off = 1usize;\n")
+		fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
+		fmt.Fprintf(b, "    if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
+		fmt.Fprintf(b, "    nodes.root_open = false;\n")
+		fmt.Fprintf(b, "    // A fixed table holds no pointer (docs/SPEC-TABLES.md §2.2): its graph is\n")
+		fmt.Fprintf(b, "    // the root alone, with no edge, no cycle and nothing unreached.\n")
+		fmt.Fprintf(b, "    v.__table_link(wire, ids, &mut nodes, report);\n")
+	} else {
+		g.emitVariableGraphPass(b, st)
+	}
+	fmt.Fprintf(b, "    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): a slot met a node\n")
+	fmt.Fprintf(b, "    // whose descent was still open, anywhere in the loaded graph's final stored\n")
+	fmt.Fprintf(b, "    // pointer slots, the unreached records included. Each vertex is entered\n")
+	fmt.Fprintf(b, "    // once, so the walk is linear; the whole load is refused.\n")
+	fmt.Fprintf(b, "    if report.cycle_on_save { report.damaged = true; return None; }\n")
+	if !st.FixedDeclared {
+		fmt.Fprintf(b, "    if !report.cycle_on_save && nodes.has_unreachable(&edges) { report.damaged = true; return None; }\n")
+	}
+	fmt.Fprintf(b, "    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks\n")
+	fmt.Fprintf(b, "    // any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing\n")
+	fmt.Fprintf(b, "    // lands and nothing retained is kept.\n")
+	fmt.Fprintf(b, "    if !report.non_finite_float.is_empty() { if let Some(ret) = retain { ret.bytes.clear(); ret.ids.clear(); } report.refuse(TableReason::NonFiniteFloat); return None; }\n")
+	fmt.Fprintf(b, "    if let Some(ret) = retain {\n")
+	fmt.Fprintf(b, "        let mut at = 0usize;\n")
+	fmt.Fprintf(b, "        while at + 4 <= nodes.retained.len() {\n")
+	fmt.Fprintf(b, "            let len = retain_record_len(&nodes.retained[at..]);\n")
+	fmt.Fprintf(b, "            if len < 17 || len > nodes.retained.len() - at { break; }\n")
+	fmt.Fprintf(b, "            if len <= ret.bytes.capacity().saturating_sub(ret.bytes.len()) { ret.bytes.extend_from_slice(&nodes.retained[at..at+len]); }\n")
+	fmt.Fprintf(b, "            else { report.retained -= 1; report.retain_lost += 1; }\n")
+	fmt.Fprintf(b, "            at += len;\n")
+	fmt.Fprintf(b, "        }\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    Some(v)\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	// MEASURE
+	g.emitVariableMeasure(b, st)
+}
+
+// emitVariableGraphPass emits a variable-class root's graph pass (docs/SPEC-
+// TABLES.md §3.1, §4): the stubs, every placeable record decoded before the
+// root, the root body, then the edges, the cycle check, the link in
+// post-order and the shared build.
+func (g *gen) emitVariableGraphPass(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    nodes.init_stubs(Rc::new(%s::default()), variable_node_stub_alloc);\n", st.Name)
 	fmt.Fprintf(b, "    // Every placeable record is decoded before the root, whether or not a slot names it;\n")
 	fmt.Fprintf(b, "    // its refusal and diagnostic prefix follow the oracle order (§3.1, §4).\n")
@@ -2008,31 +2067,6 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { let _ = variable_node_build(wire, ids, &mut nodes, k, report); }\n")
 	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "    }\n")
-	fmt.Fprintf(b, "    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): a slot met a node\n")
-	fmt.Fprintf(b, "    // whose descent was still open, anywhere in the loaded graph's final stored\n")
-	fmt.Fprintf(b, "    // pointer slots, the unreached records included. Each vertex is entered\n")
-	fmt.Fprintf(b, "    // once, so the walk is linear; the whole load is refused.\n")
-	fmt.Fprintf(b, "    if report.cycle_on_save { report.damaged = true; return None; }\n")
-	fmt.Fprintf(b, "    if !report.cycle_on_save && nodes.has_unreachable(&edges) { report.damaged = true; return None; }\n")
-	fmt.Fprintf(b, "    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks\n")
-	fmt.Fprintf(b, "    // any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing\n")
-	fmt.Fprintf(b, "    // lands and nothing retained is kept.\n")
-	fmt.Fprintf(b, "    if !report.non_finite_float.is_empty() { if let Some(ret) = retain { ret.bytes.clear(); ret.ids.clear(); } report.refuse(TableReason::NonFiniteFloat); return None; }\n")
-	fmt.Fprintf(b, "    if let Some(ret) = retain {\n")
-	fmt.Fprintf(b, "        let mut at = 0usize;\n")
-	fmt.Fprintf(b, "        while at + 4 <= nodes.retained.len() {\n")
-	fmt.Fprintf(b, "            let len = retain_record_len(&nodes.retained[at..]);\n")
-	fmt.Fprintf(b, "            if len < 17 || len > nodes.retained.len() - at { break; }\n")
-	fmt.Fprintf(b, "            if len <= ret.bytes.capacity().saturating_sub(ret.bytes.len()) { ret.bytes.extend_from_slice(&nodes.retained[at..at+len]); }\n")
-	fmt.Fprintf(b, "            else { report.retained -= 1; report.retain_lost += 1; }\n")
-	fmt.Fprintf(b, "            at += len;\n")
-	fmt.Fprintf(b, "        }\n")
-	fmt.Fprintf(b, "    }\n")
-	fmt.Fprintf(b, "    Some(v)\n")
-	fmt.Fprintf(b, "}\n\n")
-
-	// MEASURE
-	g.emitVariableMeasure(b, st)
 }
 
 // emitVariableMeasure emits <name>_load_measure: the region storage the framing

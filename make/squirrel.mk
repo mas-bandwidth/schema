@@ -120,8 +120,9 @@ tables-squirrel-finite-float-negative-control: toolchain-squirrel dist-squirrel
 
 # THE FLOAT-PARITY CONTROLS (docs/SPEC-TABLES.md §3.3, §4, §7.6; SPEC.md §4.3),
 # beside internal/codegen/squirreltable/floatparity_test.go's positive rows
-# against the Go engine: the variable read's compressed-float clamp removed
-# must red exactly the rows the engine clamps; the message quantizer put back
+# against the Go engine: the variable read's compressed-float range check
+# removed must red exactly the rows carrying a value past an end, which the
+# engine refuses; the message quantizer put back
 # to one rounding in double must red exactly the fuzz rows where that parts
 # from ir.TableMessageQuantize, and an over-count index clamped instead of
 # refused must red exactly the over-count rows; CookMeasure that does not walk
