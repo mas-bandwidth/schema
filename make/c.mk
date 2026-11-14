@@ -2186,7 +2186,7 @@ define conformance-negative-control-c-wref
 	@cp -R build/tables-generated-c build/conformance-negative-c-$(1)/generated
 	@files=$$(grep -rlF '$(2)' build/conformance-negative-c-$(1)/generated); \
 		[ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $(1) check matches no generated line"; exit 1; }; \
-		sed -i 's@$(2)@$(3)@g' $$files
+		sed -i.bak 's@$(2)@$(3)@g' $$files && for f in $$files; do rm -f "$$f.bak"; done
 	@grep -rqF '$(4)' build/conformance-negative-c-$(1)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the $(1) check did not change"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_INCLUDES)) \
@@ -2199,7 +2199,7 @@ define conformance-negative-control-c-wref
 		echo "NEGATIVE CONTROL FAILED: the C $(5) writer without its $(1) check left the harness green"; \
 		cat build/conformance-negative-c-$(1)/log; exit 1; \
 	fi
-	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-c-$(1)/log || \
+	@grep -q '^  c / $(5): ' build/conformance-negative-c-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
 		  cat build/conformance-negative-c-$(1)/log; exit 1; }
 	@grep -Eq '^$(6) +pass ' build/conformance-negative-c-$(1)/log || \
@@ -2211,7 +2211,7 @@ endef
 
 .PHONY: conformance-negative-control-c-write-refusal
 conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal,if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; },if ( false ) { return 0; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-c-wref,write-refusal,value->version_note_length < 0 || value->version_note_length > 16,false /* SABOTAGED: no variable length check */,SABOTAGED: no variable length check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-c-write-refusal-fixed
 conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
@@ -2219,4 +2219,4 @@ conformance-negative-control-c-write-refusal-fixed: build/conformance-harness bu
 
 .PHONY: conformance-negative-control-c-write-refusal-message
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal-message,if ( value->sku_length < 0 || value->sku_length > 32 ) { return 0; },if ( false ) { return 0; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-c-wref,write-refusal-message,value->sku_length<0 || value->sku_length>32,false /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)

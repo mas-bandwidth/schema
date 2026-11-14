@@ -82,6 +82,31 @@ listed case that passes fails the leg until its line is removed.
   two new nightly groups, `js-write-refusal` and `lobster-write-refusal`,
   unmeasured. Real fix: measure them and move each group to the pull-request
   tier. WIP: none.
+- `relax/nc-write-refusal-variable-unreachable`: the C, C++ and C#
+  `conformance-negative-control-<lang>-write-refusal` controls (groups
+  `base-c-write-refusal-b` and `cs-write-refusal` moved to the nightly; the C++
+  one moved out of `base-cpp-write-refusal` into the nightly group
+  `cpp-write-refusal-variable`). They cannot go red: every `write-refusal` row
+  in `testdata/conformance/tables/MANIFEST.txt` is on RootConfig, a
+  fixed-class root the drivers save through the fixed writer, so the variable
+  writer's check they remove is never reached. The fixed controls already cover
+  the fixed writer's check. Real fix: add write-refusal rows on a
+  variable-class root, so the variable writer's check is reached, then return
+  the three controls to the pull-request tier. WIP: none.
+- `relax/nc-cs-write-refusal-fixed-bounds`: `conformance-negative-control-cs-write-refusal-fixed`
+  (group `cs-write-refusal`, nightly). With the fixed writer's
+  `Debug.Assert(len_version_note <= 16)` removed, the 17-byte copy overruns its
+  span and the CLR's own bounds check throws ArgumentOutOfRangeException, so
+  the driver crashes instead of answering. Real fix: a plant that lets a wrong
+  value out within bounds, or a driver that answers a CLR bounds exception as
+  its own verdict; then back to the pull-request tier. WIP: none.
+- `relax/nc-cs-write-refusal-message-target`: `conformance-negative-control-cs-write-refusal-message`
+  (group `cs-write-refusal`, nightly). With every message-writer count check
+  in the TableWire runtime removed (`f.Counted && (Count(value, f) ...` and
+  `(count ...`), mref_length is still refused, so the check that refuses it is
+  somewhere else and the plant misses it. Real fix: find the check that
+  refuses an over-long text on the message path and aim the plant at it. WIP:
+  none.
 
 ## CI time (the 110 s per-commit wall)
 

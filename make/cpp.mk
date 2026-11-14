@@ -460,7 +460,7 @@ define conformance-negative-control-cpp-wref
 	@cp -R build/tables-generated build/conformance-negative-cpp-$(1)/generated
 	@files=$$(grep -rlF '$(2)' build/conformance-negative-cpp-$(1)/generated); \
 		[ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $(1) check matches no generated line"; exit 1; }; \
-		sed -i 's@$(2)@$(3)@g' $$files
+		sed -i.bak 's@$(2)@$(3)@g' $$files && for f in $$files; do rm -f "$$f.bak"; done
 	@grep -rqF '$(4)' build/conformance-negative-cpp-$(1)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the $(1) check did not change"; exit 1; }
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
@@ -477,7 +477,7 @@ define conformance-negative-control-cpp-wref
 		echo "NEGATIVE CONTROL FAILED: the C++ $(5) writer without its $(1) check left the harness green"; \
 		cat build/conformance-negative-cpp-$(1)/log; exit 1; \
 	fi
-	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-cpp-$(1)/log || \
+	@grep -q '^  cpp / $(5): ' build/conformance-negative-cpp-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
 		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
 	@grep -Eq '^$(6) +pass ' build/conformance-negative-cpp-$(1)/log || \
@@ -489,7 +489,7 @@ endef
 
 .PHONY: conformance-negative-control-cpp-write-refusal
 conformance-negative-control-cpp-write-refusal: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal,if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; },if ( false ) { return false; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal,value.version_note_length < 0 || value.version_note_length > 16,false /* SABOTAGED: no variable length check */,SABOTAGED: no variable length check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-fixed
 conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
@@ -497,4 +497,4 @@ conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness 
 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
