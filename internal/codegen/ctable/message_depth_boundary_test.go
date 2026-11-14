@@ -32,10 +32,21 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// The message closure of this unit holds four field entries. The announcement
+// carries those four in slots 1..4 and three entries the root does not declare
+// in slots 5..7, so every generated runtime reads its references in three bits:
+// the depth boundary below is encoded at that width. A shorter closure would
+// make the generated readers one-bit and the probe would no longer fit. The
+// unknown entries sit ABOVE the root's own slots, so a reference to one of them
+// names no field the reader holds a constant for, which is what the skip walk
+// is asked to step over.
 const depthBoundarySchema = `package depthprobe
 
 fixed table Root {
 	a int32
+	b int32
+	c int32
+	d int32
 }
 
 fixed table ZExtra {
@@ -99,6 +110,12 @@ func depthBoundaryEncodeAnnouncement(buildVersion uint64, vocabBytes []byte) []b
 	return out
 }
 
+const (
+	depthUnknownTableRef = 5
+	depthUnknownUnionRef = 6
+	depthUnknownArrayRef = 7
+)
+
 func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) []byte {
 	t.Helper()
 	var bits []uint8
@@ -110,21 +127,21 @@ func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) [
 	switch family {
 	case "body":
 		for range depth {
-			put(2, refBits)
+			put(depthUnknownTableRef, refBits)
 		}
 		for range depth {
 			put(0, refBits)
 		}
 	case "union":
 		for i := 0; i < depth+1; i++ {
-			put(3, refBits)
+			put(depthUnknownUnionRef, refBits)
 		}
 		put(0, refBits)
 	case "array":
 		for i := 0; i < depth-2; i++ {
-			put(2, refBits)
+			put(depthUnknownTableRef, refBits)
 		}
-		put(4, refBits)
+		put(depthUnknownArrayRef, refBits)
 		for i := 0; i < depth-1; i++ {
 			put(0, refBits)
 		}
@@ -153,11 +170,14 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 	t.Helper()
 	u := depthBoundaryUnit(t)
 	st := u.Tables["Root"]
-	if st == nil || len(st.Fields) != 1 {
-		t.Fatalf("expected Root table with 1 field, got %+v", st)
+	if st == nil || len(st.Fields) != 4 {
+		t.Fatalf("expected Root table with 4 fields, got %+v", st)
 	}
 	entries := []ir.TableVocabularyEntry{
 		ir.TableFieldEntry(st.Fields[0]),
+		ir.TableFieldEntry(st.Fields[1]),
+		ir.TableFieldEntry(st.Fields[2]),
+		ir.TableFieldEntry(st.Fields[3]),
 		{Id: 0x9991, Kind: ir.TableKindTable},
 		{Id: 0x9992, Kind: ir.TableKindUnion},
 		{
@@ -313,8 +333,8 @@ int main(void)
 {
 `)
 	fmt.Fprintf(&src, "    static const uint8_t ann[] = { %s };\n", depthBoundaryHexList(ann, ""))
-	src.WriteString(`    TableMessageEntry entries[kTableMessageEntriesHere];
-    TableVocabulary vocab = table_vocabulary(entries, kTableMessageEntriesHere);
+	src.WriteString(`    TableMessageEntry entries[64];
+    TableVocabulary vocab = table_vocabulary(entries, 64);
     TableReport arep;
     memset(&arep, 0, sizeof(arep));
     if (!announce_read(&vocab, ann, (int64_t)sizeof(ann), &arep) || !vocab.announced) {
@@ -425,8 +445,8 @@ int main(void)
 {
 `)
 	fmt.Fprintf(&src, "    static const uint8_t ann[] = { %s };\n", depthBoundaryHexList(ann, ""))
-	src.WriteString(`    TableMessageEntry entries[kTableMessageEntriesHere];
-    TableVocabulary vocab(entries, kTableMessageEntriesHere);
+	src.WriteString(`    TableMessageEntry entries[64];
+    TableVocabulary vocab(entries, 64);
     TableReport arep;
     memset(&arep, 0, sizeof(arep));
     if (!AnnounceRead(vocab, ann, (int64_t)sizeof(ann), &arep) || !vocab.announced) {
@@ -744,7 +764,7 @@ import (
 func TestProbe(t *testing.T) {
 `)
 	fmt.Fprintf(&testSrc, "\tann := []byte{%s}\n", depthBoundaryHexList(ann, ""))
-	testSrc.WriteString(`	var storage [TableMessageEntriesHere]TableMessageEntry
+	testSrc.WriteString(`	var storage [64]TableMessageEntry
 	var vocab TableVocabulary
 	vocab.Init(storage[:])
 	var arep TableReport
@@ -930,7 +950,7 @@ func runAllRuntimesJS(t *testing.T, u *ir.Unit, ann []byte, cases []depthBoundar
 	probe.WriteString(`import * as m from "./DepthProbeTable.js";
 const ann = new Uint8Array([` + depthBoundaryHexList(ann, "") + `]);
 const vocab = new m.TableVocabulary();
-vocab.Init(new Array(m.TableMessageEntriesHere));
+vocab.Init(new Array(64));
 const arep = {};
 if (!m.AnnounceRead(vocab, ann, arep) || !vocab.Announced) process.exit(2);
 let failed = false;
@@ -999,7 +1019,7 @@ func runAllRuntimesRust(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
 	}
 	main.WriteString(`
 fn check_case(name: &str, vocab: &TableVocabulary, wire: &[u8], expect_ok: bool, failed: &mut bool) {
-    let mut values = [RootRow { a: -7 }, RootRow { a: -7 }];
+    let mut values = [RootRow { a: -7, ..RootRow::default() }, RootRow { a: -7, ..RootRow::default() }];
     let mut rep = TableReport::default();
     let (count, ok) = root_load_messages(&mut values, vocab, wire, &mut rep);
     if expect_ok {
