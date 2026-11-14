@@ -96,6 +96,11 @@ go-test rows (the `exclude:` of `go-test` in `.github/workflows/ci-full.yml`):
 - `relax/ci-time-versioning-c`: go-test (versioning-c), median 128 s.
 - `relax/ci-time-unit-rest-ci`: go-test (unit-rest-ci), median 118 s.
 - `relax/ci-time-unit-rest-fuzz-2`: go-test (unit-rest-fuzz-2), median 115 s.
+- `relax/ci-time-unit-elixir-3`: go-test (unit-elixir-3), killed at the 110 s
+  wall in main CI full 43630522257 with TestElixirCellsStrictNegativeControl and
+  TestNodeRecordListCountRefusalElixir still running, on runner captain-8
+  (host captainamerica, 64 cores, no core cap on the runner service, load1
+  96.5 at the end of the job).
 
 Fuzz rows (`.github/workflows/ci-full.yml`):
 

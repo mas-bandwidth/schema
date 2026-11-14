@@ -125,6 +125,8 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
 
       # the .NET SDK, from the pin every C# project's TargetFramework
       # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
@@ -375,6 +377,8 @@ jobs:
           cache: false
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
 
       # the .NET SDK, from the pin every C# project's TargetFramework
       # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
@@ -546,6 +550,8 @@ jobs:
       # always have.
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
 
       # the .NET SDK, from the pin every C# project's TargetFramework
       # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
@@ -819,6 +825,8 @@ jobs:
       # way ci.yml's leg and the conformance matrix key theirs. A base row names
       # none of them and installs none of them.
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - name: read the .NET SDK pin
