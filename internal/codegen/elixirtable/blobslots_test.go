@@ -89,17 +89,20 @@ end
 				continue
 			}
 			if strings.Contains(report.Reason, "blob_shared") {
-				// One blob named from two slots: every read refuses it
-				// (SPEC-TABLES §2.5), both Elixir reads with the oracle.
-				// The load used to land the value and count the sharing,
-				// a tolerant read the one strict read retired.
+				// One blob named from two slots: every read refuses the
+				// whole wire and retains nothing (SPEC-TABLES §2.5, §6.5),
+				// all three Elixir reads with the oracle.
 				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
-for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+for result<-[T.load("Catalog",wire),T.variable_load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
  check.(elem(result,0)==:error and elem(result,2).reason != "",%q<>inspect(result))
 end
-`, hex.EncodeToString(c.wire), c.name+" shared refusal ")
+case T.load_retain("Catalog",wire,store,zero) do
+ {:error,_,_,rt}->check.(rt.records==[] and rt.used==0 and rt.ids==[],%q<>inspect(rt))
+ other->check.(false,%q<>inspect(other))
+end
+`, hex.EncodeToString(c.wire), c.name+" shared refusal ", c.name+" shared retain ", c.name+" shared retain load ")
 				continue
 			}
 			t.Fatalf("%s independent slot count: %v %v %+v", c.name, ok, e, report)
@@ -185,6 +188,10 @@ store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
  unless elem(result,0)==:error and elem(result,2).reason != "",do: raise("guard load "<>inspect(result))
+end
+case T.load_retain("Catalog",wire,store,zero) do
+ {:error,_,_,rt}->unless rt.records==[] and rt.used==0 and rt.ids==[],do: raise("guard retain "<>inspect(rt))
+ other->raise("guard retain load "<>inspect(other))
 end
 value=%%{"name"=>"n","outer"=>%t,"inner"=>%t,"thumb"=>{:blob_shared,<<1,2,3>>},"alias"=><<1,2,3>>}
 written=T.save("Catalog",value)

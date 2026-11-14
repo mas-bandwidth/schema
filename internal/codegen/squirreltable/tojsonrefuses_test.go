@@ -15,7 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// offContractSchema carries one field per write-contract row the text writer
+// toJSONOffContractSchema carries one field per write-contract row the text writer
 // owes (docs/SPEC.md §5.1 rows 1 to 4 and 10): a ranged integer signed,
 // unsigned past 2^63 and 128 bits wide, a ranged array element, a bits(N), a
 // counted numeric array and a text-bearing array with a minimum, a fixed array,
@@ -24,7 +24,7 @@ import (
 // counted array of records whose JSON values contain bounded text fields.
 // A map key past its string(N), a float field holding a value that is not a
 // number and a bool field holding a value that is not a bool are refused too.
-const offContractSchema = `package probe
+const toJSONOffContractSchema = `package probe
 type TextEntry
 {
     value string(4)
@@ -187,7 +187,7 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "probe.schema")
-	writeFile(t, schemaPath, []byte(offContractSchema))
+	writeFile(t, schemaPath, []byte(toJSONOffContractSchema))
 	paths, err := compiler.GatherPaths([]string{schemaPath})
 	if err != nil {
 		t.Fatal(err)
