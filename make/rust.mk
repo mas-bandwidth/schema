@@ -1032,7 +1032,7 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness build/conforma
 		{ echo "NEGATIVE CONTROL FAILED: the clean leg is red on the same mutant, so the red is not the plant's"; \
 		  cat build/rust-wire-fuzz-control/clean.log; exit 1; }
 	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
-	@echo "rust wire-fuzz negative control: an out-of-range node index read without its malformed verdict turns the differential RED on the verdict, on a mutant the clean leg answers right"
+	@echo "rust wire-fuzz negative control: an out-of-range node index read without its damaged verdict turns the differential RED on the verdict, on a mutant the clean leg answers right"
 
 test-rust: tables-rust-wire-fuzz-negative-control
 
