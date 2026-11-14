@@ -1189,7 +1189,7 @@ JAVA_FIXEDFORM_CORPUS := build/java-fixedform-corpus
 build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk
 	@rm -rf $(JAVA_FIXEDFORM_CORPUS)
 	@mkdir -p $(JAVA_FIXEDFORM_CORPUS)
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/examples \

@@ -76,7 +76,7 @@ type wireFuzzOptions struct {
 }
 
 // relaxedVectorSet parses --relax-vector.
-// RELAXED 2026-11-14 (maintainer: get main green)
+// RELAXED 2026-11-14 (maintainer: get main green).
 func relaxedVectorSet(list string) map[string]bool {
 	out := map[string]bool{}
 	for _, name := range strings.Split(list, ",") {
@@ -92,7 +92,7 @@ func relaxedVectorSet(list string) map[string]bool {
 // its agreement with the oracle is an error, so a fixed leg cannot keep the
 // relaxation. Every other mutant's verdict passes through unchanged.
 // RELAXED 2026-11-14 (maintainer: get main green); re-enable:
-// relax/unknown-arm-text-<lang>
+// relax/unknown-arm-text-<lang>.
 func relaxVectorVerdict(pass, name, verdict string, relax, seen map[string]bool) (string, error) {
 	if pass != "vector" || !relax[name] {
 		return verdict, nil

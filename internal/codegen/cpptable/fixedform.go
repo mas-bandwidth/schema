@@ -1298,11 +1298,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				if g.fixedWriteCheck {
+				switch {
+				case g.fixedWriteCheck:
 					g.pf("%sbad |= (int) !%sFixedWriteAdmits( %s );\n", ind, r.Name, expr)
-				} else if g.fixedCheck {
+				case g.fixedCheck:
 					g.pf("%sbad |= (int) !%sFixedInRange( %s );\n", ind, r.Name, expr)
-				} else {
+				default:
 					g.pf("%s%sFixedClampBody( %s, oor_count, damaged );\n", ind, r.Name, expr)
 				}
 			}

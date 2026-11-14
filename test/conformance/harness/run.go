@@ -1111,16 +1111,16 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	var b strings.Builder
 	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
 	width := 18
-	// and the label column wide enough that the longest surface name keeps a
-	// space before its first cell: "write-refusal-message" printed flush
-	// against "FAIL" is a row no `^<surface> +FAIL` pattern can find
-	label := 14
+	// The label column is 14 wide, and a surface name that does not fit keeps
+	// one space before its first cell: "write-refusal-message" printed flush
+	// against "FAIL" is a row no `^<surface> +FAIL` pattern can find. The
+	// width is per row, not the longest name's, because the negative controls
+	// grep the short rows at 14 columns ('wire          pass'): widening every
+	// row moved them all and took the controls red (main CI full 43635368439).
+	const label = 14
 	for _, s := range surfaces {
 		if len(s)+2 > width {
 			width = len(s) + 2
-		}
-		if len(s)+1 > label {
-			label = len(s) + 1
 		}
 	}
 	b.WriteString("\nTABLES CONFORMANCE — surface x language\n\n")
@@ -1130,7 +1130,7 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	}
 	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", label+width*len(langs)))
 	for _, s := range surfaces {
-		fmt.Fprintf(&b, "%-*s", label, s)
+		fmt.Fprintf(&b, "%-*s", max(label, len(s)+1), s)
 		for _, l := range langs {
 			r := results[l][s]
 			var cell string

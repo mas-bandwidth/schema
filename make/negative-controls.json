@@ -3076,11 +3076,27 @@
     {
       "name": "rust-write-refusal",
       "when": "pull-request",
-      "why": "the Rust leg's write-contract controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated crates, the conformance driver rebuilt against the copy in the dev profile, and the writer's surface required red with the surface beside it green.",
+      "why": "the Rust leg's write-contract controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated crates, the conformance driver rebuilt against the copy in the dev profile, and the writer's surface required red with the surface beside it green. One control per group: each rebuilds the driver, and the three in one job ran 113-211 s against the 110 s wall (main CI full 43633753076, 43635368439).",
       "rust": "stable",
       "targets": [
-        "conformance-negative-control-rust-write-refusal",
-        "conformance-negative-control-rust-write-refusal-fixed",
+        "conformance-negative-control-rust-write-refusal"
+      ]
+    },
+    {
+      "name": "rust-write-refusal-fixed",
+      "when": "pull-request",
+      "why": "the Rust fixed writer's write-contract control (docs/SPEC.md §5.1), split from rust-write-refusal so each driver rebuild has its own job.",
+      "rust": "stable",
+      "targets": [
+        "conformance-negative-control-rust-write-refusal-fixed"
+      ]
+    },
+    {
+      "name": "rust-write-refusal-message",
+      "when": "pull-request",
+      "why": "the Rust message writer's write-contract control (docs/SPEC.md §5.1), split from rust-write-refusal so each driver rebuild has its own job.",
+      "rust": "stable",
+      "targets": [
         "conformance-negative-control-rust-write-refusal-message"
       ]
     },
