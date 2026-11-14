@@ -14,11 +14,6 @@
       "slug": "relax/proof-cook-write-java"
     },
     {
-      "row": "cases graphdemo",
-      "lang": "elixir",
-      "slug": "relax/proof-graphdemo-elixir"
-    },
-    {
       "row": "porting I15",
       "lang": "elixir",
       "slug": "relax/proof-i15-elixir"
@@ -112,11 +107,6 @@
       "row": "surface json-write",
       "lang": "java",
       "slug": "relax/proof-json-java"
-    },
-    {
-      "row": "surface json-read",
-      "lang": "elixir",
-      "slug": "relax/proof-json-read-elixir"
     },
     {
       "row": "cases backenddemo",
@@ -312,31 +302,6 @@
       "row": "surface write-refusal",
       "lang": "dart",
       "slug": "relax/proof-write-refusal-dart"
-    },
-    {
-      "row": "cases tabledemo",
-      "lang": "elixir",
-      "slug": "relax/proof-write-refusal-elixir"
-    },
-    {
-      "row": "surface write-refusal-fixed",
-      "lang": "elixir",
-      "slug": "relax/proof-write-refusal-elixir"
-    },
-    {
-      "row": "surface write-refusal-json",
-      "lang": "elixir",
-      "slug": "relax/proof-write-refusal-elixir"
-    },
-    {
-      "row": "surface write-refusal-message",
-      "lang": "elixir",
-      "slug": "relax/proof-write-refusal-elixir"
-    },
-    {
-      "row": "surface write-refusal",
-      "lang": "elixir",
-      "slug": "relax/proof-write-refusal-elixir"
     },
     {
       "row": "cases tabledemo",
