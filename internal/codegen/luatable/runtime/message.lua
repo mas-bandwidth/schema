@@ -1296,11 +1296,11 @@ function M.loadMessages(T, root, vocab, data, report)
   return values
 end
 
--- docs/SPEC-TABLES.md §2.15: the first value of a batch holding a retired
--- variant, refused by name
+-- the first value of a batch holding a retired variant (docs/SPEC-TABLES.md
+-- §2.15) or a value off the write contract (docs/SPEC.md §5.1), refused by name
 local function refuse_batch(T, root, values)
   for i = 1, #values do
-    local refused = D.refuse_deprecated(T, root, values[i])
+    local refused = D.refuse_write(T, root, values[i])
     if refused ~= nil then return refused end
   end
   return nil

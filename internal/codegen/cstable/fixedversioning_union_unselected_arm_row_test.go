@@ -44,9 +44,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "the file carries one record, not " + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             if (back[0].Pick.Type != PickType.Alpha)
             {
@@ -60,9 +60,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "seq is the writer's 15, not " + back[0].Seq);
             }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read moved a counter: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "a clean read moved a counter: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`
 
 	identityBody := `            byte[] data = System.IO.File.ReadAllBytes(System.IO.Path.Combine(corpus, @FILE@));
@@ -79,9 +79,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "the file carries one record, not " + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             if (back[0].Pick.Type != PickType.Alpha)
             {
@@ -95,9 +95,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "seq is the writer's 15, not " + back[0].Seq);
             }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read moved a counter: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "a clean read moved a counter: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`
 
 	compiled := csVersionProbe{
