@@ -32,7 +32,10 @@ tables-goose-versioning: build/fixedform-corpus/.stamp
 # differ (24: the 27 rows less the three same-hash rows, which read both ways;
 # wstring_grow left with the wstring retirement, 98061f0ea)
 # and hash_unknown — and on nothing else: no NEW-READS-OLD row, no floor, no
-# probe.
+# probe. The count was 25 while wstring_grow was a row; docs/rulings.json
+# `wstring-removed-utf8` retired wstring and table kind 33, and 9e5e56bb58 and
+# 98061f0eaf dropped that row from the corpus and the test, so every remaining
+# OLD-REFUSES-NEW row is the 24 counted here.
 GOOSE_VERSIONING_NC := build/goose-versioning-nc
 .PHONY: tables-goose-versioning-negative-control
 tables-goose-versioning-negative-control: build/fixedform-corpus/.stamp
