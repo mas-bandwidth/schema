@@ -919,7 +919,6 @@ function wireAbsent(outDir, name) {
 }
 
 const noText = (f) => f.length > 5 && f[5] === "no-text";
-
 async function surfaceWire(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     const codec = await wireCodec(f[2], f[3]);
@@ -931,6 +930,16 @@ async function surfaceWire(lines, outDir) {
       // by its own name, which is the wire refusal the harness holds a
       // wire-refused instance to.
       if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1] + ".absent"), "blob_shared"); continue; }
+      // EVERY DEAD BYTE IS ZERO (owner, 2026-11-10): a fixed record with a
+      // stained slack byte is refused whole, wire_damaged, and the leg
+      // answers it by that name, as it answers blob_shared above. The derived
+      // manifest carries no expectation, so the harness judges it: a
+      // wire-refused instance passes, and any other instance answered this
+      // way counts absent on the wire row, where it shows.
+      if (codec.fixed && codec.wireDamaged(r)) {
+        writeFileSync(join(outDir, f[1] + ".absent"), "wire_damaged");
+        continue;
+      }
       fail(f[1] + ": load refused " + f[4]);
     }
     const saved = codec.save(v);

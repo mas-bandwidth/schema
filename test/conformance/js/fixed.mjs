@@ -342,6 +342,7 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
     if (typeof fn !== "function") { bad(unit + "." + root, "the fixed surface has no " + name); }
   }
   if (t === undefined) { bad(unit + "." + root, "the view has no descriptor"); }
+  if (T.TableFixedRefusal === undefined) { bad(unit + "." + root, "the table module has no TableFixedRefusal"); }
   const plan = F[root + "FixedNewPlan"]();
   const fresh = () => { const x = new Class(); init(x); return x; };
   return {
@@ -350,6 +351,9 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
     variableLoad: codec.load,
     variableReport: codec.report,
     report: () => new T.TableFixedReport(),
+    // a refused fixed read whose reason is wire_damaged (a stained dead byte,
+    // owner 2026-11-10, among others)
+    wireDamaged: (r) => r.refused === T.TableFixedRefusal.WireDamaged,
     // the fixed read: the value, or null with the refusal on the report
     load: (wire, r) => {
       const x = fresh();
