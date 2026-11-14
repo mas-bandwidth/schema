@@ -2050,7 +2050,7 @@
     {
       "name": "java-wire-fuzz",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind’s count inside the map’s own L and requires the plain arm to go red on listdemo.Army. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the four pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose wire-alone walk and map reader both read a map count that crosses its L as zero entries and requires the plain arm to go red on the read verdict for map_count_crosses_l (mapdemo.Slots). Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
         "tables-java-wire-fuzz-negative-control",
         "tables-java-retain-fuzz-negative-control",
@@ -2061,12 +2061,11 @@
     {
       "name": "java-wire-fuzz-2",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire fuzzer's four pin replays (docs/PORTING.md I15): keyed-count, retain-node, node-index and map-key-damage, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run.",
+      "why": "the Java leg of the tolerant wire fuzzer's three pin replays (docs/PORTING.md I15): keyed-count, retain-node and node-index, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run. The map-key-damage control was deleted on 2026-11-14 under docs/plans/strict-only.md table (c): its plant let a key scan read on past a key already judged malformed, which only chose between two refusals, so no plant of that rule can change a read verdict.",
       "targets": [
         "tables-java-keyed-count-negative-control",
         "tables-java-retain-node-negative-control",
-        "tables-java-node-index-negative-control",
-        "tables-java-map-key-damage-negative-control"
+        "tables-java-node-index-negative-control"
       ],
       "java": "21"
     },
