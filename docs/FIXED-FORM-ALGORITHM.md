@@ -437,13 +437,15 @@ record lands (§4.1 states the four kinds).
 **A record is a positional image and the read loop moves bytes: it asks nothing about what they mean.** Two
 things a declaration bounds are held by nobody in §4.5 — a RANGED SCALAR's min and max, and an ORDINAL's set: a
 union tag past the arm count, an enum ordinal past the enum's top value. They are held by **STRAIGHT-LINE CODE
-AFTER THE PLAN RUN, and NOT BY PLAN ENTRIES**, an entry per bounded field being a test on every read of every
-record. **THE PASS RUNS OVER STORAGE, which is what makes ONE pass cover BOTH plans**: both land values in the
-same places, so a compiled plan needs no op of its own. It walks only **what a read can have written**, the LIVE data defined in §5.3 (a
+IN THE CHECK PASS, BEFORE ANY DESTINATION BYTE LANDS, and NOT BY PLAN ENTRIES**, an entry per bounded field
+being a test on every read of every record. **THE PASS READS THE RECORD BYTES THROUGH THE PLAN, which is what
+makes ONE pass cover BOTH plans**: both name the same source offsets and kinds, so a compiled plan needs no op
+of its own. It walks only **what a read can land**, the LIVE data defined in §5.3 (a
 counted array's first `min(count, bound)` elements, an optional's payload when its present byte is `1`, an arm
-whose guards hold); the bytes that are not live are DEAD and are not walked here, because the prefill's
-defaults are in range by construction and the CHECK pass has already held every DEAD byte to zero (§5.3 step
-11). **The pass REFUSES; it never clamps.** A type that bounds nothing emits no pass at all.
+whose guards hold); the bytes that are not live are DEAD and are not walked for bounds, because the prefill's
+defaults are in range by construction and the same CHECK pass holds every DEAD byte to zero (§5.3 step 11).
+**The pass REFUSES; it never clamps.** A type that bounds nothing emits no pass at all. A value the plan would
+widen is read at the WRITER's kind and held in the reader's type, exactly as the `widen` op lands it.
 
 **THE BOUNDS THIS PASS HOLDS ARE THE PLAN'S — THE WRITER'S OWN for the lineage entry the plan was compiled
 for** (bill §12.5), and never the reader's: the reader's range is the wider one, so holding to it would admit a
@@ -584,7 +586,9 @@ fnv1a64 over `bytes` and then `digest` and refuses a line whose `wire` disagrees
 the field lines. **The SET is bound too**: `lineage=0x…` on the `fixed table` line is one hash over every
 entry's wire hash and retired mark, in order (#912), so a hand that DELETES, reorders or re-marks a lineage
 line is caught by name — and the remedy it names is never "write it again", because no command can recover the
-layout bytes of a record nobody declares any more: restore the file from version control. A layout stops being
+layout bytes of a record nobody declares any more: restore the file from version control. **AND THE LOCK REFUSES
+TWO LINEAGE ENTRIES WITH ONE HASH**: step 5 resolves a hash by its FIRST index, so a second entry carrying the
+same wire hash would be unreadable for ever, and the lock refuses the collision by name. A layout stops being
 served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and moves the
 floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
 becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
@@ -975,9 +979,12 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
      record_bytes IS THE WHOLE RECORD, 8 + body, handed down already added (§5.2)
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
-      if record_bytes <= 8 or rest mod record_bytes != 0: REFUSE truncated
-                                                         -- 8 is the per-record hash; a body of nothing behind
-                                                        -- it would make `n` the file's length (fixedform.go:563)
+      if rest == 0 or record_bytes <= 8 or rest mod record_bytes != 0: REFUSE truncated
+                                                         -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a header
+                                                        -- and a layout followed by no record reads `n` = 0, and a
+                                                        -- batch of none holds no value to read. 8 is the per-record
+                                                        -- hash; a body of nothing behind it would make `n` the
+                                                        -- file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
  11  CHECK, every record, before any byte lands       -- in any order; the first condition met refuses
      per record, at `at`:
@@ -987,15 +994,15 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
          ill-formed used text:                          REFUSE text_ill_formed
          a count or length past the plan's bound:      REFUSE count_over_bound / length_over_bound
          a NaN or an infinity:                          REFUSE non_finite_float
+         a ranged scalar or a `bits(N)` past the plan's range: REFUSE out_of_range
+         an ordinal or a tag past the plan's set:       REFUSE out_of_range
        every DEAD byte (LIVE, below):
          a dead byte that is not zero:                  REFUSE wire_damaged
        at := at + record_bytes
- 12  LAND, every record                               -- the bounds pass refuses `out_of_range`
+ 12  LAND, every record                               -- the check pass has already refused every bad value
      per record, at `at`:
        PREFILL(out[rec], fills)                         -- §4.3
        RUN(plan, split, at+8, out[rec])                 -- §4.4, one loop, either plan
-       BOUNDS(out[rec])                                 -- §4.6, against THE PLAN'S bounds: REFUSE out_of_range,
-                                                        -- resetting every value written (below)
        at := at + record_bytes
      return n
 ```
@@ -1041,6 +1048,7 @@ nothing could reach.
 | a known hash whose LINEAGE ENTRY would not build | `layout_malformed` | the entry's own lane carries it, never a throw (§5.9 #36); a plan the compiler cannot lay is a GENERATE-time failure |
 | the plan does not fit the CALLER's declared capacity | `plan_too_large` | a caller resource refusal, outside the verdict contract (SPEC-TABLES §6.5); never a read-time stand-in for a plan the build should have laid |
 | an entry past the writer's record size | `layout_record_too_large` | the name |
+| a header and a layout followed by no record — `n` is 0, and a batch of none holds no value to read | `truncated` | the name |
 | a record size of `8` or less — the per-record hash and no body behind it | `truncated` | the name |
 | a ragged tail: `rest mod record_bytes != 0` | `truncated` | the name |
 | more records than the caller's capacity | `batch_too_large` | the name |
@@ -1052,21 +1060,28 @@ nothing could reach.
 | a dead byte that is not zero — an absent optional's payload, a counted array's slots past its count, a text or bytes field's bytes past its length, an inactive union arm (§4.1, §4.5) | `wire_damaged` | the name |
 | a ranged scalar, a `bits(N)`, an ordinal or a tag outside the WRITER's range or set (§4.5, §4.6) | `out_of_range` | the name, naming the field |
 
-**REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal up to
-and including the per-record hash, count, length and text checks writes not one destination byte, the prefill
-included. A refusal the bounds pass meets after a record has landed (`out_of_range`) RESETS every value the load wrote to its declared defaults before it returns, which is
-the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first byte, a short header, a nonzero
-reserved byte, a ragged tail — is a refusal like any other, each by its own name (`truncated`,
-`reserved_not_zero`).
+**REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal,
+`out_of_range` included, writes not one destination byte, the prefill included: the bounds checks run in the
+check pass, before any record lands, beside the per-record hash and the count, length, text, bool and
+present-byte checks, and step 12 lands values already known good and refuses nothing. **A check that needs a
+value the plan would widen, or a planned offset, computes it from the record bytes and the plan**: a ranged
+scalar or a `bits(N)` is read at its `src` through the plan's entry, at the writer's width and signedness,
+then held in the reader's own type exactly as the `widen` op would land it (a fixed-point value shifted into
+VALUE UNITS by its `F`); an ordinal or tag is read at its own width, and a value past the plan's set is
+refused on the rule the remap table applies. Every refusal therefore leaves the caller's destination exactly
+as it was before the load — never clamped, never zero-filled, never prefilled, never reset to its declared
+defaults — which is the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first byte, a
+short header, a nonzero reserved byte, a ragged tail — is a refusal like any other, each by its own name
+(`truncated`, `reserved_not_zero`).
 
 **LIVE IS A TOTAL FUNCTION OF THE RECORD AND THE PLAN.** A datum is live when every guard on its chain
 holds its ordinal in the record (a tag byte equal to the guard's value, compared at its width), and, for
 an optional's payload, when its present byte is `1`. A counted array's live elements are its first
 `min(count, bound)` elements, `bound` being the plan's; a count past the bound is itself refused, so on a
 record that reads the two agree. A fixed array's elements are all live. A present byte other than `0` or `1` is
-refused by the check loop itself, so no payload's liveness rests on it. A TAG is checked in the bounds pass,
-not in the check loop (§4.6): a tag past the writer's arm count equals no guard's value, so no arm under it
-is live, and the bounds pass then refuses the tag.
+refused by the check loop itself, so no payload's liveness rests on it. A TAG is checked in the check pass,
+before any record lands (§4.6), from the record bytes and the plan: a tag past the writer's arm count equals
+no guard's value, so no arm under it is live, and the check pass then refuses the tag.
 
 **EVERYTHING NOT LIVE IS DEAD, AND EVERY DEAD BYTE IS ZERO.** LIVE is the definition of what is READ AS A
 VALUE; the four kinds of dead byte are the payload under a present byte of `0`, a counted array's element
@@ -1078,11 +1093,11 @@ The CHECK pass refuses the whole load as `wire_damaged` when any dead byte is no
 lands.
 
 **TOTAL OVER THE BATCH.** A reader checks EVERY record's hash and its live counts, lengths, used text, bool
-and present bytes and floats, and that every dead byte is zero, each against the WRITER's layout, before the
-first record lands, in whatever order is fastest for its language, and refuses at the first condition it
-meets. Only then does it land the
-records and run the bounds pass. A refusal of the check loop leaves `out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never
-left partly landed. This is the answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
+and present bytes, floats, ranges, ordinals and tags, and that every dead byte is zero, each against the
+WRITER's layout, before the first record lands, in whatever order is fastest for its language, and refuses at
+the first condition it meets. Only then does it land the records, values already known good. A refusal leaves
+`out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never left
+partly landed. This is the answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
 
 **THE CROSS-LANGUAGE ANSWER IS THE VERDICT** (SPEC-TABLES §6.5): "refused", or a read that lands values,
 which written back equal the canonical bytes. The reason and the `widened` count are per-language
@@ -1849,7 +1864,7 @@ of its own LINEAGE and its own files, and a table with no form is a root of neit
 | bound | verdict |
 |---|---|
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
-| **65536 bytes of record body** | a DECLARED fixed table keeps its storage, cook and block forms, but has NO FILE FORM: its file save refuses and its root refuses form `1`; the compiler names the table and its size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
+| **a record body of 65536 bytes is lawful and 65537 is not** | measured on the BODY, never on `8 + body`. A DECLARED fixed table PAST it keeps its storage, cook and block forms, but has NO FILE FORM: its file save refuses and its root refuses form `1`; the compiler names the table and its size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
 | **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
 | **64 nested LAYOUT ENTRIES** | a WARNING, always on, naming the table and its depth, and past it the table DOES NOT CARRY THE FIXED FORM — it keeps form `1`, and the `fixed` keyword still buys it the CLASS. A DECLARED fixed table is named the more loudly (the keyword is a request, and a request this form cannot serve is said out loud), but NEITHER IS EVER A SILENT DROP (fix 4). **THERE IS ONE NUMBER**: the layout's own 64 (§5.2's `layout_malformed`, docs/SPEC-TABLES.md §3.4's *"the walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*), which is what every runtime holds the wire to (`kTableFixedMaxDepth`), so the compiler cannot drop a form the wire would have carried. The root is depth 0. A nesting GROWN across it is refused at the lock, like the ceiling: the entries all widen legally while the form changes underneath |
 | **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |

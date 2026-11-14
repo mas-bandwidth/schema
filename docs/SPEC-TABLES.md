@@ -8477,7 +8477,10 @@ switches on the reason sees each by name (§5.3).
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
     knows the record size from the layout, so the count is arithmetic; **BYTES
     LEFT OVER ARE REFUSED `truncated`**, which is §3's rule for the
-    same reason, that the two ends of the file have met. **A LOAD OF MORE
+    same reason, that the two ends of the file have met. **A FILE WHOSE HEADER
+    AND LAYOUT ARE FOLLOWED BY NO RECORD IS REFUSED `truncated`** — a
+    fixed-form file holds at least one record, and a batch of none holds no
+    value to read. **A LOAD OF MORE
     RECORDS THAN THE CALLER'S VALUES SLICE IS `batch_too_large`**, refused
     before any record lands, on the batch count's own reason.
 - **THE INTEGRITY TRAILER, only when the root declares `integrity`** (§2.14):
@@ -10226,8 +10229,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   report empty. A nil report is allowed and refuses the same way. **On a
   refusal nothing the read produced is defined, and each call leaves its
   output in one stated state**: the value read and the value `FromJson` reset
-  the value to its declared defaults, `FixedLoad` resets every value it had
-  written, `LoadMessages` answers a count of `0` and resets every value it had
+  the value to its declared defaults, `FixedLoad` leaves every value as it was,
+  `LoadMessages` answers a count of `0` and resets every value it had
   written, the region read hands back no root, and a builder read leaves a
   builder whose root the caller does not use and shuts down. **There is no
   `*Tolerant` entry point**: `LoadTolerant`, `LoadBuilderTolerant`,
@@ -20435,7 +20438,10 @@ as a constant byte array and no two backends can order it differently.
 file header is the form byte `3`, SEVEN ZERO BYTES, the layout hash (`u64`
 LE), the layout's byte length (`u32` LE) and the layout bytes, which are a
 compile-time constant of the build (FIXED-FORM-ALGORITHM.md §1); then the
-records, each the hash and the root's body. **A RECORD IS WRITTEN ONTO A
+records, each the hash and the root's body. **A FIXED-FORM FILE HOLDS AT LEAST
+ONE RECORD, so a save refuses an empty batch**, by each leg's own mechanism in
+SPEC.md §5.1's table: the header and the layout are
+never written with no record behind them. **A RECORD IS WRITTEN ONTO A
 ZEROED TEMPLATE**, so every byte of SLACK is ZERO: the bytes past a counted
 array's live count, past a text's or a byte buffer's used length, behind a
 narrower union arm, and the payload of an absent optional. A count, a length,

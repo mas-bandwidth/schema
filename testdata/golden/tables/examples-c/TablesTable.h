@@ -6184,7 +6184,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_load_messages(tabledemo_weapon_
 }
 static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_grades_( tabledemo_table_writer_t * w, const tabledemo_loadout_config_t * value )
 {
-    if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 30 ); tabledemo_table_writer_leb( w, (uint64_t) value->grades_count );
     for ( i = 0; i < value->grades_count; i++ )
@@ -6262,7 +6262,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_backups_( tabledem
 
 static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_attachments_( tabledemo_table_writer_t * w, const tabledemo_loadout_config_t * value, int64_t * element_sizes )
 {
-    if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0; }
+    schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 ); tabledemo_table_writer_leb( w, (uint64_t) value->attachments_count );
     for ( i = 0; i < value->attachments_count; i++ )
@@ -6321,7 +6321,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
         }
     }
     { /* grades */
-        if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
         if ( value->grades_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6416,7 +6416,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
         }
     }
     { /* attachments */
-        if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0; }
+        schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
         if ( value->attachments_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6801,13 +6801,13 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
  }
  }
  { /* grades */
- if(value->grades_count<0 || value->grades_count>4) return 0;
+ schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
  if(value->grades_count>0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,21,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->grades_count<0 || value->grades_count>4) return 0;
+  schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->grades_count-0,3);
   { int32_t i;
   for(i=0;i<value->grades_count;i++) {
@@ -6836,7 +6836,6 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
   return 1;
   }
   tabledemo_table_bit_put(w,22,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(3<0 || 3>3) return 0;
   tabledemo_table_bit_put(w,(uint64_t)3-3,0);
   { int32_t i;
   for(i=0;i<3;i++) {
@@ -6884,7 +6883,6 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
   return 1;
   }
   tabledemo_table_bit_put(w,25,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(2<0 || 2>2) return 0;
   tabledemo_table_bit_put(w,(uint64_t)2-2,0);
   { int32_t i;
   for(i=0;i<2;i++) {
@@ -6893,13 +6891,13 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
  }
  }
  { /* attachments */
- if(value->attachments_count<0 || value->attachments_count>8) return 0;
+ schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
  if(value->attachments_count>0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,26,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->attachments_count<0 || value->attachments_count>8) return 0;
+  schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
   tabledemo_table_bit_put(w,(uint64_t)value->attachments_count-0,4);
   { int32_t i;
   for(i=0;i<value->attachments_count;i++) {
@@ -7162,14 +7160,14 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_messages(tabledemo_loadou
 }
 static SCHEMA_UNUSED int schema_tabledemo_profile_config_wire_name_( tabledemo_table_writer_t * w, const tabledemo_profile_config_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 32 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 32 );
     tabledemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_profile_config_wire_icon_( tabledemo_table_writer_t * w, const tabledemo_profile_config_t * value )
 {
-    if ( value->icon_length < 0 || value->icon_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
     tabledemo_table_writer_put8( w, 6 ); tabledemo_table_writer_leb( w, (uint64_t) value->icon_length );
     tabledemo_table_writer_raw( w, value->icon, value->icon_length );
     return !w->overflow;
@@ -7191,7 +7189,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 32 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 32 );
         if ( value->name_length != 0 )
         {
             tabledemo_table_writer_header_at( w, 116, 0xc4bcadba8e631b86ull, 12 );
@@ -7211,7 +7209,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
         }
     }
     { /* icon */
-        if ( value->icon_length < 0 || value->icon_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
         if ( value->icon_length != 0 )
         {
             tabledemo_table_writer_header_at( w, 132, 0xdbff4cc56c2092f0ull, 14 );
@@ -7862,20 +7860,20 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_message_body(tabledemo_ta
 {
  (void)value;
  { /* name */
- if(value->name_length<0 || value->name_length>32) return 0;
+ schema_assert( 0 <= value->name_length && value->name_length <= 32 );
  if(value->name_length != 0) {
   tabledemo_table_bit_put(w,32,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->name_length<0 || value->name_length>32) return 0;
+  schema_assert( 0 <= value->name_length && value->name_length <= 32 );
   tabledemo_table_bit_put(w,(uint64_t)value->name_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->name,value->name_length);
  }
  }
  { /* icon */
- if(value->icon_length<0 || value->icon_length>16) return 0;
+ schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
  if(value->icon_length != 0) {
   tabledemo_table_bit_put(w,33,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->icon_length<0 || value->icon_length>16) return 0;
+  schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
   tabledemo_table_bit_put(w,(uint64_t)value->icon_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->icon,value->icon_length);
@@ -7939,7 +7937,6 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_message_body(tabledemo_ta
  } }
  if(rides) {
   tabledemo_table_bit_put(w,42,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(4<0 || 4>4) return 0;
   tabledemo_table_bit_put(w,(uint64_t)4-4,0);
   { int32_t i;
   for(i=0;i<4;i++) {
@@ -8302,14 +8299,14 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_messages(tabledemo_profil
 }
 static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_version_note_( tabledemo_table_writer_t * w, const tabledemo_root_config_t * value )
 {
-    if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
     tabledemo_table_writer_raw( w, value->version_note, value->version_note_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_weapons_( tabledemo_table_writer_t * w, const tabledemo_root_config_t * value, int64_t * element_sizes )
 {
-    if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0; }
+    schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 ); tabledemo_table_writer_leb( w, (uint64_t) value->weapons_count );
     for ( i = 0; i < value->weapons_count; i++ )
@@ -8351,7 +8348,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_weapons_( tabledemo_t
 
 static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_profiles_( tabledemo_table_writer_t * w, const tabledemo_root_config_t * value, int64_t * element_sizes )
 {
-    if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 ); tabledemo_table_writer_leb( w, (uint64_t) value->profiles_count );
     for ( i = 0; i < value->profiles_count; i++ )
@@ -8395,7 +8392,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body( tabledemo_table_writer
 {
     (void) value;
     { /* version_note */
-        if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
         if ( value->version_note_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -8416,7 +8413,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body( tabledemo_table_writer
         }
     }
     { /* weapons */
-        if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0; }
+        schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
         if ( value->weapons_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -8438,7 +8435,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body( tabledemo_table_writer
         }
     }
     { /* profiles */
-        if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
         if ( value->profiles_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -8636,26 +8633,26 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
 {
  (void)value;
  { /* version_note */
- if(value->version_note_length<0 || value->version_note_length>16) return 0;
+ schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
  if(value->version_note_length != 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,85,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->version_note_length<0 || value->version_note_length>16) return 0;
+  schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
   tabledemo_table_bit_put(w,(uint64_t)value->version_note_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->version_note,value->version_note_length);
  }
  }
  { /* weapons */
- if(value->weapons_count<0 || value->weapons_count>8) return 0;
+ schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
  if(value->weapons_count>0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,86,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->weapons_count<0 || value->weapons_count>8) return 0;
+  schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
   tabledemo_table_bit_put(w,(uint64_t)value->weapons_count-0,4);
   { int32_t i;
   for(i=0;i<value->weapons_count;i++) {
@@ -8664,13 +8661,13 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
  }
  }
  { /* profiles */
- if(value->profiles_count<0 || value->profiles_count>4) return 0;
+ schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
  if(value->profiles_count>0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,87,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->profiles_count<0 || value->profiles_count>4) return 0;
+  schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->profiles_count-0,3);
   { int32_t i;
   for(i=0;i<value->profiles_count;i++) {
@@ -12953,8 +12950,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_grades__retain( ta
 {
     (void)retention;
 
-    if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 30 );
     tabledemo_table_writer_leb( w, (uint64_t) value->grades_count );
@@ -13038,8 +13034,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_attachments__retai
 {
     (void)retention;
 
-    if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 );
     tabledemo_table_writer_leb( w, (uint64_t) value->attachments_count );
@@ -13099,8 +13094,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body_retain( tabledemo_ta
     }
     { /* grades */
     retention=tabledemo_table_retain_step(body_keep,1,0);
-        if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
         if ( value->grades_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -13235,8 +13229,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body_retain( tabledemo_ta
     }
     { /* attachments */
     retention=tabledemo_table_retain_step(body_keep,6,0);
-        if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
         if ( value->attachments_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -13725,8 +13718,7 @@ static SCHEMA_UNUSED int schema_tabledemo_profile_config_wire_name__retain( tabl
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 32 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 32 );
     tabledemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -13735,8 +13727,7 @@ static SCHEMA_UNUSED int schema_tabledemo_profile_config_wire_icon__retain( tabl
 {
     (void)retention;
 
-    if ( value->icon_length < 0 || value->icon_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
     tabledemo_table_writer_put8( w, 6 );
     tabledemo_table_writer_leb( w, (uint64_t) value->icon_length );
     tabledemo_table_writer_raw( w, value->icon, value->icon_length );
@@ -13767,8 +13758,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body_retain( tabledemo_ta
     tabledemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=tabledemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 32 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 32 );
         if ( value->name_length != 0 )
         {
             tabledemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -13794,8 +13784,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body_retain( tabledemo_ta
     }
     { /* icon */
     retention=tabledemo_table_retain_step(body_keep,1,0);
-        if ( value->icon_length < 0 || value->icon_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
         if ( value->icon_length != 0 )
         {
             tabledemo_table_retain_writer_id( w, 0xdbff4cc56c2092f0ull , retention);
@@ -14623,8 +14612,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_version_note__retain(
 {
     (void)retention;
 
-    if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
     tabledemo_table_writer_raw( w, value->version_note, value->version_note_length );
     return !w->overflow;
 }
@@ -14633,8 +14621,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_weapons__retain( tabl
 {
     (void)retention;
 
-    if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 );
     tabledemo_table_writer_leb( w, (uint64_t) value->weapons_count );
@@ -14666,8 +14653,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_profiles__retain( tab
 {
     (void)retention;
 
-    if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 );
     tabledemo_table_writer_leb( w, (uint64_t) value->profiles_count );
@@ -14703,8 +14689,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body_retain( tabledemo_table
     tabledemo_table_retain_walk_t body_keep=retention;
     { /* version_note */
     retention=tabledemo_table_retain_step(body_keep,0,0);
-        if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
         if ( value->version_note_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -14733,8 +14718,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body_retain( tabledemo_table
     }
     { /* weapons */
     retention=tabledemo_table_retain_step(body_keep,1,0);
-        if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
         if ( value->weapons_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -14763,8 +14747,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body_retain( tabledemo_table
     }
     { /* profiles */
     retention=tabledemo_table_retain_step(body_keep,2,0);
-        if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
         if ( value->profiles_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2;
