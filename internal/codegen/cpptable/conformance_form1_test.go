@@ -25,24 +25,34 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// cppFramingStrictRows are the ten form-1 rows that must refuse and did
-// not: the negative control below is held to turning exactly these back
-// into reads when the strict walk is taken out of the driver.
+// cppFramingStrictRows are the form-1 rows that must refuse and that only
+// the strict walk refuses: the negative control below is held to turning
+// exactly these back into reads when the walk is taken out of the driver.
+// The first ten are the rows the walk was written for; the last four
+// (8ad2632bc, docs/LAYERS/1-framing.md L3 and L6: bytes inside L past a
+// count's elements, or after a node record's terminator) came to the
+// manifest after it, and the walk refuses them where the readers read on.
 var cppFramingStrictRows = []string{
 	"array_L0_inert",
 	"array_L1_inert",
+	"array_elements_past_count",
 	"frame_repeat_last_wins",
 	"frame_unknown_id_length",
 	"frame_unknown_id_reference",
 	"keyed_L1_inert",
+	"keyed_slots_past_count",
 	"map_L1_inert",
+	"map_entries_past_count",
 	"node_index_null",
+	"node_record_bytes_after_terminator",
 	"node_table_twice",
 	"node_unknown_to_fixed_reader",
 }
@@ -161,13 +171,14 @@ func cppFramingCheck(t *testing.T, root string, answers map[string][]byte, rows 
 	return wrong
 }
 
-// cppConformanceMake runs one make target at the repository root and
-// fails with its output.
+// cppConformanceMake runs one make target at the repository root, one job
+// per core so the driver's table objects compile side by side, and fails
+// with its output.
 func cppConformanceMake(t *testing.T, root string, args ...string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", args...)
+	cmd := exec.CommandContext(ctx, "make", append([]string{"-j" + strconv.Itoa(runtime.GOMAXPROCS(0))}, args...)...)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("make %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -209,8 +220,8 @@ func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 // TestCppDriverRefusesFormOneFramingNegativeControl plants its fault in
 // the real artifact: the strict form-1 walk is taken out of a COPY of the
 // driver (no tracked file is written to), the copy is built with the
-// Makefile's own flags beside the generated tables, and the framing
-// battery must go red on exactly the ten strict rows — each read again,
+// Makefile's own flags against the driver's own table objects, and the
+// framing battery must go red on exactly the strict rows — each read again,
 // as the unsabotaged readers left them. A control that stayed green, or
 // went red anywhere else, would prove the walk is not what refuses them.
 func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
@@ -237,7 +248,10 @@ func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	}
 	bin := filepath.Join(scratch, "driver-bin")
 	mk := filepath.Join(scratch, "negative.mk")
-	rule := fmt.Sprintf("%s: build/tables-generated/.stamp\n\t$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) %s $(CONFORMANCE_SOURCES) -o %s\n", bin, plantedSrc, bin)
+	// the planted main.cpp links the table objects the driver links (the
+	// Makefile's conformance-cpp-objects), so the control compiles one
+	// translation unit, not the driver's every table source over again
+	rule := fmt.Sprintf("%s: conformance-cpp-objects\n\t$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) %s $(CONFORMANCE_OBJECTS) -o %s\n", bin, plantedSrc, bin)
 	if err := os.WriteFile(mk, []byte(rule), 0o600); err != nil {
 		t.Fatal(err)
 	}
