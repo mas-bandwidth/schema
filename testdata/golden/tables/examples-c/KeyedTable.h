@@ -869,7 +869,8 @@ enum
     TABLEDEMO_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     TABLEDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     TABLEDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    TABLEDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    TABLEDEMO_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1301,7 +1302,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_store_native( uint8_t * dst, uin
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_apply( const tabledemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
     switch ( p->op )
     {
@@ -1312,16 +1313,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
         }
         case TABLEDEMO_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
-               value out of range: no writer emits one, so it is neither
-               stored verbatim nor normalised to 1
-               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
-               lands normalised here; table_fixed_run turns damaged into
-               the wire_damaged refusal and the load resets every record. */
+            /* A BOOL LANDS AS byte != 0. A BOOL OR PRESENT BYTE OTHER THAN 0
+               OR 1 IS WIRE DAMAGE, and it never reaches this loop: the load's
+               check pass refuses it wire_damaged before the first destination
+               byte is written (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), the
+               same pass the C++ reference runs. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case TABLEDEMO_K_TABLE_FIXED_COUNT:
@@ -1429,6 +1429,22 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
             dst[p->dst] = 1;
             break;
         }
+        case TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
+        {
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+               the payload copy above laid the wire's bytes down; when the flag
+               is 0 those bytes are slack and never a value, so the reader
+               overwrites them with the caller's own Reset image. Aux is the
+               payload's storage offset and Size its storage bytes. A plain
+               memcpy and not the run mover: the mover's 32-byte moves let
+               GCC's array-bounds pass form offsets past a small Reset image
+               on a size branch no entry of this op reaches, and an absent
+               payload is the cold path. */
+            const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
+            dst[p->dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -1441,14 +1457,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
 static SCHEMA_UNUSED void tabledemo_table_fixed_run( const tabledemo_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           tabledemo_table_report_t * report, const tabledemo_table_fixed_guard_link_t * guard_pool )
+                                           tabledemo_table_report_t * report, const tabledemo_table_fixed_guard_link_t * guard_pool,
+                                           const uint8_t * defaults )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
-    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1457,7 +1473,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_run( const tabledemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        tabledemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        tabledemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1480,13 +1496,17 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_run( const tabledemo_table_fixed
         }
         else
         {
-            if ( tabledemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+               the deferred present-defaults entry must follow the guarded
+               payload it overwrites, so it rides after the split although
+               it answers to no tag. Its guard lane is SCHEMA_TABLE_FIXED_NO_GUARD
+               and must never be read as an offset. */
+            if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        tabledemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        tabledemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
-    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1575,6 +1595,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_entry_lands( const tabledemo_tab
         case TABLEDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
         case TABLEDEMO_K_TABLE_FIXED_WIDEN:
         case TABLEDEMO_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
+        case TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS: lands[1] = e->dst + 1u; break; /* the flag; the payload's own entries land it */
         default: lands[1] = e->dst + e->size; break; /* copy, const */
     }
 }
@@ -2024,8 +2045,14 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compiler_init( tabledemo_table_f
 static SCHEMA_UNUSED void tabledemo_table_fixed_push( tabledemo_table_fixed_compiler_t * c, tabledemo_table_fixed_entry_t e )
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
-       plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+       plan comes out partitioned without a second array to partition it in.
+       THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       no tag: it must run AFTER the guarded payload entries it overwrites, or
+       an absent optional whose payload holds a union would read the wire's
+       residue back over the defaults (§3.4). The run loop applies a guardless
+       entry in the second half unconditionally. */
+    const int second_half = ( e.guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD ) || e.op == TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS;
+    if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2201,10 +2228,18 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
         {
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
-                tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = TABLEDEMO_K_TABLE_FIXED_BOOL; e.arg = arg;
-                tabledemo_table_fixed_push( c, e );
+                /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+                   when it is 0, the DECLARED DEFAULTS over the payload's slack
+                   (§3.4: an absent optional's payload is IGNORED on read). The
+                   payload's storage starts at the child's own destination and
+                   runs to the present companion, which the reader's layout puts
+                   after it. */
+                const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+                const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
+                e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                tabledemo_table_fixed_push( c, e );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -4566,6 +4601,7 @@ static SCHEMA_UNUSED int64_t tabledemo_table_message_open(tabledemo_table_messag
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
@@ -8114,8 +8150,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_team_config_fix
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_entry_t tabledemo_team_config_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* spawn_count */
     { 4u, 24u, 16u, 4u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* banner */
@@ -8286,6 +8323,8 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_load( tabledemo_team_co
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -8295,8 +8334,50 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_load( tabledemo_team_co
     {
         int32_t rec_widened = report->widened;
         if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const tabledemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != TABLEDEMO_K_TABLE_FIXED_BOOL && p->op != TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const tabledemo_table_fixed_guard_link_t * l = ( const tabledemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( tabledemo_table_fixed_guard_link_t ) );
+                            if ( tabledemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == TABLEDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { tabledemo_team_config_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_team_config_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -8352,8 +8433,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_gunner_config_f
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_entry_t tabledemo_gunner_config_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 4u, 4u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
@@ -8528,6 +8610,8 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_config_fixed_load( tabledemo_gunne
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -8537,8 +8621,50 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_config_fixed_load( tabledemo_gunne
     for ( k = 0; k < count; ++k )
     {
         if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const tabledemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != TABLEDEMO_K_TABLE_FIXED_BOOL && p->op != TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const tabledemo_table_fixed_guard_link_t * l = ( const tabledemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( tabledemo_table_fixed_guard_link_t ) );
+                            if ( tabledemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == TABLEDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { tabledemo_gunner_config_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_gunner_config_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -8602,17 +8728,18 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_turret_config_f
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_entry_t tabledemo_turret_config_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 4u, 4u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 8u, 16u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 9u, 8u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 13u, 12u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
+    { 8u, 16u, 8u, 8u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
 };
 static SCHEMA_UNUSED const int32_t tabledemo_turret_config_fixed_plan_count = 5;
-static SCHEMA_UNUSED const int32_t tabledemo_turret_config_fixed_plan_guarded = 5;
+static SCHEMA_UNUSED const int32_t tabledemo_turret_config_fixed_plan_guarded = 4;
 static SCHEMA_UNUSED const tabledemo_table_fixed_guard_link_t tabledemo_turret_config_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -8782,17 +8909,58 @@ static SCHEMA_UNUSED int64_t tabledemo_turret_config_fixed_load( tabledemo_turre
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_turret_config_reset( &defaults );
-    }
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    tabledemo_turret_config_reset( &defaults );
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const tabledemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != TABLEDEMO_K_TABLE_FIXED_BOOL && p->op != TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const tabledemo_table_fixed_guard_link_t * l = ( const tabledemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( tabledemo_table_fixed_guard_link_t ) );
+                            if ( tabledemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == TABLEDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { tabledemo_turret_config_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_turret_config_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -8873,29 +9041,30 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_hull_config_fix
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_entry_t tabledemo_hull_config_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 4u, 4u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 8u, 8u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 12u, 12u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
-    { 16u, 24u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 17u, 16u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 21u, 20u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 22u, 28u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 26u, 32u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 30u, 44u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 31u, 36u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 35u, 40u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 36u, 48u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 40u, 52u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 44u, 64u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 45u, 56u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 49u, 60u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
+    { 16u, 24u, 8u, 16u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 30u, 44u, 8u, 36u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 44u, 64u, 8u, 56u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
 };
 static SCHEMA_UNUSED const int32_t tabledemo_hull_config_fixed_plan_count = 17;
-static SCHEMA_UNUSED const int32_t tabledemo_hull_config_fixed_plan_guarded = 17;
+static SCHEMA_UNUSED const int32_t tabledemo_hull_config_fixed_plan_guarded = 14;
 static SCHEMA_UNUSED const tabledemo_table_fixed_guard_link_t tabledemo_hull_config_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -9069,17 +9238,58 @@ static SCHEMA_UNUSED int64_t tabledemo_hull_config_fixed_load( tabledemo_hull_co
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_hull_config_reset( &defaults );
-    }
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    tabledemo_hull_config_reset( &defaults );
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const tabledemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != TABLEDEMO_K_TABLE_FIXED_BOOL && p->op != TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const tabledemo_table_fixed_guard_link_t * l = ( const tabledemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( tabledemo_table_fixed_guard_link_t ) );
+                            if ( tabledemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == TABLEDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { tabledemo_hull_config_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_hull_config_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -9224,8 +9434,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_keyed_config_fi
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_entry_t tabledemo_keyed_config_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* spawn_count */
     { 4u, 24u, 16u, 4u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* banner */
@@ -9237,59 +9448,59 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_entry_t tabledemo_keyed_config_
     { 76u, 88u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 80u, 92u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 84u, 96u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
-    { 88u, 108u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 89u, 100u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 93u, 104u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 94u, 112u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 98u, 116u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 102u, 128u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 103u, 120u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 107u, 124u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 108u, 132u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 112u, 136u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 116u, 148u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 117u, 140u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 121u, 144u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 122u, 152u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 126u, 156u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 130u, 160u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 134u, 164u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
-    { 138u, 176u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 139u, 168u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 143u, 172u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 144u, 180u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 148u, 184u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 152u, 196u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 153u, 188u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 157u, 192u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 158u, 200u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 162u, 204u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 166u, 216u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 167u, 208u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 171u, 212u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 172u, 220u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 176u, 224u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 180u, 228u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
     { 184u, 232u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* health */
-    { 188u, 244u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 189u, 236u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 193u, 240u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 194u, 248u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 198u, 252u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 202u, 264u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 203u, 256u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 207u, 260u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 208u, 268u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
     { 212u, 272u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* damage */
-    { 216u, 284u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present */
     { 217u, 276u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* reaction */
     { 221u, 280u, 1u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tracking */
     { 222u, 288u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* per_team, whole */
     { 226u, 292u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* per_team, whole */
     { 230u, 296u, 4u, 0u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* per_team, whole */
+    { 88u, 108u, 8u, 100u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 102u, 128u, 8u, 120u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 116u, 148u, 8u, 140u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 138u, 176u, 8u, 168u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 152u, 196u, 8u, 188u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 166u, 216u, 8u, 208u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 188u, 244u, 8u, 236u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 202u, 264u, 8u, 256u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
+    { 216u, 284u, 8u, 276u, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS, 0, 0, 0, 0, 1, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* gunner present, absent payload defaults */
 };
 static SCHEMA_UNUSED const int32_t tabledemo_keyed_config_fixed_plan_count = 60;
-static SCHEMA_UNUSED const int32_t tabledemo_keyed_config_fixed_plan_guarded = 60;
+static SCHEMA_UNUSED const int32_t tabledemo_keyed_config_fixed_plan_guarded = 51;
 static SCHEMA_UNUSED const tabledemo_table_fixed_guard_link_t tabledemo_keyed_config_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -9479,18 +9690,59 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_fixed_load( tabledemo_keyed_
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_keyed_config_reset( &defaults );
-    }
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    tabledemo_keyed_config_reset( &defaults );
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
         if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const tabledemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != TABLEDEMO_K_TABLE_FIXED_BOOL && p->op != TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const tabledemo_table_fixed_guard_link_t * l = ( const tabledemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( tabledemo_table_fixed_guard_link_t ) );
+                            if ( tabledemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == TABLEDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { tabledemo_keyed_config_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_keyed_config_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no

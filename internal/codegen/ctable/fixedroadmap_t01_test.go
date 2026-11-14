@@ -16,8 +16,8 @@ package ctable
 // EVERY REFUSAL IS CHECKED AGAINST THE WHOLE REPORT, not against a list of
 // fields: expectRefused builds the one report the law allows — refused set, the
 // reason, `layout_hash` only where §5.9 #7 names it — and memcmps it with what
-// the reader returned, so a counter that moves, a `malformed` that rises beside
-// a refusal, or a stray `layout_hash` is a byte of difference. The destination
+// the reader returned, so a counter that moves, a `refuse_reason` set beside
+// a refusal by name, or a stray `layout_hash` is a byte of difference. The destination
 // is poisoned 0x5A first and every byte must still be 0x5A afterwards.
 
 import (
@@ -36,7 +36,11 @@ import (
 // cT01Macros is the shared C: the poison, the reset, and the two answers a
 // load may give. §5.9 #7's table is the source of both — a REFUSAL BY NAME is
 // `refused` + `reason` (+ `layout_hash` on layout_newer / layout_unsupported)
-// and nothing else; a MALFORMED read is `malformed` and nothing else.
+// and nothing else. A DAMAGED read is `refused` + `refuse_reason`
+// wire_damaged with `reason` zero, and nothing else: since the strict-only
+// read (docs/plans/strict-only.md) the C report has no `malformed` member, so
+// damage is the refusal whose name is in `refuse_reason`, and a refusal by
+// name keeps `refuse_reason` zero.
 const cT01Macros = `
 #define RESET_BACK() do { memset( back, 0x5A, sizeof( back ) ); memset( &r, 0, sizeof( r ) ); } while ( 0 )
 #define CHECK_POISON( WHO ) do { const uint8_t * p_ = (const uint8_t *) back; int64_t i_; \
@@ -45,15 +49,15 @@ const cT01Macros = `
 #define EXPECT_REFUSED( WHO, REASON, HASH ) do { TableReport e_; \
     memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.reason = (REASON); e_.layout_hash = (HASH); \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
-    if ( r.refused ) { printf( "%s: malformed set beside a refusal by name\n", (WHO) ); return 1; } \
+    if ( r.refuse_reason != 0 ) { printf( "%s: refuse_reason=%d set beside a refusal by name\n", (WHO), r.refuse_reason ); return 1; } \
     if ( r.refused != 1 || r.reason != (REASON) ) { printf( "%s: refused=%d reason=%d, not reason %d\n", (WHO), r.refused, r.reason, (int) (REASON) ); return 1; } \
-    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason(+layout_hash): u=%d km=%d c=%d d=%d w=%d layout_hash=%llx\n", (WHO), r.unknown, r.kind_mismatch, r.clamped, r.duplicate, r.widened, (unsigned long long) r.layout_hash ); return 1; } \
+    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason(+layout_hash): u=%d w=%d layout_hash=%llx\n", (WHO), r.unknown, r.widened, (unsigned long long) r.layout_hash ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
-#define EXPECT_MALFORMED( WHO ) do { TableReport e_; \
-    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; \
+#define EXPECT_DAMAGED( WHO ) do { TableReport e_; \
+    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
-    if ( r.refused || r.reason != 0 ) { printf( "%s: refused=%d reason=%d beside malformed\n", (WHO), r.refused, r.reason ); return 1; } \
-    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly malformed\n", (WHO) ); return 1; } \
+    if ( r.refused != 1 || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED ) { printf( "%s: refused=%d reason=%d refuse_reason=%d, not damage\n", (WHO), r.refused, r.reason, r.refuse_reason ); return 1; } \
+    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+wire_damaged\n", (WHO) ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
 `
 
@@ -150,7 +154,7 @@ func cT01BatchTooLarge(t *testing.T, corpus string) {
         }
         RESET_BACK();
         n = @LOAD@( back, count, data, len, plan, 4096, NULL, &r );
-        if ( n != count || r.refused || r.refused || r.reason != 0 ) { printf( "capacity == count must read: n=%lld refused=%d reason=%d\n", (long long) n, r.refused, r.reason ); return 1; }
+        if ( n != count || r.refused || r.reason != 0 || r.refuse_reason != 0 ) { printf( "capacity == count must read: n=%lld refused=%d reason=%d refuse_reason=%d\n", (long long) n, r.refused, r.reason, r.refuse_reason ); return 1; }
     }
 `
 	for _, lane := range []struct{ name, file string }{
@@ -287,14 +291,14 @@ func cT01IdentityLane(t *testing.T, corpus string) {
 	t.Run("own_hash_takes_the_identity_lane", func(t *testing.T) {
 		t.Parallel()
 		cT01Probe(t, newer, []string{older}, 0, newFile, `
-    if ( n != 1 || r.refused || r.refused ) { printf( "own file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
+    if ( n != 1 || r.refused || r.refuse_reason != 0 ) { printf( "own file: n=%lld refused=%d refuse_reason=%d\n", (long long) n, r.refused, r.refuse_reason ); return 1; }
     if ( @SNAKE@_fixed_lineage_ready != SCHEMA_TABLE_FIXED_ONCE_UNBUILT ) { printf( "the identity lane built the lineage: the entry was not recognised as this build's own\n" ); return 1; }
 `)
 	})
 	t.Run("equal_bytes_older_hash_takes_the_entrys_lane", func(t *testing.T) {
 		t.Parallel()
 		cT01Probe(t, newer, []string{older}, 0, oldFile, `
-    if ( n != 1 || r.refused || r.refused ) { printf( "older file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
+    if ( n != 1 || r.refused || r.refuse_reason != 0 ) { printf( "older file: n=%lld refused=%d refuse_reason=%d\n", (long long) n, r.refused, r.refuse_reason ); return 1; }
     if ( @SNAKE@_fixed_lineage_ready == SCHEMA_TABLE_FIXED_ONCE_UNBUILT || @SNAKE@_fixed_lineage[0].entries == NULL )
         { printf( "equal layout bytes under a different hash took the identity lane: the reader matched itself by its bytes\n" ); return 1; }
 `)
@@ -415,14 +419,14 @@ func cT01KnownHashLie(t *testing.T, corpus string) {
 	}
 }
 
-// c/R13 — "REFUSE is total: refused+reason and malformed are never both set,
+// c/R13 — "REFUSE is total: a name in reason and one in refuse_reason are never both set,
 // every counter stays zero, and not one destination byte is written"
 // (algorithm §5.9 #7's table). Every refusal name a file load can answer —
 // previous_form, newer_form, message_form_as_file, layout_newer,
 // layout_unsupported, layout_malformed, plan_too_large, batch_too_large,
-// no_layout — is checked against the whole report, and the malformed answers
+// no_layout — is checked against the whole report, and the damaged answers
 // (a ragged tail, under twenty bytes, a nonzero reserved byte) against the
-// converse: `malformed` alone, `refused` and `reason` zero.
+// converse: refused with refuse_reason wire_damaged, `reason` zero.
 func cT01RefuseIsTotal(t *testing.T, corpus string) {
 	newer := cReadSchema(t, "VNEW_field_append")
 	older := cReadSchema(t, "VOLD_field_append")
@@ -464,11 +468,11 @@ func cT01RefuseIsTotal(t *testing.T, corpus string) {
         memcpy( data, orig, (size_t) L );
 
         RESET_BACK(); n = @LOAD@( back, 8, data, L + 1, plan, 4096, NULL, &r );
-        EXPECT_MALFORMED( "ragged tail" );
+        EXPECT_DAMAGED( "ragged tail" );
         RESET_BACK(); n = @LOAD@( back, 8, data, kTableFixedHeaderBytes + 3, plan, 4096, NULL, &r );
-        EXPECT_MALFORMED( "under twenty bytes" );
+        EXPECT_DAMAGED( "under twenty bytes" );
         data[3] = 1; RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );
-        EXPECT_MALFORMED( "nonzero reserved byte" );
+        EXPECT_DAMAGED( "nonzero reserved byte" );
         memcpy( data, orig, (size_t) L );
     }
 `)

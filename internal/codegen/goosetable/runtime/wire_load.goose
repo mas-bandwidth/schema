@@ -1238,11 +1238,19 @@ fn map_key_scan(c: LoadCtx&, body: Rd, kd: FieldDesc, key: LoadVal&, kind_bad: b
 // key_order: byte-wise then by length for a string key, numeric otherwise —
 // signed where the declaration is (tabletext.MapKeyOrder).
 fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
+    return map_key_cmp(c.data, kd, a, b);
+}
+
+// map_key_cmp is THE ONE KEY ORDER (§2.8, tabletext.MapKeyOrder) the reader
+// checks and every writer derives: byte-wise then by length for a string
+// key, numeric otherwise — signed where the declaration is. A text key's
+// bytes are data[off .. off + len].
+fn map_key_cmp(data: const u8[:], kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
     if kd.shape == ShapeStr || kd.shape == ShapeText {
         let n = if a.len < b.len { a.len } else { b.len };
         for i in n {
-            let x = c.data[a.off + i];
-            let y = c.data[b.off + i];
+            let x = data[a.off + i];
+            let y = data[b.off + i];
             if x != y { return if x < y { -1 } else { 1 }; }
         }
         if a.len != b.len { return if a.len < b.len { -1 } else { 1 }; }
@@ -1256,6 +1264,31 @@ fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
     }
     if a.bits.lo != b.bits.lo { return if a.bits.lo < b.bits.lo { -1 } else { 1 }; }
     return 0;
+}
+
+// map_entry_order is THE WRITER'S SORT (§2.8; docs/PORTING.md M19): the n
+// entries of a map whose records start at slot `first` of the value table,
+// as their slots, in ASCENDING key order (an entry's key is its record's
+// first field), appended to `order`. The save and the cook each derive the
+// order here from whatever order the value holds the entries in, so nothing
+// a writer emits rests on the storage being sorted — a load leaves it
+// sorted, but a caller may build or edit the value table in any order. A
+// stable insertion: entries that compare equal keep their storage order.
+// `order` is the writer's one sort stack: a caller reads its entries at
+// [mark, mark + n) and resizes it back to mark when the map is done, so a map
+// an entry holds sorts above it (a recursive walk keeps no growable local).
+fn map_entry_order(data: const u8[:], vals: const LoadVal[:], kd: FieldDesc, first: i64, n: i64, order: i64[>..<]&) {
+    let mark = order.len;
+    for k in n {
+        order.push(first + k);
+        var j = order.len - 1;
+        while j > mark && map_key_cmp(data, kd, vals[vals[order[j - 1]].first], vals[vals[order[j]].first]) > 0 {
+            let t = order[j - 1];
+            order[j - 1] = order[j];
+            order[j] = t;
+            j -= 1;
+        }
+    }
 }
 
 // load_map decodes one map (docs/SPEC-TABLES.md §2.8): ascending keys, a

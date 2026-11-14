@@ -1484,8 +1484,11 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "        0x%016x => {\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "            let mut v = %s::default();\n", st.Name)
 		fmt.Fprintf(b, "            let mut off = start;\n")
-		fmt.Fprintf(b, "            let _ = %s(wire, &mut off, end, ids, &mut v, nodes, report, TableRetainPath::default().step(u32::MAX, k as u32), if retaining { Some(&mut sink) } else { None }, true);\n", fn(st.Name, "load_body"))
+		fmt.Fprintf(b, "            let body_ok = %s(wire, &mut off, end, ids, &mut v, nodes, report, TableRetainPath::default().step(u32::MAX, k as u32), if retaining { Some(&mut sink) } else { None }, true);\n", fn(st.Name, "load_body"))
 		fmt.Fprintf(b, "            if nodes.count_refused || !report.missing_required_fields.is_empty() { return; }\n")
+		// A RECORD'S TERMINATOR IS THE END OF ITS PAYLOAD (§3, §3.1): a body that
+		// stops short of the record's L, or ends before it, is damage.
+		fmt.Fprintf(b, "            if !body_ok || off != end { report.damaged = true; }\n")
 		fmt.Fprintf(b, "            Some(Rc::new(v))\n")
 		fmt.Fprintf(b, "        }\n")
 	}

@@ -192,3 +192,30 @@ fn integrity_holds(data: const u8[:], min_body: i64) -> bool {
         | ((data[n + 3] as u32) << 24);
     return got == crc32c(data, 0, n);
 }
+
+// table_keyed indexes an enum-keyed array's slots BY KEY (docs/SPEC-TABLES.md
+// §2.4, docs/PORTING.md M5): the storage shifts left, so the key k lives at
+// slot k-1 and nothing is stored for None. It hands back a reference, so the
+// same call reads and fills a slot:
+//
+//     schema_rt::table_keyed(hull.Turrets, WeaponMissile) = turret;
+//
+// THE GUARD IS SYMMETRIC: None (key 0) names the element BEFORE the array and
+// a key past E.Max one past its end, and both are the same program error,
+// refused by name in EVERY build — `abort`, never `assert` and never the
+// language's own index check, which names an INDEX rather than a key. The
+// generated codecs walk the array by STORAGE INDEX and never call this; it
+// is the surface a CALLER writes, so no call site spells the shift.
+fn table_keyed<T>(slots: T[:], key: i64) -> T& {
+    if key <= 0 || key > slots.len {
+        abort(str("schema: an enum-keyed array is indexed by a NAMED variant of its key enum: key ", key,
+            " keys no slot of ", slots.len, " (None keys none, and neither does a value past E.Max)"));
+    }
+    return slots[key - 1];
+}
+
+// table_keyed_each hands F the KEY beside each slot, key 1 first, so a walk
+// over an enum-keyed array never spells the shift either: F(key, slot).
+fn table_keyed_each<T, F>(slots: T[:]) {
+    for x, i in slots { F(i + 1, x); }
+}
