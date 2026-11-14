@@ -46,25 +46,17 @@ func RangedSignedMeasureBody(value *RangedSigned, ids *TableIds) int64 {
 }
 
 func RangedSignedMeasure(value *RangedSigned) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !RangedSignedSaveBody(&w, value) {
+	if !RangedSignedFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedSignedFixedMeasure(1)
 }
 
 func RangedSignedMeasureReason(value *RangedSigned) (int64, error) {
-	size := RangedSignedMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !RangedSignedFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return RangedSignedMeasure(value), nil
 }
 func RangedSignedSaveBody(w *TableWriter, value *RangedSigned) bool {
 	if !RangedSignedSaveBodyFields(w, value) {
@@ -283,17 +275,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 }
 
 func RangedSignedSave(value *RangedSigned, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !RangedSignedSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedSignedFixedSave([]RangedSigned{*value}, buffer)
 }
 
 func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
@@ -900,9 +882,8 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 }
 
 // RangedSigned is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// RangedSignedFixedLoad reads form 3.
+// so this Load reads that form through RangedSignedFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // RangedSignedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -919,6 +900,15 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 		read.Refuse(TableRefusePreviousForm, "")
 		RangedSignedReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]RangedSigned
+		if RangedSignedFixedLoad(fixed[:], data, tableFixedReadPlanRangedSigned, read) != 1 {
+			RangedSignedReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -1813,25 +1803,17 @@ func RangedUnsignedMeasureBody(value *RangedUnsigned, ids *TableIds) int64 {
 }
 
 func RangedUnsignedMeasure(value *RangedUnsigned) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !RangedUnsignedSaveBody(&w, value) {
+	if !RangedUnsignedFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedUnsignedFixedMeasure(1)
 }
 
 func RangedUnsignedMeasureReason(value *RangedUnsigned) (int64, error) {
-	size := RangedUnsignedMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !RangedUnsignedFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return RangedUnsignedMeasure(value), nil
 }
 func RangedUnsignedSaveBody(w *TableWriter, value *RangedUnsigned) bool {
 	if !RangedUnsignedSaveBodyFields(w, value) {
@@ -2050,17 +2032,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 }
 
 func RangedUnsignedSave(value *RangedUnsigned, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !RangedUnsignedSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedUnsignedFixedSave([]RangedUnsigned{*value}, buffer)
 }
 
 func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
@@ -2667,9 +2639,8 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 }
 
 // RangedUnsigned is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// RangedUnsignedFixedLoad reads form 3.
+// so this Load reads that form through RangedUnsignedFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // RangedUnsignedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -2686,6 +2657,15 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 		read.Refuse(TableRefusePreviousForm, "")
 		RangedUnsignedReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]RangedUnsigned
+		if RangedUnsignedFixedLoad(fixed[:], data, tableFixedReadPlanRangedUnsigned, read) != 1 {
+			RangedUnsignedReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -3598,20 +3578,17 @@ func RangedWidthsMeasureBody(value *RangedWidths, ids *TableIds) int64 {
 }
 
 func RangedWidthsMeasure(value *RangedWidths) int64 {
-	var ids TableIds
-	body := RangedWidthsMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !RangedWidthsFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return RangedWidthsFixedMeasure(1)
 }
 
 func RangedWidthsMeasureReason(value *RangedWidths) (int64, error) {
-	size := RangedWidthsMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !RangedWidthsFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return RangedWidthsMeasure(value), nil
 }
 func RangedWidthsSaveBody(w *TableWriter, value *RangedWidths) bool {
 	if !RangedWidthsSaveBodyFields(w, value) {
@@ -3685,17 +3662,7 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 }
 
 func RangedWidthsSave(value *RangedWidths, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !RangedWidthsSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedWidthsFixedSave([]RangedWidths{*value}, buffer)
 }
 
 func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
@@ -3939,9 +3906,8 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 }
 
 // RangedWidths is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// RangedWidthsFixedLoad reads form 3.
+// so this Load reads that form through RangedWidthsFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // RangedWidthsLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -3958,6 +3924,15 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 		read.Refuse(TableRefusePreviousForm, "")
 		RangedWidthsReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]RangedWidths
+		if RangedWidthsFixedLoad(fixed[:], data, tableFixedReadPlanRangedWidths, read) != 1 {
+			RangedWidthsReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -4984,6 +4959,8 @@ var RangedSignedFixedPlanMax = func() int32 {
 	return m
 }()
 
+var tableFixedReadPlanRangedSigned = make([]TableFixedEntry, int(RangedSignedFixedPlanMax))
+
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func RangedSignedFixedMeasure(count int64) int64 {
@@ -5288,6 +5265,8 @@ var RangedUnsignedFixedPlanMax = func() int32 {
 	return m
 }()
 
+var tableFixedReadPlanRangedUnsigned = make([]TableFixedEntry, int(RangedUnsignedFixedPlanMax))
+
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func RangedUnsignedFixedMeasure(count int64) int64 {
@@ -5553,6 +5532,8 @@ var RangedWidthsFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanRangedWidths = make([]TableFixedEntry, int(RangedWidthsFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
