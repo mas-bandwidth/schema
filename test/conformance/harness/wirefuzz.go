@@ -79,7 +79,7 @@ type wireFuzzOptions struct {
 // RELAXED 2026-11-14 (maintainer: get main green).
 func relaxedVectorSet(list string) map[string]bool {
 	out := map[string]bool{}
-	for _, name := range strings.Split(list, ",") {
+	for name := range strings.SplitSeq(list, ",") {
 		if name = strings.TrimSpace(name); name != "" {
 			out[name] = true
 		}

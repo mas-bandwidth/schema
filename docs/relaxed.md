@@ -108,6 +108,15 @@ listed case that passes fails the leg until its line is removed.
   refuses. Real fix: build recipe rows from their input JSON, and skip or
   answer the rows the Rust leg cannot load; then return the control to
   `rust-conformance-walk`. WIP: none.
+- `relax/nc-elixir-discard-masked`: the group `elixir-discard`
+  (`tables-elixir-discard-negative-control`) moved from the pull-request
+  tier to nightly. PR 3290 made Elixir's load the one strict read: its
+  framing check (`strict_syntax!`) now refuses the damaged vector before the
+  load reaches the discard the control removes, so with the discard gone
+  `TestDamageDiscardsTheWholeLoadElixir` stays green and the control cannot go
+  red. Files: `make/negative-controls.json`. Real fix: aim the sabotage at the
+  check that now holds the whole-load discard (or drop the discard if it is
+  dead code), then return the group to the pull-request tier. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 
@@ -186,6 +195,16 @@ an open PR: write-refusal on rust is
 relax/rust-write-refusal-debug-asserts; the rest of the write-refusal slugs are
 each leg answering the four write-refusal surfaces; I15 on elixir is PR 3290.
 WIP for every proof slug: none unless named here.
+
+- `relax/proof-blob-shared-elixir`: 2 cell(s), red at main 18bd2eebb (CI
+  full 43637319296): `surface cook-write / elixir` (2 case(s) answered absent
+  with no ruling: cook-write/blob_shared, cook-write/blob_shared-be) and
+  `cases blobdemo / elixir` (cook-write/blob_shared). PR 3290 made Elixir's
+  load strict, and a blob named from two slots is refused (§2.5); since then
+  the driver answers the blob_shared cook-write recipe row
+  (`input=<json> share=<from>:<to>`) absent. Real fix: the Elixir driver
+  answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
+  on the Rust side).
 
 - `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).

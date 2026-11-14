@@ -1397,10 +1397,9 @@
     {
       "row": "surface cook-write",
       "lang": "elixir",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) answered absent with no ruling: cook-write/blob_shared, cook-write/blob_shared-be",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-blob-shared-elixir (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
@@ -4144,10 +4143,9 @@
     {
       "row": "cases blobdemo",
       "lang": "elixir",
-      "status": "proven",
-      "gate": "make conformance: 28 case(s) pass, e.g. cook-write/blob_empty",
-      "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
+      "status": "relaxed",
+      "why": "1 case(s) answered absent with no ruling: cook-write/blob_shared",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-blob-shared-elixir (docs/relaxed.md)"
     },
     {
       "row": "cases blobdemo",
