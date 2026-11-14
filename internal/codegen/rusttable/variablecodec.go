@@ -81,6 +81,12 @@ func (g *gen) variableCodecModule() []byte {
 	for _, n := range holding {
 		g.emitVariableStruct(&b, vStruct(g.unit, n))
 	}
+	drops := tableDropSet(g.unit)
+	for _, n := range names {
+		if drops[n] {
+			g.emitVariableDrop(&b, vStruct(g.unit, n), drops)
+		}
+	}
 	for _, n := range names {
 		g.emitVariableNumber(&b, vStruct(g.unit, n))
 	}
