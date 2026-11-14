@@ -869,6 +869,43 @@ func rewriteCCounter(s string) string {
 	return s
 }
 
+// THE C COUNTER IS NAMED FOR ITS REFUSAL. C calls the read loop's counter
+// out_of_range; C++ cannot, because out_of_range is the reason enumerator the
+// same loop refuses with, so it says oor_count. These rewrites match only the
+// C counter's own spellings (a pointer parameter, a dereferenced increment, an
+// address argument, the local and its test), so the C++ enumerator is never
+// touched. C's two-field refusal as one comma expression is the same two
+// stores C++ spells as two statements.
+var (
+	reCCounterParam = regexp.MustCompile(`int32_t \* out_of_range,\s*int32_t \* widened`)
+	reCCounterInc   = regexp.MustCompile(`\(\*out_of_range\)\+\+`)
+	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened\s*\)`)
+	reCCounterLocal = regexp.MustCompile(`int32_t out_of_range = 0;`)
+	reCCounterTest  = regexp.MustCompile(`\(\s*out_of_range != 0\s*\)`)
+	reCCommaRefusal = regexp.MustCompile(`(\w+(?:\.|->)report(?:\.|->))refused\s*=\s*1\s*,\s*(\w+(?:\.|->)report(?:\.|->)refuse_reason)\s*=\s*`)
+	reCRefusedOne   = regexp.MustCompile(`((?:\.|->)refused)\s*=\s*1\s*;`)
+	// OWED BY BOTH LEGS (docs/FIXED-FORM-ALGORITHM.md §4.5, the 2026-11-03
+	// ruling, row 16): a bool or present byte other than 0 or 1 refuses
+	// wire_damaged in LOAD's check pass, over live data. C counts the byte as
+	// out_of_range inside Apply and C++ lands it as byte != 0 with no count;
+	// neither is the ruling. The C half is stripped here so the two legs are
+	// compared on everything else, and this rule goes when both legs refuse in
+	// the check pass.
+	reOwedBoolByte = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*out_of_range\)\+\+;\s*\}`)
+)
+
+func rewriteCCounter(s string) string {
+	s = reOwedBoolByte.ReplaceAllString(s, "")
+	s = reCCounterParam.ReplaceAllString(s, "int32_t & oor_count, int32_t & widened")
+	s = reCCounterInc.ReplaceAllString(s, "oor_count++")
+	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened )")
+	s = reCCounterLocal.ReplaceAllString(s, "int32_t oor_count = 0;")
+	s = reCCounterTest.ReplaceAllString(s, "( oor_count != 0 )")
+	s = reCCommaRefusal.ReplaceAllString(s, "${1}refused = true; $2 = ")
+	s = reCRefusedOne.ReplaceAllString(s, "$1 = true;")
+	return s
+}
+
 func canonicalize(src string) []string {
 	s := stripComments(src)
 	s = rewriteCCounter(s)
