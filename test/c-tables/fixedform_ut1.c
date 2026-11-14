@@ -42,10 +42,24 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
 {
     tblut1_ut_root_t back;
     tblut1_table_report_t r;
+    int32_t i;
+    int32_t text = -1;
+    int32_t texts = 0;
 
-    fixed_check( tblut1_ut_root_fixed_plan[3].op == TBLUT1_K_TABLE_FIXED_TEXT, "C two lanes: the plan's fourth entry is the text" );
-    fixed_check( tblut1_ut_root_fixed_plan[3].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
-    fixed_check( tblut1_ut_root_fixed_plan[3].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
+    /* The text entry is found by its op, not by its index: the identity plan
+       is split at leaf widths for a big-endian host, so where it sits moves
+       with the copies in front of it. */
+    for ( i = 0; i < tblut1_ut_root_fixed_plan_count; i++ )
+    {
+        if ( tblut1_ut_root_fixed_plan[i].op == TBLUT1_K_TABLE_FIXED_TEXT )
+        {
+            text = i;
+            texts++;
+        }
+    }
+    fixed_check( texts == 1 && text >= 0, "C two lanes: the plan holds exactly one text entry" );
+    fixed_check( text >= 0 && tblut1_ut_root_fixed_plan[text].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
+    fixed_check( text >= 0 && tblut1_ut_root_fixed_plan[text].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
 
     memset( &r, 0, sizeof( r ) );
     fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,

@@ -591,8 +591,8 @@ func cT08GuardChain(t *testing.T) {
 	cppHeader := string(cpp["ProbeTable.h"])
 	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
 		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
-		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) ||
-		!strings.Contains(cppHeader, "report, RootFixedGuards );") {
+		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
+		!strings.Contains(cppHeader, "report, RootFixedGuards, NULL );") {
 		t.Fatal("the C++ reference does not pass the three-link identity plan through its guard pool")
 	}
 	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;
@@ -1194,7 +1194,7 @@ int main(void)
     /* (1) THE WRONG PLAN IS WRONG: Fxold's identity plan over Fxnew's body. */
     body = w2 + need - fxnew_fixed_body_bytes;
     memset(&wrong, 0x5A, sizeof(wrong));
-    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards);
+    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards, NULL);
     if (wrong.renamed == 808)
         { fprintf(stderr, "NEGATIVE CONTROL FAILED: Fxold's identity plan reproduced an Fxnew record (renamed=%d)\n", (int)wrong.renamed); return 1; }
 
