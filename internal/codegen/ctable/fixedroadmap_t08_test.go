@@ -584,6 +584,8 @@ func cT08GuardChain(t *testing.T) {
 	// The C++ reference now carries the same identity-plan guard chain rather
 	// than consuming the two-lane plan. Assert the emitted entry and pool both
 	// name the OUTERMOST link, or the deepest leaf could run under a false tag.
+	// The run's argument after the pool is the absent-optional defaults image
+	// (320a2b6d3), which this row does not judge.
 	cpp, err := cpptable.Generate(unitFrom(t, cT08TripleUnionSchema))
 	if err != nil {
 		t.Fatal(err)
@@ -592,7 +594,7 @@ func cT08GuardChain(t *testing.T) {
 	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
 		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
 		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
-		!strings.Contains(cppHeader, "report, RootFixedGuards, NULL );") {
+		!strings.Contains(cppHeader, "(uint8_t *) &values[k], report, RootFixedGuards, ") {
 		t.Fatal("the C++ reference does not pass the three-link identity plan through its guard pool")
 	}
 	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;

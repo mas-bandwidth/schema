@@ -86,7 +86,7 @@ int main( void )
     if ( root_load_measure_ex( other, 0, NULL, &why ) != -1 || why != SCHEMA_TABLE_REFUSE_OK )
         { printf( "MEASURE empty input was misnamed\n" ); return 1; }
     if ( root_load( NULL, 0, other, 0, &empty ) != NULL ||
-         !empty.refused || empty.refused || empty.damage_reason != SCHEMA_TABLE_REFUSE_OK )
+         !empty.refused || empty.damage_reason != SCHEMA_TABLE_REFUSE_OK )
         { printf( "LOAD empty input was misnamed\n" ); return 1; }
     return 0;
 }
@@ -167,7 +167,7 @@ int main( void )
     back = ledger_load( region, (int64_t) sizeof( region ), lbuf, sl, &clean );
     if ( back == NULL || back->n != 1000 || back->label_length != 2 ||
          memcmp( back->label, "ok", 2 ) != 0 || back->count != 7 ||
-         clean.refused || clean.refused || clean.damage_reason != SCHEMA_TABLE_REFUSE_OK )
+         clean.refused || clean.damage_reason != SCHEMA_TABLE_REFUSE_OK )
         { printf( "LOAD clean round trip\n" ); return 1; }
     if ( ledger_load_measure_ex( lbuf, sl, NULL, &why ) <= 0 || why != SCHEMA_TABLE_REFUSE_OK )
         { printf( "MEASURE clean file\n" ); return 1; }
@@ -176,7 +176,7 @@ int main( void )
          ledger_builder_root( &bload ) == NULL || ledger_builder_root( &bload )->n != 1000 )
         { printf( "LOADBUILDER clean file\n" ); return 1; }
     ledger_builder_shutdown( &bload );
-    if ( brep.refused || brep.refused || brep.damage_reason != SCHEMA_TABLE_REFUSE_OK )
+    if ( brep.refused || brep.damage_reason != SCHEMA_TABLE_REFUSE_OK )
         { printf( "LOADBUILDER clean report\n" ); return 1; }
 
     for ( i = 0; i < sl; ++i )
@@ -195,10 +195,10 @@ int main( void )
             v = ledger_load( region, (int64_t) sizeof( region ), bad, sl, &r );
             if ( i == 0 )
             {
-                if ( v != NULL || !r.refused || r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_OK || r.reason != SCHEMA_TABLE_NEWER_FORM )
+                if ( v != NULL || !r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_OK || r.reason != SCHEMA_TABLE_NEWER_FORM )
                     { printf( "LOAD form byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
             }
-            else if ( v != NULL || !r.refused || r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || r.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+            else if ( v != NULL || !r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || r.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
                 { printf( "LOAD byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
 
             n = ledger_load_measure_ex( bad, sl, NULL, &rwhy );
@@ -210,10 +210,10 @@ int main( void )
             ledger_builder_shutdown( &bflip );
             if ( i == 0 )
             {
-                if ( got || !rb.refused || rb.refused || rb.damage_reason != SCHEMA_TABLE_REFUSE_OK )
+                if ( got || !rb.refused || rb.damage_reason != SCHEMA_TABLE_REFUSE_OK )
                     { printf( "LOADBUILDER form byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
             }
-            else if ( got || !rb.refused || rb.refused || rb.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || rb.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+            else if ( got || !rb.refused || rb.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || rb.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
                 { printf( "LOADBUILDER byte %lld ^ %u\n", (long long) i, (unsigned) flips[f] ); return 1; }
         }
     }
@@ -225,14 +225,14 @@ int main( void )
         LedgerBuilder bshort;
         int got;
         if ( ledger_load( region, (int64_t) sizeof( region ), tiny, 4, &r ) != NULL ||
-             !r.refused || r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+             !r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
             { printf( "LOAD short file\n" ); return 1; }
         if ( ledger_load_measure_ex( tiny, 4, NULL, &rwhy ) != -1 || rwhy != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
             { printf( "MEASURE short file\n" ); return 1; }
         if ( !ledger_builder_init( &bshort ) ) { return 1; }
         got = ledger_load_builder( &bshort, tiny, 4, &rb );
         ledger_builder_shutdown( &bshort );
-        if ( got || !rb.refused || rb.refused || rb.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+        if ( got || !rb.refused || rb.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
             { printf( "LOADBUILDER short file\n" ); return 1; }
     }
 
@@ -252,11 +252,11 @@ int main( void )
     rback.ids = rids; rback.id_capacity = 16;
     memset( &rlreport, 0, sizeof( rlreport ) );
     rl = ledger_load_retain( rregion, (int64_t) sizeof( rregion ), rbuf, sr, &rback, &rlreport );
-    if ( rl == NULL || rl->n != 1000 || rl->count != 7 || rlreport.refused || rlreport.refused || rlreport.damage_reason != SCHEMA_TABLE_REFUSE_OK )
+    if ( rl == NULL || rl->n != 1000 || rl->count != 7 || rlreport.refused || rlreport.damage_reason != SCHEMA_TABLE_REFUSE_OK )
         { printf( "LOADRETAIN round trip\n" ); return 1; }
 
     if ( ledger_load( region, (int64_t) sizeof( region ), NULL, 0, &empty ) != NULL ||
-         !empty.refused || empty.refused || empty.damage_reason != SCHEMA_TABLE_REFUSE_OK )
+         !empty.refused || empty.damage_reason != SCHEMA_TABLE_REFUSE_OK )
         { printf( "LOAD empty input was misnamed\n" ); return 1; }
 
     whole_reset( &wv ); wv.n = 1000;
@@ -265,7 +265,7 @@ int main( void )
     if ( ws != wm || wm < 5 ) { printf( "WHOLE SAVE %lld MEASURE %lld\n", (long long) ws, (long long) wm ); return 1; }
     memcpy( wbad, wbuf, (size_t) ws ); wbad[ws - 1] ^= 1;
     if ( whole_load( &wback, wbad, ws, &wr ) ||
-         !wr.refused || wr.refused || wr.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || wr.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+         !wr.refused || wr.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || wr.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
         { printf( "WHOLE LOAD corrupt trailer\n" ); return 1; }
 
     fixed_row_reset( &fr ); fr.value = 17;
@@ -273,7 +273,7 @@ int main( void )
     frs = fixed_row_save( &fr, frbuf, (int64_t) sizeof( frbuf ) );
     if ( frs != frm || frm != 28 ) { printf( "FIXEDROW SAVE %lld MEASURE %lld\n", (long long) frs, (long long) frm ); return 1; }
     hex( frbuf, frs, "FIXEDROW" );
-    if ( !fixed_row_load( &frback, frbuf, frs, &wr ) || frback.value != 17 || wr.refused || wr.refused )
+    if ( !fixed_row_load( &frback, frbuf, frs, &wr ) || frback.value != 17 || wr.refused )
         { printf( "FIXEDROW LOAD clean\n" ); return 1; }
     return 0;
 }
@@ -324,11 +324,11 @@ int main( void )
 
     memcpy( bad, kbuf, (size_t) sk ); bad[sk-1] ^= 0x01;
     if ( reading_fixed_load( back, 3, bad, sk, NULL, 0, NULL, &report ) >= 0 ||
-         !report.refused || report.refused || report.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || report.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+         !report.refused || report.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || report.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
         { printf( "READ flipped trailer was not named damage\n" ); return 1; }
     memcpy( cut, kbuf, (size_t) ( sk - 1 ) );
     if ( reading_fixed_load( back, 3, cut, sk - 1, NULL, 0, NULL, &report2 ) >= 0 ||
-         !report2.refused || report2.refused || report2.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || report2.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
+         !report2.refused || report2.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || report2.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH )
         { printf( "READ cut trailer was not named damage\n" ); return 1; }
     return 0;
 }
@@ -418,8 +418,12 @@ fixed table Plain
 }
 `
 
-const cIntegrityMessagePlainGolden = "0200813e000020070000"
-const cIntegrityMessageLedgerGolden = "0200813e00002007000078f2be34"
+// The message goldens are the Go oracle's and the C++ reference's
+// (internal/codegen/gotable/integritymessage_test.go, cpptable's
+// integrity_test.go): the batch rides the closure's vocabulary since 0e0f4b5bc,
+// so Ledger and Plain no longer share refs and their bodies differ.
+const cIntegrityMessagePlainGolden = "0200a10f0000780000"
+const cIntegrityMessageLedgerGolden = "0200a10f000078000073cfdf7e"
 
 const cMessageDriver = `#include <stdio.h>
 #include <string.h>
@@ -454,12 +458,18 @@ int main( void )
 
     ledger_reset( &l ); l.n = 1000; l.count = 7;
     plain_reset( &p ); p.n = 1000; p.count = 7;
+    /* the loads write these; reset first so gcc's -Wmaybe-uninitialized sees them set */
+    ledger_reset( &out[0] );
+    plain_reset( &pout[0] );
     ln = ledger_measure_messages( &l, 1, NULL );
     pn = plain_measure_messages( &p, 1, NULL );
     if ( ln < 0 || pn < 0 || ln != pn + 4 ) { return 1; }
     if ( ledger_save_messages( &l, 1, lb, ln, NULL ) != ln ) { return 1; }
     if ( plain_save_messages( &p, 1, pb, pn, NULL ) != pn ) { return 1; }
-    if ( ledger_save_messages( &l, 1, lb, ln - 1, NULL ) >= 0 ) { return 1; }
+    /* THE SHORT SAVE WRITES INTO ITS OWN BUFFER, as the C++ twin's does: a save
+       that does not fit answers -1, and what it left in the bytes it was handed
+       is not the round-tripped file the reads below take. */
+    if ( ledger_save_messages( &l, 1, bad, ln - 1, NULL ) >= 0 ) { return 1; }
     hex( pb, pn, "PLAIN" );
     hex( lb, ln, "LEDGER" );
 
@@ -478,11 +488,11 @@ int main( void )
             if ( ledger_load_messages( out, &count, &vocab, bad, ln, &r ) || count != 0 ) { return 1; }
             if ( i == 0 )
             {
-                if ( !r.refused || r.refused || r.reason != SCHEMA_TABLE_NEWER_FORM || r.refuse_reason != SCHEMA_TABLE_REFUSE_UNKNOWN_FORM ) { return 1; }
+                if ( !r.refused || r.reason != SCHEMA_TABLE_NEWER_FORM || r.refuse_reason != SCHEMA_TABLE_REFUSE_UNKNOWN_FORM ) { return 1; }
             }
             else
             {
-                if ( !r.refused || r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || r.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH ) { return 1; }
+                if ( !r.refused || r.damage_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH || r.refuse_reason != SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH ) { return 1; }
             }
         }
     }

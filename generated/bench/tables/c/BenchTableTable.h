@@ -3436,6 +3436,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_message_open(benchtable_table_mess
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
