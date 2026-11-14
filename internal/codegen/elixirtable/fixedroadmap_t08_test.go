@@ -173,8 +173,8 @@ func t08P1(t *testing.T) {
 	text := t08Module(t, t08Scalars)
 	t08Has(t, fixedRuntimeBody, "defp lineage_lane_of(%{hash: h}, own, _mine, _dst, _capacity) when h == own, do: :identity", "P1 an own-hash entry is the identity lane")
 	t08Has(t, text, "defp t_fixed_lane(i, records, hash, report, cap, bcap, copy) do", "P1 the lane dispatch")
-	t08Has(t, text, ":identity ->\n        t_fixed_run(@t_plan, @t_body_bytes, records, hash, report, copy, bcap, {0, 0})", "P1 identity runs the emitted plan")
-	t08Has(t, text, "{:ok, plan, size, _made, u, k} ->\n        t_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})", "P1 the compiled lane runs the compiled plan through the same loop")
+	t08Has(t, text, ":identity ->\n        t_fixed_run(@t_plan, dead, @t_body_bytes, records, hash, report, copy, bcap, {0, 0})", "P1 identity runs the emitted plan")
+	t08Has(t, text, "{:ok, plan, size, _made, u, k} ->\n        t_fixed_run(plan, dead, size, records, hash, report, copy, bcap, {u, k})", "P1 the compiled lane runs the compiled plan through the same loop")
 }
 
 // ---- interoperability/elixir/W13 -------------------------------------------

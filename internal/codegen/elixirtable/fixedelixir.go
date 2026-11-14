@@ -1857,11 +1857,15 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  # nothing on it can fail for want of a plan: an entry whose plan would not\n")
 	g.pf("  # build carries its own refusal reason, and this is where it is read.\n")
 	g.pf("  defp %s_fixed_lane(i, records, hash, report, cap, bcap, copy) do\n", snake)
+	g.pf("    dead = R.lineage_dead(__MODULE__, :%s, i)\n\n", snake)
 	g.pf("    case R.lineage_lane(__MODULE__, :%s, i) do\n", snake)
 	g.pf("      :identity ->\n")
-	identityArgs := []node{rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
-		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")}
-	laneArgs := []node{raw("plan"), raw("size"), raw("records"), raw("hash"), raw("report"), raw("copy"),
+	// THE WRITER'S SLACK CHECKS ride beside every lane (docs/SPEC-TABLES.md
+	// §3.4): laid down at module load from the same lineage entry.
+	dead := raw("dead")
+	identityArgs := []node{rawf("@%s_plan", snake), dead, rawf("@%s_body_bytes", snake), raw("records"),
+		raw("hash"), raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")}
+	laneArgs := []node{raw("plan"), dead, raw("size"), raw("records"), raw("hash"), raw("report"), raw("copy"),
 		raw("bcap"), raw("{u, k}")}
 	if writerBounds {
 		// THE LANE'S WRITER RANGES RIDE WITH ITS CENSUS: both are facts of the
@@ -1885,7 +1889,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE\n")
 	g.pf("  # a byte is landed. Neither plan clamps a ranged integer: the generated\n")
 	g.pf("  # projection holds the bound after the loop, the same pass for either plan.\n")
-	g.pf("  defp %s_fixed_run(plan, size, records, hash, report, copy, bcap, census) do\n", snake)
+	g.pf("  defp %s_fixed_run(plan, dead, size, records, hash, report, copy, bcap, census) do\n", snake)
 	if writerBounds {
 		g.pf("    {census_u, census_k, bounds} = census\n\n")
 	} else {
@@ -1899,12 +1903,14 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("    # (§4.5 fix 11): `R.text` and the compiled plan's text op both\n")
 	g.pf("    # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform\n")
 	g.pf("    # refusal is caught, with no destination byte landed and every counter\n")
-	g.pf("    # left at zero.\n")
+	g.pf("    # left at zero. THE SLACK RULE (§3.4) refuses the same way: every byte of\n")
+	g.pf("    # the writer's slack is zero, checked on the body before the plan runs.\n")
 	g.pf("    try do\n")
 	g.pf("      with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
 	g.pf("           {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
 	g.pf("        {values, report} =\n")
 	g.pf("          Enum.map_reduce(bodies, report, fn body, report ->\n")
+	g.pf("            :ok = R.dead(dead, body)\n")
 	// the formatter breaks a match past column 98 after its `=`, and a
 	// multi-line expression takes a blank line after it
 	if run := fmt.Sprintf("            {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)", snake); exWidth(run) <= exLineLimit {
