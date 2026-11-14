@@ -779,6 +779,10 @@ fn v_%[1]s() {
     let body = 20 + layout_bytes + 8;
     data[body] = 0;
     data[body + 1] = 0;
+    // and the note's payload with it: under an absent flag the payload is
+    // slack, which is zero (docs/SPEC-TABLES.md §3.4, THE SLACK RULE), as a
+    // conforming writer of an absent note leaves it
+    data[body + 2..body + 6].fill(0);
     assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
     assert!(!values[0].flag && !values[0].note_present);
     assert_eq!(values[0].pick.labelled().unwrap().label_length, 5);

@@ -714,17 +714,20 @@ pub fn table_fixed_run(
                 }
             }
             TableFixedOp::Tail => {
-                // THE COUNT IS HELD TO THE WRITER'S BOUND before it measures
-                // anything: a count past it is out of range and the Count op
-                // beside this one already says so, so the tail is measured from
-                // the bound and never from a forged number.
+                // A COUNT OUTSIDE [0, THE WRITER'S BOUND] HAS NO TAIL TO
+                // MEASURE: it is out of range, and the Count or Text op beside
+                // this one refuses it by that name.
                 let unit = p.aux as usize;
                 let bound = p.size as usize;
                 if src.len() < s + 4 + bound * unit {
                     report.damaged = true;
                     return;
                 }
-                let live = (get32(src, s) as i32).clamp(0, p.size as i32) as usize;
+                let raw = get32(src, s) as i32;
+                if raw < 0 || raw > p.size as i32 {
+                    continue;
+                }
+                let live = raw as usize;
                 if !table_fixed_dead_zero(&src[s + 4 + live * unit..s + 4 + bound * unit]) {
                     report.damaged = true;
                     return;

@@ -188,8 +188,8 @@ fixed table Lineage
 	if dead == "" {
 		t.Fatal("W4: lineage_fixed_dead is not emitted")
 	}
-	t07Has(t, dead, "if !table_fixed_dead_zero(&b[4 + live * 4..20]) {", "W4 the counted array's tail is zero")
-	t07Has(t, dead, "if !table_fixed_dead_zero(&b[24 + live..32]) {", "W4 the text's bytes past the used length are zero")
+	t07Has(t, dead, "if (0..=4).contains(&raw) && !table_fixed_dead_zero(&b[4 + raw as usize * 4..20]) {", "W4 the counted array's tail is zero")
+	t07Has(t, dead, "if (0..=8).contains(&raw) && !table_fixed_dead_zero(&b[24 + raw as usize..32]) {", "W4 the text's bytes past the used length are zero")
 	t07Has(t, t07Fn(text, "lineage_fixed_load"), "if !lineage_fixed_dead(&record[8..]) {", "W4 the load holds the record to the slack rule")
 
 	// A bytes(N) HAS NO CONTENT RULE: it is bytes, so a unit whose only
@@ -199,7 +199,7 @@ fixed table Lineage
 	if got := t07Fn(bs, "lineage_fixed_clamp_body"); got != "" {
 		t.Errorf("W4: a bytes(N) emitted a content bounds body:\n%s", got)
 	}
-	t07Has(t, t07Fn(bs, "lineage_fixed_dead"), "if !table_fixed_dead_zero(&b[4 + live..12]) {", "W4 the bytes past the used length are zero")
+	t07Has(t, t07Fn(bs, "lineage_fixed_dead"), "if (0..=8).contains(&raw) && !table_fixed_dead_zero(&b[4 + raw as usize..12]) {", "W4 the bytes past the used length are zero")
 }
 
 // ---- rust/W9 -----------------------------------------------------------------

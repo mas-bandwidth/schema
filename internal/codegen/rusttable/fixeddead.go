@@ -82,21 +82,20 @@ func (g *gen) emitFixedDeadPayload(f *ir.Field, base int64, indent int) {
 	}
 }
 
-// emitFixedDeadTail checks the units past a live count (or a used length)
-// held to its bound: a count past the bound is out of range, and the scatter
-// refuses it by name, so the tail is measured from the clamped value.
+// emitFixedDeadTail checks the units past a live count (or a used length). A
+// count outside [0, bound] has no tail to measure: it is out of range, and the
+// scatter refuses it by that name.
 func (g *gen) emitFixedDeadTail(at, bound, unit int64, ind string) {
 	if bound == 0 {
 		return
 	}
 	g.pf("%s{\n", ind)
 	g.pf("%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, at, at+4)
-	g.pf("%s    let live = raw.clamp(0, %d) as usize;\n", ind, bound)
-	start := fmt.Sprintf("%d + live", at+ir.TableFixedCountBytes)
+	start := fmt.Sprintf("%d + raw as usize", at+ir.TableFixedCountBytes)
 	if unit != 1 {
-		start = fmt.Sprintf("%d + live * %d", at+ir.TableFixedCountBytes, unit)
+		start = fmt.Sprintf("%d + raw as usize * %d", at+ir.TableFixedCountBytes, unit)
 	}
-	g.pf("%s    if !table_fixed_dead_zero(&b[%s..%d]) {\n%s        return false;\n%s    }\n", ind, start, at+ir.TableFixedCountBytes+bound*unit, ind, ind)
+	g.pf("%s    if (0..=%d).contains(&raw) && !table_fixed_dead_zero(&b[%s..%d]) {\n%s        return false;\n%s    }\n", ind, bound, start, at+ir.TableFixedCountBytes+bound*unit, ind, ind)
 	g.pf("%s}\n", ind)
 }
 

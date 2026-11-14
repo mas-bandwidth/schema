@@ -801,16 +801,14 @@ pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
     // entities: the tail past the live count is slack
     {
         let raw = i32::from_le_bytes(b[52..56].try_into().expect("four bytes"));
-        let live = raw.clamp(0, 8) as usize;
-        if !table_fixed_dead_zero(&b[56 + live * 51..464]) {
+        if (0..=8).contains(&raw) && !table_fixed_dead_zero(&b[56 + raw as usize * 51..464]) {
             return false;
         }
     }
     // stats: the tail past the live count is slack
     {
         let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
-        let live = raw.clamp(0, 80) as usize;
-        if !table_fixed_dead_zero(&b[468 + live * 8..1108]) {
+        if (0..=80).contains(&raw) && !table_fixed_dead_zero(&b[468 + raw as usize * 8..1108]) {
             return false;
         }
     }
@@ -820,16 +818,14 @@ pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
     // player_name: the bytes past the used length are slack
     {
         let raw = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes"));
-        let live = raw.clamp(0, 15) as usize;
-        if !table_fixed_dead_zero(&b[1130 + live..1145]) {
+        if (0..=15).contains(&raw) && !table_fixed_dead_zero(&b[1130 + raw as usize..1145]) {
             return false;
         }
     }
     // payload: the bytes past the used length are slack
     {
         let raw = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes"));
-        let live = raw.clamp(0, 16) as usize;
-        if !table_fixed_dead_zero(&b[1149 + live..1165]) {
+        if (0..=16).contains(&raw) && !table_fixed_dead_zero(&b[1149 + raw as usize..1165]) {
             return false;
         }
     }
