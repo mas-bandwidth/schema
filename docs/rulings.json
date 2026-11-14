@@ -242,6 +242,14 @@
       ]
     },
     {
+      "id": "message-announcement-closed",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: an announcement is refused unless a schema the compiler accepts could announce it"
+      ],
+      "source": "the owner's standing rule that strict wins, applied by the coordinator"
+    },
+    {
       "id": "packet-floats-finite",
       "date": "2026-10-22",
       "quotes": [
