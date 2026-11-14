@@ -736,7 +736,7 @@ const fsKeyedSchema = `package probe
 
 enum Level { Low, High }
 
-fixed table Keyed
+fixed table KeyedSlots
 {
     ks [Level]float64
 }
@@ -752,10 +752,10 @@ import (
 )
 
 
-func keyedForm1(value *Keyed, data []byte, report *TableReport) bool {
+func keyedForm1(value *KeyedSlots, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
-	if KeyedLoad(value, data, &gate) || gate.Reason != "previous_form" {
+	if KeyedSlotsLoad(value, data, &gate) || gate.Reason != "previous_form" {
 		if report != nil {
 			*report = gate
 		}
@@ -768,9 +768,9 @@ func keyedForm1(value *Keyed, data []byte, report *TableReport) bool {
 		*out = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, out)
-	if verdict != TableOpenOk || !KeyedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+	if verdict != TableOpenOk || !KeyedSlotsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
 		tableRefused(out)
-		KeyedReset(value)
+		KeyedSlotsReset(value)
 		if report != nil {
 			*report = *out
 		}
@@ -779,8 +779,8 @@ func keyedForm1(value *Keyed, data []byte, report *TableReport) bool {
 	return true
 }
 
-func keyedForm1Strict(wire []byte) (*Keyed, error) {
-	value := &Keyed{}
+func keyedForm1Strict(wire []byte) (*KeyedSlots, error) {
+	value := &KeyedSlots{}
 	var report TableReport
 	if !keyedForm1(value, wire, &report) {
 		return nil, report.Err()
@@ -788,9 +788,9 @@ func keyedForm1Strict(wire []byte) (*Keyed, error) {
 	return value, nil
 }
 func TestKeyed(t *testing.T) {
-	var empty Keyed
-	KeyedReset(&empty)
-	base := KeyedMeasure(&empty)
+	var empty KeyedSlots
+	KeyedSlotsReset(&empty)
+	base := KeyedSlotsMeasure(&empty)
 	for _, c := range []struct {
 		name   string
 		b64    uint64
@@ -801,17 +801,17 @@ func TestKeyed(t *testing.T) {
 		{"nan_payload", 0x7FF00DEFACED0001, false},
 		{"minus_inf", 0xFFF0000000000000, false},
 	} {
-		var v Keyed
-		KeyedReset(&v)
+		var v KeyedSlots
+		KeyedSlotsReset(&v)
 		v.Ks[1] = math.Float64frombits(c.b64)
 		if !c.finite {
-			if KeyedMeasure(&v) != -1 {
+			if KeyedSlotsMeasure(&v) != -1 {
 				t.Errorf("keyed %s: the writer did not refuse", c.name)
 			}
 			// the read, over a wire whose slot was flipped after the write
 			v.Ks[1] = 0.5
-			wire := make([]byte, KeyedMeasure(&v))
-			KeyedSave(&v, wire)
+			wire := make([]byte, KeyedSlotsMeasure(&v))
+			KeyedSlotsSave(&v, wire)
 			half := []byte{0, 0, 0, 0, 0, 0, 0xE0, 0x3F}
 			i := bytes.Index(wire, half)
 			if i < 0 {
@@ -820,7 +820,7 @@ func TestKeyed(t *testing.T) {
 			for k := range 8 {
 				wire[i+k] = byte(c.b64 >> (8 * k))
 			}
-			var got Keyed
+			var got KeyedSlots
 			var rep TableReport
 			if keyedForm1(&got, wire, &rep) || rep.Err() != TableRefuseNonFiniteFloat || math.Float64bits(got.Ks[1]) != 0 {
 				t.Errorf("keyed %s: the read %+v landed %#x", c.name, rep, math.Float64bits(got.Ks[1]))
@@ -830,12 +830,12 @@ func TestKeyed(t *testing.T) {
 			}
 			continue
 		}
-		wire := make([]byte, KeyedMeasure(&v))
-		KeyedSave(&v, wire)
+		wire := make([]byte, KeyedSlotsMeasure(&v))
+		KeyedSlotsSave(&v, wire)
 		if rides := int64(len(wire)) > base; rides != (c.b64 != 0) {
 			t.Errorf("keyed %s: %d bytes against the empty %d, want the slot to ride exactly when its bits are not +0", c.name, len(wire), base)
 		}
-		var got Keyed
+		var got KeyedSlots
 		var rep TableReport
 		if !keyedForm1(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
 			t.Errorf("keyed %s: landed %#x %#x %+v", c.name, math.Float64bits(got.Ks[0]), math.Float64bits(got.Ks[1]), rep)

@@ -706,7 +706,7 @@ fixed table Config
     ship_type int32
     label     string(32)
 }
-type Keyed
+type Weighted
 {
     weight float32
 }
@@ -717,7 +717,7 @@ fixed table Config
     ship_type int32      | json = "type"
     label     string(32) | json = "name"
 }
-type Keyed
+type Weighted
 {
     weight float32
 }
