@@ -458,6 +458,9 @@ int main( void )
 
     ledger_reset( &l ); l.n = 1000; l.count = 7;
     plain_reset( &p ); p.n = 1000; p.count = 7;
+    /* the loads write these; reset first so gcc's -Wmaybe-uninitialized sees them set */
+    ledger_reset( &out[0] );
+    plain_reset( &pout[0] );
     ln = ledger_measure_messages( &l, 1, NULL );
     pn = plain_measure_messages( &p, 1, NULL );
     if ( ln < 0 || pn < 0 || ln != pn + 4 ) { return 1; }
