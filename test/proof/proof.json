@@ -2251,23 +2251,26 @@
     {
       "row": "surface write-refusal",
       "lang": "cpp",
-      "status": "relaxed",
-      "why": "7 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 4 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cpp (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (cpp)",
+      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
     {
       "row": "surface write-refusal",
       "lang": "c",
-      "status": "relaxed",
-      "why": "7 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 4 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-c (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (c)",
+      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
     {
       "row": "surface write-refusal",
       "lang": "cs",
-      "status": "relaxed",
-      "why": "7 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 4 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cs (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (cs)",
+      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
     {
       "row": "surface write-refusal",
@@ -2367,23 +2370,26 @@
     {
       "row": "surface write-refusal-fixed",
       "lang": "cpp",
-      "status": "relaxed",
-      "why": "7 case(s) fail: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_enum, write-refusal-fixed/fref_range_high and 4 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cpp (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (cpp)",
+      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
     {
       "row": "surface write-refusal-fixed",
       "lang": "c",
-      "status": "relaxed",
-      "why": "7 case(s) fail: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_enum, write-refusal-fixed/fref_range_high and 4 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-c (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (c)",
+      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
     {
       "row": "surface write-refusal-fixed",
       "lang": "cs",
-      "status": "relaxed",
-      "why": "7 case(s) fail: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_enum, write-refusal-fixed/fref_range_high and 4 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cs (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (cs)",
+      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
     {
       "row": "surface write-refusal-fixed",
@@ -2483,23 +2489,26 @@
     {
       "row": "surface write-refusal-message",
       "lang": "cpp",
-      "status": "relaxed",
-      "why": "5 case(s) fail: write-refusal-message/mref_element, write-refusal-message/mref_range_high, write-refusal-message/mref_range_low and 2 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cpp (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (cpp)",
+      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
     {
       "row": "surface write-refusal-message",
       "lang": "c",
-      "status": "relaxed",
-      "why": "5 case(s) fail: write-refusal-message/mref_element, write-refusal-message/mref_range_high, write-refusal-message/mref_range_low and 2 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-c (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (c)",
+      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
     {
       "row": "surface write-refusal-message",
       "lang": "cs",
-      "status": "relaxed",
-      "why": "3 case(s) fail: write-refusal-message/mref_element, write-refusal-message/mref_range_high, write-refusal-message/mref_range_low",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cs (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (cs)",
+      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
     {
       "row": "surface write-refusal-message",
@@ -2615,9 +2624,10 @@
     {
       "row": "surface write-refusal-json",
       "lang": "cs",
-      "status": "relaxed",
-      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cs (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (cs)",
+      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
     {
       "row": "surface write-refusal-json",
@@ -2843,23 +2853,26 @@
     {
       "row": "cases tabledemo",
       "lang": "cpp",
-      "status": "relaxed",
-      "why": "14 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 11 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cpp (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (cpp)",
+      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
     {
       "row": "cases tabledemo",
       "lang": "c",
-      "status": "relaxed",
-      "why": "14 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 11 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-c (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (c)",
+      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
     {
       "row": "cases tabledemo",
       "lang": "cs",
-      "status": "relaxed",
-      "why": "15 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 12 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-cs (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (cs)",
+      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
     {
       "row": "cases tabledemo",
