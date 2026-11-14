@@ -16676,7 +16676,8 @@ inline int64_t TableEntityFixedLoadWalk( TableEntity * values, int64_t capacity,
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
-    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // any destination byte is written, and a non-zero dead byte refuses as
+    // wire_damaged in the same pass (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
     // a refusal at record k leaves values[0..k-1] as untouched as values[k].
     {
@@ -17130,7 +17131,8 @@ inline int64_t TableStatFixedLoadWalk( TableStat * values, int64_t capacity, con
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
-    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // any destination byte is written, and a non-zero dead byte refuses as
+    // wire_damaged in the same pass (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
     // a refusal at record k leaves values[0..k-1] as untouched as values[k].
     {
@@ -18030,7 +18032,8 @@ inline int64_t TableMixedFixedLoadWalk( TableMixed * values, int64_t capacity, c
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
-    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // any destination byte is written, and a non-zero dead byte refuses as
+    // wire_damaged in the same pass (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
     // a refusal at record k leaves values[0..k-1] as untouched as values[k].
     {

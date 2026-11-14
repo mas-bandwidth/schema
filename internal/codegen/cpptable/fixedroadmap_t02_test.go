@@ -374,9 +374,9 @@ func t02CppW14(t *testing.T) {
 	// arm's spans[2]int32 has no .value member), so both legs walk one set of
 	// numbers (ctable/fixedform.go). The bytes are still tied to the ABI by
 	// the static_assert( __builtin_offsetof( T, x ) == 0 ) pair above.
-	t02CppHas(t, dst, "{ 0, 0, 0, 0, 0 }, // x",
+	t02CppHas(t, dst, "{ 0, 0, 0, 0, 0, 0 }, // x",
 		"W14 the storage row carries x's byte offset, offsetof(x) = 0")
-	t02CppHas(t, dst, "{ 4, 0, 0, 0, 0 }, // y",
+	t02CppHas(t, dst, "{ 4, 0, 0, 0, 0, 0 }, // y",
 		"W14 the storage row carries y's byte offset, offsetof(y) = 4")
 }
 

@@ -170,12 +170,13 @@ func cT12C14(t *testing.T) {
 
 // ---- c/W4 — "read slack unspecified" ---------------------------------------
 //
-// SPEC-TABLES §3.4, "THE SLACK RULE": a string's length, an array's count, a
-// union arm and a present flag all stand before their slack, and "a reader
-// validates the USED UNITS ONLY and never looks at the slack" — non-zero slack
-// is not malformed, not a refusal, and moves no counter. The emitted read's
-// content rule checks UTF-8 over the STATED length (`s_length`), never over the
-// declared capacity N.
+// SPEC-TABLES §3.4, "ZERO ON READ, OR THE RECORD IS REFUSED" (Glenn,
+// 2026-11-10, retiring the old "read slack unspecified"): a string's length, an
+// array's count, a union arm and a present flag all stand before their slack;
+// the slack is checked for zero ONLY (the plan's kTableFixedDead entries, which
+// refuse the whole record as wire_damaged) and never judged by the content
+// rules. So the emitted read's content rule checks UTF-8 over the STATED length
+// (`s_length`), never over the declared capacity N.
 func cT12W4(t *testing.T) {
 	clamp := cT12Def(cT12Header(t, cT12UnitSrc), "lineage_fixed_clamp_body_")
 	if clamp == "" {

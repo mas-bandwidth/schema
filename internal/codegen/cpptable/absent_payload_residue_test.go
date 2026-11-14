@@ -2,17 +2,19 @@ package cpptable
 
 // TestCppAbsentPayloadResidueNotCopied pins docs/SPEC-TABLES.md §3.4 on the
 // C++ fixed form: an optional's payload rides WHOLE whether or not it is
-// present, is ZERO on write when the flag is 0, and is IGNORED on read — an
-// absent optional reads as its DECLARED DEFAULT, never as the residue a peer
-// left under the flag.
+// present, is ZERO on write when the flag is 0, and on read an absent optional
+// reads as its DECLARED DEFAULT, never as the wire's bytes. Since the
+// dead-bytes ruling (Glenn, 2026-11-10) the payload under an absent flag is
+// slack: a byte other than zero there refuses the whole record as
+// wire_damaged, and nothing lands.
 //
 // The probe saves an absent optional (so the writer lays the template's zeros
-// under the flag), stains the payload bytes on the wire with values a clean
-// record never carries, and reads the file through the generated strict
-// reader. The absent value must be Leaf.value's declared default (30) and its
-// text length must be 0. The same payload PRESENT must still land from the
-// wire, so the check discriminates on the flag and not on the writer never
-// having written a payload at all.
+// under the flag) and reads it: the absent value must be Leaf.value's declared
+// default (30) and its text length 0. It then stains the payload bytes on the
+// wire with values a clean record never carries, and the strict reader must
+// refuse the record as wire_damaged with nothing landed. The same payload
+// PRESENT must still land from the wire, so the check discriminates on the
+// flag and not on the writer never having written a payload at all.
 //
 // The probe also carries a UNION-BEARING payload (Outer.opt ?Holder, Holder's
 // u U): the union's arm entries are guarded and ride in the plan's second half,
@@ -153,8 +155,10 @@ int main( void )
         }
     }
 
-    // THE RESIDUE: stain the payload under the absent flag. The reader must
-    // still answer the declared default, not the bytes a peer left there.
+    // THE RESIDUE: stain the payload under the absent flag. Every dead byte is
+    // zero (Glenn, 2026-11-10): the whole record is refused as wire_damaged and
+    // nothing lands, so the value keeps its Reset image and never answers the
+    // bytes a peer left there.
     body[kValueAt + 0] = 100;
     body[kValueAt + 1] = 0;
     body[kValueAt + 2] = 0;
@@ -170,20 +174,16 @@ int main( void )
         TableReport r;
         static TableFixedEntry plan[256];
         const int64_t n = ChainFixedLoad( &back, 1, file, need, plan, 256, NULL, &r );
-        if ( n != 1 || back.link_present )
+        if ( n != -1 || !r.refused || r.reason != wire_damaged )
         {
-            std::printf( "residue: n=%lld present=%d\n", (long long) n, (int) back.link_present );
+            std::printf( "residue: a stained payload under an absent flag did not refuse as wire_damaged: n=%lld refused=%d\n",
+                         (long long) n, (int) r.refused );
             return 1;
         }
-        if ( back.link.value != 30 || back.link.tag_length != 0 )
+        if ( back.link_present || back.link.value != 30 || back.link.tag_length != 0 || back.name_length != 0 )
         {
-            std::printf( "ABSENT PAYLOAD RESIDUE: value=%d tag_length=%d, want the declared defaults 30/0\n",
+            std::printf( "ABSENT PAYLOAD RESIDUE: a refused record landed: value=%d tag_length=%d\n",
                          (int) back.link.value, (int) back.link.tag_length );
-            return 1;
-        }
-        if ( r.damaged || r.refused )
-        {
-            std::printf( "residue: a forged payload under an absent flag is not damage\n" );
             return 1;
         }
     }
@@ -288,9 +288,9 @@ int main( void )
         }
     }
 
-    // THE UNION RESIDUE: stain the arm's bytes under the absent flag. Selecting
-    // arm a must not let its guarded entries overwrite the defaults that the
-    // present-defaults entry lays after them.
+    // THE UNION RESIDUE: stain the arm's bytes under the absent flag. It is
+    // dead bytes, so the record is refused whole and arm a's guarded entries
+    // never land over the defaults.
     obody[kOuterTagAt] = 2;
     obody[kOuterValueAt + 0] = 100;
     obody[kOuterValueAt + 1] = 0;
@@ -307,20 +307,16 @@ int main( void )
         TableReport r;
         static TableFixedEntry plan[256];
         const int64_t n = OuterFixedLoad( &back, 1, ofile, oneed, plan, 256, NULL, &r );
-        if ( n != 1 || back.opt_present )
+        if ( n != -1 || !r.refused || r.reason != wire_damaged )
         {
-            std::printf( "outer residue: n=%lld present=%d\n", (long long) n, (int) back.opt_present );
+            std::printf( "outer residue: a stained union payload under an absent flag did not refuse as wire_damaged: n=%lld refused=%d\n",
+                         (long long) n, (int) r.refused );
             return 1;
         }
-        if ( back.opt.u.type != UType::None || back.opt.u.a.value != 7 || back.opt.u.a.tag_length != 0 )
+        if ( back.opt_present || back.opt.u.type != UType::None || back.opt.u.a.value != 7 || back.opt.u.a.tag_length != 0 )
         {
-            std::printf( "ABSENT UNION PAYLOAD RESIDUE: type=%d value=%d tag_length=%d, want the declared defaults None/7/0\n",
+            std::printf( "ABSENT UNION PAYLOAD RESIDUE: a refused record landed: type=%d value=%d tag_length=%d\n",
                          (int) back.opt.u.type, (int) back.opt.u.a.value, (int) back.opt.u.a.tag_length );
-            return 1;
-        }
-        if ( r.damaged || r.refused )
-        {
-            std::printf( "outer residue: a forged union payload under an absent flag is not damage\n" );
             return 1;
         }
     }
@@ -450,6 +446,39 @@ func TestCppAbsentPayloadResidueNotCopiedNegativeControl(t *testing.T) {
 	out, err := cppAbsentPayloadResidueRun(t, undermine)
 	if err == nil {
 		t.Fatalf("with the absent-payload defaults copy removed, the probe still passed:\n%s", out)
+	}
+}
+
+// TestCppAbsentPayloadDeadBytesNegativeControl plants the dead-bytes fault in
+// the real artifact: the emitted runtime's absent-payload slack check answers
+// "clean" whatever the payload holds. The probe's stained residue is then no
+// longer refused, so the same probe must go red.
+func TestCppAbsentPayloadDeadBytesNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
+	t.Parallel()
+	const check = "if ( s[0] != 0 ) { return false; }"
+	undermine := func(files map[string][]byte) {
+		found := false
+		for name, data := range files {
+			if strings.HasSuffix(name, "Table.h") {
+				text := string(data)
+				if strings.Count(text, check) != 1 {
+					t.Fatalf("%s: the absent-payload slack check is not there exactly once", name)
+				}
+				files[name] = []byte(strings.ReplaceAll(text, check, "return false;"))
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("no Table.h carried the absent-payload slack check")
+		}
+	}
+	out, err := cppAbsentPayloadResidueRun(t, undermine)
+	if err == nil {
+		t.Fatalf("with the absent-payload slack check disabled, the probe still passed:\n%s", out)
+	}
+	if !strings.Contains(string(out), "did not refuse as wire_damaged") {
+		t.Fatalf("the probe went red, but not on the unrefused residue:\n%s", out)
 	}
 }
 

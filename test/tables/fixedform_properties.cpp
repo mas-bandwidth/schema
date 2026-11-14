@@ -1369,6 +1369,21 @@ static void probe_absent_optional()
     check( tblp3::ChainFixedSave( &v, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
            "probe absent-optional: save" );
     uint8_t * rec = file.data() + tblp3::kTableFixedHeaderBytes + 4 + tblp3::ChainFixedLayoutBytes;
+    std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
+    // THE WRITER'S OWN FILE: zeros under the absent flag read as the defaults.
+    {
+        tblp3::Chain back;
+        std::memset( (void *) &back, 0, sizeof( back ) );
+        tblp3::TableReport r;
+        const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+                                                 plan.data(), kPlanCap, NULL, &r );
+        check( n == 1 && !back.link_present && !r.refused, "probe absent-optional: the flag" );
+        check_red( back.link.value == 0 && back.link.tag_length == 0, "optional/absent-payload-residue-is-copied",
+                   "probe absent-optional: an absent payload reads as its defaults" );
+    }
+    // EVERY DEAD BYTE IS ZERO (Glenn, 2026-11-10): the payload under an absent
+    // flag is slack, so non-zero residue there refuses the whole record as
+    // wire_damaged and nothing lands.
     // name is string(16): 4+16=20, then the present byte, then Link.value
     rec[8 + 21] = 0x5A;
     rec[8 + 22] = 0x5A;
@@ -1377,13 +1392,12 @@ static void probe_absent_optional()
     tblp3::Chain back;
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblp3::TableReport r;
-    std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                              plan.data(), kPlanCap, NULL, &r );
-    check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
-    const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
-    check_red( ignored, "optional/absent-payload-residue-is-copied",
-               "probe absent-optional: an absent payload over non-zero residue is ignored" );
+    check( n == -1 && r.refused && r.reason == tblp3::wire_damaged,
+           "probe absent-optional: non-zero residue under an absent flag refuses as wire_damaged" );
+    check( !back.link_present && back.link.value == 0 && back.name_length == 0,
+           "probe absent-optional: the refused record landed nothing" );
 }
 
 static void probe_bool_domain()

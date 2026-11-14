@@ -337,11 +337,13 @@ int main(void)
 
 	// c/R24 "ill-formed text in the USED units refuses by name; counted in bytes
 	// with the clamp in units; slack unspecified on read and not a refusal"
-	// (docs/FIXED-FORM-ALGORITHM.md §4.5, docs/SPEC-TABLES.md §3.4).
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5, docs/SPEC-TABLES.md §3.4). Clause 3
+	// is now the dead-bytes rule (Glenn, 2026-11-10): non-zero slack refuses
+	// the record as wire_damaged and is never judged as text.
 	t.Run("c/R24", func(t *testing.T) {
 		t.Parallel()
 		// clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
-		// clause 3 (slack not judged), and clauses 1+2 together (the clamp and
+		// clause 3 (slack checked for zero only), and clauses 1+2 together (the clamp and
 		// the refusal on the SAME record, the counter staying zero)
 		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
 #include "ProbeTable.h"
@@ -380,12 +382,19 @@ int main(void)
     value.s_length = 2;
     memcpy(value.s, "ab", 2);
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
-    memset(buf + off + 4 + 2, 0xFF, 6); /* garbage in the slack past the used 2 */
+    CHECK(n > 0);
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
+    CHECK(texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r) == 1); /* zero slack reads */
     CHECK(!r.refused);
     CHECK(out.s_length == 2 && memcmp(out.s, "ab", 2) == 0);
+    /* every dead byte is zero (Glenn, 2026-11-10): non-zero slack past the
+       used 2 refuses the whole record, and is never judged as text */
+    memset(buf + off + 4 + 2, 0xFF, 6);
+    memset(&r, 0, sizeof(r));
+    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    CHECK(n == -1);
+    CHECK(r.refused == 1 && r.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
+    CHECK(r.reason != SCHEMA_TABLE_TEXT_ILL_FORMED);
     /* clauses 1 AND 2 TOGETHER: the length forged past the bound AND the used
        bytes ill-formed — the clamp and the refusal on the SAME record. REFUSE
        is total (§5.8), so the length clamp must not move a counter. */
