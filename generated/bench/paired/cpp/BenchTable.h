@@ -15816,9 +15816,6 @@ inline bool BenchMixedFixedWriteAdmits( const BenchMixed & value )
         default: break;
     }
     bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
-    bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
-    bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
-    bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     bad |= (int) ( value.ping > 64000 );
     // bits(24) width clamp

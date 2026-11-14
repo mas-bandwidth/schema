@@ -972,9 +972,6 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 				g.pf("    if ( buffer == NULL || capacity < 0 ) { return -1; }\n")
 			}
 		}
-		if a := g.writeAdmits(st); a != "" {
-			g.pf("    schema_assert( %s( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */\n", a)
-		}
 		g.pf("    TableWriteIds vocabulary; TableWriter w = table_writer_make( %s, %s, &vocabulary );\n    table_writer_put8( &w, 1 );\n", buffer, cap)
 		g.pf("    if ( !%s( &w, value ) ) { return -1; }\n    table_writer_finish( &w );\n", g.api(st.Name, "save_body"))
 		if st.Integrity != "" {

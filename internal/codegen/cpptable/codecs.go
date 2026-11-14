@@ -884,7 +884,6 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 		g.pf("inline bool %s( const %s & value );\n\n", a, st.Name)
 	}
 	g.pf("inline int64_t %sMeasure( const %s & value )\n{\n", st.Name, st.Name)
-	g.emitWriteAssert(st, "value", "    ")
 	g.pf("    TableIds ids;\n")
 	g.pf("    const int64_t body = %sMeasureBody( ids, value );\n", st.Name)
 	g.pf("    if ( body < 0 || ids.overflow ) { return -1; }\n")
@@ -1530,7 +1529,6 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 		return
 	}
 	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
-	g.emitWriteAssert(st, "value", "    ")
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity is the caller's minus the four trailer bytes, so the
 	// body can never consume the room the trailer needs; the seal then covers

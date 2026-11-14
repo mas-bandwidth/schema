@@ -9591,6 +9591,8 @@ inline int64_t WeaponConfigMeasureBody( TableIds & ids, const WeaponConfig & val
     return bytes;
 }
 
+inline bool WeaponConfigFixedWriteAdmits( const WeaponConfig & value );
+
 inline int64_t WeaponConfigMeasure( const WeaponConfig & value )
 {
     TableIds ids;
@@ -10642,6 +10644,7 @@ inline int64_t WeaponConfigMeasureMessages( const WeaponConfig * values, int64_t
     {
         const int64_t body = WeaponConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( WeaponConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10660,6 +10663,7 @@ inline int64_t WeaponConfigSaveMessages( const WeaponConfig * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !WeaponConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( WeaponConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == WeaponConfigMeasureMessages( values, count, report )
@@ -10787,6 +10791,8 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
     }
     return bytes;
 }
+
+inline bool LoadoutConfigFixedWriteAdmits( const LoadoutConfig & value );
 
 inline int64_t LoadoutConfigMeasure( const LoadoutConfig & value )
 {
@@ -12115,6 +12121,7 @@ inline int64_t LoadoutConfigMeasureMessages( const LoadoutConfig * values, int64
     {
         const int64_t body = LoadoutConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( LoadoutConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12133,6 +12140,7 @@ inline int64_t LoadoutConfigSaveMessages( const LoadoutConfig * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !LoadoutConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( LoadoutConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == LoadoutConfigMeasureMessages( values, count, report )
@@ -12228,6 +12236,8 @@ inline int64_t ProfileConfigMeasureBody( TableIds & ids, const ProfileConfig & v
     }
     return bytes;
 }
+
+inline bool ProfileConfigFixedWriteAdmits( const ProfileConfig & value );
 
 inline int64_t ProfileConfigMeasure( const ProfileConfig & value )
 {
@@ -13985,6 +13995,7 @@ inline int64_t ProfileConfigMeasureMessages( const ProfileConfig * values, int64
     {
         const int64_t body = ProfileConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ProfileConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14003,6 +14014,7 @@ inline int64_t ProfileConfigSaveMessages( const ProfileConfig * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ProfileConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ProfileConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ProfileConfigMeasureMessages( values, count, report )
@@ -14086,6 +14098,8 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
     }
     return bytes;
 }
+
+inline bool RootConfigFixedWriteAdmits( const RootConfig & value );
 
 inline int64_t RootConfigMeasure( const RootConfig & value )
 {
@@ -14850,6 +14864,7 @@ inline int64_t RootConfigMeasureMessages( const RootConfig * values, int64_t cou
     {
         const int64_t body = RootConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RootConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14868,6 +14883,7 @@ inline int64_t RootConfigSaveMessages( const RootConfig * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RootConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RootConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RootConfigMeasureMessages( values, count, report )
@@ -16694,6 +16710,16 @@ TABLE_FIXED_INLINE bool DebuffFixedInRange( const Debuff & value )
     return bad == 0;
 }
 
+// Debuff's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool DebuffFixedWriteAdmits( const Debuff & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
+    return bad == 0;
+}
+
 // Debuff's read-side bounds.
 inline void DebuffFixedClampBody( Debuff & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -16719,6 +16745,28 @@ TABLE_FIXED_INLINE bool WeaponConfigFixedInRange( const WeaponConfig & value )
         case EffectType::Debuff:
         {
             bad |= (int) !DebuffFixedInRange( value.effect.debuff );
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
+// WeaponConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool WeaponConfigFixedWriteAdmits( const WeaponConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
+    // bits(6) width clamp
+    bad |= (int) ( value.channel > 63ull );
+    bad |= (int) ( (uint64_t) value.effect.type > 2u );
+    switch ( value.effect.type )
+    {
+        case EffectType::Debuff:
+        {
+            bad |= (int) !DebuffFixedWriteAdmits( value.effect.debuff );
             break;
         }
         default: break;
@@ -16752,6 +16800,16 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & TABLE_CL
 // Attachment's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool AttachmentFixedInRange( const Attachment & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
+    return bad == 0;
+}
+
+// Attachment's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool AttachmentFixedWriteAdmits( const Attachment & value )
 {
     (void) value;
     int bad = 0;
@@ -16796,6 +16854,33 @@ TABLE_FIXED_INLINE bool LoadoutConfigFixedInRange( const LoadoutConfig & value )
     return bad == 0;
 }
 
+// LoadoutConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool LoadoutConfigFixedWriteAdmits( const LoadoutConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.grade > 3u );
+    for ( int64_t i = 0; i < ( value.grades_count >= 0 && value.grades_count <= 4 ? (int64_t) value.grades_count : 0 ); ++i )
+    {
+        bad |= (int) ( (uint64_t) value.grades[i] > 3u );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.podium[i] > 3u );
+    }
+    bad |= (int) !WeaponConfigFixedWriteAdmits( value.primary );
+    for ( int64_t i = 0; i < 2; ++i )
+    {
+        bad |= (int) !WeaponConfigFixedWriteAdmits( value.backups[i] );
+    }
+    for ( int64_t i = 0; i < ( value.attachments_count >= 0 && value.attachments_count <= 8 ? (int64_t) value.attachments_count : 0 ); ++i )
+    {
+        bad |= (int) !AttachmentFixedWriteAdmits( value.attachments[i] );
+    }
+    return bad == 0;
+}
+
 // LoadoutConfig's read-side bounds.
 inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -16833,6 +16918,17 @@ TABLE_FIXED_INLINE bool ProfileConfigFixedInRange( const ProfileConfig & value )
     return bad == 0;
 }
 
+// ProfileConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ProfileConfigFixedWriteAdmits( const ProfileConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.name_length >= 0 && value.name_length <= 32 && !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) );
+    bad |= (int) !LoadoutConfigFixedWriteAdmits( value.loadout );
+    return bad == 0;
+}
+
 // ProfileConfig's read-side bounds.
 inline void ProfileConfigFixedClampBody( ProfileConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -16860,6 +16956,24 @@ TABLE_FIXED_INLINE bool RootConfigFixedInRange( const RootConfig & value )
     for ( int64_t i = 0; i < (int64_t) value.profiles_count; ++i )
     {
         bad |= (int) !ProfileConfigFixedInRange( value.profiles[i] );
+    }
+    return bad == 0;
+}
+
+// RootConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RootConfigFixedWriteAdmits( const RootConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.version_note_length >= 0 && value.version_note_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) );
+    for ( int64_t i = 0; i < ( value.weapons_count >= 0 && value.weapons_count <= 8 ? (int64_t) value.weapons_count : 0 ); ++i )
+    {
+        bad |= (int) !WeaponConfigFixedWriteAdmits( value.weapons[i] );
+    }
+    for ( int64_t i = 0; i < ( value.profiles_count >= 0 && value.profiles_count <= 4 ? (int64_t) value.profiles_count : 0 ); ++i )
+    {
+        bad |= (int) !ProfileConfigFixedWriteAdmits( value.profiles[i] );
     }
     return bad == 0;
 }
@@ -17144,6 +17258,10 @@ inline int64_t WeaponConfigFixedSave( const WeaponConfig * values, int64_t count
 {
     const int64_t need = WeaponConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( WeaponConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, WeaponConfigFixedHash );
@@ -17840,6 +17958,10 @@ inline int64_t LoadoutConfigFixedSave( const LoadoutConfig * values, int64_t cou
 {
     const int64_t need = LoadoutConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( LoadoutConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, LoadoutConfigFixedHash );
@@ -18627,6 +18749,10 @@ inline int64_t ProfileConfigFixedSave( const ProfileConfig * values, int64_t cou
 {
     const int64_t need = ProfileConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ProfileConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ProfileConfigFixedHash );
@@ -19715,6 +19841,10 @@ inline int64_t RootConfigFixedSave( const RootConfig * values, int64_t count, ui
 {
     const int64_t need = RootConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RootConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RootConfigFixedHash );

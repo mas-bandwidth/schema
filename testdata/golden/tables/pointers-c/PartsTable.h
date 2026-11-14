@@ -5354,6 +5354,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body( graphdemo_table_writer_t * w
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_graphdemo_stamp_write_admits_( const graphdemo_stamp_t * value );
 static SCHEMA_UNUSED int64_t graphdemo_stamp_measure( const graphdemo_stamp_t * value )
 {
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5533,7 +5534,11 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_measure_messages(const graphdemo_st
  w=graphdemo_table_bit_writer(NULL,INT64_MAX);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_stamp_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5550,7 +5555,11 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_save_messages(const graphdemo_stamp
  w=graphdemo_table_bit_writer(buffer,capacity);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_stamp_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5852,6 +5861,28 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
     (*out_of_range) += (int) ( value->seq < 0 ) | (int) ( value->seq > 1000 );
 }
 
+/* Stamp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_fixed_write_check_body_( const graphdemo_stamp_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->tag_length >= 0 && value->tag_length <= 8 && !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) )
+    {
+        (*damaged)++;
+    }
+    (*out_of_range) += (int) ( value->seq < 0 ) | (int) ( value->seq > 1000 );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Stamp holds is
+   one its declaration admits. Every writer of Stamp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_graphdemo_stamp_write_admits_( const graphdemo_stamp_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_graphdemo_stamp_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -5963,6 +5994,10 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_save( const graphdemo_stamp_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_graphdemo_stamp_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_stamp_fixed_hash );

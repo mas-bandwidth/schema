@@ -3537,7 +3537,6 @@ static SCHEMA_UNUSED int bench_fixed_table_save_body( bench_table_writer_t * w, 
 static SCHEMA_UNUSED int schema_bench_fixed_table_write_admits_( const bench_fixed_table_t * value );
 static SCHEMA_UNUSED int64_t bench_fixed_table_measure( const bench_fixed_table_t * value )
 {
-    schema_assert( schema_bench_fixed_table_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( NULL, INT64_MAX, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_fixed_table_save_body( &w, value ) ) { return -1; }
@@ -3548,7 +3547,6 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_measure( const bench_fixed_table_
 static SCHEMA_UNUSED int64_t bench_fixed_table_save( const bench_fixed_table_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
-    schema_assert( schema_bench_fixed_table_write_admits_( value ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
     bench_table_write_ids_t vocabulary; bench_table_writer_t w = bench_table_writer_make( buffer, capacity, &vocabulary );
     bench_table_writer_put8( &w, 1 );
     if ( !bench_fixed_table_save_body( &w, value ) ) { return -1; }
@@ -3643,9 +3641,9 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_measure_messages(const bench_fixe
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) {
+  if(!bench_fixed_table_save_message_body(&w,values+i)) return -1;
   schema_assert(schema_bench_fixed_table_write_admits_(values+i));
   /* the write contract, debug only (docs/SPEC.md §5.1) */
-  if(!bench_fixed_table_save_message_body(&w,values+i)) return -1;
  }
  bench_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
@@ -3664,9 +3662,9 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_t
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) {
+  if(!bench_fixed_table_save_message_body(&w,values+i)) return -1;
   schema_assert(schema_bench_fixed_table_write_admits_(values+i));
   /* the write contract, debug only (docs/SPEC.md §5.1) */
-  if(!bench_fixed_table_save_message_body(&w,values+i)) return -1;
  }
  bench_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;

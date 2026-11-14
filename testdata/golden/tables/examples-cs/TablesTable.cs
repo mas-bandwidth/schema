@@ -272,8 +272,8 @@ namespace Tabledemo
             return RootConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RootConfigMeasureMessages(RootConfig[] values) { return TableWire.MessageSave(values, RootConfigTableType(), Span<byte>.Empty, true); }
-        public static long RootConfigSaveMessages(RootConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RootConfigTableType(), bytes, false); }
+        public static long RootConfigMeasureMessages(RootConfig[] values) { long wrote = TableWire.MessageSave(values, RootConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RootConfig v in values) { System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long RootConfigSaveMessages(RootConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RootConfigTableType(), bytes, false); if (wrote >= 0) { foreach (RootConfig v in values) { System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RootConfigLoadMessages(RootConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RootConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long RootConfigCookMeasure(RootConfig value) { return TableWire.Cook(value, RootConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -403,8 +403,8 @@ namespace Tabledemo
             return WeaponConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long WeaponConfigMeasureMessages(WeaponConfig[] values) { return TableWire.MessageSave(values, WeaponConfigTableType(), Span<byte>.Empty, true); }
-        public static long WeaponConfigSaveMessages(WeaponConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, WeaponConfigTableType(), bytes, false); }
+        public static long WeaponConfigMeasureMessages(WeaponConfig[] values) { long wrote = TableWire.MessageSave(values, WeaponConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (WeaponConfig v in values) { System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long WeaponConfigSaveMessages(WeaponConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, WeaponConfigTableType(), bytes, false); if (wrote >= 0) { foreach (WeaponConfig v in values) { System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict WeaponConfigLoadMessages(WeaponConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, WeaponConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long WeaponConfigCookMeasure(WeaponConfig value) { return TableWire.Cook(value, WeaponConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -610,8 +610,8 @@ namespace Tabledemo
             return LoadoutConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long LoadoutConfigMeasureMessages(LoadoutConfig[] values) { return TableWire.MessageSave(values, LoadoutConfigTableType(), Span<byte>.Empty, true); }
-        public static long LoadoutConfigSaveMessages(LoadoutConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, LoadoutConfigTableType(), bytes, false); }
+        public static long LoadoutConfigMeasureMessages(LoadoutConfig[] values) { long wrote = TableWire.MessageSave(values, LoadoutConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (LoadoutConfig v in values) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long LoadoutConfigSaveMessages(LoadoutConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, LoadoutConfigTableType(), bytes, false); if (wrote >= 0) { foreach (LoadoutConfig v in values) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict LoadoutConfigLoadMessages(LoadoutConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, LoadoutConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long LoadoutConfigCookMeasure(LoadoutConfig value) { return TableWire.Cook(value, LoadoutConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -792,8 +792,8 @@ namespace Tabledemo
             return ProfileConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long ProfileConfigMeasureMessages(ProfileConfig[] values) { return TableWire.MessageSave(values, ProfileConfigTableType(), Span<byte>.Empty, true); }
-        public static long ProfileConfigSaveMessages(ProfileConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ProfileConfigTableType(), bytes, false); }
+        public static long ProfileConfigMeasureMessages(ProfileConfig[] values) { long wrote = TableWire.MessageSave(values, ProfileConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (ProfileConfig v in values) { System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long ProfileConfigSaveMessages(ProfileConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, ProfileConfigTableType(), bytes, false); if (wrote >= 0) { foreach (ProfileConfig v in values) { System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict ProfileConfigLoadMessages(ProfileConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ProfileConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long ProfileConfigCookMeasure(ProfileConfig value) { return TableWire.Cook(value, ProfileConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1730,6 +1730,107 @@ namespace Tabledemo
             }
         }
 
+        // Debuff's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void DebuffFixedWriteCheckBody(Debuff value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Amount < 0 || value.Amount > 100) { clamped++; }
+        }
+
+        // WeaponConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void WeaponConfigFixedWriteCheckBody(WeaponConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Penetration < 0 || value.Penetration > 10) { clamped++; }
+            // bits(6) width clamp
+            if (value.Channel > 63) { clamped++; }
+            if (value.Effect != null)
+            {
+                if ((ulong)value.Effect.Type > 2) { clamped++; }
+                switch (value.Effect.Type)
+                {
+                    case EffectType.Debuff:
+                        {
+                            DebuffFixedWriteCheckBody(value.Effect.Debuff, ref clamped);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+        }
+
+        // Attachment's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void AttachmentFixedWriteCheckBody(Attachment value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Slot < 0 || value.Slot > 7) { clamped++; }
+        }
+
+        // LoadoutConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void LoadoutConfigFixedWriteCheckBody(LoadoutConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.Grade > 3) { clamped++; }
+            if (value.Grades != null)
+            {
+                for (int i = 0; i < value.GradesCount && i < value.Grades.Length; ++i)
+                {
+                    if ((ulong)value.Grades[i] > 3) { clamped++; }
+                }
+            }
+            if (value.Podium != null)
+            {
+                for (int i = 0; i < 3 && i < value.Podium.Length; ++i)
+                {
+                    if ((ulong)value.Podium[i] > 3) { clamped++; }
+                }
+            }
+            WeaponConfigFixedWriteCheckBody(value.Primary, ref clamped);
+            if (value.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
+                {
+                    WeaponConfigFixedWriteCheckBody(value.Backups[i], ref clamped);
+                }
+            }
+            if (value.Attachments != null)
+            {
+                for (int i = 0; i < value.AttachmentsCount && i < value.Attachments.Length; ++i)
+                {
+                    AttachmentFixedWriteCheckBody(value.Attachments[i], ref clamped);
+                }
+            }
+        }
+
+        // ProfileConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void ProfileConfigFixedWriteCheckBody(ProfileConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Name != null && value.NameLength >= 0 && value.NameLength <= value.Name.Length && !TableWire.TextValid(value.Name.AsSpan(0, value.NameLength))) { clamped++; }
+            LoadoutConfigFixedWriteCheckBody(value.Loadout, ref clamped);
+        }
+
+        // RootConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RootConfigFixedWriteCheckBody(RootConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.VersionNote != null && value.VersionNoteLength >= 0 && value.VersionNoteLength <= value.VersionNote.Length && !TableWire.TextValid(value.VersionNote.AsSpan(0, value.VersionNoteLength))) { clamped++; }
+            if (value.Weapons != null)
+            {
+                for (int i = 0; i < value.WeaponsCount && i < value.Weapons.Length; ++i)
+                {
+                    WeaponConfigFixedWriteCheckBody(value.Weapons[i], ref clamped);
+                }
+            }
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    ProfileConfigFixedWriteCheckBody(value.Profiles[i], ref clamped);
+                }
+            }
+        }
+
         // Buff's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string BuffFixedFiniteBody(Buff value)
@@ -1864,6 +1965,15 @@ namespace Tabledemo
             RootConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RootConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RootConfigFixedWriteAdmits(RootConfig value)
+        {
+            int bad = 0;
+            RootConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RootConfig, the fixed form ----
@@ -3707,6 +3817,10 @@ namespace Tabledemo
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RootConfigFixedHash);
@@ -3936,6 +4050,15 @@ namespace Tabledemo
             WeaponConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this WeaponConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool WeaponConfigFixedWriteAdmits(WeaponConfig value)
+        {
+            int bad = 0;
+            WeaponConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- WeaponConfig, the fixed form ----
@@ -4301,6 +4424,10 @@ namespace Tabledemo
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), WeaponConfigFixedHash);
@@ -4530,6 +4657,15 @@ namespace Tabledemo
             LoadoutConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this LoadoutConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool LoadoutConfigFixedWriteAdmits(LoadoutConfig value)
+        {
+            int bad = 0;
+            LoadoutConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- LoadoutConfig, the fixed form ----
@@ -5161,6 +5297,10 @@ namespace Tabledemo
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), LoadoutConfigFixedHash);
@@ -5390,6 +5530,15 @@ namespace Tabledemo
             ProfileConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this ProfileConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool ProfileConfigFixedWriteAdmits(ProfileConfig value)
+        {
+            int bad = 0;
+            ProfileConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- ProfileConfig, the fixed form ----
@@ -6123,6 +6272,10 @@ namespace Tabledemo
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ProfileConfigFixedHash);

@@ -6168,7 +6168,6 @@ inline bool TableEntityFixedWriteAdmits( const TableEntity & value );
 
 inline int64_t TableEntityMeasure( const TableEntity & value )
 {
-    schema_assert( TableEntityFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableIds ids;
     const int64_t body = TableEntityMeasureBody( ids, value );
     if ( body < 0 || ids.overflow ) { return -1; }
@@ -6256,7 +6255,6 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
 
 inline int64_t TableEntitySave( const TableEntity & value, uint8_t * buffer, int64_t capacity )
 {
-    schema_assert( TableEntityFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8309,9 +8307,9 @@ inline int64_t TableEntityMeasureMessages( const TableEntity * values, int64_t c
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
-        schema_assert( TableEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         const int64_t body = TableEntityMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8329,8 +8327,8 @@ inline int64_t TableEntitySaveMessages( const TableEntity * values, int64_t coun
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
     {
-        schema_assert( TableEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         if ( !TableEntitySaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableEntityMeasureMessages( values, count, report )
@@ -8391,7 +8389,6 @@ inline bool TableStatFixedWriteAdmits( const TableStat & value );
 
 inline int64_t TableStatMeasure( const TableStat & value )
 {
-    schema_assert( TableStatFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableIds ids;
     const int64_t body = TableStatMeasureBody( ids, value );
     if ( body < 0 || ids.overflow ) { return -1; }
@@ -8416,7 +8413,6 @@ BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids,
 
 inline int64_t TableStatSave( const TableStat & value, uint8_t * buffer, int64_t capacity )
 {
-    schema_assert( TableStatFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -8900,9 +8896,9 @@ inline int64_t TableStatMeasureMessages( const TableStat * values, int64_t count
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
-        schema_assert( TableStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         const int64_t body = TableStatMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8920,8 +8916,8 @@ inline int64_t TableStatSaveMessages( const TableStat * values, int64_t count, u
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
     {
-        schema_assert( TableStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         if ( !TableStatSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableStatMeasureMessages( values, count, report )
@@ -9102,7 +9098,6 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value );
 
 inline int64_t TableMixedMeasure( const TableMixed & value )
 {
-    schema_assert( TableMixedFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableIds ids;
     const int64_t body = TableMixedMeasureBody( ids, value );
     if ( body < 0 || ids.overflow ) { return -1; }
@@ -9382,7 +9377,6 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
 
 inline int64_t TableMixedSave( const TableMixed & value, uint8_t * buffer, int64_t capacity )
 {
-    schema_assert( TableMixedFixedWriteAdmits( value ) ); // the write contract, debug only (docs/SPEC.md §5.1)
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -13317,9 +13311,9 @@ inline int64_t TableMixedMeasureMessages( const TableMixed * values, int64_t cou
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
-        schema_assert( TableMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         const int64_t body = TableMixedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13337,8 +13331,8 @@ inline int64_t TableMixedSaveMessages( const TableMixed * values, int64_t count,
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
     {
-        schema_assert( TableMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         if ( !TableMixedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableMixedMeasureMessages( values, count, report )
@@ -16074,7 +16068,6 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
     bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
     // bits(48) width clamp
     bad |= (int) ( value.frame_tick > 281474976710655ull );
-    bad |= (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
     for ( int64_t i = 0; i < ( value.entities_count >= 0 && value.entities_count <= 8 ? (int64_t) value.entities_count : 0 ); ++i )
     {
         bad |= (int) !TableEntityFixedWriteAdmits( value.entities[i] );
@@ -16104,11 +16097,7 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
         default: break;
     }
     bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
-    bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
-    bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
-    bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
-    bad |= (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
     // bits(24) width clamp
     bad |= (int) ( value.crc_hint > 16777215ull );
     bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );

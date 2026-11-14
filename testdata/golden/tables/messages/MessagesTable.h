@@ -5962,6 +5962,8 @@ inline int64_t UserMeasureBody( TableIds & ids, const User & value )
     return bytes;
 }
 
+inline bool UserFixedWriteAdmits( const User & value );
+
 inline int64_t UserMeasure( const User & value )
 {
     TableIds ids;
@@ -6345,6 +6347,7 @@ inline int64_t UserMeasureMessages( const User * values, int64_t count, TableRep
     {
         const int64_t body = UserMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( UserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -6363,6 +6366,7 @@ inline int64_t UserSaveMessages( const User * values, int64_t count, uint8_t * b
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !UserSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( UserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == UserMeasureMessages( values, count, report )
@@ -6419,6 +6423,8 @@ inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
     if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
     return bytes;
 }
+
+inline bool ScriptFixedWriteAdmits( const Script & value );
 
 inline int64_t ScriptMeasure( const Script & value )
 {
@@ -6918,6 +6924,7 @@ inline int64_t ScriptMeasureMessages( const Script * values, int64_t count, Tabl
     {
         const int64_t body = ScriptMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ScriptFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -6936,6 +6943,7 @@ inline int64_t ScriptSaveMessages( const Script * values, int64_t count, uint8_t
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ScriptSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ScriptFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ScriptMeasureMessages( values, count, report )
@@ -7652,6 +7660,8 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
     }
     return bytes;
 }
+
+inline bool InsertTextFixedWriteAdmits( const InsertText & value );
 
 inline int64_t InsertTextMeasure( const InsertText & value )
 {
@@ -9501,6 +9511,7 @@ inline int64_t InsertTextMeasureMessages( const InsertText * values, int64_t cou
     {
         const int64_t body = InsertTextMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( InsertTextFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9519,6 +9530,7 @@ inline int64_t InsertTextSaveMessages( const InsertText * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !InsertTextSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( InsertTextFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == InsertTextMeasureMessages( values, count, report )
@@ -10082,6 +10094,8 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
     }
     return bytes;
 }
+
+inline bool EditFixedWriteAdmits( const Edit & value );
 
 inline int64_t EditMeasure( const Edit & value )
 {
@@ -11328,6 +11342,7 @@ inline int64_t EditMeasureMessages( const Edit * values, int64_t count, TableRep
     {
         const int64_t body = EditMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( EditFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11346,6 +11361,7 @@ inline int64_t EditSaveMessages( const Edit * values, int64_t count, uint8_t * b
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !EditSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( EditFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == EditMeasureMessages( values, count, report )
@@ -11417,6 +11433,8 @@ inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & val
     }
     return bytes;
 }
+
+inline bool OpenDocumentFixedWriteAdmits( const OpenDocument & value );
 
 inline int64_t OpenDocumentMeasure( const OpenDocument & value )
 {
@@ -11974,6 +11992,7 @@ inline int64_t OpenDocumentMeasureMessages( const OpenDocument * values, int64_t
     {
         const int64_t body = OpenDocumentMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( OpenDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11992,6 +12011,7 @@ inline int64_t OpenDocumentSaveMessages( const OpenDocument * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !OpenDocumentSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( OpenDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == OpenDocumentMeasureMessages( values, count, report )
@@ -12048,6 +12068,8 @@ inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & val
     if ( value.force != false ) { bytes += TableLebBytes( ids.ref_at( 50, 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
     return bytes;
 }
+
+inline bool SaveDocumentFixedWriteAdmits( const SaveDocument & value );
 
 inline int64_t SaveDocumentMeasure( const SaveDocument & value )
 {
@@ -12498,6 +12520,7 @@ inline int64_t SaveDocumentMeasureMessages( const SaveDocument * values, int64_t
     {
         const int64_t body = SaveDocumentMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( SaveDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12516,6 +12539,7 @@ inline int64_t SaveDocumentSaveMessages( const SaveDocument * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !SaveDocumentSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( SaveDocumentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == SaveDocumentMeasureMessages( values, count, report )
@@ -12692,6 +12716,8 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
     }
     return bytes;
 }
+
+inline bool TransactionFixedWriteAdmits( const Transaction & value );
 
 inline int64_t TransactionMeasure( const Transaction & value )
 {
@@ -14722,6 +14748,7 @@ inline int64_t TransactionMeasureMessages( const Transaction * values, int64_t c
     {
         const int64_t body = TransactionMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TransactionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14740,6 +14767,7 @@ inline int64_t TransactionSaveMessages( const Transaction * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TransactionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TransactionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TransactionMeasureMessages( values, count, report )
@@ -15110,6 +15138,8 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
     }
     return bytes;
 }
+
+inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value );
 
 inline int64_t ToolMessageMeasure( const ToolMessage & value )
 {
@@ -18753,6 +18783,7 @@ inline int64_t ToolMessageMeasureMessages( const ToolMessage * values, int64_t c
     {
         const int64_t body = ToolMessageMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ToolMessageFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -18771,6 +18802,7 @@ inline int64_t ToolMessageSaveMessages( const ToolMessage * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ToolMessageSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ToolMessageFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ToolMessageMeasureMessages( values, count, report )
@@ -20438,6 +20470,16 @@ TABLE_FIXED_INLINE bool UserFixedInRange( const User & value )
     return bad == 0;
 }
 
+// User's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool UserFixedWriteAdmits( const User & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.name_length >= 0 && value.name_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) );
+    return bad == 0;
+}
+
 // User's read-side bounds.
 inline void UserFixedClampBody( User & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20457,6 +20499,16 @@ TABLE_FIXED_INLINE bool ScriptFixedInRange( const Script & value )
     (void) value;
     int bad = 0;
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
+// Script's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ScriptFixedWriteAdmits( const Script & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.path_length >= 0 && value.path_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) );
     return bad == 0;
 }
 
@@ -20533,6 +20585,74 @@ TABLE_FIXED_INLINE bool InsertTextFixedInRange( const InsertText & value )
     if ( value.modes_present )
     {
         for ( int64_t i = 0; i < (int64_t) value.modes_count; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.modes[i] > 2u );
+        }
+    }
+    return bad == 0;
+}
+
+// InsertText's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool InsertTextFixedWriteAdmits( const InsertText & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.text_length >= 0 && value.text_length <= 32 && !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) );
+    bad |= (int) ( (uint64_t) value.origin.type > 4u );
+    switch ( value.origin.type )
+    {
+        case OriginType::User:
+        {
+            bad |= (int) !UserFixedWriteAdmits( value.origin.user );
+            break;
+        }
+        case OriginType::Script:
+        {
+            bad |= (int) !ScriptFixedWriteAdmits( value.origin.script );
+            break;
+        }
+        case OriginType::Pid:
+        {
+            bad |= (int) ( value.origin.pid > 1000 );
+            break;
+        }
+        case OriginType::Note:
+        {
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < ( value.origins_count >= 0 && value.origins_count <= 2 ? (int64_t) value.origins_count : 0 ); ++i )
+    {
+        bad |= (int) ( (uint64_t) value.origins[i].type > 4u );
+        switch ( value.origins[i].type )
+        {
+            case OriginType::User:
+            {
+                bad |= (int) !UserFixedWriteAdmits( value.origins[i].user );
+                break;
+            }
+            case OriginType::Script:
+            {
+                bad |= (int) !ScriptFixedWriteAdmits( value.origins[i].script );
+                break;
+            }
+            case OriginType::Pid:
+            {
+                bad |= (int) ( value.origins[i].pid > 1000 );
+                break;
+            }
+            case OriginType::Note:
+            {
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.modes_present )
+    {
+        for ( int64_t i = 0; i < ( value.modes_count >= 0 && value.modes_count <= 2 ? (int64_t) value.modes_count : 0 ); ++i )
         {
             bad |= (int) ( (uint64_t) value.modes[i] > 2u );
         }
@@ -20641,6 +20761,35 @@ TABLE_FIXED_INLINE bool EditFixedInRange( const Edit & value )
     return bad == 0;
 }
 
+// Edit's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool EditFixedWriteAdmits( const Edit & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.body.type > 6u );
+    switch ( value.body.type )
+    {
+        case EditBodyType::Insert:
+        {
+            bad |= (int) !InsertTextFixedWriteAdmits( value.body.insert );
+            break;
+        }
+        case EditBodyType::Tally:
+        {
+            bad |= (int) ( value.body.tally < 0 ) | (int) ( value.body.tally > 100 );
+            break;
+        }
+        case EditBodyType::Mode:
+        {
+            bad |= (int) ( (uint64_t) value.body.mode > 2u );
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
 // Edit's read-side bounds.
 inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20681,6 +20830,17 @@ TABLE_FIXED_INLINE bool OpenDocumentFixedInRange( const OpenDocument & value )
     return bad == 0;
 }
 
+// OpenDocument's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool OpenDocumentFixedWriteAdmits( const OpenDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.path_length >= 0 && value.path_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) );
+    bad |= (int) ( (uint64_t) value.mode > 2u );
+    return bad == 0;
+}
+
 // OpenDocument's read-side bounds.
 inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20701,6 +20861,16 @@ TABLE_FIXED_INLINE bool SaveDocumentFixedInRange( const SaveDocument & value )
     (void) value;
     int bad = 0;
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
+// SaveDocument's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool SaveDocumentFixedWriteAdmits( const SaveDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.path_length >= 0 && value.path_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) );
     return bad == 0;
 }
 
@@ -20735,6 +20905,43 @@ TABLE_FIXED_INLINE bool TransactionFixedInRange( const Transaction & value )
             case EditBodyType::Insert:
             {
                 bad |= (int) !InsertTextFixedInRange( value.pending[i].insert );
+                break;
+            }
+            case EditBodyType::Tally:
+            {
+                bad |= (int) ( value.pending[i].tally < 0 ) | (int) ( value.pending[i].tally > 100 );
+                break;
+            }
+            case EditBodyType::Mode:
+            {
+                bad |= (int) ( (uint64_t) value.pending[i].mode > 2u );
+                break;
+            }
+            default: break;
+        }
+    }
+    return bad == 0;
+}
+
+// Transaction's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TransactionFixedWriteAdmits( const Transaction & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.reason_length >= 0 && value.reason_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) );
+    for ( int64_t i = 0; i < ( value.edits_count >= 0 && value.edits_count <= 3 ? (int64_t) value.edits_count : 0 ); ++i )
+    {
+        bad |= (int) !EditFixedWriteAdmits( value.edits[i] );
+    }
+    for ( int64_t i = 0; i < 2; ++i )
+    {
+        bad |= (int) ( (uint64_t) value.pending[i].type > 6u );
+        switch ( value.pending[i].type )
+        {
+            case EditBodyType::Insert:
+            {
+                bad |= (int) !InsertTextFixedWriteAdmits( value.pending[i].insert );
                 break;
             }
             case EditBodyType::Tally:
@@ -20903,6 +21110,128 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
         for ( int64_t i = 0; i < (int64_t) value.trace_count; ++i )
         {
             bad |= (int) !ScriptFixedInRange( value.trace[i] );
+        }
+    }
+    if ( value.marks_present )
+    {
+        for ( int64_t i = 0; i < 2; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.marks[i] > 2u );
+        }
+    }
+    return bad == 0;
+}
+
+// ToolMessage's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.body.type > 8u );
+    switch ( value.body.type )
+    {
+        case ToolBodyType::Open:
+        {
+            bad |= (int) !OpenDocumentFixedWriteAdmits( value.body.open );
+            break;
+        }
+        case ToolBodyType::Save:
+        {
+            bad |= (int) !SaveDocumentFixedWriteAdmits( value.body.save );
+            break;
+        }
+        case ToolBodyType::Transact:
+        {
+            bad |= (int) !TransactionFixedWriteAdmits( value.body.transact );
+            break;
+        }
+        case ToolBodyType::Origin:
+        {
+            bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
+            switch ( value.body.origin.type )
+            {
+                case OriginType::User:
+                {
+                    bad |= (int) !UserFixedWriteAdmits( value.body.origin.user );
+                    break;
+                }
+                case OriginType::Script:
+                {
+                    bad |= (int) !ScriptFixedWriteAdmits( value.body.origin.script );
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    bad |= (int) ( value.body.origin.pid > 1000 );
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    break;
+                }
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    for ( int64_t i = 0; i < ( value.history_count >= 0 && value.history_count <= 2 ? (int64_t) value.history_count : 0 ); ++i )
+    {
+        bad |= (int) ( (uint64_t) value.history[i].type > 8u );
+        switch ( value.history[i].type )
+        {
+            case ToolBodyType::Open:
+            {
+                bad |= (int) !OpenDocumentFixedWriteAdmits( value.history[i].open );
+                break;
+            }
+            case ToolBodyType::Save:
+            {
+                bad |= (int) !SaveDocumentFixedWriteAdmits( value.history[i].save );
+                break;
+            }
+            case ToolBodyType::Transact:
+            {
+                bad |= (int) !TransactionFixedWriteAdmits( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                bad |= (int) ( (uint64_t) value.history[i].origin.type > 4u );
+                switch ( value.history[i].origin.type )
+                {
+                    case OriginType::User:
+                    {
+                        bad |= (int) !UserFixedWriteAdmits( value.history[i].origin.user );
+                        break;
+                    }
+                    case OriginType::Script:
+                    {
+                        bad |= (int) !ScriptFixedWriteAdmits( value.history[i].origin.script );
+                        break;
+                    }
+                    case OriginType::Pid:
+                    {
+                        bad |= (int) ( value.history[i].origin.pid > 1000 );
+                        break;
+                    }
+                    case OriginType::Note:
+                    {
+                        break;
+                    }
+                    default: break;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.trace_present )
+    {
+        for ( int64_t i = 0; i < ( value.trace_count >= 0 && value.trace_count <= 3 ? (int64_t) value.trace_count : 0 ); ++i )
+        {
+            bad |= (int) !ScriptFixedWriteAdmits( value.trace[i] );
         }
     }
     if ( value.marks_present )
@@ -21169,6 +21498,10 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( UserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, UserFixedHash );
@@ -21622,6 +21955,10 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ScriptFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ScriptFixedHash );
@@ -22671,6 +23008,10 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 {
     const int64_t need = InsertTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( InsertTextFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, InsertTextFixedHash );
@@ -23847,6 +24188,10 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 {
     const int64_t need = EditFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( EditFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, EditFixedHash );
@@ -24324,6 +24669,10 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( OpenDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, OpenDocumentFixedHash );
@@ -24777,6 +25126,10 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( SaveDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SaveDocumentFixedHash );
@@ -26116,6 +26469,10 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 {
     const int64_t need = TransactionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TransactionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TransactionFixedHash );
@@ -29425,6 +29782,10 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 {
     const int64_t need = ToolMessageFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ToolMessageFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ToolMessageFixedHash );

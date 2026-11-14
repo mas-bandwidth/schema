@@ -7880,6 +7880,8 @@ inline int64_t TallyMeasureBody( TableIds & ids, const Tally & value )
     return bytes;
 }
 
+inline bool TallyFixedWriteAdmits( const Tally & value );
+
 inline int64_t TallyMeasure( const Tally & value )
 {
     TableIds ids;
@@ -8315,6 +8317,7 @@ inline int64_t TallyMeasureMessages( const Tally * values, int64_t count, TableR
     {
         const int64_t body = TallyMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TallyFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8333,6 +8336,7 @@ inline int64_t TallySaveMessages( const Tally * values, int64_t count, uint8_t *
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TallySaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TallyFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TallyMeasureMessages( values, count, report )
@@ -8610,6 +8614,16 @@ TABLE_FIXED_INLINE bool TallyFixedInRange( const Tally & value )
     return bad == 0;
 }
 
+// Tally's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TallyFixedWriteAdmits( const Tally & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.hits < 0 ) | (int) ( value.hits > 10000 );
+    return bad == 0;
+}
+
 // Tally's read-side bounds.
 inline void TallyFixedClampBody( Tally & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -8750,6 +8764,10 @@ inline int64_t TallyFixedSave( const Tally * values, int64_t count, uint8_t * bu
 {
     const int64_t need = TallyFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TallyFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TallyFixedHash );

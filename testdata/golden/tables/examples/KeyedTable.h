@@ -9714,6 +9714,8 @@ inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
     return bytes;
 }
 
+inline bool TeamConfigFixedWriteAdmits( const TeamConfig & value );
+
 inline int64_t TeamConfigMeasure( const TeamConfig & value )
 {
     TableIds ids;
@@ -10258,6 +10260,7 @@ inline int64_t TeamConfigMeasureMessages( const TeamConfig * values, int64_t cou
     {
         const int64_t body = TeamConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TeamConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10276,6 +10279,7 @@ inline int64_t TeamConfigSaveMessages( const TeamConfig * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TeamConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TeamConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TeamConfigMeasureMessages( values, count, report )
@@ -12364,6 +12368,8 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
     return bytes;
 }
 
+inline bool KeyedConfigFixedWriteAdmits( const KeyedConfig & value );
+
 inline int64_t KeyedConfigMeasure( const KeyedConfig & value )
 {
     TableIds ids;
@@ -13219,6 +13225,7 @@ inline int64_t KeyedConfigMeasureMessages( const KeyedConfig * values, int64_t c
     {
         const int64_t body = KeyedConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( KeyedConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13237,6 +13244,7 @@ inline int64_t KeyedConfigSaveMessages( const KeyedConfig * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !KeyedConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( KeyedConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == KeyedConfigMeasureMessages( values, count, report )
@@ -14116,6 +14124,17 @@ TABLE_FIXED_INLINE bool TeamConfigFixedInRange( const TeamConfig & value )
     return bad == 0;
 }
 
+// TeamConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TeamConfigFixedWriteAdmits( const TeamConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
+    bad |= (int) ( value.banner_length >= 0 && value.banner_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) );
+    return bad == 0;
+}
+
 // TeamConfig's read-side bounds.
 inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -14133,6 +14152,19 @@ inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_
 // ScoreBoard's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool ScoreBoardFixedInRange( const ScoreBoard & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
+    }
+    return bad == 0;
+}
+
+// ScoreBoard's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ScoreBoardFixedWriteAdmits( const ScoreBoard & value )
 {
     (void) value;
     int bad = 0;
@@ -14167,6 +14199,20 @@ TABLE_FIXED_INLINE bool KeyedConfigFixedInRange( const KeyedConfig & value )
         bad |= (int) !TeamConfigFixedInRange( value.teams.slots[i] );
     }
     bad |= (int) !ScoreBoardFixedInRange( value.scores );
+    return bad == 0;
+}
+
+// KeyedConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool KeyedConfigFixedWriteAdmits( const KeyedConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !TeamConfigFixedWriteAdmits( value.teams.slots[i] );
+    }
+    bad |= (int) !ScoreBoardFixedWriteAdmits( value.scores );
     return bad == 0;
 }
 
@@ -14365,6 +14411,10 @@ inline int64_t TeamConfigFixedSave( const TeamConfig * values, int64_t count, ui
 {
     const int64_t need = TeamConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TeamConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TeamConfigFixedHash );
@@ -16411,6 +16461,10 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
 {
     const int64_t need = KeyedConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( KeyedConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, KeyedConfigFixedHash );

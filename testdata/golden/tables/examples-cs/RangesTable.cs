@@ -291,8 +291,8 @@ namespace Tabledemo
             return RangedSignedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RangedSignedMeasureMessages(RangedSigned[] values) { return TableWire.MessageSave(values, RangedSignedTableType(), Span<byte>.Empty, true); }
-        public static long RangedSignedSaveMessages(RangedSigned[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RangedSignedTableType(), bytes, false); }
+        public static long RangedSignedMeasureMessages(RangedSigned[] values) { long wrote = TableWire.MessageSave(values, RangedSignedTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RangedSigned v in values) { System.Diagnostics.Debug.Assert(RangedSignedFixedWriteAdmits(v)); } } return wrote; }
+        public static long RangedSignedSaveMessages(RangedSigned[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RangedSignedTableType(), bytes, false); if (wrote >= 0) { foreach (RangedSigned v in values) { System.Diagnostics.Debug.Assert(RangedSignedFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RangedSignedLoadMessages(RangedSigned[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RangedSignedTableType(), bytes, vocabulary, report, out count); }
 
         public static long RangedSignedCookMeasure(RangedSigned value) { return TableWire.Cook(value, RangedSignedTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -511,8 +511,8 @@ namespace Tabledemo
             return RangedUnsignedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RangedUnsignedMeasureMessages(RangedUnsigned[] values) { return TableWire.MessageSave(values, RangedUnsignedTableType(), Span<byte>.Empty, true); }
-        public static long RangedUnsignedSaveMessages(RangedUnsigned[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RangedUnsignedTableType(), bytes, false); }
+        public static long RangedUnsignedMeasureMessages(RangedUnsigned[] values) { long wrote = TableWire.MessageSave(values, RangedUnsignedTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RangedUnsigned v in values) { System.Diagnostics.Debug.Assert(RangedUnsignedFixedWriteAdmits(v)); } } return wrote; }
+        public static long RangedUnsignedSaveMessages(RangedUnsigned[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RangedUnsignedTableType(), bytes, false); if (wrote >= 0) { foreach (RangedUnsigned v in values) { System.Diagnostics.Debug.Assert(RangedUnsignedFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RangedUnsignedLoadMessages(RangedUnsigned[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RangedUnsignedTableType(), bytes, vocabulary, report, out count); }
 
         public static long RangedUnsignedCookMeasure(RangedUnsigned value) { return TableWire.Cook(value, RangedUnsignedTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -641,8 +641,8 @@ namespace Tabledemo
             return RangedWidthsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RangedWidthsMeasureMessages(RangedWidths[] values) { return TableWire.MessageSave(values, RangedWidthsTableType(), Span<byte>.Empty, true); }
-        public static long RangedWidthsSaveMessages(RangedWidths[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RangedWidthsTableType(), bytes, false); }
+        public static long RangedWidthsMeasureMessages(RangedWidths[] values) { long wrote = TableWire.MessageSave(values, RangedWidthsTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RangedWidths v in values) { System.Diagnostics.Debug.Assert(RangedWidthsFixedWriteAdmits(v)); } } return wrote; }
+        public static long RangedWidthsSaveMessages(RangedWidths[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RangedWidthsTableType(), bytes, false); if (wrote >= 0) { foreach (RangedWidths v in values) { System.Diagnostics.Debug.Assert(RangedWidthsFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RangedWidthsLoadMessages(RangedWidths[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RangedWidthsTableType(), bytes, vocabulary, report, out count); }
 
         public static long RangedWidthsCookMeasure(RangedWidths value) { return TableWire.Cook(value, RangedWidthsTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -985,6 +985,68 @@ namespace Tabledemo
             if (value.B48 > 281474976710655ul) { clamped++; }
         }
 
+        // RangedSigned's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RangedSignedFixedWriteCheckBody(RangedSigned value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.I8Low > 126) { clamped++; }
+            if (value.I8High < -127) { clamped++; }
+            if (value.I8Inside < -127 || value.I8Inside > 126) { clamped++; }
+            if (value.I16Low > 32766) { clamped++; }
+            if (value.I16High < -32767) { clamped++; }
+            if (value.I16Inside < -32767 || value.I16Inside > 32766) { clamped++; }
+            if (value.I32Low > 2147483646) { clamped++; }
+            if (value.I32High < -2147483647) { clamped++; }
+            if (value.I32Inside < -2147483647 || value.I32Inside > 2147483646) { clamped++; }
+            if (value.I64Low > 9223372036854775806L) { clamped++; }
+            if (value.I64High < -9223372036854775807L) { clamped++; }
+            if (value.I64Inside < -9223372036854775807L || value.I64Inside > 9223372036854775806L) { clamped++; }
+            if (value.Edges != null)
+            {
+                for (int i = 0; i < value.EdgesCount && i < value.Edges.Length; ++i)
+                {
+                }
+            }
+        }
+
+        // RangedUnsigned's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RangedUnsignedFixedWriteCheckBody(RangedUnsigned value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.U8Low > 254) { clamped++; }
+            if (value.U8High < 1) { clamped++; }
+            if (value.U8Inside < 1 || value.U8Inside > 254) { clamped++; }
+            if (value.U16Low > 65534) { clamped++; }
+            if (value.U16High < 1) { clamped++; }
+            if (value.U16Inside < 1 || value.U16Inside > 65534) { clamped++; }
+            if (value.U32Low > 4294967294) { clamped++; }
+            if (value.U32High < 1) { clamped++; }
+            if (value.U32Inside < 1 || value.U32Inside > 4294967294) { clamped++; }
+            if (value.U64Low > 18446744073709551614ul) { clamped++; }
+            if (value.U64High < 1ul) { clamped++; }
+            if (value.U64Inside < 1ul || value.U64Inside > 18446744073709551614ul) { clamped++; }
+            if (value.Counts != null)
+            {
+                for (int i = 0; i < value.CountsCount && i < value.Counts.Length; ++i)
+                {
+                }
+            }
+        }
+
+        // RangedWidths's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RangedWidthsFixedWriteCheckBody(RangedWidths value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(8) width clamp
+            if (value.B8 > 255) { clamped++; }
+            // bits(16) width clamp
+            if (value.B16 > 65535) { clamped++; }
+            // bits(12) width clamp
+            if (value.B12 > 4095) { clamped++; }
+            // bits(48) width clamp
+            if (value.B48 > 281474976710655ul) { clamped++; }
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -996,6 +1058,15 @@ namespace Tabledemo
             RangedSignedFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RangedSigned
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RangedSignedFixedWriteAdmits(RangedSigned value)
+        {
+            int bad = 0;
+            RangedSignedFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RangedSigned, the fixed form ----
@@ -1423,6 +1494,10 @@ namespace Tabledemo
         {
             long need = RangedSignedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RangedSignedFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RangedSignedFixedHash);
@@ -1645,6 +1720,15 @@ namespace Tabledemo
             RangedUnsignedFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RangedUnsigned
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RangedUnsignedFixedWriteAdmits(RangedUnsigned value)
+        {
+            int bad = 0;
+            RangedUnsignedFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RangedUnsigned, the fixed form ----
@@ -2072,6 +2156,10 @@ namespace Tabledemo
         {
             long need = RangedUnsignedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RangedUnsignedFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RangedUnsignedFixedHash);
@@ -2294,6 +2382,15 @@ namespace Tabledemo
             RangedWidthsFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RangedWidths
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RangedWidthsFixedWriteAdmits(RangedWidths value)
+        {
+            int bad = 0;
+            RangedWidthsFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RangedWidths, the fixed form ----
@@ -2635,6 +2732,10 @@ namespace Tabledemo
         {
             long need = RangedWidthsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RangedWidthsFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RangedWidthsFixedHash);

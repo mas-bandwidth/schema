@@ -10681,6 +10681,8 @@ inline int64_t ShipConfigMeasureBody( TableIds & ids, const ShipConfig & value )
     return bytes;
 }
 
+inline bool ShipConfigFixedWriteAdmits( const ShipConfig & value );
+
 inline int64_t ShipConfigMeasure( const ShipConfig & value )
 {
     TableIds ids;
@@ -11201,6 +11203,7 @@ inline int64_t ShipConfigMeasureMessages( const ShipConfig * values, int64_t cou
     {
         const int64_t body = ShipConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ShipConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11219,6 +11222,7 @@ inline int64_t ShipConfigSaveMessages( const ShipConfig * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ShipConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ShipConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ShipConfigMeasureMessages( values, count, report )
@@ -13782,6 +13786,16 @@ TABLE_FIXED_INLINE bool ShipConfigFixedInRange( const ShipConfig & value )
     return bad == 0;
 }
 
+// ShipConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ShipConfigFixedWriteAdmits( const ShipConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.name_length >= 0 && value.name_length <= 64 && !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) );
+    return bad == 0;
+}
+
 // ShipConfig's read-side bounds.
 inline void ShipConfigFixedClampBody( ShipConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -13931,6 +13945,10 @@ inline int64_t ShipConfigFixedSave( const ShipConfig * values, int64_t count, ui
 {
     const int64_t need = ShipConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ShipConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ShipConfigFixedHash );

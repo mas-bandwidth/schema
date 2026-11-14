@@ -89,14 +89,12 @@ namespace Bench
 
         public static long FixedTableMeasure(FixedTable value)
         {
-            System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(value)); // the write contract, debug only (docs/SPEC.md §5.1)
             Span<ulong> ids = stackalloc ulong[79];
             return FixedTableSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long FixedTableSave(FixedTable value, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(value)); // the write contract, debug only (docs/SPEC.md §5.1)
             Span<ulong> ids = stackalloc ulong[79];
             return FixedTableSaveTyped(value, buffer, ids, false);
         }
@@ -111,8 +109,8 @@ namespace Bench
             return FixedTableLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long FixedTableMeasureMessages(FixedTable[] values) { if (values != null) { foreach (FixedTable v in values) { System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(v)); } } return TableWire.MessageSave(values, FixedTableTableType(), Span<byte>.Empty, true); }
-        public static long FixedTableSaveMessages(FixedTable[] values, Span<byte> bytes, TableReport report = null) { if (values != null) { foreach (FixedTable v in values) { System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(v)); } } if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, FixedTableTableType(), bytes, false); }
+        public static long FixedTableMeasureMessages(FixedTable[] values) { long wrote = TableWire.MessageSave(values, FixedTableTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (FixedTable v in values) { System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(v)); } } return wrote; }
+        public static long FixedTableSaveMessages(FixedTable[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, FixedTableTableType(), bytes, false); if (wrote >= 0) { foreach (FixedTable v in values) { System.Diagnostics.Debug.Assert(FixedTableFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict FixedTableLoadMessages(FixedTable[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, FixedTableTableType(), bytes, vocabulary, report, out count); }
 
         public static long FixedTableCookMeasure(FixedTable value) { return TableWire.Cook(value, FixedTableTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
