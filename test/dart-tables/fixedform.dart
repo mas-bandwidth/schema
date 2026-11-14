@@ -3167,8 +3167,10 @@ void negativeControl() {
 // zeros are in range, so a pass that walked the bound would count nothing
 // there and `clamped == 0` would still hold. That is detection, not assertion.
 // This case STAINs the slack THROUGH STORAGE, with the same out-of-range value
-// CONTROL 1 puts in a live element, and holds the read to `clamped == 0` — the
-// number only a pass that walks the LIVE COUNT can produce.
+// CONTROL 1 puts in a live element. Under the slack rule (docs/SPEC-TABLES.md
+// §3.4) that stain is dead bytes: the plan's dead-byte check refuses it
+// wire_damaged before the decode runs, and the refusal must never be
+// out_of_range, which would mean a range rule ran on slack.
 void boundsCase() {
   // a record with a PARTLY-FILLED counted array: reservesCount = 2, and the
   // third ShipEntry is slack. Every LIVE value is in range, so a clean read
@@ -3223,19 +3225,21 @@ void boundsCase() {
     pack.packConfigFixedNewPlan(),
     r,
   );
-  check(n == 1, 'bounds: the stained record still reads (got $n)');
+  // EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the
+  // stained slack element refuses the read wire_damaged, and NEVER out_of_range,
+  // because the bounds pass still walks only the live elements and no range
+  // rule runs on slack.
+  check(n == -1, 'bounds: the stained record is refused (got $n)');
   check(
-    back[0].reservesCount == 2 &&
-        back[0].reserves[0].hardpoints[0] == 1 &&
-        back[0].reserves[1].hardpoints[0] == 2,
-    'bounds: the two live elements land, and the slack\'s stain is never decoded',
+    back[0].reservesCount == demo.PackConfig().reservesCount,
+    'bounds: a refused read lands nothing',
   );
   check(
-    r.refused == 0,
+    r.refused == demo.TableFixedRefusal.damaged,
     'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
-    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): checking storage nobody wrote '
-    'would refuse every clean read — the out-of-range value stained into the '
-    'slack refuses nothing (refused=${r.refused})',
+    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): the out-of-range value stained '
+    'into the slack is dead bytes, refused wire_damaged and never out_of_range '
+    '(refused=${demo.TableFixedRefusal.name(r.refused)})',
   );
 
   // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its
