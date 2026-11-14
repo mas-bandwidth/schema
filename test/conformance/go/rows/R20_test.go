@@ -1,53 +1,55 @@
 package main
 
-// R20 — §21.2's landing rules, the Go leg (docs/SPEC-TABLES.md:16452).
+// R20 — §21.2's landing rules, the Go leg (docs/SPEC-TABLES.md §21.2).
 //
-// The law:
+// The law (docs/SPEC-TABLES.md §21.2, "What a newer reader does with an
+// older file"):
 //
-//	"A field the reader added: its declared default. A field the reader
-//	 deprecated: dropped, counted once under `unknown` per plan. A narrower
-//	 integer or float: widened exactly, `widened` counts. A shorter array or
-//	 string: landed, the reader's slack is template zeros. An older enum: its
-//	 ordinals are the reader's, the list being a prefix. Everything else:
-//	 copied."                              (docs/SPEC-TABLES.md:16452-16455)
+//	"A field the reader added: its declared default. ... In the FIXED FORM,
+//	 §3.4 takes precedence: the writer emits the deprecated field's declared
+//	 default into its retained slot and the reader yields that default
+//	 whatever the record carries. A narrower integer or float: widened
+//	 exactly, `widened` counts. ... A shorter `[..N]`: the writer's elements
+//	 and count land, and the slack past the count is zeros, as is a text
+//	 field's slack past its length ..."
 //
 // WHERE THIS FILE PROVES IT. §21.2's "per plan" / "ordinals" / "template"
-// vocabulary is the FIXED form's; this file proves the clauses on the Go
-// TABLE-wire reader (form 1), which is the same law's other surface: a newer
-// reader meeting an older file. The fixed-form side is the C++ leg's
-// test/conformance/cpp/rows/R20.cpp and, for Go codegen, the lineage harness
-// in internal/codegen/gotable/fixedversioning_test.go (run by
-// `make tables-go-versioning`); the fixed-form value half of the enum clause
-// has no direct value assertion there (see the `unsure:` line of this card's
-// RESULT.md), which is why the wire half below pins values, not just
-// counters. On the wire an enum rides under its variant NAME's hash, not an
-// ordinal (the generated TableEnumID in build/tables-generated-go/k1/K1.go),
-// so "the list being a prefix" has no wire meaning — what the wire owes is
-// that a mid-list vocabulary insert never slides identity, and that an enum
-// never aliases its storage integer. Both are asserted.
+// vocabulary is the FIXED form's, and a fixed-class root reads form 3 only
+// (docs/SPEC-TABLES.md §3.4; docs/plans/strict-only.md): a form-1 file there
+// is `previous_form`, which is why this row drives the generated FIXED reader
+// over the lawful lineage pairs the C++ reference's R20 uses. The old side of
+// each pair is old code and the new side is this build, so the read direction
+// is §21.2's "newer reader, older file"; the lineage is the lock's, exactly
+// as a production build hands it to internal/codegen/gotable (§5.2).
 //
-// The production path this file exercises is the generated TABLE-wire reader
-// exactly as the leg's own driver drives it (test/conformance/go/codecs.go:
-// Reset, then Load, then the report counters): build/tables-generated-go/m1,
-// m2, k1, k2, lists, maps, emitted by internal/codegen/gotable. Every
-// OLD-file vector below is written by the OLD generation's own Save (the
-// `one()` shape of the C++ R20), except the two widen vectors, which are the
-// pinned conformance data named, with the byte derivation in the comment.
+// THE DEPRECATED-FIELD CLAUSE is the FIXED form's sentence of §21.2 above,
+// which is what the generated Go reader implements (internal/codegen/gotable
+// fixedform.go fixedDeprecatedDefault): the deprecated slot reads its declared
+// default whatever the old record carries, and `unknown` does not move for it.
+// The VARIABLE form's sentence (read into its slot on every plan, bill 12.3
+// #3) is not this row's surface.
+//
+// The old generation's file is written by its own writer and read by the new
+// generation's FixedLoad, the `one()` shape of test/conformance/cpp/rows/
+// R20.cpp. The scalar-widen clauses below keep the pinned conformance vectors
+// (the Go leg's variable-table widen rows); the lineage pairs are generated
+// here because the Go build generates them for no committed module.
 //
 // Run: cd test/conformance/go && go test ./rows/ -run TestRowR20 -count=1
 // Exit non-zero on the first violated clause; one t.Error per fact.
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	listdemo "listdemo"
 	mapdemo "mapdemo"
 	tblk1 "tblk1"
 	tblk2 "tblk2"
-	tblm1 "tblm1"
-	tblm2 "tblm2"
 )
 
 // r20wire reads one pinned conformance vector. The vector path below resolves
@@ -64,107 +66,171 @@ func r20wire(t *testing.T, name string) []byte {
 	return data
 }
 
-// r20m1open is the OLD file every newer-reader section starts from: an M1 Msg
-// carrying the open arm with a SHORT path (5 of string(16)), saved by the OLD
-// generation's own writer. M2 is the newer generation: `close` inserted FIRST
-// (open's tag moved 1 -> 2), `save` removed, and Open grown by `line`.
-func r20m1open(t *testing.T) []byte {
+// r20Repackage gives the two schemas of a lineage pair ONE package name. The
+// lock is written beside a unit and records that unit's package, so the
+// operator's lock-widen-lock sequence needs the same unit path on both sides.
+// The generated packages are imported under aliases, so the shared name never
+// collides.
+func r20Repackage(src []byte) []byte {
+	lines := strings.Split(string(src), "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "package ") {
+			lines[i] = "package rowfix"
+			break
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
+// r20Write writes a file and fails the row on error.
+func r20Write(t *testing.T, path string, data []byte, mode os.FileMode) {
 	t.Helper()
-	var old tblm1.Msg
-	tblm1.MsgReset(&old)
-	old.Seq = 7
-	old.Body.Type = tblm1.BodyTypeOpen
-	copy(old.Body.Open.Path[:], "hello")
-	old.Body.Open.PathLength = 5
-	n := tblm1.MsgMeasure(&old)
-	if n < 0 {
-		t.Fatal("M1 MsgMeasure refused the old open value")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 	}
-	wire := make([]byte, n)
-	if tblm1.MsgSave(&old, wire) != n {
-		t.Fatal("M1 MsgSave did not write MsgMeasure's answer")
+	if err := os.WriteFile(path, data, mode); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
-	return wire
+}
+
+// r20Run runs one build command from the repository root.
+func r20Run(t *testing.T, repoRoot, name string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = repoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+	}
+}
+
+// r20FixedProbe builds the OLD and NEW generated modules of one lineage pair
+// and runs the given probe against them. The operator's three commands are
+// reproduced in a temp tree — generate the old build, lock, widen, lock again,
+// generate the new build — so the new module carries the old layout as its
+// lineage entry (docs/FIXED-FORM-ALGORITHM.md §5.2).
+func r20FixedProbe(t *testing.T, row, probe string) {
+	t.Helper()
+	f8Gate(t)
+	repoRoot, err := filepath.Abs(filepath.Join(".", "..", "..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binSchema := filepath.Join(repoRoot, "bin", "schema")
+	oldSrc, err := os.ReadFile(filepath.Join(repoRoot, "test", "tables", "VOLD_"+row+".schema"))
+	if err != nil {
+		t.Fatalf("read VOLD_%s: %v", row, err)
+	}
+	newSrc, err := os.ReadFile(filepath.Join(repoRoot, "test", "tables", "VNEW_"+row+".schema"))
+	if err != nil {
+		t.Fatalf("read VNEW_%s: %v", row, err)
+	}
+
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	unit := filepath.Join(work, "pair.schema")
+	oldOut := filepath.Join(dir, "old")
+	newOut := filepath.Join(dir, "new")
+
+	r20Write(t, unit, r20Repackage(oldSrc), 0o600)
+	r20Run(t, repoRoot, binSchema, "generate", "--lang", "go", "--out", oldOut, unit)
+	r20Run(t, repoRoot, binSchema, "lock", work)
+	r20Write(t, unit, r20Repackage(newSrc), 0o600)
+	r20Run(t, repoRoot, binSchema, "lock", work)
+	r20Run(t, repoRoot, binSchema, "generate", "--lang", "go", "--out", newOut, work)
+
+	runtime := f8SerializeGo(t, repoRoot)
+	goMod := fmt.Sprintf("module rowfixprobe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", repoRoot, runtime)
+	r20Write(t, filepath.Join(dir, "go.mod"), []byte(goMod), 0o600)
+	r20Write(t, filepath.Join(dir, "probe_test.go"), []byte(probe), 0o600)
+
+	cmd := exec.Command("go", "test", "-count=1", "-run", "TestProbe", ".")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the fixed-lineage probe for %s failed: %v\n%s", row, err, out)
+	}
 }
 
 // ---------------------------------------------------------------------------
 // clause 1 — A field the reader added: its declared default.
-// M2.Open.line (uint32, default 0) is newer than the file; the writer's own
-// fields must land exactly beside it.
+// field_append: vec {x,y,z} -> {x,y,z,w}, with w declared = 77.
 // ---------------------------------------------------------------------------
 
 func TestRowR20AddedFieldDefault(t *testing.T) {
-	wire := r20m1open(t)
-	var back tblm2.Msg
-	tblm2.MsgReset(&back)
-	var r tblm2.TableReport
-	if !tblm2.MsgLoad(&back, wire, &r) {
-		t.Fatalf("the NEW reader refused the OLD file: %+v", r)
+	t.Parallel() // each probe builds two generated modules in its own temp tree
+	r20FixedProbe(t, "field_append", `package rowfixprobe
+
+import (
+	"testing"
+
+	old "rowfixprobe/old"
+	newer "rowfixprobe/new"
+)
+
+func TestProbe(t *testing.T) {
+	v := old.Lineage{X: 11, Y: 22, Z: 33}
+	wire := make([]byte, old.LineageFixedMeasure(1))
+	if n := old.LineageFixedSave([]old.Lineage{v}, wire); n != int64(len(wire)) {
+		t.Fatalf("the OLD writer did not write its measure: n=%d want %d", n, len(wire))
 	}
-	if back.Seq != 7 {
-		t.Errorf("the writer's seq did not land: %d", back.Seq)
+	back := make([]newer.Lineage, 1)
+	var r newer.TableReport
+	if n := newer.LineageFixedLoad(back, wire, make([]newer.TableFixedEntry, 64), &r); n != 1 {
+		t.Fatalf("the NEW reader refused the OLD file: n=%d %+v", n, r)
 	}
-	if back.Body.Type != tblm2.BodyTypeOpen {
-		t.Fatalf("the open arm did not land as open: type=%v", back.Body.Type)
+	if back[0].X != 11 || back[0].Y != 22 || back[0].Z != 33 {
+		t.Fatalf("the writer's own fields did not land: %+v", back[0])
 	}
-	if got := string(back.Body.Open.Path[:back.Body.Open.PathLength]); got != "hello" {
-		t.Errorf("the writer's path did not land: %q", got)
+	if back[0].W != 77 {
+		t.Fatalf("the field the reader added is not its declared default: w=%d", back[0].W)
 	}
-	if back.Body.Open.Line != 0 {
-		t.Errorf("the field the reader added is not its declared default: line=%d", back.Body.Open.Line)
+	if r.Unknown != 0 || r.Widened != 0 || r.Refused() {
+		t.Fatalf("an append-with-default moved a counter: %+v", r)
 	}
-	if r.Unknown != 0 || r.Widened != 0 {
-		t.Errorf("an append-with-default moved a counter: %+v", r)
-	}
-	if r.Refused() || r.Verdict == tblm2.TableOpenRefused {
-		t.Errorf("a clean newer-reads-older is not a refusal: %+v", r)
-	}
+}
+`)
 }
 
 // ---------------------------------------------------------------------------
-// clause 2 — A field the reader dropped: dropped, counted once under unknown.
-// M1's save arm is one the M2 reader never declared (M2.schema: save
-// removed), so it is skipped and counted; the rest of the record lands.
+// clause 2 — A field the reader deprecated. In the FIXED form §3.4 takes
+// precedence (§21.2): the writer emits the deprecated field's default image
+// into its retained slot and the reader yields that default whatever the
+// record carries; nothing is dropped and `unknown` does not move for it.
+// field_deprecate: {a,b,c} -> {a, b deprecated, c}; the reader's b is 0.
 // ---------------------------------------------------------------------------
 
 func TestRowR20DroppedFieldUnknown(t *testing.T) {
-	var old tblm1.Msg
-	tblm1.MsgReset(&old)
-	old.Seq = 9
-	old.Body.Type = tblm1.BodyTypeSave
-	copy(old.Body.Save.Path[:], "saveme!!")
-	old.Body.Save.PathLength = 8
-	old.Body.Save.Force = true
-	n := tblm1.MsgMeasure(&old)
-	if n < 0 {
-		t.Fatal("M1 MsgMeasure refused the old save value")
-	}
-	wire := make([]byte, n)
-	if tblm1.MsgSave(&old, wire) != n {
-		t.Fatal("M1 MsgSave did not write MsgMeasure's answer")
-	}
+	t.Parallel() // each probe builds two generated modules in its own temp tree
+	r20FixedProbe(t, "field_deprecate", `package rowfixprobe
 
-	var back tblm2.Msg
-	tblm2.MsgReset(&back)
-	var r tblm2.TableReport
-	if !tblm2.MsgLoad(&back, wire, &r) {
-		t.Fatalf("the NEW reader refused the OLD file: %+v", r)
+import (
+	"testing"
+
+	old "rowfixprobe/old"
+	newer "rowfixprobe/new"
+)
+
+func TestProbe(t *testing.T) {
+	v := old.Lineage{A: 1, B: 2, C: 3}
+	wire := make([]byte, old.LineageFixedMeasure(1))
+	if n := old.LineageFixedSave([]old.Lineage{v}, wire); n != int64(len(wire)) {
+		t.Fatalf("the OLD writer did not write its measure: n=%d want %d", n, len(wire))
 	}
-	if back.Seq != 9 {
-		t.Errorf("the surviving field did not land: seq=%d", back.Seq)
+	back := make([]newer.Lineage, 1)
+	var r newer.TableReport
+	if n := newer.LineageFixedLoad(back, wire, make([]newer.TableFixedEntry, 64), &r); n != 1 {
+		t.Fatalf("the NEW reader refused the OLD file: n=%d %+v", n, r)
 	}
-	if back.Body.Type != tblm2.BodyTypeNone {
-		t.Errorf("the dropped arm landed somewhere: type=%v", back.Body.Type)
+	if back[0].A != 1 || back[0].B != 0 || back[0].C != 3 {
+		t.Fatalf("the deprecated slot did not yield its declared default beside the writer's fields: %+v", back[0])
 	}
-	if r.Unknown != 1 {
-		t.Errorf("the dropped field was not counted once under unknown: %+v", r)
+	if r.Unknown != 0 {
+		t.Fatalf("a deprecated field the reader still has moved unknown: %+v", r)
 	}
-	if r.Widened != 0 {
-		t.Errorf("a counter other than unknown moved: %+v", r)
+	if r.Widened != 0 || r.Refused() {
+		t.Fatalf("a clean deprecation is not a refusal: %+v", r)
 	}
-	if r.Refused() || r.Verdict == tblm2.TableOpenRefused {
-		t.Errorf("a clean drop is not a refusal: %+v", r)
-	}
+}
+`)
 }
 
 // ---------------------------------------------------------------------------
@@ -249,67 +315,155 @@ func TestRowR20SameWidthBaseline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// clause 4 — A shorter string: landed, the reader's slack is template zeros.
-// The clause-1 file carries PathLength 5 of string(16). The slack slots 5..15
-// are prefilled with 0xFF after Reset, so only the reader's own clearing can
-// land zeros; the generated string landing does exactly that
-// (clear(value.Path[:]) in OpenLoadBody, build/tables-generated-go/m1 and m2).
+// clause 4 — A shorter array or string: landed, the reader's slack is template
+// zeros. string_grow: string(8) -> string(16), the old capacity FULL;
+// array_bounded_grow: [..4]int32 -> [..8]int32, the writer's count 4.
 // ---------------------------------------------------------------------------
 
 func TestRowR20ShortStringSlackZeros(t *testing.T) {
-	wire := r20m1open(t)
-	var back tblm2.Msg
-	tblm2.MsgReset(&back)
-	for i := 5; i < 16; i++ {
-		back.Body.Open.Path[i] = 0xFF
+	t.Parallel() // each probe builds two generated modules in its own temp tree
+	r20FixedProbe(t, "string_grow", `package rowfixprobe
+
+import (
+	"testing"
+
+	old "rowfixprobe/old"
+	newer "rowfixprobe/new"
+)
+
+func TestProbe(t *testing.T) {
+	v := old.StringGrow{Lead: 0xAAAAAAAA, Trail: 0xBBBBBBBB}
+	copy(v.Text[:], "abcdefgh")
+	v.TextLength = 8
+	wire := make([]byte, old.StringGrowFixedMeasure(1))
+	if n := old.StringGrowFixedSave([]old.StringGrow{v}, wire); n != int64(len(wire)) {
+		t.Fatalf("the OLD writer did not write its measure: n=%d want %d", n, len(wire))
 	}
-	var r tblm2.TableReport
-	if !tblm2.MsgLoad(&back, wire, &r) {
-		t.Fatalf("the NEW reader refused the OLD file: %+v", r)
+	back := make([]newer.StringGrow, 1)
+	for i := 8; i < 16; i++ {
+		back[0].Text[i] = 0xFF
 	}
-	if back.Body.Open.PathLength != 5 {
-		t.Fatalf("the WRITER's length did not land: %d", back.Body.Open.PathLength)
+	var r newer.TableReport
+	if n := newer.StringGrowFixedLoad(back, wire, make([]newer.TableFixedEntry, 64), &r); n != 1 {
+		t.Fatalf("the NEW reader refused the OLD file: n=%d %+v", n, r)
 	}
-	if got := string(back.Body.Open.Path[:5]); got != "hello" {
-		t.Errorf("the writer's bytes did not land: %q", got)
+	if back[0].TextLength != 8 || string(back[0].Text[:8]) != "abcdefgh" {
+		t.Fatalf("the writer's length and bytes did not land: %+v", back[0])
 	}
-	for i := 5; i < 16; i++ {
-		if back.Body.Open.Path[i] != 0 {
-			t.Errorf("the reader's slack slot %d is 0x%02x, not template zero", i, back.Body.Open.Path[i])
+	for i := 8; i < 16; i++ {
+		if back[0].Text[i] != 0 {
+			t.Fatalf("the reader's slack slot %d is 0x%02x, not a template zero", i, back[0].Text[i])
 		}
 	}
+	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
+		t.Fatalf("the neighbours did not land: %+v", back[0])
+	}
+	if r.Unknown != 0 || r.Widened != 0 || r.Refused() {
+		t.Fatalf("a capacity that grew moved a counter: %+v", r)
+	}
+}
+`)
+
+	r20FixedProbe(t, "array_bounded_grow", `package rowfixprobe
+
+import (
+	"testing"
+
+	old "rowfixprobe/old"
+	newer "rowfixprobe/new"
+)
+
+func TestProbe(t *testing.T) {
+	v := old.ArrayBoundedGrow{Lead: 0xAAAAAAAA, Trail: 0xBBBBBBBB, ValsCount: 4}
+	for i := 0; i < 4; i++ {
+		v.Vals[i] = int32(1000 + i)
+	}
+	wire := make([]byte, old.ArrayBoundedGrowFixedMeasure(1))
+	if n := old.ArrayBoundedGrowFixedSave([]old.ArrayBoundedGrow{v}, wire); n != int64(len(wire)) {
+		t.Fatalf("the OLD writer did not write its measure: n=%d want %d", n, len(wire))
+	}
+	back := make([]newer.ArrayBoundedGrow, 1)
+	for i := 4; i < 8; i++ {
+		back[0].Vals[i] = -1
+	}
+	var r newer.TableReport
+	if n := newer.ArrayBoundedGrowFixedLoad(back, wire, make([]newer.TableFixedEntry, 64), &r); n != 1 {
+		t.Fatalf("the NEW reader refused the OLD file: n=%d %+v", n, r)
+	}
+	if back[0].ValsCount != 4 {
+		t.Fatalf("the WRITER's count did not land: %d", back[0].ValsCount)
+	}
+	for i := 0; i < 4; i++ {
+		if back[0].Vals[i] != int32(1000+i) {
+			t.Fatalf("slot %d did not land the writer's value: %+v", i, back[0])
+		}
+	}
+	for i := 4; i < 8; i++ {
+		if back[0].Vals[i] != 0 {
+			t.Fatalf("the reader's slack slot %d is not a template zero: %+v", i, back[0])
+		}
+	}
+	if back[0].Lead != 0xAAAAAAAA || back[0].Trail != 0xBBBBBBBB {
+		t.Fatalf("the neighbours did not land: %+v", back[0])
+	}
+	if r.Unknown != 0 || r.Widened != 0 || r.Refused() {
+		t.Fatalf("a bound that grew moved a counter: %+v", r)
+	}
+}
+`)
 }
 
 // ---------------------------------------------------------------------------
-// clause 5 — Vocabulary identity: a mid-list insert never slides it, and an
-// enum never aliases its storage integer.
-// (i) M2 inserted `close` FIRST, so open's tag moved 1 -> 2, yet the old open
-// lands OPEN: arms ride their name hash (SPEC §5), the wire's counterpart of
-// "the list being a prefix" — stronger, since the insert is mid-list.
-// (ii) K1<->K2 respell grade (Grade) as the raw uint16 an enum's storage
-// happens to be, and vice versa: one wire read there meets kind 30 where it
-// declares kind 7 and kind 7 where it declares kind 30, and counts both. No
-// variant reference is ever read as a number.
+// clause 5 — An older enum: its ordinals are the reader's, the list being a
+// prefix. enum_append: Tier {Bronze,Silver,Gold} -> +Platinum; a gold record.
+// The historical K1/K2 pair respells an enum as the raw uint16 its storage
+// happens to be and vice versa. Under the strict read a form-1 file at a fixed
+// root is previous_form, and a form-3 file whose hash is in no lineage entry
+// is layout_unknown: neither read can alias a variant for a number. The
+// mid-list union-arm insert that M1/M2 exercised is not a lawful fixed
+// lineage, so the enum pair below carries the vocabulary clause.
 // ---------------------------------------------------------------------------
 
 func TestRowR20VocabularyIdentity(t *testing.T) {
-	wire := r20m1open(t)
-	var back tblm2.Msg
-	tblm2.MsgReset(&back)
-	var r tblm2.TableReport
-	if !tblm2.MsgLoad(&back, wire, &r) {
-		t.Fatalf("the NEW reader refused the OLD file: %+v", r)
-	}
-	if back.Body.Type != tblm2.BodyTypeOpen {
-		t.Errorf("the mid-list insert slid the arm: old open landed type=%v, want open", back.Body.Type)
-	}
-	if got := string(back.Body.Open.Path[:back.Body.Open.PathLength]); got != "hello" {
-		t.Errorf("the payload beside the moved tag did not land: %q", got)
-	}
-	if r.Unknown != 0 || r.Widened != 0 {
-		t.Errorf("a name-resolved arm moved a counter: %+v", r)
-	}
+	t.Parallel() // each probe builds two generated modules in its own temp tree
+	r20FixedProbe(t, "enum_append", `package rowfixprobe
 
+import (
+	"testing"
+
+	old "rowfixprobe/old"
+	newer "rowfixprobe/new"
+)
+
+func TestProbe(t *testing.T) {
+	if int(old.TierGold) != int(newer.TierGold) {
+		t.Fatalf("the OLD list is not a PREFIX: old Gold=%d new Gold=%d", old.TierGold, newer.TierGold)
+	}
+	v := old.Lineage{Tier: old.TierGold, Seq: 9}
+	wire := make([]byte, old.LineageFixedMeasure(1))
+	if n := old.LineageFixedSave([]old.Lineage{v}, wire); n != int64(len(wire)) {
+		t.Fatalf("the OLD writer did not write its measure: n=%d want %d", n, len(wire))
+	}
+	back := make([]newer.Lineage, 1)
+	var r newer.TableReport
+	if n := newer.LineageFixedLoad(back, wire, make([]newer.TableFixedEntry, 64), &r); n != 1 {
+		t.Fatalf("the NEW reader refused the OLD file: n=%d %+v", n, r)
+	}
+	if back[0].Tier != newer.TierGold {
+		t.Fatalf("an old Gold record did not read Gold: %v", back[0].Tier)
+	}
+	if back[0].Seq != 9 {
+		t.Fatalf("the scalar behind the enum did not land: %d", back[0].Seq)
+	}
+	if r.Unknown != 0 || r.Widened != 0 || r.Refused() {
+		t.Fatalf("an appended variant moved a counter: %+v", r)
+	}
+}
+`)
+
+	// K1's writer and K2's reader respell the same field kinds. The strict
+	// read does not walk a form-1 file at a fixed root, and a form-3 file's
+	// hash is matched, never its layout: both directions refuse by name.
 	var old tblk1.Root
 	tblk1.RootReset(&old)
 	old.Grade = tblk1.GradeGold
@@ -322,13 +476,22 @@ func TestRowR20VocabularyIdentity(t *testing.T) {
 	if tblk1.RootSave(&old, kwire) != n {
 		t.Fatal("K1 RootSave did not write RootMeasure's answer")
 	}
-	// a field whose kind the declaration respells (enum to integer, integer to
-	// enum) is a kind mismatch, and the read refuses (docs/SPEC-TABLES.md §4)
 	var kback tblk2.Root
 	tblk2.RootReset(&kback)
 	var kr tblk2.TableReport
-	if tblk2.RootLoad(&kback, kwire, &kr) || kr.Err() == nil {
-		t.Fatalf("the respelled reader read a kind mismatch: %+v", kr)
+	if tblk2.RootLoad(&kback, kwire, &kr) || kr.Refusal != tblk2.TableRefusePreviousForm {
+		t.Fatalf("the respelled reader did not refuse K1's form-1 file as previous_form: %+v", kr)
+	}
+
+	fwire := make([]byte, tblk1.RootFixedMeasure(1))
+	if tblk1.RootFixedSave([]tblk1.Root{old}, fwire) != int64(len(fwire)) {
+		t.Fatal("K1 RootFixedSave did not write its measure")
+	}
+	var fback [1]tblk2.Root
+	var fr tblk2.TableReport
+	if m := tblk2.RootFixedLoad(fback[:], fwire, make([]tblk2.TableFixedEntry, 64), &fr); m != -1 ||
+		!fr.FixedRaised || fr.Reason != "layout_unknown" || fr.LayoutHash == 0 {
+		t.Fatalf("the respelled fixed reader did not refuse K1's layout_unknown: n=%d %+v", m, fr)
 	}
 }
 
