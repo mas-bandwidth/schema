@@ -466,11 +466,13 @@ not from offsets.
 
 | cfg | switch | invariant violated | counterexample |
 |---|---|---|---|
-| `MCFixedLiveCheckSlack.cfg` | `CheckSlack` | `OneVerdict` | `count = 0`, slot 2 holds `2`: liveness taken to the bound reads the slack and refuses; the slack rule (§3.4) reads it correctly |
+| `MCFixedLiveCheckSlack.cfg` | `CheckSlack` | `OneVerdict` | `count = 0`, slot 2 holds `1`, `t1 = 1`, `u0 = 0`: liveness taken to the bound asks the slack the bool rule, which a `1` passes, and the record reads; the meaning refuses it, since a slack byte is held to zero (§3.4) |
 | `MCFixedLiveBoolNormalize.cfg` | `BoolNormalize` | `OneVerdict` | `t1 = 1`, `u0 = 1`, `b = 2`: the retired normalization lands `b` as true and accepts; §4.5 refuses `wire_damaged` |
-| `MCFixedLiveInnerGuardOnly.cfg` | `InnerGuardOnly` | `OneVerdict` | `t1 = 0` (no arm), `u0 = 1`, `u1 = 2`: `b` judged live from its inner link alone, read under an arm that never rode, refused; the meaning is an empty union and reads |
+| `MCFixedLiveInnerGuardOnly.cfg` | `InnerGuardOnly` | `ArmReadsLive` | `t1 = 0` (no arm), `u0 = 1`: `b` judged live from its inner link alone and read under an arm that never rode. Under the dead-byte rule `u0` and `u1` under tag 0 are slack, so any byte that makes the one-lane read refuse also refuses the meaning, and `OneVerdict` holds (checked exhaustively at `B = 3`, 1513902 distinct states); the fault is the read itself |
 | `MCFixedLiveLoopToCount.cfg` | `LoopToCount` | `InsideArray` | `count = 4` past `B = 3`: an element entry run before the count check reads index 3 at offset 4, which is `t1`'s byte |
-| `MCFixedLiveLandDuringCheck.cfg` | `LandDuringCheck` | `OneVerdict` | `count = 1`, `t1 = 1`, `u0 = 1`, `b = 2`: element 0 lands as it is checked, then `b` refuses and the destination keeps element 0; §5.3 says a refusal of the check loop writes not one destination byte |
+| `MCFixedLiveLandDuringCheck.cfg` | `LandDuringCheck` | `OneVerdict` | `count = 1`, element 0 is `0`, `t1 = 0`, `u1 = 1`: element 0 lands as it is checked, then the outer union's dead-zero entry under tag 0 finds `u1` non-zero and refuses, and the destination keeps element 0; §5.3 says a refusal of the check loop writes not one destination byte |
+| `MCFixedLiveSkipDeadZero.cfg` | `SkipDeadZero` | `OneVerdict` | `count = 0`, `t1 = 0`, `u0 = 1`: the retired rule (slack unspecified on read) runs no dead-zero check and reads an empty union; the meaning refuses, since `u0` under tag 0 is slack and not zero |
+| `MCFixedLiveArmWidthZero.cfg` | `ArmWidthZero` | `ZeroReadsSlack` | `t1 = 2`: the dead-zero entry behind arm 2 laid as if the arm took no bytes holds `u0`, arm 2's live bool `c`, to zero (offsets 5 and 6 read, only 6 is slack) |
 
 ## Running
 
