@@ -158,7 +158,7 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
                 @NEW@.TableReport r = new @NEW@.TableReport();
                 long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
                 // a forged ordinal refuses out_of_range and the record is its
-                // declared defaults (docs/SPEC-TABLES.md §4.6, the C++ reference)
+                // declared defaults (docs/FIXED-FORM-ALGORITHM.md §4.6, the C++ reference)
                 if (n != -1) { bad += ProbeLog.Fail(@NAME@, "compiled n=" + n + " want -1"); }
                 if (back.Tier != new @NEW@.@ROOT@().Tier || back.Seq != new @NEW@.@ROOT@().Seq) { bad += ProbeLog.Fail(@NAME@, "compiled: the refused record is not its defaults"); }
                 if (!r.Refused || r.Reason != "out_of_range") { bad += ProbeLog.Fail(@NAME@, "compiled refused=" + r.Refused + " reason=" + r.Reason + " want out_of_range"); }
