@@ -694,6 +694,15 @@ static partial class Program
                     File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
                     continue;
                 }
+                // Every dead byte of the fixed form is zero (docs/SPEC-TABLES.md
+                // §3.4): a record with one stained slack byte is refused
+                // wire_damaged, and on a row the corpus marks wire-refused that
+                // refusal is the row's answer. Any other refusal is a failure.
+                if (report.Reason == "wire_damaged" && Array.IndexOf(f, "wire-refused") >= 0)
+                {
+                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "wire_damaged");
+                    continue;
+                }
                 Console.Error.WriteLine("driver: " + f[1] + " does not load");
                 return 1;
             }

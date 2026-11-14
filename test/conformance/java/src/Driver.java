@@ -662,6 +662,15 @@ public final class Driver {
         return f.length > 5 && "no-text".equals(f[5]);
     }
 
+    private static boolean wireRefused(String[] f) {
+        for (int i = 5; i < f.length; ++i) {
+            if ("wire-refused".equals(f[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void spillAbsent(String out, String name) throws IOException {
         Files.write(Path.of(out, name + ".absent"), new byte[0]);
     }
@@ -978,7 +987,17 @@ public final class Driver {
                     Object report = fixed.report();
                     Object values = fixed.newValues();
                     int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
-                    if (read < 0 || fixed.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4] + " (" + fixed.reason(report) + ")");
+                    if (read < 0 || fixed.flag(report, "refused")) {
+                        // Every dead byte of the fixed form is zero (SPEC-TABLES
+                        // §3.4): a record with one stained slack byte is refused
+                        // wireDamaged, and on a row the corpus marks wire-refused
+                        // that refusal is the row's answer. Any other refusal fails.
+                        if ("wireDamaged".equals(fixed.reason(report)) && wireRefused(f)) {
+                            spillAbsentReason(out, f[1], "wire_damaged");
+                            continue;
+                        }
+                        return failInt(f[1] + ": load refused " + f[4] + " (" + fixed.reason(report) + ")");
+                    }
                     byte[] saved = fixed.save(values, read);
                     if (saved == null) return failInt(f[1] + ": save refused the value");
                     spill(out, f[1], saved);
