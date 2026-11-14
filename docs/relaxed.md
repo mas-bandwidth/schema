@@ -32,6 +32,35 @@ relaxed cell whose slug has no entry here.
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
   then drop the flag. WIP: `fix/main-red/dead-bytes`.
 
+## Conformance cases and rows
+
+Relaxed conformance cases are `test/conformance/relaxed.txt`, one line per
+case (`<lang> <surface> <case> relax/<slug>`), read by
+`test/conformance/harness/relaxed.go`. A listed case that fails stays "fail"
+in the leg's results (so the proof names it) and does not fail the leg; a
+listed case that passes fails the leg until its line is removed.
+
+- `relax/rust-write-refusal-debug-asserts`: 19 cases of the Rust leg (write-refusal
+  wref_bits_wide, wref_enum, wref_range_high, wref_range_low,
+  wref_text_illformed, wref_text_zero, wref_union_tag; write-refusal-fixed the
+  same seven as fref_*; write-refusal-message mref_element, mref_range_high,
+  mref_range_low, mref_text_illformed, mref_text_zero). PR 3282 moved the
+  rows onto the fixed and message writers, which carry no debug-build checks.
+  Rust is an assert leg, so this is owed work, not a missing release check.
+  Files: `test/conformance/relaxed.txt`. Real fix: debug asserts of the write
+  contract in `internal/codegen/rusttable/fixedform.go` and the message
+  writer. WIP: none (PR 3281 covers C, C++ and C# only).
+- `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
+  (`TestRowR20DroppedFieldUnknown`). The header is restored to the
+  maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
+  carried: "if it's supplied, use the value there, otherwise, use the
+  default"; docs/FIXED-FORM-ALGORITHM.md §5.1; the C++ R20), and the one
+  assertion that the stored value lands (`B == 2`) is commented out, because
+  Go's fixed reader still yields the declared default. Real fix: the ruling's
+  rollout across Go's emitter (`fixedDeprecatedDefault`), the engine
+  (tablewire), Lobster, Go's TestFixedDeprecatedSlotIsTheDeclaredDefault, and
+  docs/SPEC-TABLES.md §3.4, §21.2 and §22.6. WIP: none.
+
 ## Negative controls
 
 - `relax/luau-fuzz-b-design`: two plants of
