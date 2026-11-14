@@ -243,8 +243,10 @@ const ROOTS: &[(&str, &str)] = &[
     ("widelist", "Wide"),
 ];
 
-// A fixed-class root still has a form-1 file codec, but the harness holds
-// its caller-owned region even when load refuses damaged framing (§3, §4.2).
+// A declared fixed root reads form 3 and refuses every other form by name
+// (§3, §3.4): its arm is the generated fixed codec, never the variable one.
+// The harness holds its caller-owned region even when the read refuses
+// damaged framing (§3, §4.2).
 const FIXED_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "LoginRequest"),
     ("backenddemo", "MatchResult"),
@@ -275,19 +277,16 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide09"),
 ];
 
-// THE FIXED FORM (docs/SPEC-TABLES.md §3.4): a file's FORM BYTE says which
-// codec reads it, and it is read first, exactly as the generated readers read
-// it. A form 3 file of a fixed-class root is read and written back by the
-// root's generated <root>_fixed_load / <root>_fixed_save over <Root>Row
-// records, as the conformance driver's fixed_read does (main.rs); the corpus
-// carries these roots' seeds in form 3, so the variable codec alone would
-// refuse every one of them as a newer form.
+// THE FIXED FORM (docs/SPEC-TABLES.md §3.4): every file of a declared
+// fixed-class root is read by the root's generated <root>_fixed_load, which
+// reads form 3 and refuses every other form by name, and a read one is written
+// back by <root>_fixed_save over <Root>Row records, as the conformance
+// driver's fixed_read does (main.rs).
 //
 // A ROOT IS ONE RECORD, as the oracle's engine reads a file into one instance
 // (internal/tablewire/fixed.go): the read is handed room for one record, so a
 // batch of more is the generated reader's own batch_too_large refusal, and a
 // batch of none holds no value to read, which is truncated framing damage.
-const TABLE_FIXED_FORM_BYTE: u8 = 3;
 // room the read is handed: one record, and the plan's capacity declaration
 const FIXED_RECORDS: usize = 1;
 const FIXED_PLAN: usize = 1 << 14;
@@ -330,7 +329,29 @@ macro_rules! fixed_arm {
     }};
 }
 
-// drive_fixed reads a form 3 wire through the (unit, root) fixed codec; None
+// WideBlob is past the fixed form's record ceiling, so its fixed reader
+// refuses every form and no fixed save is emitted (§3.4).
+macro_rules! fixed_load_only_arm {
+    ($unit:ident, $load:ident, $row:ident, $wire:expr) => {{
+        use $unit::*;
+        let mut values = vec![$row::default(); FIXED_RECORDS];
+        let mut plan = vec![TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
+        let mut report = TableFixedReport::default();
+        let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
+        let read = read.filter(|_| !report.refused && !report.damaged);
+        let mut reply = Reply { loaded: read.is_some(), measure: -1, save_fail: true, ..Default::default() };
+        reply.unknown = u64::from(report.unknown);
+        reply.widened = u64::from(report.widened);
+        reply.damaged = report.damaged;
+        reply.refused = report.refused;
+        Some(reply)
+    }};
+}
+
+// drive_fixed reads a wire of a declared fixed root through the (unit, root)
+// fixed codec, whatever its form byte: the fixed reader refuses every form but
+// 3 by name (§3, §3.4), so the variable codec is never selected at one. None
 // when this leg reaches no fixed codec for the root.
 fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
     match (unit, root) {
@@ -345,6 +366,7 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire),
         ("tabledemo", "ProfileConfig") => fixed_arm!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, wire),
         ("tabledemo", "RootConfig") => fixed_arm!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, wire),
+        ("tabledemo", "WideBlob") => fixed_load_only_arm!(tabledemo, wide_blob_fixed_load, WideBlobRow, wire),
         ("tbla2", "Root") => fixed_arm!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
         ("tblk1", "Root") => fixed_arm!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
         ("tblk2", "Root") => fixed_arm!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
@@ -365,8 +387,8 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
 }
 
 fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
-    if wire.first() == Some(&TABLE_FIXED_FORM_BYTE) && let Some(reply) = drive_fixed(unit, root, wire) {
-        return Some(reply);
+    if FIXED_ROOTS.iter().any(|(u, r)| *u == unit && *r == root) {
+        return drive_fixed(unit, root, wire);
     }
     match (unit, root) {
         ("backenddemo", "LoginRequest") => arm!(backenddemo, login_request_load, login_request_load_retain, login_request_save, login_request_save_checked, login_request_save_retain, login_request_load_measure, wire, retain),
