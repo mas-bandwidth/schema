@@ -467,7 +467,7 @@ define conformance-negative-control-cpp-wref
 	@cp -R build/tables-generated build/conformance-negative-cpp-$(1)/generated
 	@files=$$(grep -rlF '$(2)' build/conformance-negative-cpp-$(1)/generated); \
 		[ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $(1) check matches no generated line"; exit 1; }; \
-		sed -i 's@$(2)@$(3)@g' $$files
+		sed -i.bak 's@$(2)@$(3)@g' $$files && for f in $$files; do rm -f "$$f.bak"; done
 	@grep -rqF '$(4)' build/conformance-negative-cpp-$(1)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the $(1) check did not change"; exit 1; }
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
@@ -484,7 +484,7 @@ define conformance-negative-control-cpp-wref
 		echo "NEGATIVE CONTROL FAILED: the C++ $(5) writer without its $(1) check left the harness green"; \
 		cat build/conformance-negative-cpp-$(1)/log; exit 1; \
 	fi
-	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-cpp-$(1)/log || \
+	@grep -q '^  cpp / $(5): ' build/conformance-negative-cpp-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
 		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
 	@grep -Eq '^$(6) +pass ' build/conformance-negative-cpp-$(1)/log || \
