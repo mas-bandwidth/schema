@@ -529,6 +529,7 @@ func init() {
 		Name{Name: "kTableFixedForm", What: "the fixed form's form byte, 3"},
 		Name{Name: "kTableFixedOrdinal", What: "the fixed form's ops"},
 		Name{Name: "kTableFixedPresent", What: "the fixed form's ops: §5.2's present op, the one byte that says an optional arrived"},
+		Name{Name: "kTableFixedPresentDefaults", What: "the fixed form's ops: an optional's present flag, then its declared defaults when the flag is 0 (§3.4)"},
 		Name{Name: "kTableFixedText", What: "the fixed form's ops"},
 		Name{Name: "kTableFixedTextBytes", What: "the fixed form: a text entry's flavour"},
 		Name{Name: "kTableFixedTextUtf8", What: "the fixed form: a text entry's flavour"},

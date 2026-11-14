@@ -556,8 +556,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
 	g.pf("// run after the guarded payload it replaces: the entries that are nearly\n")
 	g.pf("// all of a plan never test a guard at all.\n")
+	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
+	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
+	// width (ir.TableFixedSplitByWidth, the same split the C leg lays down).
+	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
-	for _, e := range plan {
+	for i, e := range split.Plan {
 		guard := "kTableFixedNoGuard"
 		if e.Guard != ir.TableFixedNoGuard {
 			guard = fmt.Sprintf("%du", e.Guard)
@@ -583,13 +587,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.GuardCount > 0 {
 			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s }, // %s\n",
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
 			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, e.Note)
+			e.GuardCount, guardIndex, split.Elems[i], e.Note)
 	}
 	g.pf("};\n")
-	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))
-	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, guarded)
+	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(split.Plan))
+	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, split.Guarded)
 	g.pf("// THE GUARD POOL: the (guard, arg, argw) links every chain above points\n")
 	g.pf("// into, OUTERMOST FIRST (§5.8 row 6).\n")
 	g.pf("constexpr TableFixedGuardLink %sFixedGuards[] = {\n", st.Name)
