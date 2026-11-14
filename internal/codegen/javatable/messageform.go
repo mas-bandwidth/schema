@@ -364,10 +364,12 @@ public final class TableVocabulary {
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
-        // The ENTRY bound is the caller's capacity, narrowed by maxEntries when
+        // The ENTRY bound is the caller's storage, narrowed by maxEntries when
         // the receiver sets one, and an announcement above it is refused by
-        // name as vocabulary_too_large before an entry is touched (§3.3).
-        int entryBound = v.entries.length;
+        // name as vocabulary_too_large before an entry is touched (§3.3). A
+        // vocabulary in its constructed state has declared no storage, so its
+        // bound is zero and the first entry is refused by name.
+        int entryBound = v.entries == null ? 0 : v.entries.length;
         if (v.maxEntries > 0 && v.maxEntries < entryBound) {
             entryBound = v.maxEntries;
         }
