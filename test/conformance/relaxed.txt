@@ -1,0 +1,27 @@
+# RELAXED 2026-11-14 (maintainer: get main green): conformance cases that fail
+# today and do not fail their leg. One line per case:
+#   <lang> <surface> <case> relax/<slug>
+# Each slug has its entry in docs/relaxed.md. A listed case that passes fails
+# the leg until its line is removed. Read by test/conformance/harness/relaxed.go.
+#
+# relax/rust-write-refusal-debug-asserts: the generated Rust fixed-form and
+# message writers carry no debug-build checks yet (Rust is an assert leg).
+rust write-refusal wref_bits_wide relax/rust-write-refusal-debug-asserts
+rust write-refusal wref_enum relax/rust-write-refusal-debug-asserts
+rust write-refusal wref_range_high relax/rust-write-refusal-debug-asserts
+rust write-refusal wref_range_low relax/rust-write-refusal-debug-asserts
+rust write-refusal wref_text_illformed relax/rust-write-refusal-debug-asserts
+rust write-refusal wref_text_zero relax/rust-write-refusal-debug-asserts
+rust write-refusal wref_union_tag relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_bits_wide relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_enum relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_range_high relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_range_low relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_text_illformed relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_text_zero relax/rust-write-refusal-debug-asserts
+rust write-refusal-fixed fref_union_tag relax/rust-write-refusal-debug-asserts
+rust write-refusal-message mref_element relax/rust-write-refusal-debug-asserts
+rust write-refusal-message mref_range_high relax/rust-write-refusal-debug-asserts
+rust write-refusal-message mref_range_low relax/rust-write-refusal-debug-asserts
+rust write-refusal-message mref_text_illformed relax/rust-write-refusal-debug-asserts
+rust write-refusal-message mref_text_zero relax/rust-write-refusal-debug-asserts

@@ -272,7 +272,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     memset( &r, 0, sizeof( r ) );
     body = data + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
     tblfx1_table_fixed_run( tblfx1_fx_root_fixed_plan, tblfx1_fx_root_fixed_plan_count, tblfx1_fx_root_fixed_plan_guarded,
-                     body, (uint8_t *) &loose, &r, tblfx1_fx_root_fixed_guards );
+                     body, (uint8_t *) &loose, &r, tblfx1_fx_root_fixed_guards, NULL );
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( !r.refused, "C NEGATIVE CONTROL: and refuses nothing" );
@@ -303,13 +303,13 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
+            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_PRESENT_DEFAULTS ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them holds a range" );
 
         tblfx1_fx_root_reset( &held );
         memset( &r, 0, sizeof( r ) );
-        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, tblfx1_fx_root_fixed_guards );
+        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, tblfx1_fx_root_fixed_guards, NULL );
         fixed_check( held.renamed == 5000 && held.gone == -7,
                      "C COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
         fixed_check( !r.refused, "C COMPILED, NEGATIVE CONTROL: and refuses nothing" );
@@ -380,7 +380,7 @@ void fixed_fx1_text_content( void )
             memset( &r2, 0, sizeof( r2 ) );
             body = file + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
             tblfx1_table_fixed_run( tblfx1_fx_root_fixed_plan, tblfx1_fx_root_fixed_plan_count, tblfx1_fx_root_fixed_plan_guarded,
-                             body, (uint8_t *) &loose, &r2, tblfx1_fx_root_fixed_guards );
+                             body, (uint8_t *) &loose, &r2, tblfx1_fx_root_fixed_guards, NULL );
             fixed_check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                          "C NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             fixed_check( !r2.refused, "C NEGATIVE CONTROL: and says nothing about it" );
@@ -431,19 +431,19 @@ void fixed_guard_width( void )
 
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL, NULL );
     fixed_check( dst[2] == 0, "C GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL, NULL );
     fixed_check( dst[2] == 0xAA, "C GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
     src[1] = 0x01;
     plan[1].argw = 1;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL, NULL );
     fixed_check( dst[2] == 0xAA, "C NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 }

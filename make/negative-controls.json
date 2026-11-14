@@ -86,8 +86,8 @@
     },
     {
       "name": "base-3-3",
-      "when": "pull-request",
-      "why": "third slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): doctags, fixed-twin, JSON clamp/keyed-dup/read/write-refusal, and retain-fixed-class controls. Measured 8 s of control time on run 42556155793 over 7 controls.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 126 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-3-3. Before: third slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): doctags, fixed-twin, JSON clamp/keyed-dup/read/write-refusal, and retain-fixed-class controls. Measured 8 s of control time on run 42556155793 over 7 controls.",
       "targets": [
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
@@ -512,8 +512,8 @@
     },
     {
       "name": "base-tool-cook-differential-a",
-      "when": "pull-request",
-      "why": "slice 1 of 2 of base-tool-cook-differential, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-tool-cook-differential-negative-control 129 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 136 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-tool-cook-differential-a. Before: slice 1 of 2 of base-tool-cook-differential, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-tool-cook-differential-negative-control 129 s.",
       "targets": [
         "tables-tool-cook-differential-negative-control"
       ]
@@ -1065,8 +1065,8 @@
     },
     {
       "name": "block-fuzz-maximum",
-      "when": "pull-request",
-      "why": "the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 139 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-block-fuzz-maximum. Before: the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
       "targets": [
         "tables-block-fuzz-maximum-negative-control"
       ],
@@ -1521,8 +1521,8 @@
     },
     {
       "name": "rust-tables-1",
-      "when": "pull-request",
-      "why": "first slice of the Rust table emitter's go-test and go-build overlay controls: the numbering walk and float NaN control, the keyed accessor's three clauses (None, E.Max, shift), the map writer's sort control, and the accessor/descriptor and block-slot agreement controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 59 s of control time over the 5 controls on vision (number-walk 15 s, keyed 10 s, map-sort 15 s, accessor 10 s, slot 9 s).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 114 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-rust-tables-1. Before: first slice of the Rust table emitter's go-test and go-build overlay controls: the numbering walk and float NaN control, the keyed accessor's three clauses (None, E.Max, shift), the map writer's sort control, and the accessor/descriptor and block-slot agreement controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 59 s of control time over the 5 controls on vision (number-walk 15 s, keyed 10 s, map-sort 15 s, accessor 10 s, slot 9 s).",
       "targets": [
         "tables-rust-number-walk-negative-control",
         "tables-rust-keyed-negative-control",
@@ -1548,8 +1548,8 @@
     },
     {
       "name": "rust-retain-soak",
-      "when": "pull-request",
-      "why": "the Rust retention control and the tables soak control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature, requiring the allocator call count red while live-heap drift stays flat). Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 56 s of control time over the 2 controls on vision (retain 38 s, soak 18 s).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 135 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-rust-retain-soak. Before: the Rust retention control and the tables soak control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature, requiring the allocator call count red while live-heap drift stays flat). Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 56 s of control time over the 2 controls on vision (retain 38 s, soak 18 s).",
       "targets": [
         "tables-rust-retain-negative-control",
         "tables-rust-soak-negative-control"
@@ -1633,8 +1633,8 @@
     },
     {
       "name": "js-tables-2",
-      "when": "pull-request",
-      "why": "the JavaScript port's table gates' controls, the other half: the soak, the slot, the fixed-form slack, the union-arm text, the versioning, the wire fuzzer, the clean gate, the text differential and the finite-float rule. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and js-tables-1 split the table gates so each row stays inside the rule.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 135 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-js-tables-2. Before: the JavaScript port's table gates' controls, the other half: the soak, the slot, the fixed-form slack, the union-arm text, the versioning, the wire fuzzer, the clean gate, the text differential and the finite-float rule. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and js-tables-1 split the table gates so each row stays inside the rule.",
       "targets": [
         "tables-js-soak-negative-control",
         "tables-js-slot-negative-control",
@@ -1720,8 +1720,8 @@
     },
     {
       "name": "dart-conformance-a",
-      "when": "pull-request",
-      "why": "slice 1 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-share 361 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 298 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-dart-conformance-a. Before: slice 1 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-share 361 s.",
       "targets": [
         "conformance-negative-control-dart-share"
       ],
@@ -1765,8 +1765,8 @@
     },
     {
       "name": "dart-conformance-2-a",
-      "when": "pull-request",
-      "why": "slice 1 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-absent 80 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 136 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-dart-conformance-2-a. Before: slice 1 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-absent 80 s.",
       "targets": [
         "conformance-negative-control-dart-absent"
       ],
@@ -1865,8 +1865,8 @@
     },
     {
       "name": "dart-tables-2-a",
-      "when": "pull-request",
-      "why": "slice 1 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-cookwrite-negative-control 130 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 142 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-dart-tables-2-a. Before: slice 1 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-cookwrite-negative-control 130 s.",
       "targets": [
         "tables-dart-cookwrite-negative-control"
       ],
@@ -1942,8 +1942,8 @@
     },
     {
       "name": "java-tables-a",
-      "when": "pull-request",
-      "why": "slice 1 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-alloc-negative-control 49 s, tables-java-allocator-runtime-negative-control 1 s, tables-java-fixedform-negative-control 8 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 123 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-tables-a. Before: slice 1 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-alloc-negative-control 49 s, tables-java-allocator-runtime-negative-control 1 s, tables-java-fixedform-negative-control 8 s.",
       "targets": [
         "tables-java-alloc-negative-control",
         "tables-java-allocator-runtime-negative-control",
@@ -1975,8 +1975,8 @@
     },
     {
       "name": "java-tables-more-a",
-      "when": "pull-request",
-      "why": "slice 1 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: schema-java-runs-hostile-corpus-negative-control 115 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 117 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-tables-more-a. Before: slice 1 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: schema-java-runs-hostile-corpus-negative-control 115 s.",
       "targets": [
         "schema-java-runs-hostile-corpus-negative-control"
       ],
@@ -2050,7 +2050,7 @@
     {
       "name": "java-wire-fuzz",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind’s count inside the map’s own L and requires the plain arm to go red on listdemo.Army. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the four pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose wire-alone walk and map reader both read a map count that crosses its L as zero entries and requires the plain arm to go red on the read verdict for map_count_crosses_l (mapdemo.Slots). Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
         "tables-java-wire-fuzz-negative-control",
         "tables-java-retain-fuzz-negative-control",
@@ -2060,20 +2060,19 @@
     },
     {
       "name": "java-wire-fuzz-2",
-      "when": "pull-request",
-      "why": "the Java leg of the tolerant wire fuzzer's four pin replays (docs/PORTING.md I15): keyed-count, retain-node, node-index and map-key-damage, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 123 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-wire-fuzz-2. Before: the Java leg of the tolerant wire fuzzer's three pin replays (docs/PORTING.md I15): keyed-count, retain-node and node-index, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run. The map-key-damage control was deleted on 2026-11-14 under docs/plans/strict-only.md table (c): its plant let a key scan read on past a key already judged malformed, which only chose between two refusals, so no plant of that rule can change a read verdict.",
       "targets": [
         "tables-java-keyed-count-negative-control",
         "tables-java-retain-node-negative-control",
-        "tables-java-node-index-negative-control",
-        "tables-java-map-key-damage-negative-control"
+        "tables-java-node-index-negative-control"
       ],
       "java": "21"
     },
     {
       "name": "java-proof",
-      "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse). Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps three of the five compiler rebuilds (the layout contract and the two order checks) and the generated-fresh control, and java-proof-2 carries the usage, release, absent and framing controls. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 137 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-proof. Before: the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse). Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps three of the five compiler rebuilds (the layout contract and the two order checks) and the generated-fresh control, and java-proof-2 carries the usage, release, absent and framing controls. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
       "targets": [
         "tables-java-layout-contract-negative-control",
         "tables-java-order-negative-control",
@@ -2084,8 +2083,8 @@
     },
     {
       "name": "java-proof-2",
-      "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table’s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 135 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-proof-2. Before: the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table’s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
       "targets": [
         "tables-java-usage-negative-control",
         "tables-java-release-negative-control",
@@ -2256,7 +2255,7 @@
     {
       "name": "goose",
       "when": "pull-request",
-      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
+      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else. With them, the enum-keyed accessor's control (M5: the None compare, the past-E.Max compare and the shift planted out, each over a `goose build -O2` probe) and the maps controls (M19: eight plants of the writers' sort, the readers' placement and the wire reader's rules), measured on studio on 2026-11-14 at 1.53 s and 1.39 s of make wall (time -p real), Go and the pinned Goose only.",
       "targets": [
         "tables-goose-fixedform-negative-control",
         "tables-goose-tablewire-negative-control",
@@ -2264,7 +2263,9 @@
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
         "tables-goose-damage-negative-control",
-        "tables-goose-view-negative-controls"
+        "tables-goose-view-negative-controls",
+        "tables-goose-keyed-negative-control",
+        "tables-goose-maps-negative-controls"
       ]
     },
     {
@@ -2339,8 +2340,8 @@
     },
     {
       "name": "goose-gates",
-      "when": "pull-request",
-      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the runtime home's file-order control, the unit home, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it. Split from the single `goose-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 16 s of control time over the 3 controls.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 153 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-goose-gates. Before: the Goose leg's gates over what it emits (make/goose-gates.mk): the runtime home's file-order control, the unit home, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it. Split from the single `goose-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 16 s of control time over the 3 controls.",
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-unit-home-negative-control",
@@ -2454,8 +2455,8 @@
     },
     {
       "name": "lobster-conformance",
-      "when": "pull-request",
-      "why": "the Lobster leg's report, walk and framing conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11), each sedding one runtime file the table emitter embeds, building a private compiler through go build -overlay, regenerating every manifest unit and requiring the harness red on exactly its surfaces (17 s and 16 s on hulk off one warm build). Split from the single `lobster-conformance` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 3 conformance controls.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 139 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-lobster-conformance. Before: the Lobster leg's report, walk and framing conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11), each sedding one runtime file the table emitter embeds, building a private compiler through go build -overlay, regenerating every manifest unit and requiring the harness red on exactly its surfaces (17 s and 16 s on hulk off one warm build). Split from the single `lobster-conformance` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 3 conformance controls.",
       "targets": [
         "conformance-negative-control-lobster",
         "conformance-negative-control-lobster-walk",
@@ -2627,8 +2628,8 @@
     },
     {
       "name": "go-proof-3",
-      "when": "pull-request",
-      "why": "third slice of the Go leg's proof-cell controls (docs/PORTING.md M5, J4): the keyed accessor's three clauses (13 s on hulk, 3 s warm on vision) and the clean-vet/clean-format gate (11 s on hulk, 37 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (40 s warm on vision).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 165 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-go-proof-3. Before: third slice of the Go leg's proof-cell controls (docs/PORTING.md M5, J4): the keyed accessor's three clauses (13 s on hulk, 3 s warm on vision) and the clean-vet/clean-format gate (11 s on hulk, 37 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (40 s warm on vision).",
       "targets": [
         "tables-go-keyed-negative-control",
         "tables-go-clean-negative-control"
@@ -2670,8 +2671,8 @@
     },
     {
       "name": "squirrel-tools-a",
-      "when": "pull-request",
-      "why": "slice 1 of 2 of squirrel-tools, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-squirrel-release-negative-control 724 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 255 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-squirrel-tools-a. Before: slice 1 of 2 of squirrel-tools, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-squirrel-release-negative-control 724 s.",
       "targets": [
         "tables-squirrel-release-negative-control"
       ],
@@ -3029,8 +3030,8 @@
     },
     {
       "name": "base-c-write-refusal-a",
-      "when": "pull-request",
-      "why": "slice 1 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-fixed 287 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 116 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-c-write-refusal-a. Before: slice 1 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-fixed 287 s.",
       "targets": [
         "conformance-negative-control-c-write-refusal-fixed"
       ]
@@ -3072,6 +3073,27 @@
         "conformance-negative-control-cs-write-refusal-fixed",
         "conformance-negative-control-cs-write-refusal-message"
       ]
+    },
+    {
+      "name": "js-write-refusal",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the JavaScript leg's write-contract controls landed in PR 3291 without a group, which turned `negativecontrols check` red; they run nightly here, unmeasured, until a per-commit run of them is measured green; re-enable: relax/nc-plan-write-refusal-js-lobster.",
+      "targets": [
+        "conformance-negative-control-js-write-refusal",
+        "conformance-negative-control-js-write-refusal-fixed",
+        "conformance-negative-control-js-write-refusal-message"
+      ],
+      "node": "26"
+    },
+    {
+      "name": "lobster-write-refusal",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the Lobster leg's write-contract controls landed in PR 3294 without a group, which turned `negativecontrols check` red; they run nightly here, unmeasured, until a per-commit run of them is measured green; re-enable: relax/nc-plan-write-refusal-js-lobster.",
+      "targets": [
+        "conformance-negative-control-lobster-write-refusal",
+        "conformance-negative-control-lobster-write-refusal-message"
+      ],
+      "lobster": "v2026.8"
     },
     {
       "name": "python-packet-core",

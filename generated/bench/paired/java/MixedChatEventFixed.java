@@ -55,21 +55,36 @@ public final class MixedChatEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true);
+    }
+
+    /**
+     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
+     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
+     * (docs/SPEC-TABLES.md §3.4).
+     */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         {
             long q = TableFixed.get32(b, at + 0);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 3L) {
                 q = 3L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.channel = (int) (q);
         }
         v.speaker = TableFixed.get32(b, at + 4);
         if (v.speaker > 4095L) {
             v.speaker = (int) (4095L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(12) clamps to 2^N - 1
     }
 }

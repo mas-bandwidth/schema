@@ -370,6 +370,69 @@ func TestProofRefusesADeclaredPortAtParity(t *testing.T) {
 	}
 }
 
+// TestProofRelaxesANamedCellAndRefusesAStaleOne: a red cell the relaxed list
+// names is relaxed, not red, and holds a release; the same red in another
+// column stays red; a relaxed cell that is no longer red refuses. Its negative
+// control drops the entry and the cell goes red again.
+func TestProofRelaxesANamedCellAndRefusesAStaleOne(t *testing.T) {
+	in := fixture()
+	delete(in.Results.Results["aa"]["wire"].Cases, "beta")
+	delete(in.Results.Results["bb"]["wire"].Cases, "alpha")
+	in.Relaxed = map[string]RelaxedCell{"surface wire/bb": {Row: "surface wire", Lang: "bb", Slug: "relax/x"}}
+	p := Compute(in)
+	c := mustCell(t, p, "surface wire", "bb")
+	if c.Status != StatusRelaxed || !strings.Contains(c.Why, "wire/alpha") || !strings.Contains(c.Relaxed, "relax/x") {
+		t.Errorf("surface wire / bb = %+v, want relaxed naming wire/alpha and relax/x", c)
+	}
+	if c := mustCell(t, p, "surface wire", "aa"); c.Status != StatusRed {
+		t.Errorf("surface wire / aa = %+v: an unlisted cell was relaxed", c)
+	}
+	if got := StaleRelaxed(p, in.Relaxed); len(got) != 0 {
+		t.Errorf("StaleRelaxed = %v, want none while the cell is red", got)
+	}
+	rep := Report{Commit: "c", Cells: len(p.Cells), Relaxed: p.Relaxed()}
+	if err := VerifyRelease(rep, "c"); err == nil || !strings.Contains(err.Error(), "relaxed cell") {
+		t.Errorf("VerifyRelease = %v, want a refusal naming the relaxed cell", err)
+	}
+	// stale: the cell's fix lands and the entry must go
+	in.Results.Results["bb"]["wire"].Cases["alpha"] = in.Results.Results["aa"]["wire"].Cases["alpha"]
+	if got := StaleRelaxed(Compute(in), in.Relaxed); !slices.Equal(got, []string{"surface wire/bb"}) {
+		t.Errorf("StaleRelaxed = %v, want [surface wire/bb] once the cell is no longer red", got)
+	}
+	// the negative control: without the entry the red cell is red again
+	delete(in.Results.Results["bb"]["wire"].Cases, "alpha")
+	in.Relaxed = nil
+	if c := mustCell(t, Compute(in), "surface wire", "bb"); c.Status != StatusRed {
+		t.Errorf("unlisted, surface wire / bb = %+v, want red", c)
+	}
+}
+
+// TestLoadRelaxedRefusesABadEntry: a relaxed cell with no slug, a slug that
+// docs/relaxed.md does not list, or a cell named twice is refused.
+func TestLoadRelaxedRefusesABadEntry(t *testing.T) {
+	for name, body := range map[string]string{
+		"no slug":  `{"relaxed":[{"row":"surface wire","lang":"py","slug":""}]}`,
+		"unlisted": `{"relaxed":[{"row":"surface wire","lang":"py","slug":"relax/nope"}]}`,
+		"twice":    `{"relaxed":[{"row":"surface wire","lang":"py","slug":"relax/a"},{"row":"surface wire","lang":"py","slug":"relax/a"}]}`,
+	} {
+		root := t.TempDir()
+		for p, data := range map[string]string{inProgressPath: body, relaxedPath: "- `relax/a`"} {
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, p), []byte(data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := LoadRelaxed(root); err == nil {
+			t.Errorf("%s: LoadRelaxed accepted %s", name, body)
+		}
+	}
+	if _, err := LoadRelaxed(testRoot(t)); err != nil {
+		t.Errorf("the tree's relaxed list: %v", err)
+	}
+}
+
 // TestLoadPortsRefusesABadDeclaration: a port with no issue, no design page in
 // the tree, or declared twice is refused.
 func TestLoadPortsRefusesABadDeclaration(t *testing.T) {
@@ -457,6 +520,10 @@ func TestTheCommittedProofIsWellFormed(t *testing.T) {
 		case StatusInProgress:
 			if c.Why == "" || c.Port == "" {
 				t.Errorf("%s cell %s is in progress with no reason or no port", proofPath, key)
+			}
+		case StatusRelaxed:
+			if c.Why == "" || !strings.Contains(c.Relaxed, "relax/") {
+				t.Errorf("%s cell %s is relaxed with no reason or no slug", proofPath, key)
 			}
 		default:
 			t.Errorf("%s cell %s has status %q", proofPath, key, c.Status)

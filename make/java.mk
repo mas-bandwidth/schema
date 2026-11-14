@@ -1764,7 +1764,7 @@ JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_recor
 # these headers against the parent.
 # KeyedConfig and ArchiveConfig are fixed tables (!r.variable), which wirefuzz.go excludes from --retain --replay;
 # ArchiveConfigRetain on bits_width_clamp_archive_r83429.bin is covered in TestBitsFieldAndArrayWidthClampJava.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells bits_width_clamp_archive_r83429:tabledemo:ArchiveConfig ../widelist_wide:widelist:Wide
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots map_count_crosses_l:mapdemo:Slots keyed_count_crosses_l:mapdemo:Depth pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells bits_width_clamp_archive_r83429:tabledemo:ArchiveConfig ../widelist_wide:widelist:Wide
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1809,7 +1809,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
 	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-java: tables-java-wire-fuzz-negative-control
@@ -1868,77 +1868,104 @@ test-java: tables-java-retain-node-negative-control
 
 test-java: tables-java-retain-fuzz-negative-control
 
-# THE FOREIGN-KIND MAP COUNT'S CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch
-# copy whose map reader reads a foreign element kind's count inside the map's
-# own L again. Its replay is map_header_count_past_length (mapdemo.Slots): the
-# oracle reads that map as one kind_mismatch with NO damage, so the counters are
-# compared. (map_foreign_kind_count_past_body, the vector the fault was found
-# on, is damaged elsewhere, and under the discard-on-damage ruling the harness
-# no longer compares a damaged load's counters, so it cannot see this fault.)
+# THE MAP COUNT'S CONTROL (docs/SPEC-TABLES.md §2.8, §4): THE HEADER LIES INSIDE
+# ITS OWN L, so a map whose count runs past its L is damage. The rule is held
+# twice in the leg, by the wire-alone walk (WireCheck.header) and by the
+# decode's count read, so a scratch copy plants it out of BOTH: a count that
+# crosses L reads as zero entries. Its replay is map_count_crosses_l
+# (mapdemo.Slots: map_slots with its `seats` map cut to an L of two whose
+# canonical count runs one byte past it, the map's element kind lawful), whose
+# one defect is that rule, and the plain arm must go red on the read verdict.
+# Re-pinned to the verdict 2026-11-14 (docs/plans/strict-only.md table (c)):
+# the plant it had read a FOREIGN kind's count inside L, which chose between
+# two refusals once the harness compared only acceptance.
 JAVA_MAP_COUNT_SABOTAGE := build/java-map-count-sabotage
 .PHONY: tables-java-map-count-negative-control
 tables-java-map-count-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_MAP_COUNT_SABOTAGE) && mkdir -p $(JAVA_MAP_COUNT_SABOTAGE)/generated $(JAVA_MAP_COUNT_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_COUNT_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/*Variable.java; do \
-		sed 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/long n = ar.leb(); \/\/ SABOTAGED map count/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed -e 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/& if (ar.fail) { ar.fail = false; report.damaged = false; n = 0; } \/\/ SABOTAGED map count/' \
+			-e 's/long count = leb(off + 1, end);/& if (at < 0) { at = end; count = 0; } \/\/ SABOTAGED map count header/' \
+			"$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/SlotsVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java map-count sabotage did not apply'; exit 1; }
+	@grep -q 'SABOTAGED map count header' $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/TableVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java map-count header sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_COUNT_SABOTAGE)/classes \
 		$(JAVA_MAP_COUNT_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@if ./build/conformance-harness wire-fuzz \
 			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_COUNT_SABOTAGE)/classes TablesWireFuzz" \
-			--replay testdata/wire/tables/fuzz-vectors/map_header_count_past_length.bin --unit mapdemo --root Slots \
+			--replay testdata/wire/tables/fuzz-vectors/map_count_crosses_l.bin --unit mapdemo --root Slots \
 			--failed $(JAVA_MAP_COUNT_SABOTAGE)/failed.bin > $(JAVA_MAP_COUNT_SABOTAGE)/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: a map reader that reads a foreign kind'"'"'s count inside L left the differential green'; exit 1; \
+		echo 'NEGATIVE CONTROL FAILED: a map count that crosses its L, unjudged, left the differential green'; exit 1; \
 	fi
-	@grep -q 'the report differs' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
-	@echo 'Java map-count negative control: reading a foreign kind'"'"'s count inside L loses the kind mismatch'
+	@grep -q 'read acceptance differs: the leg says true, the oracle says false' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
+	@echo 'Java map-count negative control: a map count that crosses its L, unjudged, reads a damaged wire clean'
 
 test-java: tables-java-map-count-negative-control
 
-# THE KEYED-COUNT CONTROL: a scratch copy of the generated units whose keyed
-# reader reads the count inside the field's own L again. The replay of
-# keyed_header_count_past_length must go red on the read report.
+# THE KEYED COUNT'S CONTROL (docs/SPEC-TABLES.md §4): a keyed body's count that
+# runs past its L is damage. A scratch copy plants the rule out of the wire-alone
+# walk (WireCheck.header) and the decode's keyed count read: a count that
+# crosses L reads as zero entries. Its replay is keyed_count_crosses_l
+# (mapdemo.Depth: map_depth with its `keyed` field cut to an L of two whose
+# canonical count runs one byte past it), whose one defect is that rule, and
+# the plain arm must go red on the read verdict. Re-pinned to the verdict
+# 2026-11-14 (docs/plans/strict-only.md table (c)): its old vector,
+# keyed_header_count_past_length, reads a FIXED root as form 1 and is refused
+# previous_form before any count is read, and its plant chose between two
+# refusals.
 JAVA_KEYED_COUNT_SABOTAGE := build/java-keyed-count-sabotage
 .PHONY: tables-java-keyed-count-negative-control
 tables-java-keyed-count-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_KEYED_COUNT_SABOTAGE) && mkdir -p $(JAVA_KEYED_COUNT_SABOTAGE)/generated $(JAVA_KEYED_COUNT_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_KEYED_COUNT_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_KEYED_COUNT_SABOTAGE)/generated/*/*Variable.java; do \
-		sed 's/long count = ar\.count(r\.limit);/long count = ar.leb(); \/\/ SABOTAGED keyed count/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed -e 's/long count = ar\.count(r\.limit);/long count = ar.leb(); if (ar.fail) { ar.fail = false; report.damaged = false; ar.off = ar.limit; count = 0; } \/\/ SABOTAGED keyed count/' \
+			-e 's/long count = leb(off + 1, end);/& if (at < 0) { at = end; count = 0; } \/\/ SABOTAGED keyed count header/' \
+			"$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
-	@grep -q 'SABOTAGED keyed count' $(JAVA_KEYED_COUNT_SABOTAGE)/generated/examples/KeyedConfigVariable.java || \
+	@grep -q 'SABOTAGED keyed count' $(JAVA_KEYED_COUNT_SABOTAGE)/generated/maps/DepthVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java keyed-count sabotage did not apply'; exit 1; }
+	@grep -q 'SABOTAGED keyed count header' $(JAVA_KEYED_COUNT_SABOTAGE)/generated/maps/TableVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java keyed-count header sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_KEYED_COUNT_SABOTAGE)/classes \
 		$(JAVA_KEYED_COUNT_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@if ./build/conformance-harness wire-fuzz --driver "$(JAVA) -cp $(CURDIR)/$(JAVA_KEYED_COUNT_SABOTAGE)/classes TablesWireFuzz" \
-			--replay testdata/wire/tables/fuzz-vectors/keyed_header_count_past_length.bin --unit tabledemo --root KeyedConfig \
+			--replay testdata/wire/tables/fuzz-vectors/keyed_count_crosses_l.bin --unit mapdemo --root Depth \
 			--failed $(JAVA_KEYED_COUNT_SABOTAGE)/failed.bin > $(JAVA_KEYED_COUNT_SABOTAGE)/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: a keyed reader that reads the count inside L left the replay green'; exit 1; \
+		echo 'NEGATIVE CONTROL FAILED: a keyed count that crosses its L, unjudged, left the replay green'; exit 1; \
 	fi
-	@grep -q 'oracle: report=0,1,' $(JAVA_KEYED_COUNT_SABOTAGE)/log || { cat $(JAVA_KEYED_COUNT_SABOTAGE)/log; exit 1; }
-	@echo 'Java keyed-count negative control: reading the count inside L loses the kind mismatch'
+	@grep -q 'read acceptance differs: the leg says true, the oracle says false' $(JAVA_KEYED_COUNT_SABOTAGE)/log || { cat $(JAVA_KEYED_COUNT_SABOTAGE)/log; exit 1; }
+	@echo 'Java keyed-count negative control: a keyed count that crosses its L, unjudged, reads a damaged wire clean'
 
 test-java: tables-java-keyed-count-negative-control
 
 # THE NODE-REFERENCE BOUND'S CONTROL (docs/SPEC-TABLES.md §3.1, §4): a node
 # reference ABOVE the entry count is an unreadable reference, which is damage,
 # in every occurrence that carries it. A scratch copy of the generated units
-# whose check is planted out must read pointer_index_past_numbering clean
-# (streamdemo.Feed: the first of two `parts` occurrences names node 2 of an
-# empty numbering), and the replay must go red in both arms. Its companion
-# vector, pointer_tail_unreadable_clean, holds an unreadable LEB in the CLAMPED
-# TAIL past `parts`' bound: the tail is stepped over by the field's length and
-# stays opaque, so it is no damage and the gate replays it clean.
+# whose check is planted out, in the wire-alone walk (WireCheck.graph) and in
+# the decode's judge and resolve, must read pointer_index_past_table clean
+# (graphdemo.Scene: graph_shared with one pointer naming node 6 of a table of
+# three, the enumerated index pass's mutant and its one defect), and the replay
+# must go red in both arms. The strict read refuses pointer_index_past_numbering
+# for its repeated `parts` id before any index is judged, so it cannot show this
+# fault and stays in the gate's replays only. Its companion vector,
+# pointer_tail_unreadable_clean, holds an unreadable LEB in the CLAMPED TAIL past
+# `parts`' bound: the tail is stepped over by the field's length and stays
+# opaque, so it is no damage and the gate replays it clean.
 JAVA_NODE_INDEX_SABOTAGE := build/java-node-index-sabotage
 .PHONY: tables-java-node-index-negative-control
 tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
-		sed 's/report\.malformed = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed -e 's/report\.damaged = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' \
+			-e 's/return damage(); \/\/ a reference above the entry count is damage/continue; \/\/ SABOTAGED node index check/' \
+			-e 's/int t = (int) index - 1;/int t = (int) index - 1; if (t < 0 || t >= n) { continue; } \/\/ SABOTAGED node index walk/' \
+			"$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
@@ -1947,46 +1974,15 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@for arm in "" --retain; do \
 		if ./build/conformance-harness wire-fuzz $$arm \
 				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_NODE_INDEX_SABOTAGE)/classes TablesWireFuzz" \
-				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_numbering.bin --unit streamdemo --root Feed \
+				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_table.bin --unit graphdemo --root Scene \
 				--failed $(JAVA_NODE_INDEX_SABOTAGE)/failed.bin > $(JAVA_NODE_INDEX_SABOTAGE)/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: a node index past the numbering, unjudged, left the $$arm replay green"; exit 1; \
 		fi; \
-		grep -q 'damaged load' $(JAVA_NODE_INDEX_SABOTAGE)/log || { cat $(JAVA_NODE_INDEX_SABOTAGE)/log; exit 1; }; \
+		grep -q 'read acceptance differs: the leg says true, the oracle says false' $(JAVA_NODE_INDEX_SABOTAGE)/log || { cat $(JAVA_NODE_INDEX_SABOTAGE)/log; exit 1; }; \
 	done
-	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged load clean in both arms'
+	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged wire clean in both arms'
 
 test-java: tables-java-node-index-negative-control
-
-# THE MAP KEY DAMAGE CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch copy of
-# the generated units whose key scan reads on past a key its read judged
-# malformed. A later occurrence of the key then turns the damaged map into a
-# kind mismatch, and the replay of map_key_past_entry_body (mapdemo.Cells: a
-# key string whose length runs into the entry's value, a length past its body)
-# must go red in both arms.
-JAVA_MAP_KEY_SABOTAGE := build/java-map-key-sabotage
-.PHONY: tables-java-map-key-damage-negative-control
-tables-java-map-key-damage-negative-control: tables-java-wire-fuzz
-	@rm -rf $(JAVA_MAP_KEY_SABOTAGE) && mkdir -p $(JAVA_MAP_KEY_SABOTAGE)/generated $(JAVA_MAP_KEY_SABOTAGE)/classes
-	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_KEY_SABOTAGE)/generated/$$u || exit 1; done
-	@for f in $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/*Variable.java; do \
-		sed 's/if (r\.fail || report\.malformed) return;/if (r.fail) return; \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
-	done
-	@grep -q 'SABOTAGED map key damage' $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/CellsVariable.java || \
-		{ echo 'NEGATIVE CONTROL: the Java map-key sabotage did not apply'; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_KEY_SABOTAGE)/classes \
-		$(JAVA_MAP_KEY_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
-	@for arm in "" --retain; do \
-		if ./build/conformance-harness wire-fuzz $$arm \
-				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_KEY_SABOTAGE)/classes TablesWireFuzz" \
-				--replay testdata/wire/tables/fuzz-vectors/map_key_past_entry_body.bin --unit mapdemo --root Cells \
-				--failed $(JAVA_MAP_KEY_SABOTAGE)/failed.bin > $(JAVA_MAP_KEY_SABOTAGE)/log 2>&1; then \
-			echo "NEGATIVE CONTROL FAILED: a key scan that reads on past a damaged key left the $$arm replay green"; exit 1; \
-		fi; \
-		grep -q 'damaged load' $(JAVA_MAP_KEY_SABOTAGE)/log || { cat $(JAVA_MAP_KEY_SABOTAGE)/log; exit 1; }; \
-	done
-	@echo 'Java map-key control: a key scan that reads on past a damaged key reads a damaged load as a kind mismatch in both arms'
-
-test-java: tables-java-map-key-damage-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
