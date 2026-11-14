@@ -15,6 +15,7 @@ package squirreltable_test
 
 import (
 	"encoding/binary"
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
@@ -129,6 +130,73 @@ values.append(v);
 				}
 			})
 		}
+	}
+}
+
+// TestSquirrelFixedDeadBytesRefuseOnTheWalk holds the descriptor walk's fixed
+// read (schema_table_load's loadWalk, the tolerant load a fixed root takes) to
+// the same slack rule: the clean record reads, every stain refuses, and the
+// negative control empties the walk's slack check and requires every stain to
+// read.
+func TestSquirrelFixedDeadBytesRefuseOnTheWalk(t *testing.T) {
+	sqrun.Require(t)
+	t.Parallel()
+	older := fixedSynthetic(t, sqDeadOlder)
+	e := sqEvoEntry(t, older, "D")
+	clean := sqDeadBody()
+	walk := func(t *testing.T, g *sqEvoGen, body []byte) string {
+		t.Helper()
+		out, err := g.exec(t, fmt.Sprintf(`local S = dofile("schema_module.nut", true);
+local T = S.require(%q);
+local L = S.require("schema_table_load");
+local inputs = dofile("inputs.nut", true);
+local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
+local v = L.loadWalk(T, "D", inputs["file"], report);
+print((v == null ? "null" : "value") + " refused=" + report.refused + "\n");
+`, g.mod), map[string][]byte{"file": sqEvoFile(e.Wire, e.Layout, body)})
+		if err != nil {
+			t.Fatalf("sq: %v\n%s", err, out)
+		}
+		return strings.TrimSpace(out)
+	}
+	stained := func(at int) []byte {
+		b := sqEvoClone(clean)
+		b[at] = 1
+		return b
+	}
+	g := sqEvoGenerate(t, older, nil)
+	if got := walk(t, g, clean); got != "value refused=false" {
+		t.Fatalf("the clean record on the walk: %s", got)
+	}
+	for _, s := range sqDeadStains {
+		t.Run(s.name, func(t *testing.T) {
+			t.Parallel()
+			if got := walk(t, sqDeadFork(t, g), stained(s.at)); got != "null refused=true" {
+				t.Errorf("a stain in %s (body byte %d) on the walk: %s, want refused", s.name, s.at, got)
+			}
+		})
+	}
+	// THE NEGATIVE CONTROL: the walk with its slack check gone reads every stain
+	gc := sqEvoGenerate(t, older, nil)
+	const anchor = "  for (local i = 0; i < n; i++) if ((bytes[off + i] & 0xff) != 0) return \"wire_damaged\";\n"
+	hit := 0
+	for name, data := range gc.files {
+		if strings.Count(string(data), anchor) == 1 {
+			gc.files[name] = []byte(strings.Replace(string(data), anchor, "", 1))
+			sqWriteFiles(t, gc.dir, map[string][]byte{name: gc.files[name]})
+			hit++
+		}
+	}
+	if hit != 1 {
+		t.Fatalf("the walk's slack anchor is in %d generated files, want 1", hit)
+	}
+	for _, s := range sqDeadStains {
+		t.Run("negative-control/"+s.name, func(t *testing.T) {
+			t.Parallel()
+			if got := walk(t, sqDeadFork(t, gc), stained(s.at)); got != "value refused=false" {
+				t.Errorf("a stain in %s still refuses on the walk with the slack check gone: %s", s.name, got)
+			}
+		})
 	}
 }
 

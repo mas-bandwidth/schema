@@ -1682,6 +1682,16 @@ local fixedRefuse = function(report, reason) {
   return null;
 };
 
+// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): an
+// absent optional's payload, a counted array's tail, text and bytes past their
+// used length, and the arm bytes behind a narrower arm or under tag 0 are the
+// zeros a conforming writer leaves, so a byte other than zero there refuses
+// the record wire_damaged. Slack is checked for zero only.
+local fixedDeadZero = function(bytes, off, n) {
+  for (local i = 0; i < n; i++) if ((bytes[off + i] & 0xff) != 0) return "wire_damaged";
+  return null;
+};
+
 local fixedBody, fixedField, fixedPayload, fixedElement;
 
 fixedBody = function(T, c, v, bytes, off, report, st) {
@@ -1699,7 +1709,7 @@ fixedField = function(T, fd, v, bytes, off, report, st) {
   if (fd.optional) {
     local p = (bytes[off] & 0xff) != 0;
     v[fd.member + "Present"] = p;
-    if (!p) return null;
+    if (!p) return fixedDeadZero(bytes, off + 1, fd.fb - 1);
     return fixedPayload(T, fd, bytes, off + 1, report, st, function(x) { v[fd.member] = x; });
   }
   return fixedPayload(T, fd, bytes, off, report, st, function(x) { v[fd.member] = x; });
@@ -1717,7 +1727,7 @@ fixedPayload = function(T, fd, bytes, off, report, st, set) {
         if (why != null) return why;
       }
       set(arr);
-      return null;
+      return fixedDeadZero(bytes, off + 4 + count * fd.eb, (fd.bound - count) * fd.eb);
     }
     local arr = array(fd.fcount);
     for (local i = 0; i < fd.fcount; i++) {
@@ -1734,13 +1744,13 @@ fixedPayload = function(T, fd, bytes, off, report, st, set) {
     local dec = utf8Decode(bytes, off + 4, used);
     if (!dec.ok) return "text_ill_formed";
     set(dec.s);
-    return null;
+    return fixedDeadZero(bytes, off + 4 + used, fd.bound - used);
   }
   if (fd.shape == "bytes") {
     local used = i32At(bytes, off);
     if (used < 0 || used > fd.bound) return "length_over_bound";
     set(blobOfRange(bytes, off + 4, used));
-    return null;
+    return fixedDeadZero(bytes, off + 4 + used, fd.bound - used);
   }
   return fixedElement(T, fd, fd, bytes, off, false, report, st, set);
 };
@@ -1758,12 +1768,15 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
     local tag = uAt(bytes, off, ud.tagw);
     local inst = ud.make();
     set(inst);
-    if (tag == 0) return null;
+    if (tag == 0) return fixedDeadZero(bytes, off + ud.tagw, ud.fw);
     if (tag < 0 || tag > ud.arms.len()) {
       report.unknown = report.unknown + 1;
       return null;
     }
     local arm = ud.arms[tag - 1]; inst.Type = arm.tag;
+    local taken = arm.payload == null ? 0 : arm.payload.fb;
+    local dead = fixedDeadZero(bytes, off + ud.tagw + taken, ud.fw - taken);
+    if (dead != null) return dead;
     if (arm.payload == null) return null;
     return fixedPayload(T, arm.payload, bytes, off + ud.tagw, report, st, function(x) { inst[arm.payload.member] = x; });
   }

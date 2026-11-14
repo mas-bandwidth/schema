@@ -747,6 +747,16 @@ func emitUnion(m *Module, un *ir.Union) {
 	m.Printf("_M.%sDescriptor <- {\n", un.Name)
 	m.Printf("  name = %s,\n", squirrel.StringLit([]byte(un.Name)))
 	m.Printf("  tagw = %d,\n", ir.TableFixedUnionTagBytes(un))
+	// fw is the widest arm's fixed-form bytes (the arm payloads' fb), past
+	// which nothing of the union lies: the bytes behind a narrower arm, and
+	// all of them under tag 0, are slack (docs/SPEC-TABLES.md §3.4)
+	widest := int64(0)
+	for _, v := range un.Variants {
+		if v.F != nil && fixedFieldCarried(v.F, 0) {
+			widest = max(widest, ir.TableFixedFieldBytes(v.F))
+		}
+	}
+	m.Printf("  fw = %d,\n", widest)
 	m.Printf("  make = function() { return _M.%s(); },\n", un.Name)
 	m.Printf("  arms = [\n")
 	for i, v := range un.Variants {
