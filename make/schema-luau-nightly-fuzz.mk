@@ -681,6 +681,14 @@ luau-nightly-fuzz-replay: luau-nightly-fuzz-toolchain build/schema-luau-nightly 
 # reader. (An r_u8 plant was tried first and is NOT used: every r_u8 caller
 # is already behind a span check, so removing it changes no outcome and the
 # fuzzer rightly found nothing in 20 s.)
+#
+# THE CHECK HAS TWO SITES, and the plant takes it out of both: open() and the
+# strict read's frame(), which ReadStrict runs BEFORE open(). Since the strict
+# read became the only read (docs/rulings.json strict-only-read; 390540b39 dropped
+# loadTolerant), the fuzzer's load kind runs L.load = ReadStrict, so a plant in
+# open() alone sits behind frame()'s copy of the same check, changes no outcome,
+# and the fuzzer rightly finds nothing. Each copy must carry exactly two sites,
+# or the control refuses rather than plant half the rule.
 LUAU_NF_NC := build/luau-nightly-fuzz-negative
 LUAU_NF_NC_TIME ?= 20
 LUAU_NF_NC_SEED ?= 1
@@ -691,7 +699,9 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		&& cp $(LUAU_NF)/gen-replay.sh $(LUAU_NF_NC)/
 	@planted=0; for f in $(LUAU_NF_NC)/generated/*/schema_load.luau; do \
 		if grep -q 'if count < 0 or count > math.floor' "$$f"; then \
-			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
+			sites=$$(grep -c 'if count < 0 or count > math.floor' "$$f"); \
+			if [ "$$sites" -ne 2 ]; then echo "negative control: $$f carries $$sites id-table count sign checks, want 2 (open and frame)" >&2; exit 1; fi; \
+			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/g; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
 			planted=$$((planted + 1)); fi; done; \
 	if [ $$planted -lt 1 ]; then echo "negative control: no id-table count sign check was planted" >&2; exit 1; fi; \
 	echo "negative control: planted in $$planted generated schema_load.luau copies"

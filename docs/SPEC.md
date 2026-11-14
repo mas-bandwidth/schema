@@ -2363,7 +2363,7 @@ across languages.
 | Squirrel | 1–8 every build; 9 unchecked; 10 every build |
 | MOO | 1–8 every build; 9 unchecked; 10 every build |
 | Goose | 1–8 and 10 every build; 9 not audited |
-| Lobster | 7 every build; 1–5 and 8 unchecked; 6 an index fault, not a refusal |
+| Lobster | 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`); 9 unchecked |
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
@@ -2395,7 +2395,7 @@ reader refuses.
 | Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises |
 | MOO | 1–8 every build | 1–8 every build | 1–7 every build |
 | Goose | 1–8 every build | 1–8 every build | 1–7 every build |
-| Lobster | 1–7 every build (`SaveChecked`) | 2–6 every build; 1 and 7 unchecked | 1–6 debug; 7 traps |
+| Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps |
 
 **The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
 leg, and refuses ill-formed text (SPEC-TABLES §16.3).
