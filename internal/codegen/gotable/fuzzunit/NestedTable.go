@@ -740,7 +740,7 @@ var ArchiveConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
 }
 
-var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 332)
+var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 392)
 
 var ArchiveConfigFixedKnown = []TableFixedKnownLayout{
 	{

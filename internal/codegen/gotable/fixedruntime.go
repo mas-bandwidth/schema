@@ -44,6 +44,7 @@ const (
 	tableFixedWidenF
 	tableFixedBool
 	tableFixedTag
+	tableFixedDeadZero
 )
 
 const (
@@ -54,7 +55,13 @@ const (
 // tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
 // Meta); its Aux is the source bytes of the payload behind it. A count entry's
 // Aux is the source bytes of one element. The pre-scan reads both to know
-// which bytes are slack (docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+// which bytes are slack, and holds every one of them to zero
+// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE). A tableFixedDeadZero entry is
+// slack the PLAN knows without reading a count or a flag: the arm bytes behind
+// a union's arm, up to the widest, under that arm's own guard (tag 0 is a guard
+// like any other), and on a lineage plan the writer's slots and units past this
+// reader's bound. It lands nothing; the pre-scan holds its Size bytes at Src
+// to zero.
 const tableFixedPresent uint8 = 1
 
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
@@ -626,7 +633,8 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
 // with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
-// unspecified and never a refusal (docs/SPEC-TABLES.md §3.4). The used argument
+// held to zero and to nothing else (docs/SPEC-TABLES.md §3.4, THE SLACK RULE), by the pre-scan
+// and not here. The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
 // interior zero (internal/codegen/golang/functions.go, the TString arm), so
@@ -692,11 +700,15 @@ func tableFixedUTF8Ok(p []byte) bool {
 // written. It walks each entry under its own guards, writes nothing and moves
 // no counter.
 //
-// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
-// SLACK RULE): the bytes past a counted array's count and under an absent
-// optional's present byte are slack, unspecified on read and never a refusal.
-// Each count and present byte it reads adds the slack behind it to dead, and an
-// entry inside dead is not asked.
+// EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE; docs/rulings.json
+// fixed-dead-bytes-zero): the bytes past a counted array's count, past a text's
+// or a byte buffer's used length, under an absent optional's present byte, and
+// behind a union's arm up to the widest (every arm byte under tag 0) are slack,
+// and a byte of slack other than zero refuses the whole read wire_damaged. THE
+// CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE: slack is held to
+// zero and never asked a bool, ordinal, tag or text rule. Each count and present
+// byte it reads holds the slack behind it to zero and adds it to dead, and an
+// entry inside dead is not asked: slack inside slack is already zero.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -725,7 +737,12 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
-				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+				// the tail past the live count is slack, and slack is zero
+				from, to := p.Src+4+uint32(v)*p.Aux, p.Src+4+p.Size*p.Aux
+				if !tableFixedZero(src[from:to]) {
+					return TableRefuseWireDamaged.Error()
+				}
+				dead = append(dead, [2]uint32{from, to})
 			}
 		case tableFixedText:
 			v := int32(tableFixedGet32(src[p.Src:]))
@@ -735,6 +752,10 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			}
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return TableRefuseTextIllFormed.Error()
+			}
+			// the units past the used length are slack, and slack is zero
+			if !tableFixedZero(src[p.Src+4+uint32(v) : p.Src+4+capn]) {
+				return TableRefuseWireDamaged.Error()
 			}
 		case tableFixedBool:
 			// a bool or present byte other than 0 or 1 is damage (§4.5)
@@ -746,8 +767,19 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 					return TableRefuseWireDamaged.Error()
 				}
 				if p.Meta == tableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
-					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+					// an absent optional's payload is slack, and slack is zero
+					from, to := p.Src+k+1, p.Src+k+1+p.Aux
+					if !tableFixedZero(src[from:to]) {
+						return TableRefuseWireDamaged.Error()
+					}
+					dead = append(dead, [2]uint32{from, to})
 				}
+			}
+		case tableFixedDeadZero:
+			// slack the plan knows: behind the taken arm, under tag 0, past
+			// this reader's bound on a lineage plan
+			if !tableFixedZero(src[p.Src : p.Src+p.Size]) {
+				return TableRefuseWireDamaged.Error()
 			}
 		case tableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
@@ -791,6 +823,21 @@ func tableFixedDead(dead [][2]uint32, at uint32) bool {
 		}
 	}
 	return false
+}
+
+// tableFixedZero is whether every byte of a span of slack is zero
+// (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): eight bytes a step, ORed, with no
+// branch in the loop, then the tail a byte at a time.
+func tableFixedZero(b []byte) bool {
+	var acc uint64
+	i := 0
+	for ; i+8 <= len(b); i += 8 {
+		acc |= tableFixedGet64(b[i:])
+	}
+	for ; i < len(b); i++ {
+		acc |= uint64(b[i])
+	}
+	return acc == 0
 }
 
 type tableFixedLayoutEntry struct {
@@ -1358,6 +1405,12 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			// THE WRITER'S SLOTS PAST n ARE SLACK on every record (§3.4, THE
+			// SLACK RULE): the count is held to n, so the writer's tail from n
+			// to their_n is behind it, and slack is zero.
+			if n < theirN {
+				tableFixedPush(c, TableFixedEntry{Src: theirBase + n*tel.Size, Size: (theirN - n) * tel.Size, Guard: guard, Op: tableFixedDeadZero, Arg: arg})
+			}
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -1404,6 +1457,29 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		c.argW = 1
 		if theirTag >= 1 && theirTag <= 8 {
 			c.argW = uint8(theirTag)
+		}
+		// THE WRITER'S ARM BYTES BEHIND ITS TAKEN ARM ARE SLACK (§3.4, THE SLACK
+		// RULE): under every writer tag, 0 included, the bytes from the end of
+		// that arm to the widest are zero. One entry per writer arm with slack
+		// behind it, under that tag's own guard and every tag outside it, so an
+		// arm this reader cannot name is held to the rule too.
+		widest := te.Size - theirTag
+		theirArm := ti + 1
+		for j := uint32(0); j <= te.Children; j++ {
+			taken := uint32(0)
+			if j > 0 {
+				taken = tableFixedEntryAt(theirs, theirArm).Size
+				theirArm += tableFixedSubtree(theirs, theirArm)
+			}
+			if taken >= widest {
+				continue
+			}
+			savedAt, savedLaid := c.chainAt, c.chainLaid
+			c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j), ArgW: c.argW})
+			c.chainLaid = false
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag + taken, Size: widest - taken, Guard: theirAt, Op: tableFixedDeadZero, Arg: uint64(j)})
+			c.chain = c.chain[:len(c.chain)-1]
+			c.chainAt, c.chainLaid = savedAt, savedLaid
 		}
 		myArm := mi + 1
 		for k := range me.Children {
@@ -1469,6 +1545,11 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
+		// THE WRITER'S UNITS PAST units ARE SLACK on every record (§3.4): the
+		// used length is held to units, and slack is zero.
+		if units < te.Size-4 {
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + 4 + units, Size: te.Size - 4 - units, Guard: guard, Op: tableFixedDeadZero, Arg: arg})
+		}
 	default:
 		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
 		if te.Size == me.Size {

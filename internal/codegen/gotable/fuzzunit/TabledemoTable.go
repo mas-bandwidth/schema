@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xc60521112fb501a8)
-const _ = uint64(0xc60521112fb501a8 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xf0fdeaea4513d790)
+const _ = uint64(0xf0fdeaea4513d790 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -162,6 +162,7 @@ const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
 const tableFixedTag = goruntime.TableFixedTag
+const tableFixedDeadZero = goruntime.TableFixedDeadZero
 
 const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
 const tableFixedTextBytes = goruntime.TableFixedTextBytes
@@ -257,6 +258,8 @@ func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
 }
 
 func tableFixedDead(a0 [][2]uint32, a1 uint32) bool { return goruntime.TableFixedDead(a0, a1) }
+
+func tableFixedZero(a0 []byte) bool { return goruntime.TableFixedZero(a0) }
 
 type tableFixedLayoutEntry = goruntime.TableFixedLayoutEntry
 
@@ -2399,6 +2402,12 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			// THE WRITER'S SLOTS PAST n ARE SLACK on every record (§3.4, THE
+			// SLACK RULE): the count is held to n, so the writer's tail from n
+			// to their_n is behind it, and slack is zero.
+			if n < theirN {
+				tableFixedPush(c, TableFixedEntry{Src: theirBase + n*tel.Size, Size: (theirN - n) * tel.Size, Guard: guard, Op: tableFixedDeadZero, Arg: arg})
+			}
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -2445,6 +2454,29 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		c.argW = 1
 		if theirTag >= 1 && theirTag <= 8 {
 			c.argW = uint8(theirTag)
+		}
+		// THE WRITER'S ARM BYTES BEHIND ITS TAKEN ARM ARE SLACK (§3.4, THE SLACK
+		// RULE): under every writer tag, 0 included, the bytes from the end of
+		// that arm to the widest are zero. One entry per writer arm with slack
+		// behind it, under that tag's own guard and every tag outside it, so an
+		// arm this reader cannot name is held to the rule too.
+		widest := te.Size - theirTag
+		theirArm := ti + 1
+		for j := uint32(0); j <= te.Children; j++ {
+			taken := uint32(0)
+			if j > 0 {
+				taken = tableFixedEntryAt(theirs, theirArm).Size
+				theirArm += tableFixedSubtree(theirs, theirArm)
+			}
+			if taken >= widest {
+				continue
+			}
+			savedAt, savedLaid := c.chainAt, c.chainLaid
+			c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j), ArgW: c.argW})
+			c.chainLaid = false
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag + taken, Size: widest - taken, Guard: theirAt, Op: tableFixedDeadZero, Arg: uint64(j)})
+			c.chain = c.chain[:len(c.chain)-1]
+			c.chainAt, c.chainLaid = savedAt, savedLaid
 		}
 		myArm := mi + 1
 		for k := range me.Children {
@@ -2510,6 +2542,11 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
+		// THE WRITER'S UNITS PAST units ARE SLACK on every record (§3.4): the
+		// used length is held to units, and slack is zero.
+		if units < te.Size-4 {
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + 4 + units, Size: te.Size - 4 - units, Guard: guard, Op: tableFixedDeadZero, Arg: arg})
+		}
 	default:
 		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
 		if te.Size == me.Size {

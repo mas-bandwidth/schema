@@ -450,7 +450,7 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0, 0}, // idle_ticks
 }
 
-var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
+var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 314)
 
 var FixedTableFixedKnown = []TableFixedKnownLayout{
 	{

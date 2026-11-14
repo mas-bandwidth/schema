@@ -512,6 +512,8 @@ func init() {
 		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
 		Name{Name: "tableFixedPresent", What: "the fixed form: the plan entry mark for an optional's present byte (§3.4, THE SLACK RULE)"},
 		Name{Name: "tableFixedDead", What: "the fixed form: whether a source offset lies in slack the pre-scan found (§3.4, THE SLACK RULE)"},
+		Name{Name: "tableFixedDeadZero", What: "the fixed form: the plan op for slack the plan knows, held to zero by the pre-scan (§3.4, THE SLACK RULE)"},
+		Name{Name: "tableFixedZero", What: "the fixed form: whether every byte of a span of slack is zero (§3.4, THE SLACK RULE)"},
 		// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
 		// §5.3): one string constant per fixed-load refusal name, used by the
 		// emitted <T>FixedLoad in place of a literal so an adopter's

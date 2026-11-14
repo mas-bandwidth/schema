@@ -6026,6 +6026,11 @@ func WeaponConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Effect))
 		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(EffectRow{}.Type)), Size: 1, DstSize: uint8(unsafe.Sizeof(Effect{}.Type)), Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
 		n++
+		{ // no arm, ordinal 0: every arm byte is slack
+			out[n] = TableFixedEntry{Src: es + 1, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedDeadZero}
+			links[n] = append(links[n], TableFixedGuardLink{Guard: es, Arg: 0, ArgW: 1})
+			n++
+		}
 		{ // arm buff, ordinal 1
 			guardAt := n
 			n += BuffFixedLeaves(out[n:], links[n:], es+1, ed+uint32(4+unsafe.Offsetof(struct {
@@ -6917,7 +6922,7 @@ var RootConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 331)
+var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 391)
 
 var RootConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7273,7 +7278,7 @@ var WeaponConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // amount
 }
 
-var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 8)
+var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 11)
 
 var WeaponConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7633,7 +7638,7 @@ var LoadoutConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 51)
+var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 60)
 
 var LoadoutConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -8058,7 +8063,7 @@ var ProfileConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 66)
+var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 75)
 
 var ProfileConfigFixedKnown = []TableFixedKnownLayout{
 	{

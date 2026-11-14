@@ -644,6 +644,7 @@ const (
 	TableFixedWidenF
 	TableFixedBool
 	TableFixedTag
+	TableFixedDeadZero
 )
 
 const (
@@ -654,7 +655,13 @@ const (
 // tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
 // Meta); its Aux is the source bytes of the payload behind it. A count entry's
 // Aux is the source bytes of one element. The pre-scan reads both to know
-// which bytes are slack (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+// which bytes are slack, and holds every one of them to zero
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE). A tableFixedDeadZero entry is
+// slack the PLAN knows without reading a count or a flag: the arm bytes behind
+// a union's arm, up to the widest, under that arm's own guard (tag 0 is a guard
+// like any other), and on a lineage plan the writer's slots and units past this
+// reader's bound. It lands nothing; the pre-scan holds its Size bytes at Src
+// to zero.
 const TableFixedPresent uint8 = 1
 
 const TableFixedNoGuard uint32 = 0xFFFFFFFF
@@ -1237,7 +1244,8 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
 // with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
-// unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
+// held to zero and to nothing else (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE), by the pre-scan
+// and not here. The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
 // interior zero (mas-bandwidth/schema internal/codegen/golang/functions.go, the TString arm), so
@@ -1303,11 +1311,15 @@ func TableFixedUTF8Ok(p []byte) bool {
 // written. It walks each entry under its own guards, writes nothing and moves
 // no counter.
 //
-// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
-// SLACK RULE): the bytes past a counted array's count and under an absent
-// optional's present byte are slack, unspecified on read and never a refusal.
-// Each count and present byte it reads adds the slack behind it to dead, and an
-// entry inside dead is not asked.
+// EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE; mas-bandwidth/schema docs/rulings.json
+// fixed-dead-bytes-zero): the bytes past a counted array's count, past a text's
+// or a byte buffer's used length, under an absent optional's present byte, and
+// behind a union's arm up to the widest (every arm byte under tag 0) are slack,
+// and a byte of slack other than zero refuses the whole read wire_damaged. THE
+// CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE: slack is held to
+// zero and never asked a bool, ordinal, tag or text rule. Each count and present
+// byte it reads holds the slack behind it to zero and adds it to dead, and an
+// entry inside dead is not asked: slack inside slack is already zero.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -1336,7 +1348,12 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
-				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+				// the tail past the live count is slack, and slack is zero
+				from, to := p.Src+4+uint32(v)*p.Aux, p.Src+4+p.Size*p.Aux
+				if !TableFixedZero(src[from:to]) {
+					return TableRefuseWireDamaged.Error()
+				}
+				dead = append(dead, [2]uint32{from, to})
 			}
 		case TableFixedText:
 			v := int32(TableFixedGet32(src[p.Src:]))
@@ -1346,6 +1363,10 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			}
 			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return TableRefuseTextIllFormed.Error()
+			}
+			// the units past the used length are slack, and slack is zero
+			if !TableFixedZero(src[p.Src+4+uint32(v) : p.Src+4+capn]) {
+				return TableRefuseWireDamaged.Error()
 			}
 		case TableFixedBool:
 			// a bool or present byte other than 0 or 1 is damage (§4.5)
@@ -1357,8 +1378,19 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 					return TableRefuseWireDamaged.Error()
 				}
 				if p.Meta == TableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
-					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+					// an absent optional's payload is slack, and slack is zero
+					from, to := p.Src+k+1, p.Src+k+1+p.Aux
+					if !TableFixedZero(src[from:to]) {
+						return TableRefuseWireDamaged.Error()
+					}
+					dead = append(dead, [2]uint32{from, to})
 				}
+			}
+		case TableFixedDeadZero:
+			// slack the plan knows: behind the taken arm, under tag 0, past
+			// this reader's bound on a lineage plan
+			if !TableFixedZero(src[p.Src : p.Src+p.Size]) {
+				return TableRefuseWireDamaged.Error()
 			}
 		case TableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
@@ -1402,6 +1434,21 @@ func TableFixedDead(dead [][2]uint32, at uint32) bool {
 		}
 	}
 	return false
+}
+
+// tableFixedZero is whether every byte of a span of slack is zero
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE): eight bytes a step, ORed, with no
+// branch in the loop, then the tail a byte at a time.
+func TableFixedZero(b []byte) bool {
+	var acc uint64
+	i := 0
+	for ; i+8 <= len(b); i += 8 {
+		acc |= TableFixedGet64(b[i:])
+	}
+	for ; i < len(b); i++ {
+		acc |= uint64(b[i])
+	}
+	return acc == 0
 }
 
 type TableFixedLayoutEntry struct {
@@ -2017,4 +2064,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xc60521112fb501a8
+const Version uint64 = 0xf0fdeaea4513d790

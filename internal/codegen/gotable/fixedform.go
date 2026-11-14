@@ -552,21 +552,34 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 	*order = append(*order, st)
 }
 
+// fixedLeafCount is the number of plan entries that LAND a value, the count a
+// table is held to fixedLeafCap by.
 func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
+	return g.fixedStructEntries(st, false)
+}
+
+// fixedPlanRoom is the identity plan's scratch capacity: every landing entry
+// and every union's dead-zero entries besides (docs/SPEC-TABLES.md §3.4, THE
+// SLACK RULE), which land nothing and so never count toward the leaf cap.
+func (g *tableGen) fixedPlanRoom(st *ir.Struct) int {
+	return g.fixedStructEntries(st, true)
+}
+
+func (g *tableGen) fixedStructEntries(st *ir.Struct, dead bool) int {
 	n := 0
 	for _, f := range st.Fields {
-		n += g.fixedFieldLeafCount(f)
+		n += g.fixedFieldLeafCount(f, dead)
 	}
 	return n
 }
 
-func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
+func (g *tableGen) fixedFieldLeafCount(f *ir.Field, dead bool) int {
 	// Deprecated destinations stay uncovered so the reset image yields their
 	// declared defaults for every shape (docs/SPEC-TABLES.md §3.4).
 	if f.Deprecated {
 		return 0
 	}
-	per := g.fixedElementLeafCount(f)
+	per := g.fixedElementLeafCount(f, dead)
 	n := per
 	switch {
 	case f.KeyEnum != "":
@@ -584,16 +597,20 @@ func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
 	return n
 }
 
-func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
+func (g *tableGen) fixedElementLeafCount(f *ir.Field, dead bool) int {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return g.fixedLeafCount(r)
+			return g.fixedStructEntries(r, dead)
 		case *ir.Union:
-			n := 1
+			n := 1 // the tag
+			if dead {
+				// one dead-zero entry for ordinal 0 and one per arm, at most
+				n += 1 + len(r.Variants)
+			}
 			for _, v := range r.Variants {
 				if v.F != nil {
-					n += g.fixedFieldLeafCount(v.F)
+					n += g.fixedFieldLeafCount(v.F, dead)
 				}
 			}
 			return n
@@ -709,8 +726,30 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, DstSize: uint8(unsafe.Sizeof(%s{}.Type)), Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
 				ind, src, dst, g.offGo(f.Type.Name, "Type"), tag, f.Type.Name)
 			g.pf("%sn++\n", ind)
+			// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK
+			// RULE): under tag 0 every arm byte is slack, and under an arm the
+			// bytes behind it up to the widest are. Each is one dead-zero entry
+			// under that tag's own guard (and every tag outside it), so the
+			// pre-scan holds exactly the slack of the arm the record took.
+			widest := ir.TableFixedUnionBytes(r) - tag
+			if widest > 0 {
+				g.pf("%s{ // no arm, ordinal 0: every arm byte is slack\n", ind)
+				g.pf("%s\tout[n] = TableFixedEntry{Src: %s + %d, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedDeadZero}\n", ind, src, tag, widest)
+				g.pf("%s\tlinks[n] = append(links[n], TableFixedGuardLink{Guard: %s, Arg: 0, ArgW: %d})\n", ind, src, tag)
+				g.pf("%s\tn++\n", ind)
+				g.pf("%s}\n", ind)
+			}
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
+				taken := int64(0)
+				if v.F != nil {
+					taken = fixedFieldBytes(v.F)
+				}
+				if taken < widest {
+					g.pf("%s\tout[n] = TableFixedEntry{Src: %s + %d, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedDeadZero} // slack behind the arm\n",
+						ind, src, tag+taken, widest-taken)
+					g.pf("%s\tn++\n", ind)
+				}
 				if v.F != nil {
 					g.emitFixedArmLeaves(r, v, fmt.Sprintf("%s+%d", src, tag), dst, tabs+1)
 				}
@@ -1080,7 +1119,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	layout := fixedLayoutBytes(w.entries)
 	hash := ir.TableFixedLayoutHash(layout, st)
 	body := fixedTypeBytes(st)
-	leaves := g.fixedLeafCount(st)
+	leaves := g.fixedPlanRoom(st)
 
 	g.pf("// ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("const %sFixedBodyBytes = %d\n", st.Name, body)
