@@ -896,12 +896,11 @@ static partial class Program
         Check(UtSame(viaPlan, id),
               "arm text: a COMPILED plan lands exactly what the identity plan lands");
 
-        // A TAG PAST THE LAST ARM: None on both paths, and the identity path
-        // counts one clamped. THE COMPILED PLAN COUNTS NOTHING HERE and that
-        // is not an oversight: a plan says what a SELECTED arm does, so
-        // "no arm fired" is not an event any entry of it can see. The tag
-        // still lands None, because the prefill put None there and no entry
-        // wrote over it.
+        // A TAG PAST THE LAST ARM refuses out_of_range on the COMPILED plan
+        // exactly as on the identity one (docs/FIXED-FORM-ALGORITHM.md §4.6
+        // and its bounds-pass row): the union's None const carries the
+        // writer's arm count, and a raw tag past it names nothing the writer
+        // wrote. The record stays at its declared defaults, None included.
         {
             byte[] bad = (byte[])wire.Clone();
             int body = UtBodyAt(bad);
@@ -921,8 +920,8 @@ static partial class Program
             UT.UtRoot bent = UtCompiled(bad, r2);
             Check(bent.Pick.Type == UT.UtPickType.None,
                   "tag past the last arm: the compiled plan lands None too");
-            Check(!r2.Refused,
-                  "tag past the last arm: no entry of a plan can see an arm that did not fire");
+            Check(r2.Refused && r2.Reason == "out_of_range" && !r2.Damaged,
+                  "tag past the last arm: the compiled plan refuses out_of_range too");
         }
 
         // AN ORDINAL PAST THE LAST VARIANT: None (0) on both paths, and BOTH
