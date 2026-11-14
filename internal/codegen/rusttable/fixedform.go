@@ -353,10 +353,12 @@ use crate::*;
 		g.emitFixedScatterUnion(un)
 		g.emitFixedClampUnion(un)
 		g.emitFixedFiniteUnion(un)
+		g.emitFixedDeadUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
+		g.emitFixedDeadBody(st)
 		g.emitFixedClampBody(st)
 		g.emitFixedFiniteBody(st)
 	}
@@ -679,8 +681,9 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 	base := off
 	if f.Type.Optional {
 		// A PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
-		// §4.5), and the payload under an absent one is slack (§3.4): unspecified
-		// on read, never a refusal, so the scatter lands it at slack depth.
+		// §4.5), and the payload under an absent one is slack (§3.4): the
+		// dead-byte check already held it to zero before the scatter ran, and
+		// the scatter lands it at slack depth so no content rule runs on it.
 		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.damaged = true;\n    }\n", base)
 		g.pf("    value.%s_present = b[%d] == 1;\n", f.Name, base)
 		g.pf("    let %s_slack = u32::from(!value.%s_present);\n", f.Name, f.Name)
@@ -1200,7 +1203,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 
 	if len(lineage) > 1 {
-		planCap := max(int(body)+2*len(entries)+256, 512)
+		// The second `body` is the dead-byte checks' room (§3.4, THE SLACK
+		// RULE): each one sits on a present byte, a count word or a tag of
+		// its own, and those never overlap, so there are fewer than the
+		// record has bytes.
+		planCap := max(2*int(body)+2*len(entries)+256, 512)
 		remapCap := 1024 + 32*len(entries)
 		// THE GUARD CHAIN'S POOL CAPACITY: each union arm lays its chain down
 		// as one contiguous run of (guard, arg, argw) links, and the chain's
@@ -1505,6 +1512,16 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            }\n")
 	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
+	identityDead := "        "
+	if len(lineage) > 1 {
+		identityDead = "        if identity && "
+	} else {
+		identityDead += "if "
+	}
+	g.pf("        // EVERY DEAD BYTE IS ZERO (§3.4, THE SLACK RULE): this build's own\n")
+	g.pf("        // record is held to it here, before a byte lands; a writer's older\n")
+	g.pf("        // record is held to it by its plan's Absent, Tail and Arm entries.\n")
+	g.pf("%s!%s(&record[8..]) {\n            report.damaged = true;\n            return None;\n        }\n", identityDead, fn(st.Name, "fixed_dead"))
 	g.pf("        for h in holes {\n")
 	g.pf("            let o = h.off as usize;\n")
 	g.pf("            let z = h.size as usize;\n")

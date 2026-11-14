@@ -144,6 +144,23 @@ pub enum TableFixedOp {
     WidenF,
     /// a constant this reader's own image takes: a remapped union tag
     Const,
+    /// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE),
+    /// and these three ops are that rule on a WRITER's record. They land
+    /// nothing: each reads the writer's own bytes and marks the load damaged
+    /// when a byte of the writer's slack is not zero.
+    ///
+    /// an absent optional: when the present byte at ` + "`src`" + ` is 0, the ` + "`size`" + `
+    /// payload bytes behind it are slack
+    Absent,
+    /// a counted run: past the live count at ` + "`src`" + `, held to the writer's
+    /// bound in ` + "`size`" + `, every ` + "`aux`" + `-byte unit up to that bound is slack (a
+    /// counted array's tail, and a text's or a byte buffer's at ` + "`aux`" + ` 1)
+    Tail,
+    /// a union: the tag at ` + "`src`" + ` is ` + "`dstsize`" + ` bytes, ` + "`size`" + ` arm bytes follow it,
+    /// and the remap table at ` + "`aux`" + ` holds the writer's arm count and then
+    /// each arm's payload bytes; everything behind the taken arm (all of it
+    /// under tag 0) is slack
+    Arm,
 }
 
 /// ONE LINK OF A GUARD CHAIN (§4.1): the byte offset of a union tag, the
@@ -331,8 +348,10 @@ pub struct TableFixedReport {
     pub(crate) held: u32,
     /// THE SLACK DEPTH OF THE SCATTER (§3.4, THE SLACK RULE): non-zero while
     /// it lands bytes past a counted array's count or under an absent
-    /// optional's present byte, which are unspecified on read and never a
-    /// refusal. Zero whenever a read returns.
+    /// optional's present byte. The dead-byte check holds those to zero before
+    /// the scatter runs (a record with anything else there is refused), and
+    /// the depth keeps every content rule off them. Zero whenever a read
+    /// returns.
     pub(crate) slack: u32,
     pub damaged: bool,
     pub refused: bool,
@@ -414,9 +433,9 @@ pub fn table_fixed_hash(block: &[u8]) -> u64 {
 // payload that is not the text its kind says it is is DAMAGE and not data. ` + "`bytes(N)`" + `
 // has no content rule at all — it is bytes.
 //
-// The checks run over the USED LENGTH and over nothing else: the slack carries
-// no meaning, and reading a whole declared bound to judge bytes that mean
-// nothing is the cost this form exists to avoid.
+// The checks run over the USED LENGTH and over nothing else: the slack behind
+// it carries no text, and what it must be — zero — is the dead-byte check's
+// rule (§3.4, THE SLACK RULE), never this one's.
 
 /// Well-formed UTF-8 with no zero byte among the used bytes.
 pub fn table_utf8_valid(bytes: &[u8]) -> bool {
@@ -702,8 +721,68 @@ pub fn table_fixed_run(
                     }
                 }
             }
+            TableFixedOp::Absent => {
+                let n = p.size as usize;
+                let Some(span) = src.get(s..s + 1 + n) else {
+                    report.damaged = true;
+                    return;
+                };
+                if span[0] == 0 && !table_fixed_dead_zero(&span[1..]) {
+                    report.damaged = true;
+                    return;
+                }
+            }
+            TableFixedOp::Tail => {
+                // THE COUNT IS HELD TO THE WRITER'S BOUND before it measures
+                // anything: a count past it is out of range and the Count op
+                // beside this one already says so, so the tail is measured from
+                // the bound and never from a forged number.
+                let unit = p.aux as usize;
+                let bound = p.size as usize;
+                if src.len() < s + 4 + bound * unit {
+                    report.damaged = true;
+                    return;
+                }
+                let live = (get32(src, s) as i32).clamp(0, p.size as i32) as usize;
+                if !table_fixed_dead_zero(&src[s + 4 + live * unit..s + 4 + bound * unit]) {
+                    report.damaged = true;
+                    return;
+                }
+            }
+            TableFixedOp::Arm => {
+                let w = p.dstsize as usize;
+                let n = p.size as usize;
+                let (Some(tag), Some(arms)) = (src.get(s..s + w), src.get(s + w..s + w + n)) else {
+                    report.damaged = true;
+                    return;
+                };
+                let tag = table_fixed_tag(tag);
+                let base = p.aux as usize;
+                let count = remap.get(base).copied().map_or(0u64, u64::from);
+                // A TAG PAST THE WRITER'S ARM SET IS A FORGED TAG, and the
+                // union's None const counts it out of range; there is no taken
+                // arm to measure behind.
+                if tag <= count {
+                    let taken = if tag == 0 {
+                        0
+                    } else {
+                        remap.get(base + tag as usize).copied().map_or(0usize, usize::from)
+                    };
+                    if !table_fixed_dead_zero(arms.get(taken.min(n)..).unwrap_or(&[])) {
+                        report.damaged = true;
+                        return;
+                    }
+                }
+            }
         }
     }
+}
+
+/// True when every byte of a span of slack is zero (docs/SPEC-TABLES.md §3.4,
+/// THE SLACK RULE): a conforming writer leaves zeros there, so anything else is
+/// a record no conforming writer produced.
+pub fn table_fixed_dead_zero(b: &[u8]) -> bool {
+    b.iter().all(|&c| c == 0)
 }
 
 /// Complement of the unguarded dest writes. Guarded entries (union arms,
@@ -726,6 +805,8 @@ pub fn table_fixed_holes(
             TableFixedOp::Text => (p.dst, 4u32.saturating_add(p.size)),
             TableFixedOp::Ordinal | TableFixedOp::Widen => (p.dst, u32::from(p.dstsize)),
             TableFixedOp::WidenF => (p.dst, 8),
+            // the dead-byte checks read the writer's record and land nothing
+            TableFixedOp::Absent | TableFixedOp::Tail | TableFixedOp::Arm => continue,
         };
         if n == 0 {
             continue;
@@ -1076,6 +1157,12 @@ struct Compiler<'a> {
     // record is the WRITER's declared root size, the bound every entry's
     // source extent is held to.
     record: u32,
+    // THE DEAD-BYTE ARM TABLES ALREADY LAID DOWN, as (writer entry, table
+    // offset): a fixed array, so the compiler stays allocation-free; a union
+    // past its capacity reserves a table of its own, which costs pool and
+    // never correctness.
+    arm_tables: [(usize, u32); 64],
+    arm_tables_used: usize,
 }
 
 impl Compiler<'_> {
@@ -1083,8 +1170,13 @@ impl Compiler<'_> {
     // The run loop's own bound checks are the same arithmetic, record by
     // record; this is that arithmetic ONCE, at compile, against the writer's
     // own declared record size.
-    fn op_reach(op: TableFixedOp, size: u32) -> u64 {
+    fn op_reach(op: TableFixedOp, size: u32, aux: u32, dstsize: u8) -> u64 {
         match op {
+            // the dead-byte checks: a present byte and its payload, a count
+            // word and the writer's whole bound behind it, a tag and its arms
+            TableFixedOp::Absent => 1 + size as u64,
+            TableFixedOp::Tail => 4 + size as u64 * aux as u64,
+            TableFixedOp::Arm => dstsize as u64 + size as u64,
             // a count reads the live count word; the size lane is THIS
             // READER'S OWN BOUND, which a grown array makes larger than the
             // writer's whole record while the entry still reads four bytes
@@ -1107,7 +1199,7 @@ impl Compiler<'_> {
         // WRITER wrote down, so a layout that names a byte past root.size is
         // refused WHOLE and never partly compiled. The boundary is past and
         // not at: a layout reaching EXACTLY to root.size still compiles.
-        let mut end = e.src as u64 + Self::op_reach(e.op, e.size);
+        let mut end = e.src as u64 + Self::op_reach(e.op, e.size, e.aux, e.dstsize);
         if e.op == TableFixedOp::Const && e.aux == 0 && e.dstsize != 0 {
             // EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
             // to count a clamp past the writer's arm set. It has a source
@@ -1191,6 +1283,32 @@ impl Compiler<'_> {
         Some(out)
     }
 
+    /// THE WRITER UNION AT ` + "`ti`" + `'s ARM TABLE for the dead-byte check: its arm
+    /// count, then each arm's payload bytes (0 for a payload-free arm). One
+    /// table per writer union, remembered, so an array of unions compiled
+    /// element by element shares one rather than reserving one per element.
+    fn arm_table(&mut self, theirs: &TableFixedBlock, ti: usize) -> Option<u32> {
+        for &(at, table) in &self.arm_tables[..self.arm_tables_used] {
+            if at == ti {
+                return Some(table);
+            }
+        }
+        let te = theirs.entry(ti);
+        let table = self.reserve(te.children as usize)?;
+        let mut arm = ti + 1;
+        for j in 0..te.children as usize {
+            let a = theirs.entry(arm);
+            let taken = if a.kind == 32 { 0 } else { a.size.min(u16::MAX as u32) as u16 };
+            self.place(table, j, taken);
+            arm += theirs.subtree(arm);
+        }
+        if self.arm_tables_used < self.arm_tables.len() {
+            self.arm_tables[self.arm_tables_used] = (ti, table);
+            self.arm_tables_used += 1;
+        }
+        Some(table)
+    }
+
 }
 
 /// Compiles a plan that reads ` + "`theirs`" + `-shaped records into ` + "`mine`" + `-shaped images.
@@ -1222,6 +1340,8 @@ pub fn table_fixed_compile(
         // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
         // declared size, taken from the layout this plan is compiled against.
         record: theirs.entry(0).size,
+        arm_tables: [(0usize, 0u32); 64],
+        arm_tables_used: 0,
     };
     match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, 0, 0, 0, true, report);
     // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
@@ -1423,6 +1543,16 @@ fn compile_entry(
                 op: TableFixedOp::Copy,
                 ..TableFixedEntry::default()
             });
+            // UNDER AN ABSENT FLAG THE WRITER'S PAYLOAD IS SLACK, and slack is
+            // zero (§3.4); a payload that rode in anyway refuses the record
+            c.push(TableFixedEntry {
+                src: their_at,
+                size: te.size.saturating_sub(1),
+                guard_off: goff as u32,
+                guard_count: gcount as u8,
+                op: TableFixedOp::Absent,
+                ..TableFixedEntry::default()
+            });
             compile_entry(
                 c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, goff, gcount,
                 depth + 1, census, report,
@@ -1456,6 +1586,17 @@ fn compile_entry(
                     guard_off: goff as u32,
                     guard_count: gcount as u8,
                     op: TableFixedOp::Count,
+                    ..TableFixedEntry::default()
+                });
+                // THE WRITER'S TAIL PAST ITS LIVE COUNT IS SLACK, up to the
+                // WRITER's bound, and slack is zero (§3.4)
+                c.push(TableFixedEntry {
+                    src: their_at,
+                    size: their_n,
+                    aux: tel.size,
+                    guard_off: goff as u32,
+                    guard_count: gcount as u8,
+                    op: TableFixedOp::Tail,
                     ..TableFixedEntry::default()
                 });
             }
@@ -1547,6 +1688,24 @@ fn compile_entry(
                 } else {
                     0
                 },
+                ..TableFixedEntry::default()
+            });
+            // THE BYTES BEHIND THE WRITER'S TAKEN ARM, up to its widest, are
+            // slack, and under tag 0 every arm byte is (§3.4). The table is
+            // the writer's arm count and then each arm's payload bytes — 0 for
+            // a payload-free arm — laid down once per writer union and shared
+            // by every element an array compiles it for.
+            let Some(arms) = c.arm_table(theirs, ti) else {
+                return; // the pool is spent: the plan does not fit, by name
+            };
+            c.push(TableFixedEntry {
+                src: their_at,
+                size: te.size.saturating_sub(their_tag),
+                aux: arms,
+                guard_off: goff as u32,
+                guard_count: gcount as u8,
+                op: TableFixedOp::Arm,
+                dstsize: their_tag as u8,
                 ..TableFixedEntry::default()
             });
             let mut my_arm = mi + 1;
@@ -1672,6 +1831,17 @@ fn compile_entry(
                 guard_off: goff as u32,
                 guard_count: gcount as u8,
                 op: TableFixedOp::Text,
+                ..TableFixedEntry::default()
+            });
+            // THE BYTES PAST THE USED LENGTH ARE SLACK, up to the WRITER's
+            // declared span, and slack is zero (§3.4)
+            c.push(TableFixedEntry {
+                src: their_at,
+                size: te.size.saturating_sub(4),
+                aux: 1,
+                guard_off: goff as u32,
+                guard_count: gcount as u8,
+                op: TableFixedOp::Tail,
                 ..TableFixedEntry::default()
             });
         }
