@@ -1437,10 +1437,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
                the payload copy above laid the wire's bytes down; when the flag
                is 0 those bytes are slack and never a value, so the reader
                overwrites them with the caller's own Reset image. Aux is the
-               payload's storage offset and Size its storage bytes. */
+               payload's storage offset and Size its storage bytes. A plain
+               memcpy and not the run mover: the mover's 32-byte moves let
+               GCC's array-bounds pass form offsets past a small Reset image
+               on a size branch no entry of this op reaches, and an absent
+               payload is the cold path. */
             const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
             dst[p->dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { graphdemo_table_fixed_copy_run( dst + p->aux, defaults + p->aux, p->size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
             break;
         }
         default: break;
