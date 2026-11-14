@@ -32,6 +32,7 @@ public final class MixedEntityVariable {
     }
 
     public static final long TYPE_ID = 0x9367b84cab99cdc3L;
+    static final int GRAPH_KIND = 6;
     public static final long F_entityId = 0x23fcfd6678e36712L;
     public static final long F_posX = 0xcb4b37357667310eL;
     public static final long F_posY = 0xcb4b3835766732c1L;
@@ -230,10 +231,180 @@ public final class MixedEntityVariable {
     }
 
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
+        g.push(v, GRAPH_KIND, -2, 0, null);
+        while (g.workCount() > 0) {
+            int at = g.workCount() - 1;
+            Object value = g.workValue(at);
+            int kind = g.workKind(at);
+            int field = g.workField(at);
+            int index = g.workIndex(at);
+            Object close = g.workClose(at);
+            g.pop();
+            if (field == -1) {
+                g.setOpen(value, false);
+                continue;
+            }
+            if (field == -2) {
+                if (close != null) {
+                    g.push(close, 0, -1, 0, null);
+                }
+                if (!graphEnter(g, value, kind)) {
+                    return false;
+                }
+                continue;
+            }
+            if (!graphStep(g, value, kind, field, index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        g.push(v, GRAPH_KIND, 13, 0, null);
+        g.push(v, GRAPH_KIND, 12, 0, null);
+        g.push(v, GRAPH_KIND, 11, 0, null);
+        g.push(v, GRAPH_KIND, 10, 0, null);
+        g.push(v, GRAPH_KIND, 9, 0, null);
+        g.push(v, GRAPH_KIND, 8, 0, null);
+        g.push(v, GRAPH_KIND, 7, 0, null);
+        g.push(v, GRAPH_KIND, 6, 0, null);
+        g.push(v, GRAPH_KIND, 5, 0, null);
+        g.push(v, GRAPH_KIND, 4, 0, null);
+        g.push(v, GRAPH_KIND, 3, 0, null);
+        g.push(v, GRAPH_KIND, 2, 0, null);
+        g.push(v, GRAPH_KIND, 1, 0, null);
+        g.push(v, GRAPH_KIND, 0, 0, null);
         return true;
+    }
+
+    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {
+        switch (field) {
+            case 0:
+                {
+                    return true;
+                }
+            case 1:
+                {
+                    return true;
+                }
+            case 2:
+                {
+                    return true;
+                }
+            case 3:
+                {
+                    return true;
+                }
+            case 4:
+                {
+                    return true;
+                }
+            case 5:
+                {
+                    return true;
+                }
+            case 6:
+                {
+                    return true;
+                }
+            case 7:
+                {
+                    return true;
+                }
+            case 8:
+                {
+                    return true;
+                }
+            case 9:
+                {
+                    return true;
+                }
+            case 10:
+                {
+                    return true;
+                }
+            case 11:
+                {
+                    return true;
+                }
+            case 12:
+                {
+                    return true;
+                }
+            case 13:
+                {
+                    return true;
+                }
+            default:
+                return true;
+        }
+    }
+
+    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {
+        switch (kind) {
+            case 0:
+                return BenchBitsVariable.graphEnter(g, (BenchBitsVariable.Value) v);
+            case 1:
+                return BenchIntsVariable.graphEnter(g, (BenchIntsVariable.Value) v);
+            case 2:
+                return BenchMixedVariable.graphEnter(g, (BenchMixedVariable.Value) v);
+            case 3:
+                return BenchPacketVariable.graphEnter(g, (BenchPacketVariable.Value) v);
+            case 4:
+                return FixedTableVariable.graphEnter(g, (FixedTableVariable.Value) v);
+            case 5:
+                return MixedChatEventVariable.graphEnter(g, (MixedChatEventVariable.Value) v);
+            case 6:
+                return MixedEntityVariable.graphEnter(g, (MixedEntityVariable.Value) v);
+            case 7:
+                return MixedHitEventVariable.graphEnter(g, (MixedHitEventVariable.Value) v);
+            case 8:
+                return MixedPickupEventVariable.graphEnter(g, (MixedPickupEventVariable.Value) v);
+            case 9:
+                return MixedStatVariable.graphEnter(g, (MixedStatVariable.Value) v);
+            case 10:
+                return MixedEventVariable.graphEnter(g, (MixedEventVariable.Value) v);
+            default:
+                return false;
+        }
+    }
+
+    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {
+        switch (kind) {
+            case 0:
+                return BenchBitsVariable.graphField(g, (BenchBitsVariable.Value) v, field, index);
+            case 1:
+                return BenchIntsVariable.graphField(g, (BenchIntsVariable.Value) v, field, index);
+            case 2:
+                return BenchMixedVariable.graphField(g, (BenchMixedVariable.Value) v, field, index);
+            case 3:
+                return BenchPacketVariable.graphField(
+                        g, (BenchPacketVariable.Value) v, field, index);
+            case 4:
+                return FixedTableVariable.graphField(g, (FixedTableVariable.Value) v, field, index);
+            case 5:
+                return MixedChatEventVariable.graphField(
+                        g, (MixedChatEventVariable.Value) v, field, index);
+            case 6:
+                return MixedEntityVariable.graphField(
+                        g, (MixedEntityVariable.Value) v, field, index);
+            case 7:
+                return MixedHitEventVariable.graphField(
+                        g, (MixedHitEventVariable.Value) v, field, index);
+            case 8:
+                return MixedPickupEventVariable.graphField(
+                        g, (MixedPickupEventVariable.Value) v, field, index);
+            case 9:
+                return MixedStatVariable.graphField(g, (MixedStatVariable.Value) v, field, index);
+            case 10:
+                return MixedEventVariable.graphField(g, (MixedEventVariable.Value) v, field, index);
+            default:
+                return false;
+        }
     }
 
     public static boolean readFields(

@@ -47,6 +47,7 @@ public final class BenchMixedVariable {
     }
 
     public static final long TYPE_ID = 0xeb80cfd516eb3d5cL;
+    static final int GRAPH_KIND = 2;
     public static final long F_sequence = 0xaa38aca481f528a8L;
     public static final long F_ackSequence = 0x0dbe005c56697c3eL;
     public static final long F_ackBits = 0x9bae0da8b829ee03L;
@@ -258,23 +259,264 @@ public final class BenchMixedVariable {
     }
 
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
+        g.push(v, GRAPH_KIND, -2, 0, null);
+        while (g.workCount() > 0) {
+            int at = g.workCount() - 1;
+            Object value = g.workValue(at);
+            int kind = g.workKind(at);
+            int field = g.workField(at);
+            int index = g.workIndex(at);
+            Object close = g.workClose(at);
+            g.pop();
+            if (field == -1) {
+                g.setOpen(value, false);
+                continue;
+            }
+            if (field == -2) {
+                if (close != null) {
+                    g.push(close, 0, -1, 0, null);
+                }
+                if (!graphEnter(g, value, kind)) {
+                    return false;
+                }
+                continue;
+            }
+            if (!graphStep(g, value, kind, field, index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
-        for (int i = 0, n = v.entities.size(); i < n; i++) {
-            MixedEntityVariable.Value elem = v.entities.get(i);
-            if (elem != null) {
-                if (!MixedEntityVariable.buildGraph(g, elem)) return false;
-            }
-        }
-        for (int i = 0, n = v.stats.size(); i < n; i++) {
-            MixedStatVariable.Value elem = v.stats.get(i);
-            if (elem != null) {
-                if (!MixedStatVariable.buildGraph(g, elem)) return false;
-            }
-        }
-        if (!MixedEventVariable.buildGraph(g, v.gameEvent)) return false;
+        g.push(v, GRAPH_KIND, 26, 0, null);
+        g.push(v, GRAPH_KIND, 25, 0, null);
+        g.push(v, GRAPH_KIND, 24, 0, null);
+        g.push(v, GRAPH_KIND, 23, 0, null);
+        g.push(v, GRAPH_KIND, 22, 0, null);
+        g.push(v, GRAPH_KIND, 21, 0, null);
+        g.push(v, GRAPH_KIND, 20, 0, null);
+        g.push(v, GRAPH_KIND, 19, 0, null);
+        g.push(v, GRAPH_KIND, 18, 0, null);
+        g.push(v, GRAPH_KIND, 17, 0, null);
+        g.push(v, GRAPH_KIND, 16, 0, null);
+        g.push(v, GRAPH_KIND, 15, 0, null);
+        g.push(v, GRAPH_KIND, 14, 0, null);
+        g.push(v, GRAPH_KIND, 13, 0, null);
+        g.push(v, GRAPH_KIND, 12, 0, null);
+        g.push(v, GRAPH_KIND, 11, 0, null);
+        g.push(v, GRAPH_KIND, 10, 0, null);
+        g.push(v, GRAPH_KIND, 9, 0, null);
+        g.push(v, GRAPH_KIND, 8, 0, null);
+        g.push(v, GRAPH_KIND, 7, 0, null);
+        g.push(v, GRAPH_KIND, 6, 0, null);
+        g.push(v, GRAPH_KIND, 5, 0, null);
+        g.push(v, GRAPH_KIND, 4, 0, null);
+        g.push(v, GRAPH_KIND, 3, 0, null);
+        g.push(v, GRAPH_KIND, 2, 0, null);
+        g.push(v, GRAPH_KIND, 1, 0, null);
+        g.push(v, GRAPH_KIND, 0, 0, null);
         return true;
+    }
+
+    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {
+        switch (field) {
+            case 0:
+                {
+                    return true;
+                }
+            case 1:
+                {
+                    return true;
+                }
+            case 2:
+                {
+                    return true;
+                }
+            case 3:
+                {
+                    return true;
+                }
+            case 4:
+                {
+                    return true;
+                }
+            case 5:
+                {
+                    return true;
+                }
+            case 6:
+                {
+                    return true;
+                }
+            case 7:
+                {
+                    return true;
+                }
+            case 8:
+                {
+                    return true;
+                }
+            case 9:
+                {
+                    if (index < v.entities.size()) {
+                        MixedEntityVariable.Value elem = v.entities.get(index);
+                        if (index + 1 < v.entities.size()) {
+                            g.push(v, GRAPH_KIND, 9, index + 1, null);
+                        }
+                        if (elem != null) {
+                            g.push(elem, MixedEntityVariable.GRAPH_KIND, -2, 0, null);
+                        }
+                    }
+                    return true;
+                }
+            case 10:
+                {
+                    if (index < v.stats.size()) {
+                        MixedStatVariable.Value elem = v.stats.get(index);
+                        if (index + 1 < v.stats.size()) {
+                            g.push(v, GRAPH_KIND, 10, index + 1, null);
+                        }
+                        if (elem != null) {
+                            g.push(elem, MixedStatVariable.GRAPH_KIND, -2, 0, null);
+                        }
+                    }
+                    return true;
+                }
+            case 11:
+                {
+                    g.push(v.gameEvent, MixedEventVariable.GRAPH_KIND, -2, 0, null);
+                    return true;
+                }
+            case 12:
+                {
+                    return true;
+                }
+            case 13:
+                {
+                    return true;
+                }
+            case 14:
+                {
+                    return true;
+                }
+            case 15:
+                {
+                    return true;
+                }
+            case 16:
+                {
+                    return true;
+                }
+            case 17:
+                {
+                    return true;
+                }
+            case 18:
+                {
+                    return true;
+                }
+            case 19:
+                {
+                    return true;
+                }
+            case 20:
+                {
+                    return true;
+                }
+            case 21:
+                {
+                    return true;
+                }
+            case 22:
+                {
+                    return true;
+                }
+            case 23:
+                {
+                    return true;
+                }
+            case 24:
+                {
+                    return true;
+                }
+            case 25:
+                {
+                    return true;
+                }
+            case 26:
+                {
+                    return true;
+                }
+            default:
+                return true;
+        }
+    }
+
+    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {
+        switch (kind) {
+            case 0:
+                return BenchBitsVariable.graphEnter(g, (BenchBitsVariable.Value) v);
+            case 1:
+                return BenchIntsVariable.graphEnter(g, (BenchIntsVariable.Value) v);
+            case 2:
+                return BenchMixedVariable.graphEnter(g, (BenchMixedVariable.Value) v);
+            case 3:
+                return BenchPacketVariable.graphEnter(g, (BenchPacketVariable.Value) v);
+            case 4:
+                return FixedTableVariable.graphEnter(g, (FixedTableVariable.Value) v);
+            case 5:
+                return MixedChatEventVariable.graphEnter(g, (MixedChatEventVariable.Value) v);
+            case 6:
+                return MixedEntityVariable.graphEnter(g, (MixedEntityVariable.Value) v);
+            case 7:
+                return MixedHitEventVariable.graphEnter(g, (MixedHitEventVariable.Value) v);
+            case 8:
+                return MixedPickupEventVariable.graphEnter(g, (MixedPickupEventVariable.Value) v);
+            case 9:
+                return MixedStatVariable.graphEnter(g, (MixedStatVariable.Value) v);
+            case 10:
+                return MixedEventVariable.graphEnter(g, (MixedEventVariable.Value) v);
+            default:
+                return false;
+        }
+    }
+
+    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {
+        switch (kind) {
+            case 0:
+                return BenchBitsVariable.graphField(g, (BenchBitsVariable.Value) v, field, index);
+            case 1:
+                return BenchIntsVariable.graphField(g, (BenchIntsVariable.Value) v, field, index);
+            case 2:
+                return BenchMixedVariable.graphField(g, (BenchMixedVariable.Value) v, field, index);
+            case 3:
+                return BenchPacketVariable.graphField(
+                        g, (BenchPacketVariable.Value) v, field, index);
+            case 4:
+                return FixedTableVariable.graphField(g, (FixedTableVariable.Value) v, field, index);
+            case 5:
+                return MixedChatEventVariable.graphField(
+                        g, (MixedChatEventVariable.Value) v, field, index);
+            case 6:
+                return MixedEntityVariable.graphField(
+                        g, (MixedEntityVariable.Value) v, field, index);
+            case 7:
+                return MixedHitEventVariable.graphField(
+                        g, (MixedHitEventVariable.Value) v, field, index);
+            case 8:
+                return MixedPickupEventVariable.graphField(
+                        g, (MixedPickupEventVariable.Value) v, field, index);
+            case 9:
+                return MixedStatVariable.graphField(g, (MixedStatVariable.Value) v, field, index);
+            case 10:
+                return MixedEventVariable.graphField(g, (MixedEventVariable.Value) v, field, index);
+            default:
+                return false;
+        }
     }
 
     public static boolean readFields(
