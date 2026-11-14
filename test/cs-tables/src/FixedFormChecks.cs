@@ -1004,6 +1004,28 @@ static partial class Program
                   "slack: an unused slot lands as the wire's zero and not as some writer's leftover");
             Check(!r.Refused && !r.Damaged, "slack: a clean read moves no counter");
         }
+
+        // EVERY DEAD BYTE IS ZERO ON READ TOO (docs/SPEC-TABLES.md §3.4, THE
+        // SLACK RULE; docs/rulings.json fixed-dead-bytes-zero): one stained
+        // slack byte refuses the whole record, wire_damaged. The body is keep
+        // 4, narrow 2, renamed 4, gone 4, nested 8, then label at 22 (length,
+        // 8 units), marks at 34 (count, 4 x int32) and blob at 54 (length, 6
+        // units): label's slack starts at 26 + 2, marks' at 38 + 4, blob's at 58.
+        Check(FX1.Schema.FxRootFixedBodyBytes == 64, "slack: the body is the 64 bytes the offsets below are written against");
+        foreach ((int at, string what) in new (int, string)[] { (28, "text past its used length"), (33, "text's last unit"),
+                                                                (42, "array past its live count"), (53, "array's last slot"),
+                                                                (58, "bytes past their used length"), (63, "bytes' last unit") })
+        {
+            byte[] stained = (byte[])file.Clone();
+            stained[bodyAt + at] = 0x01;
+            FX1.FxRoot back = new FX1.FxRoot();
+            FX1.TableReport r = new FX1.TableReport();
+            FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
+            Check(FX1.Schema.FxRootFixedLoad(back, stained, plan, r) == -1, "dead byte: a stained " + what + " refuses the read");
+            Check(r.Refused && r.Reason == "wire_damaged", "dead byte: a stained " + what + " is wire_damaged, got " + r.Reason);
+            Check(back.LabelLength == 2 && back.Label[0] == (byte)'f' && back.MarksCount == 0,
+                  "dead byte: a refused read keeps nothing of the record (" + what + ")");
+        }
     }
 
     // HashOf IS THE TEST'S OWN WRITER-SIDE HASH, and the emitted runtime's no

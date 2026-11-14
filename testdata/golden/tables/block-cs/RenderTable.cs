@@ -3754,6 +3754,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderCameraFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -3787,6 +3789,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderCameraFixedFiniteBody(values[k]);
@@ -4431,6 +4440,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderShipFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -4464,6 +4475,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderShipFixedFiniteBody(values[k]);
@@ -5065,6 +5083,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderTurretFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -5098,6 +5118,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderTurretFixedFiniteBody(values[k]);
@@ -5711,6 +5738,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderMissileFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -5744,6 +5773,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderMissileFixedFiniteBody(values[k]);
@@ -6360,6 +6396,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderDynamicPropFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -6393,6 +6431,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderDynamicPropFixedFiniteBody(values[k]);
@@ -7010,6 +7055,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderStaticPropFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -7043,6 +7090,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderStaticPropFixedFiniteBody(values[k]);
@@ -7667,6 +7721,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderCosmeticPropFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -7700,6 +7756,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderCosmeticPropFixedFiniteBody(values[k]);
@@ -8299,6 +8362,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderLaserFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -8332,6 +8397,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderLaserFixedFiniteBody(values[k]);
@@ -8946,6 +9018,8 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = RenderExplosionFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -8979,6 +9053,13 @@ namespace Blockdemo
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = RenderExplosionFixedFiniteBody(values[k]);

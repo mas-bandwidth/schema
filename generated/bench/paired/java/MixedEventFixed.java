@@ -8,8 +8,9 @@ package bench;
 
 // union MixedEvent under the FIXED FORM (docs/SPEC-TABLES.md §3.4): the TAG at its
 // own storage width, then the WIDEST ARM. Tag 0 is None, as an enum's
-// ordinal 0 is; the slack behind a narrower arm is zero on write and
-// IGNORED on read, never a refusal.
+// ordinal 0 is; the slack behind a narrower arm, and every arm byte under
+// tag 0, is zero on write and HELD TO ZERO on read: a stained one refuses
+// the record (THE SLACK RULE, the load's dead-byte walk).
 public final class MixedEventFixed {
     private MixedEventFixed() {}
 

@@ -416,7 +416,9 @@ func t05CsC4(t *testing.T) {
 
 // t05CsR24 holds R24 to the emitted runtime: ill-formed text in the USED units
 // refuses by name (text_ill_formed); text is counted in bytes with the clamp in
-// units; slack is unspecified on read and not a refusal.
+// units; the text rule never reads the slack, which is held to zero by the
+// dead-byte walk instead (SPEC-TABLES §3.4, THE SLACK RULE; rulings.json
+// fixed-dead-bytes-zero).
 func t05CsR24(t *testing.T) {
 	op := t05TextOp(t)
 	ill := tableFixedWireSource
@@ -430,8 +432,10 @@ func t05CsR24(t *testing.T) {
 		t.Error("R24: bytes(N) is content-validated; bytes carries no text rule (§4.5)")
 	}
 	t05Has(t, op, "TextIllFormed(p.Meta, (uint)v, textBytes)", "the text op scopes validation to the used units (§5.8)")
-	// The copy is the whole span, and nothing validates past the used length.
-	t05Has(t, op, "textBytes = src.Slice((int)p.Src + 4, (int)p.Size)", "the copy reads the whole span; slack is unspecified on read (§4.5, SPEC-TABLES §3.4)")
+	// The copy is the whole span, and no text rule validates past the used length.
+	t05Has(t, op, "textBytes = src.Slice((int)p.Src + 4, (int)p.Size)", "the copy reads the whole span; the text rule reads the used units only (§4.5, SPEC-TABLES §3.4)")
 	t05Has(t, t05Load(t), `report.Reason = run_why;`, "the refusal is by name, the load's own path (§5.8 row 8)")
+	// The slack past the used length is zero, or the record refuses (§3.4).
+	t05Has(t, t05Load(t), `TableFixedWire.Dead(dead, at.Slice(8))`, "the load holds text slack to zero (SPEC-TABLES §3.4, THE SLACK RULE)")
 	t05Utf8Rejections(t, t05TextUtf8Arm(t))
 }

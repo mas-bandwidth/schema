@@ -121,6 +121,10 @@ type fixedDst struct {
 	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
 	counted int   // an array that carries a live count
 	arg     int   // a text field's flavour
+	// deprecated marks a field retired in place (docs/SPEC-TABLES.md §3.4,
+	// DEPRECATED SLOT): its slot is not slack, and the dead-byte walk passes
+	// it by.
+	deprecated int
 }
 
 type fixedWalk struct {
@@ -146,6 +150,11 @@ func fixedWalkRoot(st *ir.Struct) *fixedWalk {
 }
 
 func fixedWalkField(w *fixedWalk, f *ir.Field, at int64) {
+	if f.Deprecated {
+		// the field's own row, the first this walk lays, carries the mark
+		row := len(w.dst)
+		defer func() { w.dst[row].deprecated = 1 }()
+	}
 	id := ir.TableFieldWireId(f)
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
@@ -1505,8 +1514,9 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	}
 	g.pf("// union %s under the FIXED FORM (docs/SPEC-TABLES.md §3.4): the TAG at its\n", un.Name)
 	g.pf("// own storage width, then the WIDEST ARM. Tag 0 is None, as an enum's\n")
-	g.pf("// ordinal 0 is; the slack behind a narrower arm is zero on write and\n")
-	g.pf("// IGNORED on read, never a refusal.\n")
+	g.pf("// ordinal 0 is; the slack behind a narrower arm, and every arm byte under\n")
+	g.pf("// tag 0, is zero on write and HELD TO ZERO on read: a stained one refuses\n")
+	g.pf("// the record (THE SLACK RULE, the load's dead-byte walk).\n")
 	g.pf("public final class %s {\n", cls)
 	g.pf("    private %s() {}\n\n", cls)
 	g.pf("    /** the tag: None, then each arm in declared order from 1. */\n")
@@ -1740,10 +1750,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  scatter reads there is what this put there. */\n")
 	g.emitByteConstant("defaults", defaults, nil)
 
-	g.pf("    /** MY side of the layout, five lanes per entry: dest, stride, aux,\n")
-	g.pf("     *  counted, arg. A layout entry cannot carry these; the plan compiler\n")
-	g.pf("     *  lands values through them. A `bytes(N)` row is an ARRAY's: dest the\n")
-	g.pf("     *  buffer, aux the live count. */\n")
+	g.pf("    /** MY side of the layout, six lanes per entry: dest, stride, aux,\n")
+	g.pf("     *  counted, arg, deprecated. A layout entry cannot carry these; the plan\n")
+	g.pf("     *  compiler lands values through them. A `bytes(N)` row is an ARRAY's:\n")
+	g.pf("     *  dest the buffer, aux the live count. A deprecated field's slot is not\n")
+	g.pf("     *  slack, and the dead-byte walk passes it by. */\n")
 	g.pf("    public static final int[] dest = {\n")
 	g.emitDestArray(w)
 	g.pf("    };\n\n")
@@ -1926,6 +1937,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 		g.pf("            writerBounds = Lineage.bounds[pick];\n")
 	}
 	g.pf("        }\n")
+	g.pf("        final int[] dead = Lineage.dead[pick];\n")
 	g.pf("        final long recordSize = known_.recordBytes;\n")
 	g.pf("\n")
 	g.pf("        // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight\n")
@@ -1961,6 +1973,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                System.arraycopy(defaults, off, image, off, hn);\n")
 	g.pf("            }\n")
 	g.pf("            TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);\n")
+	// A SLACK BYTE THAT IS NOT ZERO refuses the whole read (§3.4, THE SLACK
+	// RULE), the writer's own slack and nothing of this reader's image.
+	g.pf("            if (!report.refused && !report.damaged && !TableFixed.deadZero(dead, data, at + 8)) {\n")
+	g.pf("                report.refuse(TableFixed.Reason.wireDamaged);\n")
+	g.pf("            }\n")
 	if entryBounds != nil {
 		g.pf("            TableFixed.clampWriterBounds(writerBounds, image, report);\n")
 	}
@@ -2061,6 +2078,10 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("    // parses a layout, and there is no cache a load can miss.\n")
 	g.pf("    private static final class Lineage {\n")
 	g.pf("        static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);\n")
+	g.pf("        // EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE):\n")
+	g.pf("        // one walk per entry, this build's own included, over the WRITER's\n")
+	g.pf("        // slack, built from the same lock bytes as the plans.\n")
+	g.pf("        static final int[][] dead = TableFixed.deadPlans(known, layout, dest);\n")
 	if hasBounds {
 		g.pf("        // the writer's bounded leaves per entry, null where the entry\n")
 		g.pf("        // bounds nothing: the compiled lane's bounds pass (§4.6).\n")
@@ -2259,7 +2280,7 @@ func (g *fixedGen) emitDestArray(w *fixedWalk) {
 		return
 	}
 	for i, d := range w.dst {
-		g.pf("        %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
+		g.pf("        %d, %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, d.deprecated, i, w.entries[i].note)
 	}
 }
 

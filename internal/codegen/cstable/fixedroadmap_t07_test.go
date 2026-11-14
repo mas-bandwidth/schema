@@ -223,11 +223,13 @@ func t07C14(t *testing.T) {
 	}
 }
 
-// t07W4: W4 [verify] "read slack unspecified" — SPEC-TABLES §3.4: "ZERO on write
-// past the count, UNSPECIFIED on read, never a refusal"; "A reader validates the
-// USED UNITS ONLY and never looks at the slack". The count op reads the count word
-// and clamps it into [0, size] counting a clamp; the run sets no Malformed from a
-// value, so slack is never a refusal.
+// t07W4: W4 [verify] "read slack is zero" — SPEC-TABLES §3.4, THE SLACK RULE
+// (docs/rulings.json fixed-dead-bytes-zero, the owner's "Every dead byte", 2026-11-10):
+// every byte past the live count is zero, and a reader refuses a record where one
+// is not. The count op reads the count word and refuses it past the plan's bound;
+// it marks nothing Malformed from a value. The slack past the count is held to
+// zero by the dead-byte walk, a check of its own (wire_damaged), and to no value
+// rule: the run never reads it as a value.
 func t07W4(t *testing.T) {
 	src := t07Src(t, t07Clamp)
 	block := t07Block(t, src, "case Count:", "case Text:")
@@ -237,8 +239,13 @@ func t07W4(t *testing.T) {
 	t07Has(t, n, `if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }`,
 		"W4 the bound is the plan's own size, and an out-of-range count refuses")
 	if strings.Contains(block, "Malformed") {
-		t.Error("W4: the run marks slack malformed; a reader validates the used units only and never looks at the slack")
+		t.Error("W4: the run marks slack malformed; slack is held to zero by the dead-byte walk, never read as a value")
 	}
+	dead := t07Block(t, src, "public static string Dead(", "public static int Fills(")
+	t07Has(t, t07Norm(dead), `case DeadTail:`, "W4 the dead-byte walk checks the units past a live count")
+	t07Has(t, t07Norm(dead), `return "wire_damaged";`, "W4 a slack byte that is not zero refuses wire_damaged")
+	t07Has(t, t07Norm(src), `string dead_why = TableFixedWire.Dead(dead, at.Slice(8));`,
+		"W4 the load runs the dead-byte walk over every record")
 }
 
 // t07W9: W9 [verify] "prefill unwritten ranges only" — §4.3: "Prefill the bytes

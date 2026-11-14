@@ -93,13 +93,15 @@ public final class TableFixed {
     /** a dest-row flavour: bytes(N) as an ARRAY of u8, not a TEXT. */
     public static final byte textBytes = 3;
 
-    // MY SIDE of the layout, five lanes per entry.
-    public static final int dstLanes = 5;
+    // MY SIDE of the layout, six lanes per entry. dstDeprecated marks a field
+    // retired in place: its slot is not slack (docs/SPEC-TABLES.md §3.4).
+    public static final int dstLanes = 6;
     public static final int dstOffset = 0;
     public static final int dstStride = 1;
     public static final int dstAux = 2;
     public static final int dstCounted = 3;
     public static final int dstArg = 4;
+    public static final int dstDeprecated = 5;
 
     // 64-, 32- and 16-bit little-endian word access into byte[] — the
     // proven-fast JVM form (VarHandle byteArrayViewVarHandle), and the same
@@ -517,7 +519,14 @@ public final class TableFixed {
         nonFiniteFloat,
         outOfRange,
         countOverBound,
-        lengthOverBound
+        lengthOverBound,
+        /**
+         * A SLACK BYTE THAT IS NOT ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+         * docs/rulings.json fixed-dead-bytes-zero): an absent optional's payload, a counted
+         * array's tail, text or bytes past the used length, or a union's arm bytes under tag 0 or
+         * behind the taken arm. Spelled wire_damaged on every wire.
+         */
+        wireDamaged
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -1396,7 +1405,7 @@ public final class TableFixed {
     private static final class Compiler {
         Entry[] plan;
         short[] remap;
-        int[] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
+        int[] dest; // MY side: six lanes per layout entry — dest, stride, aux, counted, arg, deprecated
         int count;
         int remapUsed;
         boolean overflow;
@@ -2265,6 +2274,322 @@ public final class TableFixed {
             this.unknown = unknown;
             this.why = why;
         }
+    }
+
+    // ---- EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE) ----
+    //
+    // The owner's ruling of 2026-11-10 (docs/rulings.json fixed-dead-bytes-zero): an
+    // absent optional's payload, a counted array's tail past its live count, a text's or
+    // a byte buffer's units past the used length, and a union's arm bytes under tag 0 or
+    // behind the taken arm are slack, a conforming writer leaves them zero, and a reader
+    // refuses a record where any is not. Slack is held to zero and to nothing else: no
+    // bool, range, ordinal or text rule. The walk is the WRITER's layout matched to this
+    // reader's by id, as the plan is: a field this reader does not name and a deprecated
+    // slot are not slack and are passed by.
+    //
+    // A WALK IS AN int[] OF deadLanes-WIDE CHECKS: op, the tag's width, at (the byte the
+    // check reads: a present byte, a count or used length, a union tag), from and size
+    // (the slack span; for deadTail size is the WRITER's bound in units of unit bytes and
+    // the span starts past the live count), unit, skip (the checks nested under this one,
+    // passed over when its own condition does not hold) and arg (the tag a deadArm
+    // answers to).
+    static final int deadLanes = 8;
+    static final int deadPresent = 1; // byte at is 0: [at+1, at+1+size) is zero, and the payload's checks are skipped
+    static final int deadTail = 2; // the count or used length at at: every unit past it is zero
+    static final int deadArm = 3; // the w-byte tag at at is arg: [from, from+size) is zero, and the arm's checks run
+
+    private static final class DeadCompiler {
+        int[] walk = new int[16 * deadLanes];
+        int count;
+        int[] dest;
+
+        int push(int op, int w, int at, int from, int size, int unit, int arg) {
+            if ((count + 1) * deadLanes > walk.length) {
+                walk = java.util.Arrays.copyOf(walk, walk.length * 2);
+            }
+            final int i = count * deadLanes;
+            walk[i] = op;
+            walk[i + 1] = w;
+            walk[i + 2] = at;
+            walk[i + 3] = from;
+            walk[i + 4] = size;
+            walk[i + 5] = unit;
+            walk[i + 6] = 0;
+            walk[i + 7] = arg;
+            return count++;
+        }
+
+        /** every check pushed since the one at index at is nested under it. */
+        void nest(int at) {
+            walk[at * deadLanes + 6] = count - at - 1;
+        }
+
+        int lane(int mi, int lane) {
+            final int row = mi * dstLanes + lane;
+            return (dest != null && row < dest.length) ? dest[row] : 0;
+        }
+    }
+
+    /** whether a layout subtree can hold slack at all: an array of plain scalars checks nothing per element. */
+    private static boolean hasSlack(Layout b, int i) {
+        switch (b.kind(i)) {
+            case 12:
+            case 14:
+            case 15:
+            case 35:
+                return true;
+            case 13:
+            case 16:
+                {
+                    int at2 = i + 1;
+                    final long kids = b.children(i);
+                    for (long k = 0; k < kids; k++) {
+                        if (at2 >= b.count) {
+                            return false;
+                        }
+                        if (hasSlack(b, at2)) {
+                            return true;
+                        }
+                        at2 += b.subtree(at2);
+                    }
+                    return false;
+                }
+            default:
+                return false;
+        }
+    }
+
+    private static void deadChildren(
+            DeadCompiler c, Layout theirs, int ti, int theirAt, Layout mine, int mi) {
+        final long theirKids = theirs.children(ti);
+        final long myKids = mine.children(mi);
+        int myChild = mi + 1;
+        for (long k = 0; k < myKids; k++) {
+            if (myChild >= mine.count) {
+                return;
+            }
+            final long myId = mine.id(myChild);
+            final boolean retired = c.lane(myChild, dstDeprecated) != 0;
+            int theirChild = ti + 1;
+            int theirOff = theirAt;
+            for (long j = 0; j < theirKids && !retired; j++) {
+                if (theirChild >= theirs.count) {
+                    break;
+                }
+                if (theirs.id(theirChild) == myId) {
+                    deadEntry(c, theirs, theirChild, theirOff, mine, myChild);
+                    break;
+                }
+                theirOff += (int) theirs.size(theirChild);
+                theirChild += theirs.subtree(theirChild);
+            }
+            myChild += mine.subtree(myChild);
+        }
+    }
+
+    private static void deadEntry(
+            DeadCompiler c, Layout theirs, int ti, int theirAt, Layout mine, int mi) {
+        if (ti >= theirs.count || mi >= mine.count) {
+            return;
+        }
+        final int theirKind = theirs.kind(ti);
+        final int myKind = mine.kind(mi);
+        final int theirSize = (int) theirs.size(ti);
+        final int mySize = (int) mine.size(mi);
+        // T INTO ?T: the writer carried the value bare, so there is no flag and no
+        // payload under it; the value's own slack is the writer's.
+        if (myKind == 35 && theirKind != 35) {
+            deadEntry(c, theirs, ti, theirAt, mine, mi + 1);
+            return;
+        }
+        // A WIDENED SCALAR CARRIES NO SLACK, and a kind that moved off every ladder
+        // refuses the whole lane before a record is read.
+        if (theirKind != myKind) {
+            return;
+        }
+        switch (myKind) {
+            case 35:
+                { // an absent optional's payload
+                    final int at = c.push(deadPresent, 0, theirAt, theirAt + 1, theirSize - 1, 0, 0);
+                    deadEntry(c, theirs, ti + 1, theirAt + 1, mine, mi + 1);
+                    c.nest(at);
+                    break;
+                }
+            case 13:
+                deadChildren(c, theirs, ti, theirAt, mine, mi);
+                break;
+            case 12: // a text's units past its used length
+                c.push(deadTail, 0, theirAt, 0, theirSize - 4, 1, 0);
+                break;
+            case 14:
+                { // a counted array's (and a bytes(N)'s) units past the WRITER's live count
+                    if (ti + 1 >= theirs.count || mi + 1 >= mine.count) {
+                        break;
+                    }
+                    final boolean live = c.lane(mi, dstCounted) != 0;
+                    final int theirElem = (int) theirs.size(ti + 1);
+                    final int myElem = (int) mine.size(mi + 1);
+                    final int head = live ? 4 : 0;
+                    final int theirN = theirElem != 0 && theirSize >= head ? (theirSize - head) / theirElem : 0;
+                    final int myN = myElem != 0 && mySize >= head ? (mySize - head) / myElem : 0;
+                    int at = -1;
+                    if (live) {
+                        at = c.push(deadTail, 0, theirAt, 0, theirN, theirElem, 0);
+                    }
+                    if (hasSlack(theirs, ti + 1)) {
+                        final int n = Math.min(theirN, myN);
+                        for (int i = 0; i < n; i++) {
+                            deadEntry(c, theirs, ti + 1, theirAt + head + i * theirElem, mine, mi + 1);
+                        }
+                    }
+                    if (at >= 0) {
+                        c.nest(at);
+                    }
+                    break;
+                }
+            case 16:
+                { // an enum-keyed array: every slot is live, and an element's own slack is checked
+                    if (ti + 1 >= theirs.count || mi + 1 >= mine.count) {
+                        break;
+                    }
+                    final long theirKeys = theirs.children(ti + 1);
+                    final long myKeys = mine.children(mi + 1);
+                    final int theirElemAt = ti + 1 + theirs.subtree(ti + 1);
+                    final int myElemAt = mi + 1 + mine.subtree(mi + 1);
+                    if (theirElemAt >= theirs.count || myElemAt >= mine.count || !hasSlack(theirs, theirElemAt)) {
+                        break;
+                    }
+                    final int theirElem = (int) theirs.size(theirElemAt);
+                    for (long k = 0; k < myKeys; k++) {
+                        final long keyId = mine.id(mi + 2 + (int) k);
+                        for (long j = 0; j < theirKeys; j++) {
+                            if (theirs.id(ti + 2 + (int) j) != keyId) {
+                                continue;
+                            }
+                            deadEntry(c, theirs, theirElemAt, theirAt + (int) j * theirElem, mine, myElemAt);
+                            break;
+                        }
+                    }
+                    break;
+                }
+            case 15:
+                { // a union's arm bytes under tag 0, and behind the taken arm
+                    final int theirTag = theirs.tagBytes(ti);
+                    final int arms = theirSize - theirTag;
+                    final int w = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
+                    c.push(deadArm, w, theirAt, theirAt + theirTag, arms, 0, 0);
+                    final long theirArms = theirs.children(ti);
+                    final long myArms = mine.children(mi);
+                    int theirArm = ti + 1;
+                    for (long j = 0; j < theirArms; j++) {
+                        if (theirArm >= theirs.count) {
+                            break;
+                        }
+                        final int taken = theirs.kind(theirArm) == 32 ? 0 : (int) Math.min(theirs.size(theirArm), arms);
+                        final int at = c.push(deadArm, w, theirAt, theirAt + theirTag + taken, arms - taken, 0, (int) (j + 1));
+                        // the taken arm's own slack, when this reader names the arm
+                        final long armId = theirs.id(theirArm);
+                        int myArm = mi + 1;
+                        for (long k = 0; k < myArms; k++) {
+                            if (myArm >= mine.count) {
+                                break;
+                            }
+                            if (mine.id(myArm) == armId) {
+                                deadEntry(c, theirs, theirArm, theirAt + theirTag, mine, myArm);
+                                break;
+                            }
+                            myArm += mine.subtree(myArm);
+                        }
+                        c.nest(at);
+                        theirArm += theirs.subtree(theirArm);
+                    }
+                    break;
+                }
+            default:
+                break;
+        }
+    }
+
+    /**
+     * THE DEAD-BYTE WALK PER LINEAGE ENTRY, the reader's own included, laid down from the lock's
+     * layout bytes at class initialization beside the plans. Like lineagePlans it never throws: an
+     * entry that does not parse walks nothing, and its plan's lane refuses it by name.
+     */
+    public static int[][] deadPlans(KnownLayout[] known, byte[] mine, int[] dest) {
+        final int[][] out = new int[known.length][];
+        final Layout me = parse(mine, 0, mine.length, new Report());
+        for (int i = 0; i < known.length; i++) {
+            out[i] = new int[0];
+            final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
+            if (theirs == null || me == null) {
+                continue;
+            }
+            final DeadCompiler c = new DeadCompiler();
+            c.dest = dest;
+            deadChildren(c, theirs, 0, 0, me, 0);
+            out[i] = java.util.Arrays.copyOf(c.walk, c.count * deadLanes);
+        }
+        return out;
+    }
+
+    private static boolean zero(byte[] src, int from, int size) {
+        for (int i = 0; i < size; i++) {
+            if (src[from + i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * RUN ONE DEAD-BYTE WALK over one record body: true when every slack byte is zero. A count or
+     * a length past its bound is not this walk's to name -- the read refuses it by its own name --
+     * so the checks under it are passed over.
+     */
+    public static boolean deadZero(int[] walk, byte[] src, int srcAt) {
+        int i = 0;
+        while (i * deadLanes < walk.length) {
+            final int o = i * deadLanes;
+            i++;
+            final int at = srcAt + walk[o + 2];
+            switch (walk[o]) {
+                case deadPresent:
+                    if (src[at] != 0) {
+                        break;
+                    }
+                    if (!zero(src, at + 1, walk[o + 4])) {
+                        return false;
+                    }
+                    i += walk[o + 6];
+                    break;
+                case deadTail:
+                    {
+                        final int n = get32(src, at);
+                        final int bound = walk[o + 4];
+                        final int unit = walk[o + 5];
+                        if (n < 0 || n > bound) {
+                            i += walk[o + 6];
+                            break;
+                        }
+                        if (!zero(src, at + 4 + n * unit, (bound - n) * unit)) {
+                            return false;
+                        }
+                        break;
+                    }
+                case deadArm:
+                    if (tagAt(src, at, walk[o + 1]) != (walk[o + 7] & 0xFFFFFFFFL)) {
+                        i += walk[o + 6];
+                        break;
+                    }
+                    if (!zero(src, srcAt + walk[o + 3], walk[o + 4])) {
+                        return false;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        return true;
     }
 
     /**

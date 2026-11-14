@@ -777,6 +777,15 @@ func (b *fixedRootBuild) pushPayloadBlockOnly(f *ir.Field, owner string, id uint
 }
 
 func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg uint64) {
+	if f.Deprecated {
+		// A SLOT RETIRED IN PLACE IS NOT SLACK (docs/SPEC-TABLES.md §3.4): the
+		// field's own row, the first this walk lays, carries the mark the
+		// dead-byte walk passes it by.
+		row := len(b.dstRows)
+		defer func() {
+			b.dstRows[row] = strings.TrimSuffix(b.dstRows[row], ")") + ", 1)"
+		}()
+	}
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	id := ir.TableFieldWireId(f)
@@ -2122,6 +2131,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
+	// EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE): the
+	// walk this endpoint selected, the identity entry's included, compiled from
+	// the writer's layout in the static initializer beside the plan.
+	g.pf("    TableFixedLineagePlan deadLane = %sFixedLineagePlans[pick];\n", name)
+	g.pf("    ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);\n")
 	// A ROOT READ IS ONE RECORD: handed room for exactly one value, a file of
 	// none holds no value to read, and the engine answers it truncated.
 	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0 || (rest == 0 && values.Length == 1))\n    {\n")
@@ -2159,6 +2173,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (run_why != null)\n        {\n")
 	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
 	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            return -1;\n        }\n")
+	// A SLACK BYTE THAT IS NOT ZERO refuses the whole read, the same way a run
+	// refusal does: nothing of the batch is kept (§3.4, THE SLACK RULE).
+	g.pf("        string dead_why = TableFixedWire.Dead(dead, at.Slice(8));\n")
+	g.pf("        if (dead_why != null)\n        {\n")
+	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
+	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs

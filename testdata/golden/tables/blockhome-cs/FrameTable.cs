@@ -1348,6 +1348,8 @@ namespace Blockhome
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = PartRowFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -1381,6 +1383,13 @@ namespace Blockhome
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = PartRowFixedFiniteBody(values[k]);
@@ -14242,6 +14251,8 @@ namespace Blockhome
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = PartFrameFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -14275,6 +14286,13 @@ namespace Blockhome
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = PartFrameFixedFiniteBody(values[k]);

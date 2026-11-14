@@ -219,10 +219,10 @@ func t06W5(t *testing.T) {
 // behind the u32 count, stride the element width, aux where the count lands,
 // counted, flavour bytes — and not the TEXT row (dest the length, aux the
 // buffer). The emitted row for the single bytes(6) field is dest=4, stride=1,
-// aux=0, counted=1, arg=bytes(3).
+// aux=0, counted=1, arg=bytes(3), deprecated=0.
 func t06W8(t *testing.T) {
 	src := string(t06Files(t, t06Bytes)["TFixed.java"])
-	t06Has(t, src, "4, 1, 0, 1, 3, // 1 blob",
+	t06Has(t, src, "4, 1, 0, 1, 3, 0, // 1 blob",
 		"W8 the bytes(N) dst row: element base 4, stride 1, count aux 0, counted, bytes flavour")
 }
 

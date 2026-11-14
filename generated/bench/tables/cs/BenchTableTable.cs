@@ -382,6 +382,8 @@ namespace Benchtable
     // TableFixedDst is MY side of the layout walk: one row per entry of my own layout,
     // carrying the storage facts a layout entry cannot: destination slot index, array
     // stride in slots, auxiliary slot index, counted flag, and text flavour.
+    // Deprecated marks a field retired in place (docs/SPEC-TABLES.md §3.4,
+    // DEPRECATED SLOT): its slot is not slack, and the dead-byte walk passes it by.
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct TableFixedDst
     {
@@ -390,15 +392,39 @@ namespace Benchtable
         public uint Aux;
         public byte Counted;
         public byte Arg;
+        public byte Deprecated;
 
-        public TableFixedDst(uint dst, uint stride, uint aux, byte counted, byte arg)
+        public TableFixedDst(uint dst, uint stride, uint aux, byte counted, byte arg, byte deprecated = 0)
         {
             Dst = dst;
             Stride = stride;
             Aux = aux;
             Counted = counted;
             Arg = arg;
+            Deprecated = deprecated;
         }
+    }
+
+    // ONE CHECK OF THE DEAD-BYTE WALK (docs/SPEC-TABLES.md §3.4, THE SLACK RULE;
+    // docs/rulings.json fixed-dead-bytes-zero): every byte of slack in a fixed
+    // record is zero, or the record is refused wire_damaged. At is the byte the
+    // check reads (an optional's present byte, a count or used length, a union
+    // tag of W bytes); From and Size are the slack span it holds to zero (for a
+    // DeadTail, Size is the WRITER's bound in units of Unit bytes, and the span
+    // starts past the live count). Skip is the number of entries nested under
+    // this one — a present payload's, the elements', a taken arm's — which are
+    // passed over when the check's own condition does not hold.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct TableFixedDead
+    {
+        public uint At;
+        public uint From;
+        public uint Size;
+        public uint Unit;
+        public uint Skip;
+        public ulong Arg;
+        public byte Op;
+        public byte W;
     }
 
     // TableFixedLayoutEntry is one seventeen-byte entry: an id, a constant size,
@@ -502,6 +528,12 @@ namespace Benchtable
         public int Unknown;
         public int KindChanged;
         public string Why;
+        // THE DEAD-BYTE WALK of this entry (§3.4, THE SLACK RULE), compiled from
+        // the WRITER's layout beside the plan, the identity entry's included: the
+        // slack is the writer's, past its count and length, behind its arm, under
+        // its absent flag.
+        public TableFixedDead[] Dead = Array.Empty<TableFixedDead>();
+        public int DeadCount;
     }
 
     public readonly struct TableFixedSlot<T>
@@ -6851,15 +6883,19 @@ namespace Benchtable
                 {
                     TableFixedLineagePlan lane = new TableFixedLineagePlan();
                     out_[i] = lane;
-                    if (known[i].Hash == own) { continue; }
                     if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
                     {
                         // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
                         // and not a wire event (§5.9 #8): the reader still owes a
-                        // name rather than a crash.
+                        // name rather than a crash. The reader's own entry is the
+                        // build's own layout, which parses by construction.
                         lane.Why = "layout_malformed";
                         continue;
                     }
+                    // THE DEAD-BYTE WALK, every entry, the reader's own included: the
+                    // identity read holds the same slack to zero as a lineage read.
+                    lane.Dead = DeadPlan(parsed, my_layout, dst, out lane.DeadCount);
+                    if (known[i].Hash == own) { continue; }
                     for (int room = 256; ; room *= 4)
                     {
                         TableFixedEntry[] buffer = new TableFixedEntry[room];
@@ -6899,6 +6935,277 @@ namespace Benchtable
                     }
                 }
                 return out_;
+            }
+
+            // ---- EVERY DEAD BYTE IS ZERO (docs/SPEC-TABLES.md §3.4, THE SLACK RULE) ----
+            //
+            // The owner's ruling of 2026-11-10 (docs/rulings.json fixed-dead-bytes-zero):
+            // an absent optional's payload, a counted array's tail past its live count,
+            // a text's or a byte buffer's units past the used length, and a union's arm
+            // bytes under tag 0 or behind the taken arm are slack, a conforming writer
+            // leaves them zero, and a reader refuses a record where any is not. Slack is
+            // held to zero and to nothing else: no bool, range, ordinal or text rule.
+            // The walk is the WRITER's layout matched to this reader's by id, as the
+            // plan is: a field this reader does not name and a deprecated slot are not
+            // slack and are passed by.
+            public const byte DeadPresent = 1; // byte At is 0: [At+1, At+1+Size) is zero, and the payload's entries are skipped
+            public const byte DeadTail = 2;    // the count or used length at At, of Size units of Unit bytes: every unit past it is zero
+            public const byte DeadArm = 3;     // the W-byte tag at At is Arg: [From, From+Size) is zero, and the arm's entries run
+
+            private struct DeadCompiler
+            {
+                public TableFixedDead[] Plan;
+                public int Count;
+
+                public int Push(in TableFixedDead d)
+                {
+                    if (Count == Plan.Length) { Array.Resize(ref Plan, Plan.Length * 2); }
+                    Plan[Count] = d;
+                    return Count++;
+                }
+
+                // Nest closes the entry at 'at': every entry pushed since is under it.
+                public void Nest(int at)
+                {
+                    Plan[at].Skip = (uint)(Count - at - 1);
+                }
+            }
+
+            // HasSlack is whether a layout subtree can hold slack at all: an array of
+            // plain scalars compiles no check per element, and a big one compiles none.
+            private static bool HasSlack(TableFixedLayoutView b, int i)
+            {
+                TableFixedLayoutEntry e = EntryAt(b, i);
+                switch (e.Kind)
+                {
+                    case 12: case 14: case 15: case 35: return true;
+                    case 13: case 16:
+                        {
+                            int at = i + 1;
+                            for (uint k = 0; k < e.Children; ++k)
+                            {
+                                if (at >= b.Count) { return false; }
+                                if (HasSlack(b, at)) { return true; }
+                                at += Subtree(b, at);
+                            }
+                            return false;
+                        }
+                }
+                return false;
+            }
+
+            // DeadPlan compiles the dead-byte walk of a writer's layout against this
+            // reader's. It runs in the type's static initializer beside LineagePlans
+            // and MUST NOT THROW for the same reason: every index is checked against
+            // the layouts ParseLayout already held to their own sizes.
+            public static TableFixedDead[] DeadPlan(
+                TableFixedLayoutView theirs,
+                ReadOnlySpan<byte> my_layout,
+                ReadOnlySpan<TableFixedDst> dst,
+                out int count)
+            {
+                count = 0;
+                if (!ParseLayout(my_layout, out TableFixedLayoutView mine)) { return Array.Empty<TableFixedDead>(); }
+                DeadCompiler c = new DeadCompiler { Plan = new TableFixedDead[16], Count = 0 };
+                DeadChildren(ref c, theirs, 0, 0, mine, 0, dst);
+                count = c.Count;
+                return c.Plan;
+            }
+
+            private static void DeadChildren(
+                ref DeadCompiler c,
+                TableFixedLayoutView theirs, int ti, uint their_at,
+                TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst)
+            {
+                TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                TableFixedLayoutEntry me = EntryAt(mine, mi);
+                int my_child = mi + 1;
+                for (uint k = 0; k < me.Children; ++k)
+                {
+                    if (my_child >= mine.Count) { return; }
+                    TableFixedLayoutEntry mc = EntryAt(mine, my_child);
+                    bool retired = my_child < dst.Length && dst[my_child].Deprecated != 0;
+                    int their_child = ti + 1;
+                    uint their_off = their_at;
+                    for (uint j = 0; j < te.Children && !retired; ++j)
+                    {
+                        if (their_child >= theirs.Count) { break; }
+                        TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
+                        if (tc.Id == mc.Id)
+                        {
+                            DeadEntry(ref c, theirs, their_child, their_off, mine, my_child, dst);
+                            break;
+                        }
+                        their_off += tc.Size;
+                        their_child += Subtree(theirs, their_child);
+                    }
+                    my_child += Subtree(mine, my_child);
+                }
+            }
+
+            private static void DeadEntry(
+                ref DeadCompiler c,
+                TableFixedLayoutView theirs, int ti, uint their_at,
+                TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst)
+            {
+                if (ti >= theirs.Count || mi >= mine.Count || mi >= dst.Length) { return; }
+                TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                TableFixedLayoutEntry me = EntryAt(mine, mi);
+                TableFixedDst d = dst[mi];
+                // A WIDENED SCALAR CARRIES NO SLACK, and a kind that moved off every
+                // ladder refuses the whole lane before a record is read.
+                if (te.Kind != me.Kind && me.Kind != 35) { return; }
+                // T INTO ?T: the writer carried the value bare, so there is no flag and
+                // no payload under it; the value's own slack is the writer's.
+                if (me.Kind == 35 && te.Kind != 35)
+                {
+                    DeadEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst);
+                    return;
+                }
+                switch (me.Kind)
+                {
+                    case 35: // an absent optional's payload
+                        {
+                            int at = c.Push(new TableFixedDead { Op = DeadPresent, At = their_at, Size = te.Size - 1u });
+                            DeadEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst);
+                            c.Nest(at);
+                            break;
+                        }
+                    case 13:
+                        {
+                            DeadChildren(ref c, theirs, ti, their_at, mine, mi, dst);
+                            break;
+                        }
+                    case 12: // a text's units past its used length
+                        {
+                            c.Push(new TableFixedDead { Op = DeadTail, At = their_at, Size = te.Size - 4u, Unit = 1 });
+                            break;
+                        }
+                    case 14:
+                        {
+                            if (d.Arg == TextBytes)
+                            {
+                                // a byte buffer's units past its used length
+                                c.Push(new TableFixedDead { Op = DeadTail, At = their_at, Size = te.Size - 4u, Unit = 1 });
+                                break;
+                            }
+                            if (ti + 1 >= theirs.Count || mi + 1 >= mine.Count) { break; }
+                            TableFixedLayoutEntry tel = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mel = EntryAt(mine, mi + 1);
+                            uint head = d.Counted != 0 ? 4u : 0u;
+                            uint their_n = tel.Size != 0 && te.Size >= head ? (te.Size - head) / tel.Size : 0u;
+                            uint my_n = mel.Size != 0 && me.Size >= head ? (me.Size - head) / mel.Size : 0u;
+                            int at = -1;
+                            if (d.Counted != 0)
+                            {
+                                // a counted array's elements past the WRITER's live count
+                                at = c.Push(new TableFixedDead { Op = DeadTail, At = their_at, Size = their_n, Unit = tel.Size });
+                            }
+                            if (HasSlack(theirs, ti + 1))
+                            {
+                                uint n = Math.Min(their_n, my_n);
+                                for (uint i = 0; i < n; ++i)
+                                {
+                                    DeadEntry(ref c, theirs, ti + 1, their_at + head + i * tel.Size, mine, mi + 1, dst);
+                                }
+                            }
+                            if (at >= 0) { c.Nest(at); }
+                            break;
+                        }
+                    case 16: // an enum-keyed array: every slot is live, and an element's own slack is checked
+                        {
+                            if (ti + 1 >= theirs.Count || mi + 1 >= mine.Count) { break; }
+                            TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
+                            int tel = ti + 1 + Subtree(theirs, ti + 1);
+                            int mel = mi + 1 + Subtree(mine, mi + 1);
+                            if (tel >= theirs.Count || mel >= mine.Count || !HasSlack(theirs, tel)) { break; }
+                            TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                            for (uint k = 0; k < mkey.Children; ++k)
+                            {
+                                ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
+                                for (uint j = 0; j < tkey.Children; ++j)
+                                {
+                                    if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
+                                    DeadEntry(ref c, theirs, tel, their_at + j * tee.Size, mine, mel, dst);
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    case 15: // a union's arm bytes under tag 0, and behind the taken arm
+                        {
+                            uint their_tag = TagBytes(theirs, ti);
+                            uint arms = te.Size - their_tag;
+                            byte w = (byte)(their_tag >= 1u && their_tag <= 8u ? their_tag : 1u);
+                            c.Push(new TableFixedDead { Op = DeadArm, At = their_at, W = w, Arg = 0, From = their_at + their_tag, Size = arms });
+                            int their_arm = ti + 1;
+                            for (uint j = 0; j < te.Children; ++j)
+                            {
+                                if (their_arm >= theirs.Count) { break; }
+                                TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
+                                uint taken = ta.Kind == 32 ? 0u : Math.Min(ta.Size, arms);
+                                int at = c.Push(new TableFixedDead { Op = DeadArm, At = their_at, W = w, Arg = j + 1, From = their_at + their_tag + taken, Size = arms - taken });
+                                // the taken arm's own slack, when this reader names the arm
+                                int my_arm = mi + 1;
+                                for (uint k = 0; k < me.Children; ++k)
+                                {
+                                    if (my_arm >= mine.Count) { break; }
+                                    if (EntryAt(mine, my_arm).Id == ta.Id)
+                                    {
+                                        DeadEntry(ref c, theirs, their_arm, their_at + their_tag, mine, my_arm, dst);
+                                        break;
+                                    }
+                                    my_arm += Subtree(mine, my_arm);
+                                }
+                                c.Nest(at);
+                                their_arm += Subtree(theirs, their_arm);
+                            }
+                            break;
+                        }
+                    default: break;
+                }
+            }
+
+            // Dead runs the dead-byte walk over one record body, and answers
+            // wire_damaged at the first slack byte that is not zero. A count or a
+            // length past its bound is not this walk's to name: the plan's run refuses
+            // it by its own name, so the check under it is passed over.
+            public static string Dead(ReadOnlySpan<TableFixedDead> plan, ReadOnlySpan<byte> src)
+            {
+                int i = 0;
+                while (i < plan.Length)
+                {
+                    ref readonly TableFixedDead d = ref plan[i];
+                    i++;
+                    switch (d.Op)
+                    {
+                        case DeadPresent:
+                            {
+                                if (src[(int)d.At] != 0) { break; }
+                                if (src.Slice((int)d.At + 1, (int)d.Size).IndexOfAnyExcept((byte)0) >= 0) { return "wire_damaged"; }
+                                i += (int)d.Skip;
+                                break;
+                            }
+                        case DeadTail:
+                            {
+                                int n = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)d.At));
+                                if (n < 0 || (uint)n > d.Size) { i += (int)d.Skip; break; }
+                                int from = (int)d.At + 4 + n * (int)d.Unit;
+                                int size = ((int)d.Size - n) * (int)d.Unit;
+                                if (src.Slice(from, size).IndexOfAnyExcept((byte)0) >= 0) { return "wire_damaged"; }
+                                break;
+                            }
+                        case DeadArm:
+                            {
+                                if (TagAt(src, d.At, d.W) != d.Arg) { i += (int)d.Skip; break; }
+                                if (src.Slice((int)d.From, (int)d.Size).IndexOfAnyExcept((byte)0) >= 0) { return "wire_damaged"; }
+                                break;
+                            }
+                        default: break;
+                    }
+                }
+                return null;
             }
 
             public static int Fills(
@@ -7319,8 +7626,9 @@ namespace Benchtable
             // TextIllFormed reports whether a text payload's USED units are the text
             // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
             // with no zero byte for string. bytes(N) carries no text rule at all, and
-            // slack past the used bytes is unspecified and never a refusal
-            // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
+            // slack past the used bytes is held to zero by the dead-byte walk and by
+            // no text rule (docs/SPEC-TABLES.md §3.4, THE SLACK RULE). The used
+            // argument is the clamped length.
             public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
             {
                 switch (meta)
@@ -9625,6 +9933,8 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = TableEntityFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -9658,6 +9968,13 @@ namespace Benchtable
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (!TableEntityFixedClamp(values[k], report)) { refused = true; }
@@ -10160,6 +10477,8 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = TableStatFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -10193,6 +10512,13 @@ namespace Benchtable
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (!TableStatFixedClamp(values[k], report)) { refused = true; }
@@ -12157,6 +12483,8 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
+            TableFixedLineagePlan deadLane = TableMixedFixedLineagePlans[pick];
+            ReadOnlySpan<TableFixedDead> dead = new ReadOnlySpan<TableFixedDead>(deadLane.Dead, 0, deadLane.DeadCount);
             if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -12190,6 +12518,13 @@ namespace Benchtable
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string dead_why = TableFixedWire.Dead(dead, at.Slice(8));
+                if (dead_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = TableMixedFixedFiniteBody(values[k]);
