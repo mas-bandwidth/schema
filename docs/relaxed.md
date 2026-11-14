@@ -82,13 +82,6 @@ listed case that passes fails the leg until its line is removed.
 
 ## Negative controls
 
-- `relax/luau-fuzz-b-design`: two plants of
-  `test/conformance/luau/wire-fuzz-vectors-negative-control` are commented
-  out. `list_count_cross_length` cannot be caught: the driver's size pre-check
-  refuses the count before the load's own cap check (0 divergences in 222k
-  mutants). `region_align_extent_uint128` only moves the driver-reported size,
-  which the spec does not compare. Real fix: a design call for the maintainer,
-  retire the two or compare driver size again. WIP: none (PR 3283 found it).
 - `relax/nc-plan-write-refusal-js-lobster`: the JavaScript (PR 3291) and
   Lobster (PR 3294) write-contract controls landed with no group in
   `make/negative-controls.json`, which red the plan check; they are placed in
