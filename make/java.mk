@@ -1809,7 +1809,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
 	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-java: tables-java-wire-fuzz-negative-control
@@ -1926,19 +1926,26 @@ test-java: tables-java-keyed-count-negative-control
 # THE NODE-REFERENCE BOUND'S CONTROL (docs/SPEC-TABLES.md §3.1, §4): a node
 # reference ABOVE the entry count is an unreadable reference, which is damage,
 # in every occurrence that carries it. A scratch copy of the generated units
-# whose check is planted out must read pointer_index_past_numbering clean
-# (streamdemo.Feed: the first of two `parts` occurrences names node 2 of an
-# empty numbering), and the replay must go red in both arms. Its companion
-# vector, pointer_tail_unreadable_clean, holds an unreadable LEB in the CLAMPED
-# TAIL past `parts`' bound: the tail is stepped over by the field's length and
-# stays opaque, so it is no damage and the gate replays it clean.
+# whose check is planted out, in the wire-alone walk (WireCheck.graph) and in
+# the decode's judge and resolve, must read pointer_index_past_table clean
+# (graphdemo.Scene: graph_shared with one pointer naming node 6 of a table of
+# three, the enumerated index pass's mutant and its one defect), and the replay
+# must go red in both arms. The strict read refuses pointer_index_past_numbering
+# for its repeated `parts` id before any index is judged, so it cannot show this
+# fault and stays in the gate's replays only. Its companion vector,
+# pointer_tail_unreadable_clean, holds an unreadable LEB in the CLAMPED TAIL past
+# `parts`' bound: the tail is stepped over by the field's length and stays
+# opaque, so it is no damage and the gate replays it clean.
 JAVA_NODE_INDEX_SABOTAGE := build/java-node-index-sabotage
 .PHONY: tables-java-node-index-negative-control
 tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
-		sed 's/report\.malformed = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed -e 's/report\.damaged = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' \
+			-e 's/return damage(); \/\/ a reference above the entry count is damage/continue; \/\/ SABOTAGED node index check/' \
+			-e 's/int t = (int) index - 1;/int t = (int) index - 1; if (t < 0 || t >= n) { continue; } \/\/ SABOTAGED node index walk/' \
+			"$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
@@ -1947,13 +1954,13 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@for arm in "" --retain; do \
 		if ./build/conformance-harness wire-fuzz $$arm \
 				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_NODE_INDEX_SABOTAGE)/classes TablesWireFuzz" \
-				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_numbering.bin --unit streamdemo --root Feed \
+				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_table.bin --unit graphdemo --root Scene \
 				--failed $(JAVA_NODE_INDEX_SABOTAGE)/failed.bin > $(JAVA_NODE_INDEX_SABOTAGE)/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: a node index past the numbering, unjudged, left the $$arm replay green"; exit 1; \
 		fi; \
-		grep -q 'damaged load' $(JAVA_NODE_INDEX_SABOTAGE)/log || { cat $(JAVA_NODE_INDEX_SABOTAGE)/log; exit 1; }; \
+		grep -q 'read acceptance differs: the leg says true, the oracle says false' $(JAVA_NODE_INDEX_SABOTAGE)/log || { cat $(JAVA_NODE_INDEX_SABOTAGE)/log; exit 1; }; \
 	done
-	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged load clean in both arms'
+	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged wire clean in both arms'
 
 test-java: tables-java-node-index-negative-control
 
@@ -1969,7 +1976,7 @@ tables-java-map-key-damage-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_MAP_KEY_SABOTAGE) && mkdir -p $(JAVA_MAP_KEY_SABOTAGE)/generated $(JAVA_MAP_KEY_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_KEY_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/*Variable.java; do \
-		sed 's/if (r\.fail || report\.malformed) return;/if (r.fail) return; \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's/if (r\.fail || report\.damaged) return;/if (r.fail) return; \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED map key damage' $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/CellsVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java map-key sabotage did not apply'; exit 1; }

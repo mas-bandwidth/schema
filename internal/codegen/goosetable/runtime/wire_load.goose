@@ -1584,6 +1584,9 @@ fn scan_nodes(c: LoadCtx&, payload: Rd) -> bool {
         let len, lg = leb(c, r);
         if !lg || !fits(r, len) { return false; }
         let type_id, named = idof(c, ref);
+        // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+        // anywhere but its own transport. The two blob ids are lawful types.
+        if type_id == NodeWireId || type_id == BuildVersionWireId || type_id == VocabularyWireId { return false; }
         c.nodes.push(LoadNode { tab: -1, blob: 0, off: r.off, len: len as! i64, val: -1, named: false });
         // the type id rides in val's place until pass one names it
         c.nodes[c.nodes.len - 1].val = type_id as! i64;
