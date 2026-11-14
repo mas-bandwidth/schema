@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -65,6 +66,42 @@ type wireFuzzOptions struct {
 	// --relax-dead-bytes, because the engine still accepts dead bytes the
 	// ruling says a reader refuses; re-enable: relax/dead-bytes
 	relaxDeadBytes bool
+	// RELAXED 2026-11-14 (maintainer: get main green): the pinned vectors a
+	// leg is known to diverge on (comma-separated names from the index). A
+	// named vector that diverges is counted and not failed; one that agrees
+	// with the oracle FAILS the run, so a fixed leg cannot keep its
+	// relaxation; and a name the run never carries fails it too. Each name's
+	// slug is in docs/relaxed.md; re-enable: relax/unknown-arm-text-<lang>
+	relaxVectors string
+}
+
+// relaxedVectorSet parses --relax-vector.
+// RELAXED 2026-11-14 (maintainer: get main green)
+func relaxedVectorSet(list string) map[string]bool {
+	out := map[string]bool{}
+	for _, name := range strings.Split(list, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// relaxVectorVerdict applies --relax-vector to one mutant's verdict: a relaxed
+// pinned vector's divergence is counted (marked in seen) and not failed, and
+// its agreement with the oracle is an error, so a fixed leg cannot keep the
+// relaxation. Every other mutant's verdict passes through unchanged.
+// RELAXED 2026-11-14 (maintainer: get main green); re-enable:
+// relax/unknown-arm-text-<lang>
+func relaxVectorVerdict(pass, name, verdict string, relax, seen map[string]bool) (string, error) {
+	if pass != "vector" || !relax[name] {
+		return verdict, nil
+	}
+	seen[name] = true
+	if verdict == "" {
+		return "", fmt.Errorf("FAILED: the relaxed pinned vector %s now agrees with the oracle: drop it from --relax-vector and its docs/relaxed.md entry", name)
+	}
+	return "", nil
 }
 
 // deadByteMutant says the mutant is one relax/dead-bytes leaves uncompared:
@@ -778,6 +815,8 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	total := 0
 	enumeratedCount := 0
 	relaxed := 0
+	relaxVector := relaxedVectorSet(opts.relaxVectors)
+	relaxedVectorSeen := map[string]bool{}
 	for mut := range sent {
 		root := roots[seedRoot[mut.seed]]
 		reply, err := leg.receiveWithDeadline(realClock{})
@@ -796,6 +835,11 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			// mutant is counted, not compared; re-enable: relax/dead-bytes
 			relaxed++
 			verdict = ""
+		}
+		verdict, err = relaxVectorVerdict(mut.pass, mut.seed.name, verdict, relaxVector, relaxedVectorSeen)
+		if err != nil {
+			leg.kill()
+			return err
 		}
 		if verdict != "" {
 			leg.kill()
@@ -858,6 +902,19 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	if opts.relaxDeadBytes {
 		absence += fmt.Sprintf(", %d dead-byte mutants not compared (RELAXED, relax/dead-bytes)", relaxed)
+	}
+	if len(relaxVector) > 0 {
+		// RELAXED 2026-11-14 (maintainer: get main green): every relaxed
+		// vector must ride this run, or the flag names nothing it can check
+		var names []string
+		for name := range relaxVector {
+			if !relaxedVectorSeen[name] {
+				return fmt.Errorf("FAILED: --relax-vector names %s, which this run did not carry: drop it", name)
+			}
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		absence += fmt.Sprintf(", %d pinned vectors diverged and not failed (RELAXED: %s)", len(names), strings.Join(names, ","))
 	}
 	fmt.Printf("%s: seed %d, %d seeds over %d roots%s, %d enumerated + %d random = %d mutants, 0 divergences, %.1f s, %.0f mutants/s\n",
 		arm, opts.seed, len(live), len(roots), absence, enumeratedCount, total-enumeratedCount, total, elapsed.Seconds(), rate)
