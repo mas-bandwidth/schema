@@ -328,6 +328,15 @@ const TrioMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrio(stream *serialize.WriteStream, value *Trio) error {
+	if value.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.A) & 0xfffff
 	f1 := uint64(value.B) & 0xfffff
 	f2 := uint64(value.C) & 0xffffff
@@ -372,6 +381,15 @@ const TrioSoleMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioSole(stream *serialize.WriteStream, value *TrioSole) error {
+	if value.Inner.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Inner.A) & 0xfffff
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
@@ -451,6 +469,18 @@ const TrioFirstMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioFirst(stream *serialize.WriteStream, value *TrioFirst) error {
+	if value.Inner.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Trailer > 65535 { // a value above the bits(16) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Inner.A) & 0xfffff
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
@@ -514,7 +544,19 @@ func WriteTrioStraddle(stream *serialize.WriteStream, value *TrioStraddle) error
 	stream.SerializeBits64(&value.Pad2, 64)
 	stream.SerializeBits64(&value.Pad3, 64)
 	stream.SerializeBits64(&value.Pad4, 64)
+	if value.Pad5 > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits(&value.Pad5, 24)
+	if value.Inner.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Inner.A) & 0xfffff
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
