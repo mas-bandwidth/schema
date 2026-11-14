@@ -657,6 +657,16 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
     }
   end
 
+  # A refused load's report names its refusal (docs/SPEC-TABLES.md §4): the
+  # verdict and the reason never disagree, so a refusal the fixed read left
+  # unnamed takes the refusal's own name.
+  defp fixed_class_refusal(refusal, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = named -> %{named | reason: to_string(refusal)}
+      named -> named
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -754,7 +764,6 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
   end
 
   defp fixed_class_keyed_to_table(_f, _value), do: %{}
-
 `
 
 const fixedClassHelperTail = `
@@ -834,7 +843,12 @@ const fixedClassHelperTail = `
     case Map.get(f, :fixed_array) do
       n when is_integer(n) ->
         kept = Enum.take(elems, n)
-        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+        kept ++
+          List.duplicate(
+            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
+            max(n - length(kept), 0)
+          )
 
       _ ->
         elems
@@ -877,9 +891,14 @@ const fixedClassHelperTail = `
     Enum.map(Map.fetch!(f, :key_names), fn name ->
       raw =
         cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) -> Map.get(value, String.to_atom(fixed_class_snake(name)))
-          true -> Map.get(item, :default)
+          Map.has_key?(value, name) ->
+            Map.get(value, name)
+
+          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
+            Map.get(value, String.to_atom(fixed_class_snake(name)))
+
+          true ->
+            Map.get(item, :default)
         end
 
       fixed_class_value_from_table(item, raw)
@@ -944,15 +963,15 @@ func fixedRootLoadClauses(name, call string) string {
 	var b strings.Builder
 	b.WriteString(exLoadFormHead(name))
 	b.WriteString("    report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}\n")
-	b.WriteString("    {:error, :previous_form, fixed_class_report(report)}\n")
+	b.WriteString("    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}\n")
 	b.WriteString("  end\n\n")
 	b.WriteString(exLoadDataHead(name))
 	b.WriteString(exLoadCase(call))
 	b.WriteString("      {:ok, [value], report} ->\n")
 	b.WriteString("        {:ok, fixed_class_to_table(" + fmt.Sprintf("%q", name) + ", value), fixed_class_report(report)}\n")
-	b.WriteString("      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}\n")
-	b.WriteString("      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}\n")
-	b.WriteString("      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}\n")
+	b.WriteString("\n      {:ok, [], report} ->\n        {:error, :truncated, fixed_class_refusal(:truncated, report)}\n")
+	b.WriteString("\n      {:error, reason, report} ->\n        {:error, reason, fixed_class_refusal(reason, report)}\n")
+	b.WriteString("\n      {:ok, _values, report} ->\n        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}\n")
 	b.WriteString("    end\n")
 	b.WriteString("  end\n\n")
 	return b.String()

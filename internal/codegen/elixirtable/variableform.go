@@ -604,6 +604,12 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 			}
 			continue
 		}
+		// The blank line after a dropped item stays when the text before it
+		// does not already end in one: a one-line clause directly above the
+		// dropped item keeps the blank line mix format wants before the next.
+		if out := b.String(); lines[k-1] == "\n" && out != "" && !strings.HasSuffix(out, "\n\n") && !strings.HasSuffix(out, " do\n") {
+			b.WriteString("\n")
+		}
 		i = k
 	}
 	return b.String()
@@ -3609,9 +3615,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
