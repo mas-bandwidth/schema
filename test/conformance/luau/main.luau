@@ -216,6 +216,11 @@ local function surfaceWire(lines: { { string } })
 					-- one blob named from two slots (docs/SPEC-TABLES.md §2.5)
 					-- is a NAMED refusal, and the harness holds the name
 					print(f[2] .. " absent blob_shared")
+				elseif table.find(f, "wire-refused", 6) ~= nil then
+					-- a row the manifest marks wire-refused is one every reader
+					-- refuses: a fixed record with a non-zero dead byte
+					-- (docs/SPEC-TABLES.md §3.4, THE SLACK RULE), a named refusal
+					print(f[2] .. " absent " .. tostring(r.reason))
 				else
 					error(f[2] .. ": load refused " .. f[5])
 				end
