@@ -294,7 +294,7 @@ union Pick
     let plan = slackline.make_plan(4096)
     let report = schema_rt.TableReport {}
     assert_eq(slackline.RowFixedLoad(back, read_in("good.bin"), plan, report), 1, "an older record with zero slack reads")
-    assert_eq(back[0].Seq, 9, "the older record's seq")
+    assert_eq(back[0].Seq, 9, "the older record keeps its seq")
     for(["a.bin", "b.bin", "c.bin", "d.bin", "e.bin"]) f:
         assert_eq(slackline.RowFixedLoad(back, read_in(f), plan, report), -1, f)
         assert_eq(report.reason, "wire_damaged", f)

@@ -1225,13 +1225,13 @@ def fixed_lineage_slack(known:[TableFixedKnownLayout], my_layout:string, dst:[Ta
         push(out, fixed_slack_of(k.layout, my_layout, dst))
     return out
 
-def fixed_zero_span(src:string, from:int, to:int) -> bool:
-    var i = from
-    while i + 8 <= to:
+def fixed_zero_span(src:string, lo:int, hi:int) -> bool:
+    var i = lo
+    while i + 8 <= hi:
         if read_int64_le(src, i) != 0:
             return false
         i += 8
-    while i < to:
+    while i < hi:
         if read_uint8_le(src, i) != 0:
             return false
         i += 1
