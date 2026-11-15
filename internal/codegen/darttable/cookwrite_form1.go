@@ -203,16 +203,19 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		// §2.3 on the cooked storage: the presence bool is the LAST piece, and
-		// the value's pieces are written whole either way, as the reference's
-		// region writer writes them
+		// the value's pieces are written only when present — an absent
+		// optional's payload is dead bytes, zero on write (docs/SPEC-TABLES.md
+		// §7.2; docs/rulings.json fixed-dead-bytes-are-zero)
 		owner := expr
 		if i := lastDot(expr); i >= 0 {
 			owner = expr[:i]
 		}
 		g.pf("%sout?.setUint8(at + %d, %s.%s ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, owner, hasMember(f))
+		g.pf("%sif (%s.%s) {\n", ind, owner, hasMember(f))
 		inner := *f
 		inner.Type.Optional = false
-		g.emitCookForm1Field(&inner, offset, expr, ind)
+		g.emitCookForm1Field(&inner, offset, expr, ind+"  ")
+		g.pf("%s}\n", ind)
 		return
 	}
 	if f.KeyEnum != "" || f.Array == ir.ArrayFixed {
@@ -250,7 +253,8 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		// slot; a dead slot is the union's value-initialized storage, tag 0
 		// and nothing else, which the zero-filled region already holds
 		stride := pieces[0].Size / f.ArrayBound
-		g.pf("%sif (%s.length > %d) return false;\n", ind, expr, f.ArrayBound)
+		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
+		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, f.ArrayBound))
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%sfor (var i = 0; i < %s.length; i++) {\n", ind, expr)
 		g.emitCookForm1UnionElement(un, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
@@ -273,7 +277,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		g.needConvert = true
 		text := dartName(f.Name) + "Bytes"
 		g.pf("%sfinal %s = latin1.encode(%s);\n", ind, text, expr)
-		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
+		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", text, f.Type.Size))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
@@ -301,12 +305,15 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 // offset 0 at its own width, the SET ARM at the arms' shared offset, and no
 // other byte, so the extent outside the set arm stays the zero the region was
 // filled with — what internal/tablecook's region writer writes. A tag past
-// the declared arms is refused as `invalid_value`.
+// the declared arms is a debug assert (docs/SPEC.md §5.1).
 func (g *cookGen) emitCookForm1Union(f *ir.Field, un *ir.Union, offset int64, expr, ind string) {
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	arm := dartName(f.Name) + "Arm"
 	g.pf("%sfinal %s = %s.armTag;\n", ind, arm, expr)
-	g.pf("%sif (%s < 0 || %s > %d) return false;\n", ind, arm, arm, len(un.Variants))
+	// a tag naming no arm is the programmer's error: a debug assert, gone
+	// in release (docs/SPEC.md §5.1, Dart is an assert leg)
+	g.cookAssert(ind, fmt.Sprintf("%s >= 0", arm))
+	g.cookAssert(ind, fmt.Sprintf("%s <= %d", arm, len(un.Variants)))
 	switch tag {
 	case 1:
 		g.pf("%sout?.setUint8(at + %d, %s);\n", ind, offset, arm)

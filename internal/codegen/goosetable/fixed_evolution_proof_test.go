@@ -364,7 +364,8 @@ fixed table T {
     while i < clean.len { badUtf8.push(clean[i]); i += 1; }
     badUtf8[body + 4] = 0xff;
 
-    // R24: 0xff in slack past used length (at index 2 when length == 2) is NOT a refusal!
+    // R24: 0xff in the bytes past the used length (at index 2 when length
+    // == 2) is a non-zero DEAD byte, so the whole load refuses wire_damaged.
     var slackBytes: u8[>..] = [];
     i = 0;
     while i < clean.len { slackBytes.push(clean[i]); i += 1; }
@@ -381,7 +382,7 @@ fixed table T {
     print(n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3);
 }
 `, nil)
-	if got != "-1 length_over_bound -1 text_ill_formed 1 ok" {
+	if got != "-1 length_over_bound -1 text_ill_formed -1 wire_damaged" {
 		t.Fatalf("Text (C3/C4/C5/R24): got %q", got)
 	}
 }
@@ -392,8 +393,8 @@ func TestGooseFixedProofOrdinals(t *testing.T) {
 	slowtest.Gate(t, "goose")
 	// C9: union tag past arms -> out_of_range on the identity plan (§4.6)
 	// C10: enum ordinal past top -> out_of_range on the identity plan (§4.6)
-	// R31: writer's variant count governs on compiled plan as well as identity plan
-	// (the compiled plan still counts and lands None; the strict identity read refuses)
+	// R31: writer's variant count governs on the compiled plan as on the identity
+	// plan: the read REFUSES out_of_range and lands the batch at its defaults.
 	const oldSchema = `package probe
 enum Tier { Bronze, Silver }
 union Pick {
@@ -425,7 +426,7 @@ fixed table Lineage {
 	if !ok {
 		t.Fatal("missing old Lineage")
 	}
-	// Build a 1-record old file where tier = 3 (Gold in new, but past old's max 2) and pick.Type = 3 (past old's max 2).
+	// Build a 1-record old file where tier = 3 (Gold in new, but past old's max 2) and pick.Type = 3 (past old's max 2); both plans refuse.
 	oldLayout, oldHash, _ := fixedRootFacts(fixedRootStruct(t, uOld, "Lineage"))
 	// Old body: tier (1 byte) + pick (1 byte tag + 4 byte arm = 5 bytes) + seq (4 bytes) = 10 bytes.
 	body := []byte{3, 3, 1, 0, 0, 0, 42, 0, 0, 0}
@@ -447,12 +448,12 @@ fixed table Lineage {
     var dst: probe::Lineage[1] = [probe::Lineage { .. }; 1];
     var rep = schema_rt::FixedEvolveReport { .. };
     let n = probe::LineageFixedEvolveLoad(dst, data, rep);
-    print(n, " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
+    print(n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
 }
 `, map[string][]byte{"in.bin": file})
 
-	if gotOld != "-1 out_of_range 0 0 0 0" || gotNew != "1 2 0 0 42" {
-		t.Fatalf("Ordinals (C9/C10/R31): old=%q new=%q, want \"-1 out_of_range 0 0 0 0\" and \"1 2 0 0 42\"", gotOld, gotNew)
+	if gotOld != "-1 out_of_range 0 0 0 0" || gotNew != "-1 out_of_range 0 0 0 0" {
+		t.Fatalf("Ordinals (C9/C10/R31): old=%q new=%q, want both \"-1 out_of_range 0 0 0 0\"", gotOld, gotNew)
 	}
 }
 
@@ -509,7 +510,8 @@ fixed table T {
     let body = data.len - probe::TFixedBodyBytes;
     // Body layout: ArrCount (4B at +0), Arr[0..3] (3B at +4..+7), OptPresent (1B at +7), Opt (1B at +8), Tail (4B at +9..+13).
     // Forge out-of-range enum ordinals (99) into inactive Arr[1], Arr[2] and absent Opt!
-    // C14 & W4: bounds pass walks LIVE extent only; slack is not clamped or counted.
+    // C14 & W4: those bytes are DEAD, so the check pass refuses wire_damaged
+    // before the bounds pass; they are never clamped or counted.
     data[body + 5] = 99;
     data[body + 6] = 99;
     data[body + 8] = 99;
@@ -520,7 +522,7 @@ fixed table T {
     print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].ArrCount, " ", dst[0].Arr[0] as u64, " ", !dst[0].OptPresent, " ", dst[0].Tail);
 }
 `, nil)
-	if got != "1 ok 0 1 1 true 77" {
+	if got != "-1 wire_damaged 0 0 0 true 77" {
 		t.Fatalf("LiveExtents (C14/W4/W9): got %q", got)
 	}
 }

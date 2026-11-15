@@ -59,12 +59,12 @@ func TestLobsterTypeWireWriteNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	types := files["Types.lobster"]
-	anchor := "s.serialize_bool(v.HasFlags)"
+	anchor := "s·.serialize_bool(v·.HasFlags)"
 	if strings.Count(string(types), anchor) != 1 {
 		t.Fatalf("negative-control anchor %q matched %d times in emitted Types.lobster", anchor, strings.Count(string(types), anchor))
 	}
 	patched := strings.Replace(string(types), anchor,
-		"s.serialize_bits((if v.HasFlags: 1 else: 0), 2)", 1)
+		"s·.serialize_bits((if v·.HasFlags: 1 else: 0), 2)", 1)
 	files["Types.lobster"] = []byte(patched)
 	dir := t.TempDir()
 	writeAll(t, dir, files)

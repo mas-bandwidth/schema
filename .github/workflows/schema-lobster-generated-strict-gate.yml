@@ -18,35 +18,8 @@ name: schema Lobster generated strict gate
 # never reaches fleet hardware: the job carries the fork guard.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-lobster-generated-strict-gate.mk'
-      - 'make/lobster*.mk'
-      - '.github/workflows/schema-lobster-generated-strict-gate.yml'
-      - 'internal/ci/schema_lobster_generated_strict_gate_test.go'
-      - 'internal/codegen/lobster/**'
-      - 'internal/codegen/lobstertable/**'
-      - 'compiler/**'
-      - 'ir/**'
-      - 'examples/**'
-      - 'examples128/**'
-      - 'tables/**'
-      - 'testdata/conformance/tables/**'
-  pull_request:
-    paths:
-      - 'make/schema-lobster-generated-strict-gate.mk'
-      - 'make/lobster*.mk'
-      - '.github/workflows/schema-lobster-generated-strict-gate.yml'
-      - 'internal/ci/schema_lobster_generated_strict_gate_test.go'
-      - 'internal/codegen/lobster/**'
-      - 'internal/codegen/lobstertable/**'
-      - 'compiler/**'
-      - 'ir/**'
-      - 'examples/**'
-      - 'examples128/**'
-      - 'tables/**'
-      - 'testdata/conformance/tables/**'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     # nightly, after the other language lenses
     - cron: '41 7 * * *'

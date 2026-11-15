@@ -1,0 +1,46 @@
+# The packet Write of a bare intN / uintN (BareInt.schema), SPEC.md §5.1
+# row 11 and PACKET-WIRE-ALGORITHM.md §2 and §2.4.
+#
+# "refused" means: by the debug build's assert in an assert leg (C, C++, C#,
+# Rust, Java, Dart), and by the writer's refusal in every build in an
+# every-build leg (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose).
+# What an assert leg's release build writes for a refused value is
+# unspecified (SPEC.md §5); no case here asks anything of that build.
+# "written" means the write succeeds and the value reads back.
+#
+# One case per line: <name> <type> <value> <verdict>.
+
+int8-min                  I8  -128                  written
+int8-max                  I8  127                   written
+int8-above-max            I8  128                   refused
+int8-below-min            I8  -129                  refused
+
+uint8-min                 U8  0                     written
+uint8-max                 U8  255                   written
+uint8-above-max           U8  256                   refused
+uint8-negative            U8  -1                    refused
+
+int16-min                 I16 -32768                written
+int16-max                 I16 32767                 written
+int16-above-max           I16 32768                 refused
+int16-below-min           I16 -32769                refused
+
+uint16-max                U16 65535                 written
+uint16-above-max          U16 65536                 refused
+uint16-negative           U16 -1                    refused
+
+int32-min                 I32 -2147483648           written
+int32-max                 I32 2147483647            written
+int32-above-max           I32 2147483648            refused
+
+uint32-max                U32 4294967295            written
+uint32-above-max          U32 4294967296            refused
+uint32-negative           U32 -1                    refused
+
+int64-min                 I64 -9223372036854775808  written
+int64-max                 I64 9223372036854775807   written
+int64-above-max           I64 9223372036854775808   refused
+
+uint64-max                U64 18446744073709551615  written
+uint64-above-max          U64 18446744073709551616  refused
+uint64-negative           U64 -1                    refused

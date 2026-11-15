@@ -1799,7 +1799,7 @@ fixed table Cfg {
 		t.Error("an absent optional's payload must not be held to a bound")
 	}
 	load := funcSource(body, "func CfgFixedLoad(")
-	if !strings.Contains(load, "if !CfgFixedBounds(&values[k]) {") {
+	if !strings.Contains(load, "if !CfgFixedBounds(&values[k : k+1][0]) {") {
 		t.Error("FixedLoad must call the storage pass after the run, both paths")
 	}
 	if strings.Contains(body, "Op: tableFixedTag") {

@@ -2,11 +2,15 @@ name: moo v1.3.0
 description: >
   Puts the moo pin make/moo.mk names (MOO_PIN, mas-bandwidth/moo v1.3.0) at
   dist/moo/ (moo, moo-analyze), where the leg's MOO and MOO_ANALYZE defaults
-  look. moo ships no binary release, so the pin is built from source by
-  `make dist-moo`, which refuses any other commit; the build is cached under
-  a key naming the pin, the OS and the architecture, so only the first run
-  per runner image pays for it. The cached tree is checked against the pin
-  before it is used. Needs git, cmake and a C++ compiler on the runner.
+  look, and the checked build of the same pin (MOO_OVERFLOW_ERRORS=ON) at
+  dist/moo-checked/ (moo), where MOO_CHECKED looks. moo ships no binary
+  release, so each is built from source by `make dist-moo` and
+  `make dist-moo-checked`, which refuse any other commit; the release build
+  is cached under a key naming the pin, the OS and the architecture, the
+  checked build under a key that also names its mode, so only the first run
+  per runner image pays for each. The cached trees are checked against the
+  pin before they are used. Needs git, cmake and a C++ compiler on the
+  runner.
 runs:
   using: composite
   steps:
@@ -38,3 +42,27 @@ runs:
           echo "::error::dist/moo is moo ${got:-<none>}, not the pin $want; refusing to use it"; exit 1
         fi
         test -x dist/moo/moo && test -x dist/moo/moo-analyze
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: restore-checked
+      with:
+        path: dist/moo-checked
+        key: moo-checked-${{ steps.pin.outputs.pin }}-${{ runner.os }}-${{ runner.arch }}
+    - name: build the checked moo pin (cache miss)
+      if: steps.restore-checked.outputs.cache-hit != 'true'
+      shell: bash
+      run: make dist-moo-checked MOO_BUILD_JOBS="$(getconf _NPROCESSORS_ONLN)"
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.restore-checked.outputs.cache-hit != 'true'
+      with:
+        path: dist/moo-checked
+        key: moo-checked-${{ steps.pin.outputs.pin }}-${{ runner.os }}-${{ runner.arch }}
+    - name: the cached checked moo is the pin
+      shell: bash
+      run: |
+        set -euo pipefail
+        want='${{ steps.pin.outputs.pin }}'
+        got=$(cat dist/moo-checked/PIN 2>/dev/null || true)
+        if [ "$got" != "$want" ]; then
+          echo "::error::dist/moo-checked is moo ${got:-<none>}, not the pin $want; refusing to use it"; exit 1
+        fi
+        test -x dist/moo-checked/moo

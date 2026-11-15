@@ -801,12 +801,26 @@ public final class TableVariable {
         }
     }
 
+    // THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body
+    // (kind 14) opens with 1–13, 15, 17, 18–30, and an enum-keyed body (kind
+    // 16) with 1–11, 13, 18–30. Any other element kind is damage under ANY
+    // count, a count of 0 included, in a declared field and in an unknown one
+    // alike, so it is judged before any comparison with a declaration.
+    static boolean arrayElemKindClosed(int kind) {
+        return (kind >= 1 && kind <= 13) || kind == 15 || kind == 17 || (kind >= 18 && kind <= 30);
+    }
+
+    static boolean keyedElemKindClosed(int kind) {
+        return (kind >= 1 && kind <= 11) || kind == 13 || (kind >= 18 && kind <= 30);
+    }
+
     // THE CONDITIONS DECIDABLE FROM THE WIRE ALONE (docs/SPEC-TABLES.md §6.5,
     // "TWO KINDS OF CONDITION"), the oracle's own walk
     // (internal/tablewire/wirecheck.go) over a form-1 file. It takes no
     // declaration. It checks the framing (lengths, counts, terminators, an
     // array's, keyed array's or map's header inside its own L and no byte
-    // left inside that L after its elements, the id table's references,
+    // left inside that L after its elements, an array or keyed body's element
+    // kind on §3's closed list, the id table's references,
     // canonical LEB128, a kind no reader can skip, kind 32 with a nonzero L),
     // a bool byte other than 0 or 1, ill-formed text, a repeated field id or
     // keyed slot in one body, bytes left inside an arm after its payload, the
@@ -1367,6 +1381,11 @@ public final class TableVariable {
                 return false;
             }
             int kind = buf[off] & 0xff;
+            // THE ELEMENT KIND IS CLOSED, judged under any count and before
+            // any element is walked (docs/SPEC-TABLES.md §3, §4).
+            if (!arrayElemKindClosed(kind)) {
+                return damage();
+            }
             int p = at;
             for (long i = 0; i < count; i++) {
                 p = payload(p, end, kind);
@@ -1383,6 +1402,11 @@ public final class TableVariable {
                 return false;
             }
             int kind = buf[off] & 0xff;
+            // THE KEYED ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+            // count (docs/SPEC-TABLES.md §3, §4).
+            if (!keyedElemKindClosed(kind)) {
+                return damage();
+            }
             int first = at;
             int g = ++gen;
             int p = first;
