@@ -219,7 +219,7 @@ local function live_count(fd: any, holder: any, val: any): number
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
 		if c == nil then c = 0 end
-		return math.min(c, fd.bound)
+		return c
 	end
 	return fd.bound
 end
@@ -251,6 +251,133 @@ local function text_elem_used(e: any, x: any, used: number?): number
 		end
 	end
 	return 0
+end
+
+local function utf8_ok(b: buffer, at: number, n: number): boolean
+	local i = at
+	local e = at + n
+	while i < e do
+		local b0 = buffer.readu8(b, i)
+		if b0 == 0 then return false end
+		if b0 < 0x80 then i = i + 1
+		else
+			local need, cp
+			if b0 >= 0xC2 and b0 <= 0xDF then need, cp = 1, b0 - 0xC0
+			elseif b0 >= 0xE0 and b0 <= 0xEF then need, cp = 2, b0 - 0xE0
+			elseif b0 >= 0xF0 and b0 <= 0xF4 then need, cp = 3, b0 - 0xF0
+			else return false end
+			if i + need >= e then return false end
+			for k = 1, need do
+				local x = buffer.readu8(b, i + k)
+				if x < 0x80 or x > 0xBF then return false end
+				cp = cp * 64 + (x - 0x80)
+			end
+			local min = need == 1 and 0x80 or (need == 2 and 0x800 or 0x10000)
+			if cp < min or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return false end
+			i = i + 1 + need
+		end
+	end
+	return true
+end
+
+local function is128(x: any): boolean
+	return typeof(x) == "table" and x.lo ~= nil and x.hi ~= nil
+end
+
+-- an Int128 compares as a signed two's-complement value: the high half first,
+-- and the LOW HALF UNSIGNED once the high halves agree — the sign lives in the
+-- high half, so the low half is a magnitude, never a signed quantity
+-- (docs/SPEC-TABLES.md §4: a bounded 128-bit integer clamps on the raw scale)
+local function cmp_lt(a: any, b: any): boolean
+	if is128(a) and is128(b) then
+		if a.hi ~= b.hi then return integer.lt(a.hi, b.hi) end
+		return integer.ult(a.lo, b.lo)
+	end
+	if typeof(a) == "integer" and typeof(b) == "integer" then return integer.lt(a, b) end
+	return a < b
+end
+
+local function ucmp_lt(a: any, b: any): boolean
+	if is128(a) and is128(b) then
+		if a.hi ~= b.hi then return integer.ult(a.hi, b.hi) end
+		return integer.ult(a.lo, b.lo)
+	end
+	if typeof(a) == "integer" and typeof(b) == "integer" then return integer.ult(a, b) end
+	return a < b
+end
+
+local function ucmp_gt(a: any, b: any): boolean
+	if is128(a) and is128(b) then
+		if a.hi ~= b.hi then return integer.ult(b.hi, a.hi) end
+		return integer.ult(b.lo, a.lo)
+	end
+	if typeof(a) == "integer" and typeof(b) == "integer" then return integer.ult(b, a) end
+	return a > b
+end
+
+local function cmp_gt(a: any, b: any): boolean
+	if is128(a) and is128(b) then
+		if a.hi ~= b.hi then return integer.lt(b.hi, a.hi) end
+		return integer.ult(b.lo, a.lo)
+	end
+	if typeof(a) == "integer" and typeof(b) == "integer" then return integer.lt(b, a) end
+	return a > b
+end
+
+-- a fixed field's declared bounds are WHOLE units; the wire carries the RAW
+-- scaled integer (docs/SPEC-TABLES.md §3, §4), so a bound shifts by F.
+local function i128_shl(v: any, sh: number): any
+	if sh == 0 then return v end
+	if sh >= 64 then return { lo = 0i, hi = integer.lshift(v.lo, integer.create(sh - 64)) } end
+	local hi = integer.lshift(v.hi, integer.create(sh))
+	if sh > 0 then hi = integer.bor(hi, integer.rshift(v.lo, integer.create(64 - sh))) end
+	return { lo = integer.lshift(v.lo, integer.create(sh)), hi = hi }
+end
+
+local function bound_shift(v: any, fbits: number): any
+	if v == nil then return nil end
+	if is128(v) then return i128_shl(v, fbits) end
+	if typeof(v) == "integer" then return integer.lshift(v, integer.create(fbits)) end
+	return v * (2 ^ fbits)
+end
+
+local function valid_scalar(e: any, v: any): boolean
+ if e.s == "float" then
+  return typeof(v) == "number" and (v ~= v or v == math.huge or v == -math.huge or e.lo == nil or (v >= e.lo and v <= e.hi))
+ end
+ if e.s ~= "int" then return true end
+ local ty = typeof(v)
+ if e.kw == 16 then
+  if not is128(v) then return false end
+ elseif e.kw == 8 then
+  if ty == "number" and v == math.floor(v) and math.abs(v) <= 9007199254740991 then v = integer.create(v); ty = "integer" end
+  if ty ~= "integer" then return false end
+ else
+  if ty ~= "number" or v ~= math.floor(v) then return false end
+  local n = e.kw * 8
+  local lo = if e.signed then -(2 ^ (n - 1)) else 0
+  local hi = if e.signed then 2 ^ (n - 1) - 1 else 2 ^ n - 1
+  if v < lo or v > hi then return false end
+ end
+ if e.lo ~= nil then
+  local lo, hi = e.lo, e.hi
+  if e.fbits ~= nil and e.fbits > 0 then lo, hi = bound_shift(lo, e.fbits), bound_shift(hi, e.fbits) end
+  local lt, gt = cmp_lt, cmp_gt
+  if not e.signed then lt, gt = ucmp_lt, ucmp_gt end
+  if lt(v, lo) or gt(v, hi) then return false end
+ end
+ if e.bits ~= nil and e.bits < e.kw * 8 then
+  local max = if ty == "integer" then integer.sub(integer.lshift(1i, integer.create(e.bits)), 1i) else 2 ^ e.bits - 1
+  if ucmp_gt(v, max) then return false end
+ end
+ return true
+end
+
+local function valid_text(e: any, b: any, n: any): boolean
+ if typeof(b) ~= "buffer" then return n == 0 end
+ if typeof(n) ~= "number" or n < 0 or n ~= math.floor(n) or n > buffer.len(b) then return false end
+ if e.bound ~= nil and e.bound > 0 and n > e.bound then return false end
+ return e.s == "bytes" or utf8_ok(b, 0, n)
 end
 
 -- ---- MAP ORDER (§2.8; internal/tabletext MapKeyOrder): ascending by key, a
@@ -487,6 +614,8 @@ end
 -- the Length array beside an array of string(N).
 write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 	local s = e.s
+	if not valid_scalar(e, val) then return false end
+	if (s == "str" or s == "text") and not valid_text(e, val, len or (typeof(val) == "buffer" and buffer.len(val) or 0)) then return false end
 	if s == "bool" then
 		w_u8(w, val and 1 or 0)
 	elseif s == "int" then
@@ -654,7 +783,17 @@ end
 local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	local s = arm.s
 	local val = u[arm.slot]
-	if s == "tab" then
+ if s == "str" or s == "bytes" then
+  local b, n = used(u, arm.slot)
+  if not valid_text(arm, b, n) then return false end
+ elseif s == "text" then
+  if not valid_text(arm, val, typeof(val) == "buffer" and buffer.len(val) or 0) then return false end
+ elseif s == "arr" then
+  local n = live_count(arm, u, val)
+  if typeof(n) ~= "number" or n ~= math.floor(n) or n < (arm.min or 0) or (not arm.unbounded and n > arm.bound) then return false end
+  if typeof(val) == "buffer" and buffer.len(val) < n then return false end
+ end
+ if s == "tab" then
 		return write_body(c, St.lookup(arm.t), w, val)
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		w_leb(w, not val and 0 or c.nodes.index[val])
@@ -739,6 +878,27 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	-- record. A required integer whose declared range excludes its stored
 	-- value has no wire value, and the save refuses (nil), as Go's writer does.
 	local required = fd.required == true
+ if fd.present ~= nil and not v[fd.present] then return true end
+ if not valid_scalar(fd, val) then return false end
+ if s == "str" or s == "bytes" then
+  local b, n = used(v, fd.slot)
+  if not valid_text(fd, b, n) then return false end
+ elseif s == "text" then
+  if not valid_text(fd, val, typeof(val) == "buffer" and buffer.len(val) or 0) then return false end
+ elseif s == "arr" then
+  local n = live_count(fd, v, val)
+  if typeof(n) ~= "number" or n ~= math.floor(n) or n < (fd.min or 0) or (not fd.unbounded and n > fd.bound) then return false end
+  if typeof(val) == "buffer" and buffer.len(val) < n then return false end
+  local lens = v[fd.slot .. "Length"]
+  for i = 1, n do
+   local x = elem_at(val, i)
+   if not valid_scalar(fd.e, x) then return false end
+   if fd.e.s == "str" or fd.e.s == "text" then
+    local len = if typeof(lens) == "table" and lens[i] ~= nil then lens[i] else (if typeof(x) == "buffer" then buffer.len(x) else 0)
+    if not valid_text(fd.e, x, len) then return false end
+   end
+  end
+ end
 	if required and s == "int" and fd.lo ~= nil and typeof(fd.lo) ~= "table" and typeof(fd.hi) ~= "table" then
 		local x = as_number(val)
 		local lo, hi = fd.lo, fd.hi
@@ -795,7 +955,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		header(c, w, fd.id, fd.k)
 		if s == "str" then
 			local b, n = used(v, fd.slot)
-			return write_value(c, { s = "text" }, w, b, n)
+			return write_value(c, fd, w, b, n)
 		elseif s == "union" then
 			if val == nil or val.Type == 0 then w_leb(w, 0); return true end
 			return write_arm_header(c, St.lookup(fd.t), w, val)
@@ -937,7 +1097,7 @@ local function walk(d: any, v: any, count: boolean): (any, any?)
 	local c: any = { ids = new_ids(), nodes = nodes, count = count, why = nil }
 	local w = new_writer(count)
 	w_u8(w, Form)
-	if not write_fields(c, d, w, v) then return nil, c.why end
+	if not write_fields(c, d, w, v) then return nil, c.why or { name = "invalid_value", field = (c.owner or "?") .. "." .. (c.field or "?") } end
 	if #nodes.list > 0 then
 		w_leb(w, ref(c.ids, NodeTableId))
 		w_u8(w, 12)
@@ -946,12 +1106,13 @@ local function walk(d: any, v: any, count: boolean): (any, any?)
 		for _, n in nodes.list do
 			w_leb(p, ref(c.ids, n.typeId))
 			if n.blob ~= nil then
+                if n.typeId == StringBlobId and not valid_text({ s = "text" }, n.blob, buffer.len(n.blob)) then return nil, { name = "invalid_value" } end
 				-- a BYTE BUFFER's record is the bytes themselves (§2.5)
 				w_leb(p, buffer.len(n.blob))
 				w_raw(p, n.blob, 0, buffer.len(n.blob))
 			else
 				local b = body_of(c, n.d, n.v)
-				if b == nil then return nil, c.why end
+				if b == nil then return nil, c.why or { name = "invalid_value", field = (c.owner or "?") .. "." .. (c.field or "?") } end
 				w_leb(p, b.n)
 				w_sub(p, b)
 			end
@@ -1022,14 +1183,16 @@ end
 
 function S.save(d: any, v: any): (buffer?, any?)
 	if v == nil then return nil, { name = "nil_value", field = d.name } end
-	local invalid = invalid_deprecated(d, v, {})
+	local checked, invalid = pcall(invalid_deprecated, d, v, {})
+	if not checked then return nil, { name = "invalid_value", field = d.name } end
 	if invalid ~= nil then return nil, invalid end
 	if d.fixed then
 		local ok, res = pcall(F.save, d, nil :: any, { v })
 		if not ok then return nil, res end
 		return res, nil
 	end
-	local w, why = walk(d, v, false)
+	local ok, w, why = pcall(walk, d, v, false)
+	if not ok then return nil, { name = "invalid_value", field = d.name } end
 	if w == nil then return nil, why end
 	local out = buffer.create(w.n)
 	buffer.copy(out, 0, w.b, 0, w.n)
@@ -1039,7 +1202,8 @@ end
 -- Measure is the length Save writes, by the same walk storing nothing, or nil
 -- when the save refuses (docs/SPEC-TABLES.md §9's measure/save split).
 function S.measure(d: any, v: any): (number?, any?)
-	local invalid = invalid_deprecated(d, v, {})
+	local checked, invalid = pcall(invalid_deprecated, d, v, {})
+	if not checked then return nil, { name = "invalid_value", field = d.name } end
 	if invalid ~= nil then return nil, invalid end
 	if d.fixed then
 		if v == nil then return nil, { name = "nil_value", field = d.name } end
@@ -1047,7 +1211,8 @@ function S.measure(d: any, v: any): (number?, any?)
 		if not ok then return nil, res end
 		return buffer.len(res), nil
 	end
-	local w, why = walk(d, v, true)
+	local ok, w, why = pcall(walk, d, v, true)
+	if not ok then return nil, { name = "invalid_value", field = d.name } end
 	if w == nil then return nil, why end
 	return w.n, nil
 end
