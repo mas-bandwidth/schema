@@ -10,11 +10,7 @@ from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
-<<<<<<< HEAD
-from . import kind_map
-=======
 from . import kind_array, kind_blob, kind_map, kind_unsupported
->>>>>>> 98a507b96c02099c2bce712c40bf7ce1e6604cfb
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1

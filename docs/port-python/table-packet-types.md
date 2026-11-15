@@ -7,14 +7,9 @@
   the type rides kind 14 with element kind 13 (`kind_array.py`) while a union
   arm that holds it rides kind 15 (`kind_union.py`); a map's value of the type
   is the map entry's value field, the same kind-13 body (`kind_map.py`,
-<<<<<<< HEAD
   `TestPythonTablePacketTypesMapValue`). A packet-type array element and a
   packet-type union arm are carried. The class itself is the packet core's
   own generated class and codec, hosted in the same per-file module
-=======
-  `TestPythonTablePacketTypesMapValue`). The class itself is the packet
-  core's own generated class and codec, hosted in the same per-file module
->>>>>>> 98a507b96c02099c2bce712c40bf7ce1e6604cfb
   (`python.Host`), and the runtime ships the packet core's serialize.py beside
   the table runtime so that class's `read`/`write` still work. The table
   descriptor is the one the table walk reads; it is registered by name only,

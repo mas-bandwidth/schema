@@ -16,10 +16,7 @@ from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds
-<<<<<<< HEAD
-=======
 from . import kind_blob
->>>>>>> 98a507b96c02099c2bce712c40bf7ce1e6604cfb
 from .descriptor import FieldDesc, TableDesc
 
 _T = TypeVar("_T")

@@ -340,14 +340,9 @@ generated class per table and per map entry, each with its descriptor
 
   - unions with table arms: refused
 
-<<<<<<< HEAD
 - **A packet-typed field is carried by value.** A packet `type` in a table
   field, array element, map value or union arm is carried
   ([the table packet types](port-python/table-packet-types.md)).
-=======
-- **A packet type is carried by value** in a table field, an array element, a
-  union arm or a map value ([the table packet types](port-python/table-packet-types.md)).
->>>>>>> 98a507b96c02099c2bce712c40bf7ce1e6604cfb
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
