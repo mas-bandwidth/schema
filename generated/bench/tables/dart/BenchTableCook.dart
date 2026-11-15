@@ -1017,9 +1017,11 @@ final class TableEntityCookWire {
     }
     // §3.1's numbering, the wire's own: node 1 is the root.
     final s = wire.WireState();
-    s.indexRoot(value);
     try {
-      wire.tableEntityNumber(s, value, <Object>{value});
+      s.numberGraph(value, (obj) {
+        if (obj is wire.TableEntity) { wire.tableEntityNumber(s, obj, <Object>{}); return; }
+        throw StateError('no node numberer for ${obj.runtimeType}');
+      });
     } on StateError {
       if (report != null) report.reason = 'data_cycle';
       return -1;
@@ -1457,9 +1459,11 @@ final class TableStatCookWire {
     }
     // §3.1's numbering, the wire's own: node 1 is the root.
     final s = wire.WireState();
-    s.indexRoot(value);
     try {
-      wire.tableStatNumber(s, value, <Object>{value});
+      s.numberGraph(value, (obj) {
+        if (obj is wire.TableStat) { wire.tableStatNumber(s, obj, <Object>{}); return; }
+        throw StateError('no node numberer for ${obj.runtimeType}');
+      });
     } on StateError {
       if (report != null) report.reason = 'data_cycle';
       return -1;
@@ -2556,9 +2560,16 @@ final class TableMixedCookWire {
     }
     // §3.1's numbering, the wire's own: node 1 is the root.
     final s = wire.WireState();
-    s.indexRoot(value);
     try {
-      wire.tableMixedNumber(s, value, <Object>{value});
+      s.numberGraph(value, (obj) {
+        if (obj is wire.TableMixed) { wire.tableMixedNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableHitEvent) { wire.tableHitEventNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableChatEvent) { wire.tableChatEventNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TablePickupEvent) { wire.tablePickupEventNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableEntity) { wire.tableEntityNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableStat) { wire.tableStatNumber(s, obj, <Object>{}); return; }
+        throw StateError('no node numberer for ${obj.runtimeType}');
+      });
     } on StateError {
       if (report != null) report.reason = 'data_cycle';
       return -1;

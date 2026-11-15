@@ -126,7 +126,8 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		// container whose count its framing cannot cover is refused whole here
 		// too, never retained around (§6.6).
 		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
-		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
+		b.WriteString("        // open proved the id table distinct over these bytes: measure once (§3)\n")
+		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure, false) < 0) {\n", st.Name)
 		b.WriteString("            report.refused = true;\n")
 		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
 		b.WriteString("            retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")

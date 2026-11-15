@@ -108,6 +108,34 @@ var cfCases = []cfCase{
 
 // cfRefused is a read's refusal of a non-finite float, with no counter moved.
 
+func readingForm1Measure(value *Reading) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !ReadingSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func readingForm1Save(value *Reading, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !ReadingSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func readingForm1(value *Reading, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -284,14 +312,14 @@ func TestFixed(t *testing.T) {
 func TestVariable(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(0x3F000000) // 0.5, present in both fields
-		buf := make([]byte, ReadingMeasure(&v))
+		buf := make([]byte, readingForm1Measure(&v))
 		if c.counts > 0 || c.refused {
 			invalid := cfValue(c.in)
-			if ReadingSave(&invalid, buf) >= 0 {
+			if readingForm1Save(&invalid, buf) >= 0 {
 				t.Fatalf("variable %s: writer accepted a value its reader refuses", c.name)
 			}
 		}
-		if ReadingSave(&v, buf) != int64(len(buf)) {
+		if readingForm1Save(&v, buf) != int64(len(buf)) {
 			t.Fatalf("variable %s: save", c.name)
 		}
 		var from, to [4]byte

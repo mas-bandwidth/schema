@@ -198,7 +198,7 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 			// kTableFixedPresentDefaults entry in front of the payload. That
 			// entry normalises the flag (src != 0) and, when the flag is 0,
 			// lays the DECLARED DEFAULTS over the absent payload (§3.4).
-			t06Has(t, cppHB, "{ 1u, 8u, 4u, 4u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // link present, absent payload defaults", "cpp/C13 the present flag's emitted plan entry")
+			t06Has(t, cppHB, "{ 1u, 8u, 4u, 4u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // link present, absent payload defaults", "cpp/C13 the present flag's emitted plan entry")
 			t06Has(t, cppHB, "const uint8_t flag = (uint8_t) ( src[p.src] != 0 );", "cpp/C13 the present byte lands byte != 0")
 			t06Has(t, boolCase, "d[i] = (uint8_t) ( s[i] != 0 );", "cpp/C13 the present byte lands byte != 0")
 		}},

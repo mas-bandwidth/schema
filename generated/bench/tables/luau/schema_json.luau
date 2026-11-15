@@ -303,6 +303,10 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
+  -- A DUPLICATE KEY IN A SKIPPED OBJECT IS MALFORMED, exactly as in a read
+  -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
+  -- value rather than guessing which occurrence wins.
+  local keys: { [string]: boolean } = {}
   while true do
     local c = peek(inp)
     if c == close then inp.p = inp.p + 1; return true end
@@ -312,6 +316,8 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       local scanned, _, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
       local key = scanned :: string -- an ok scan returns its string
+      if keys[key] then inp.bad = true; return false end
+      keys[key] = true
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
       if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then

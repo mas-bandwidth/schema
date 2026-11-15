@@ -101,7 +101,7 @@ func t06C14(t *testing.T) {
 	if strings.Contains(scatter, "i < 4") {
 		t.Errorf("C14: the bounds walk still takes the declared bound, not the live count")
 	}
-	t06Has(t, scatter, "if (n < 0) { n = 0; r.refuse(TableFixed.Reason.countOverBound); } else if (n > 4) { n = 4; r.refuse(TableFixed.Reason.countOverBound); }",
+	t06Has(t, scatter, "if (n < 0) { n = 0; if (live) { r.refuse(TableFixed.Reason.countOverBound); } } else if (n > 4) { n = 4; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 		"C14 a count outside this reader's own bound refuses the load")
 }
 

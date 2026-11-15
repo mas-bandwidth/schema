@@ -24,6 +24,34 @@ fixed table Root {
 import ("errors"; "testing")
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -135,8 +163,8 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	RootReset(&cleanVar)
 	cleanVar.MarksCount = 1
 	cleanVar.Marks[0] = 5
-	w := make([]byte, RootMeasure(&cleanVar))
-	if n := RootSave(&cleanVar, w); n != int64(len(w)) {
+	w := make([]byte, rootForm1Measure(&cleanVar))
+	if n := rootForm1Save(&cleanVar, w); n != int64(len(w)) {
 		t.Fatalf("variable save %d", n)
 	}
 	// REUSE: a fresh report first carries a fixed refusal, then a clean read,

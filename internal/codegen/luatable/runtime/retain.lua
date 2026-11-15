@@ -1409,8 +1409,9 @@ function S.MeasureRetain(T, name, v, retain)
       rec.placed = false
     end
   end
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, v)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, v)
   if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, nil)
   if saved == nil then return nil, D.refuse_non_finite(T, name, v) end
@@ -1429,7 +1430,7 @@ function S.SaveRetain(T, name, v, retain, report)
       rec.placed = false
     end
   end
-  local refused = D.refuse_deprecated(T, name, v)
+  local refused = D.refuse_write(T, name, v)
   if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, report)
   if saved == nil then return nil, D.refuse_non_finite(T, name, v) end

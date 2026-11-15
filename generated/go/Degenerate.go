@@ -8,6 +8,8 @@
 package example
 
 import (
+	"math"
+
 	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
@@ -30,7 +32,13 @@ const Vec2MaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteVec2(stream *serialize.WriteStream, value *Vec2) error {
+	if math.Float64bits(value.X)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.X)
+	if math.Float64bits(value.Y)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.Y)
 	return stream.Err()
 }
@@ -63,6 +71,9 @@ const SpanF64MaxBytes = 16
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanF64(stream *serialize.WriteStream, value *SpanF64) error {
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.Values[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	return stream.Err()
@@ -250,6 +261,9 @@ const SpanTailMaxBytes = 24
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanTail(stream *serialize.WriteStream, value *SpanTail) error {
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.Values[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	stream.SerializeBits(&value.Tail, 32)
@@ -287,9 +301,15 @@ const SpanTwiceMaxBytes = 32
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanTwice(stream *serialize.WriteStream, value *SpanTwice) error {
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.A[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.A[i])
 	}
 	for i := 0; i < 2; i++ {
+		if math.Float64bits(value.B[i])&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		stream.SerializeFloat64(&value.B[i])
 	}
 	return stream.Err()
@@ -328,6 +348,15 @@ const TrioMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrio(stream *serialize.WriteStream, value *Trio) error {
+	if value.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.A) & 0xfffff
 	f1 := uint64(value.B) & 0xfffff
 	f2 := uint64(value.C) & 0xffffff
@@ -372,6 +401,15 @@ const TrioSoleMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioSole(stream *serialize.WriteStream, value *TrioSole) error {
+	if value.Inner.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Inner.A) & 0xfffff
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
@@ -451,6 +489,18 @@ const TrioFirstMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioFirst(stream *serialize.WriteStream, value *TrioFirst) error {
+	if value.Inner.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Trailer > 65535 { // a value above the bits(16) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Inner.A) & 0xfffff
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
@@ -514,7 +564,19 @@ func WriteTrioStraddle(stream *serialize.WriteStream, value *TrioStraddle) error
 	stream.SerializeBits64(&value.Pad2, 64)
 	stream.SerializeBits64(&value.Pad3, 64)
 	stream.SerializeBits64(&value.Pad4, 64)
+	if value.Pad5 > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits(&value.Pad5, 24)
+	if value.Inner.A > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.B > 1048575 { // a value above the bits(20) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Inner.C > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Inner.A) & 0xfffff
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
