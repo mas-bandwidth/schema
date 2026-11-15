@@ -65,21 +65,3 @@ moo cook-write root_full-be relax/cook-dead-slots-zero-ports
 js json-hostile base64-unpadded relax/hostile-rows-js
 lua json-hostile str-zero-escape-unknown-key relax/hostile-rows-lua
 rust json-hostile str-zero-escape-unknown-key relax/hostile-rows-rust
-<<<<<<< HEAD
-c write-refusal-json jref_zero_byte relax/hostile-rows-c
-cs write-refusal-json jref_zero_byte relax/hostile-rows-cs
-=======
-#
-# The go leg (the generated Go API driver): its cook writer still writes the
-# element defaults into dead counted slots (relax/cook-dead-slots-zero-ports).
-go cook-write archive relax/cook-dead-slots-zero-ports
-go cook-write archive-be relax/cook-dead-slots-zero-ports
-go cook-write loadout_full relax/cook-dead-slots-zero-ports
-go cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-go cook-write profile_elide relax/cook-dead-slots-zero-ports
-go cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-go cook-write root_default relax/cook-dead-slots-zero-ports
-go cook-write root_default-be relax/cook-dead-slots-zero-ports
-go cook-write root_full relax/cook-dead-slots-zero-ports
-go cook-write root_full-be relax/cook-dead-slots-zero-ports
->>>>>>> 1fb3dfd7a89a42c14c2db69d572694bd2950bd81
