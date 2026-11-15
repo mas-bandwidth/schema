@@ -5594,7 +5594,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -5615,7 +5631,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -5627,8 +5649,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -9145,6 +9166,21 @@ inline int64_t AssetNodeStorage( uint64_t type_id, int64_t length, TableRefuseRe
     return -1;
 }
 
+// AssetNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool AssetNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x8e4e6dccfe5f64fbull: // Asset
+        case 0x1f1750c1bc916638ull: // Catalog
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // AssetNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -9454,6 +9490,7 @@ inline const Asset * AssetLoadWalk( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = AssetNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x8e4e6dccfe5f64fbull;
@@ -9667,6 +9704,7 @@ inline bool AssetLoadBuilderWalk( AssetBuilder & builder, const uint8_t * wire_f
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = AssetNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -9983,6 +10021,21 @@ inline int64_t CatalogNodeStorage( uint64_t type_id, int64_t length, TableRefuse
     return -1;
 }
 
+// CatalogNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool CatalogNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x8e4e6dccfe5f64fbull: // Asset
+        case 0x1f1750c1bc916638ull: // Catalog
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // CatalogNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -10294,6 +10347,7 @@ inline const Catalog * CatalogLoadWalk( uint8_t * region, int64_t region_bytes, 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = CatalogNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x1f1750c1bc916638ull;
@@ -10507,6 +10561,7 @@ inline bool CatalogLoadBuilderWalk( CatalogBuilder & builder, const uint8_t * wi
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = CatalogNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -11496,6 +11551,7 @@ inline const Asset * AssetLoadRetain( uint8_t * region, int64_t region_bytes, co
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = AssetNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x8e4e6dccfe5f64fbull;
@@ -11873,6 +11929,7 @@ inline const Catalog * CatalogLoadRetain( uint8_t * region, int64_t region_bytes
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = CatalogNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x1f1750c1bc916638ull;

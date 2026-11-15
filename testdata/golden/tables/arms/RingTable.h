@@ -5731,7 +5731,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -5752,7 +5768,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -5764,8 +5786,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -12487,6 +12508,31 @@ inline int64_t RingNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     return -1;
 }
 
+// RingNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool RingNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // RingNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -12834,6 +12880,7 @@ inline const Ring * RingLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RingNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -12924,6 +12971,7 @@ inline const Ring * RingLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RingNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
@@ -13133,6 +13181,7 @@ inline bool RingLoadBuilderWalk( RingBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = RingNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -13466,6 +13515,31 @@ inline int64_t RackNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     }
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
+}
+
+// RackNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool RackNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
 }
 
 // RackNodePlace: start one record's node's lifetime in the storage pass one
@@ -13815,6 +13889,7 @@ inline const Rack * RackLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RackNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -13905,6 +13980,7 @@ inline const Rack * RackLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RackNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x986d012bd380b0b2ull;
@@ -14114,6 +14190,7 @@ inline bool RackLoadBuilderWalk( RackBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = RackNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -14447,6 +14524,31 @@ inline int64_t TrayNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     }
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
+}
+
+// TrayNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool TrayNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
 }
 
 // TrayNodePlace: start one record's node's lifetime in the storage pass one
@@ -14796,6 +14898,7 @@ inline const Tray * TrayLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = TrayNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -14886,6 +14989,7 @@ inline const Tray * TrayLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = TrayNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x85a6b5fb5284964dull;
@@ -15095,6 +15199,7 @@ inline bool TrayLoadBuilderWalk( TrayBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = TrayNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -17032,6 +17137,7 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RingNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -17128,6 +17234,7 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RingNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
@@ -17505,6 +17612,7 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RackNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -17601,6 +17709,7 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RackNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x986d012bd380b0b2ull;
@@ -17978,6 +18087,7 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = TrayNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -18074,6 +18184,7 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = TrayNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x85a6b5fb5284964dull;
