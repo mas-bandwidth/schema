@@ -85,7 +85,7 @@ class FieldDesc:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
         if self.pointer or self.optional:
             return value is None
-        if self.codec in ("bool", "int", "unsupported"):
+        if self.codec in ("bool", "int", "wide", "unsupported"):
             return bool(value == self.default)
         if self.codec == "table":
             if value is None:

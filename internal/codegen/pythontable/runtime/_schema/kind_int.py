@@ -1,8 +1,9 @@
-"""The integer field kinds (docs/SPEC-TABLES.md §3, kinds 2-9 and 18-19).
+"""The integer field kinds (docs/SPEC-TABLES.md §3, kinds 2-9 and 36).
 
-Python's int is arbitrary precision, so a uint64 and an int128 need no lanes:
-the declared width is the byte count on the wire and the descriptor's range is
-the whole contract on write.
+Python's int is arbitrary precision, so a uint64 needs no lanes: the declared
+width is the byte count on the wire and the descriptor's range is the whole
+contract on write. The fixed-point family and the 128-bit integers ride
+kind_wide.py.
 """
 
 from typing import Any
@@ -20,18 +21,6 @@ _WIDTH = {
     7: 2,
     8: 4,
     9: 8,
-    18: 16,
-    19: 16,
-    20: 1,
-    21: 2,
-    22: 4,
-    23: 8,
-    24: 16,
-    25: 1,
-    26: 2,
-    27: 4,
-    28: 8,
-    29: 16,
     36: 8,
 }
 

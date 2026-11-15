@@ -390,7 +390,7 @@ func scalarOnly(st *ir.Struct) bool {
 			return false
 		}
 		switch codecOf(f) {
-		case "bool", "int":
+		case "bool", "int", "wide":
 		default:
 			return false
 		}
@@ -657,7 +657,14 @@ func codecOf(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
-	case ir.TInt, ir.TFixed, ir.TBits:
+	case ir.TInt:
+		if f.Type.Width == 128 {
+			return "wide"
+		}
+		return "int"
+	case ir.TFixed:
+		return "wide"
+	case ir.TBits:
 		return "int"
 	case ir.TNamed:
 		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
@@ -794,7 +801,7 @@ func descriptorDefault(f *ir.Field) string {
 	switch codecOf(f) {
 	case "bool":
 		return pyBool(f.HasDefault && f.DefBool)
-	case "int":
+	case "int", "wide":
 		if f.HasDefault && f.DefInt != nil {
 			return f.DefInt.String()
 		}

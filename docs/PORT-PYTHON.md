@@ -289,8 +289,8 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
+  `kind_bool.py`, `kind_int.py`, `kind_wide.py`, `kind_table.py` and
+  `kind_pointer.py` register the kinds this cut carries. A later card adds its module and one registration
   line, never an edit to the body walk. `kind_unsupported.py` is the named
   placeholder for a construct whose descriptor exists but whose codec has not
   landed; a read or write that reaches it refuses by name.
@@ -307,14 +307,40 @@ generated class per table and per map entry, each with its descriptor
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
-- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
+- **Scope.** The runtime carries bool, the full-width integers (8 to 64 bits),
+  the wide scalars (fixed-point and 128-bit), by-value tables and `*T` pointers
+  to tables, for both the fixed and the variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
   with table arms have descriptors in this cut and refuse by name through
   `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
+
+### Wide scalars
+
+`fixed(I, F)`, `ufixed(I, F)`, `int128` and `uint128` ride the table wire as
+their raw `int` (docs/SPEC-TABLES.md §3, kinds 18-29; the value mapping above).
+`_schema/kind_wide.py` is their own dispatch module, registered as `wide`
+beside `int`: the descriptor's `[lo, hi]` is the declared range on the raw
+scale (a fixed field's whole-unit bounds shifted by `F`), the wire width comes
+from the kind (sixteen bytes for the 128-bit kinds, low half first), and a
+read refuses an out-of-range raw value rather than clamping, as the one read
+requires. A scalar-only table with wide fields keeps the straight-line shape;
+every other table reads them through the descriptor walk.
+
+The wide kinds are **scalar kinds, not a §2 carry construct**: there is no
+optional spelling for the compiler's carry registry to refuse, so
+`compiler/carries_python_wide.go` adds no `carryPython` line and the Python
+carry set stays empty for the table frame. A unit uses them by declaring a
+field, and the frame carries them like `bool` or `uint32`.
+
+`TestPythonVtWide` holds the construct read-then-write against the Go engine
+under both pinned interpreters, and `TestPythonVtWideNegativeControl` plants a
+defect in a copy of `kind_wide.py` and requires it red. The manifest's wide
+units (`scalars`, `tblscalars2`) also reach a packet `type` by value and an
+unbounded array, which this cut does not carry; the frame refuses those units
+by name until their cards land, and `widelist`'s `[]uint128` is refused at read
+by the array card's placeholder.
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
