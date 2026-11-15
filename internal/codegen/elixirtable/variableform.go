@@ -5946,6 +5946,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 // own; only the re-emitted bytes must match the reference legs byte for byte.
 const variableRetainSource = `
   # ---- retain-unknown (docs/SPEC-TABLES.md §6.6) ----
+
+  # THE RESOLVING WALK'S NESTING BOUND (docs/SPEC-TABLES.md §4, §6.6): 128
+  # framed levels, the binary bound every reader holds.
+  @retain_walk_depth 128
+
   #
   # TableRetain is the caller's two bounded stores, threaded through the three
   # verbs and never grown by the codec:
@@ -7486,7 +7491,7 @@ const variableRetainSource = `
     end
   end
 
-  defp retain_content(_ids, _kind, _sub, depth) when depth > 64, do: :error
+  defp retain_content(_ids, _kind, _sub, depth) when depth > @retain_walk_depth, do: :error
   defp retain_content(_ids, 17, _sub, _depth), do: :error
   defp retain_content(ids, 13, sub, depth), do: retain_body(ids, sub, depth)
 
