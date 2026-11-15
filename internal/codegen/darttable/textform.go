@@ -1027,8 +1027,8 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", strconv.Quote(ir.TableFieldJsonKey(st.Fields[0])))
 	} else {
 		g.pf("\tfinal entries = _jsonEntries(obj);\n")
+		g.pf("\tif (entries == null) return;\n")
 	}
-	g.pf("\tif (entries == null) return;\n")
 	g.pf("\tfinal seen = <String>{};\n")
 	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
@@ -1234,12 +1234,15 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
 	if st.JsonArray {
 		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
+		// The throw above already leaves root a List here, so the call takes
+		// no second shape test.
+		g.pf("\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	} else {
 		g.pf("\tif (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: %s');\n", st.Name)
+		g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
+		g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
+		g.pf("\t}\n")
 	}
-	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
-	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
-	g.pf("\t}\n")
 	// A caller who supplied a report reads the verdict from it and lands the
 	// type's defaults; a caller who did not gets the refusal as a throw.
 	g.pf("\tif (r.refused) {\n")
