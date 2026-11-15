@@ -339,8 +339,7 @@ under both pinned interpreters, and `TestPythonVtWideNegativeControl` plants a
 defect in a copy of `kind_wide.py` and requires it red. The manifest's wide
 units (`scalars`, `tblscalars2`) also reach a packet `type` by value and an
 unbounded array, which this cut does not carry; the frame refuses those units
-by name until their cards land, and `widelist`'s `[]uint128` is refused at read
-by the array card's placeholder.
+by name until their cards land, and `widelist`'s `[]uint128` is refused by the array card's rule.
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;

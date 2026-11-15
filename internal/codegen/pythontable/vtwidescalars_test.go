@@ -243,9 +243,10 @@ func wideVtLoadUnit(t *testing.T, repo string, paths []string) *ir.Unit {
 	return u
 }
 
-// wideVtCells are the manifest rows whose unit declares a wide kind, the same
-// set the Lua row holds (internal/codegen/luatable/vtcells_test.go,
-// luaVTCells "wide-scalars").
+// wideVtCells are the manifest rows whose unit declares a wide kind: the six
+// the Lua row holds (internal/codegen/luatable/vtcells_test.go, luaVTCells
+// "wide-scalars") and widelist_wide, whose uint128 is an array element — an
+// array this cut does not carry, so its read must refuse by name.
 var wideVtCells = []string{
 	"scalars_full",
 	"scalars_default",
@@ -253,6 +254,7 @@ var wideVtCells = []string{
 	"scalars_full_as_2",
 	"scalars_edges_as_2",
 	"field_scalar_widen",
+	"widelist_wide",
 }
 
 // TestPythonVtWide holds the wide-scalars construct to the one read on
@@ -355,7 +357,17 @@ print("registered", "wide" in kinds._REGISTRY)
 				if err != nil {
 					t.Fatal(err)
 				}
-				got := wideVtRun(t, u, root, wire, wideVtProbe, nil)
+				probe := fmt.Sprintf(`import %s
+data = open("wire", "rb").read()
+try:
+    value = %s.%s.load(data)
+except Exception as err:
+    print("refused", getattr(err, "reason", type(err).__name__))
+else:
+    saved = value.save()
+    print("%%d:%%s:%%d" %% (len(saved), "same" if saved == data else "diff", value.measure()))
+`, u.Package, u.Package, root)
+				got := wideVtRun(t, u, root, wire, probe, nil)
 				if kind == "report" {
 					want := "read"
 					if got == "refused" || strings.HasPrefix(got, "refused ") {
