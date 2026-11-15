@@ -194,13 +194,10 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
 		}}},
 		{"union", &ir.Union{Name: "Event"}},
-<<<<<<< HEAD
 		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}},
 		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}},
 		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}},
-=======
 		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}},
->>>>>>> 8deaa618d7f061f082484a48403b071096abc0ed
 		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", HasIntRange: true, IntMin: big.NewInt(-100), IntMax: big.NewInt(100),
 			Type: ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32, IntBits: 16, FracBits: 16}}}}},
 		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}},

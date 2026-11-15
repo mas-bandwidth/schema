@@ -511,23 +511,15 @@ the core stands against the P4 row; the rules of this page are unchanged.
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
   readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
-<<<<<<< HEAD
-  ranged), enums, flags, types by value, unions, `if`/`else` branches, and the
-  storage-less wire constructs `const`, `reserved` and `align`. The branch and
-  the three storage-less items are each their own emitter file, registered in
-  the core's item table, so a later layout construct adds a file and one
-  registration line. A field or item of any other kind (`bits`, `fixed`,
-  `float32`, `float64`, `string`, `bytes`, an array, or a 128-bit integer) is
-  refused at generate time by its kind, naming P4 the packet wire. The class
-  surface knows how to birth and compare those kinds already; only their wire
-  emitters are still to come.
-=======
   ranged), raw `uint128` and ranged `int128`, enums, flags, types by value,
-  unions, and `if`/`else` branches. A field or item of any other kind
-  (`bits`, `fixed`, `float32`, `float64`, `string`, `bytes`, an array,
-  `const`, `reserved` or `align`) is refused at generate time by its kind,
-  naming P4 the packet wire. The class surface knows how to birth and
-  compare those kinds already; only their wire emitters are still to come.
+  unions, `if`/`else` branches, and the storage-less wire constructs `const`,
+  `reserved` and `align`. The branch and the three storage-less items are each
+  their own emitter file, registered in the core's item table, so a later
+  layout construct adds a file and one registration line. A field or item of
+  any other kind (`bits`, `string`, `bytes` or an array) is refused at
+  generate time by its kind, naming P4 the packet wire. The class surface
+  knows how to birth and compare those kinds already; only their wire
+  emitters are still to come.
 - **The 128-bit integers are the core's own shape.** `uint128` is one
   `serialize_uint128` call (128 bits, low 64-bit half first) and `int128`,
   always ranged, goes through the same ranged call the 64-bit kinds use,
@@ -539,7 +531,6 @@ the core stands against the P4 row; the rules of this page are unchanged.
   uses only these kinds and the core's (every examples128 golden declares
   `fixed` too), TestPythonPacketInt128 holds them to the generated Go unit
   over serialize.go on fixture schemas of its own.
->>>>>>> 8deaa618d7f061f082484a48403b071096abc0ed
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
