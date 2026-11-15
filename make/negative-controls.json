@@ -126,7 +126,7 @@
     {
       "name": "base-packet-2",
       "when": "pull-request",
-      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults, Go packet-finite and the C packet-end read controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls.",
+      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults, Go packet-finite and the C packet-end read controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls; the C packet-end read control joins the same group.",
       "targets": [
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",

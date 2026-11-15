@@ -675,34 +675,25 @@ int main( void )
         memset( &r_trio_first, 0xEF, sizeof( r_trio_first ) );
         memset( &r_straddle, 0xEF, sizeof( r_straddle ) );
 
-        /* The public read is the one-packet read (SPEC §5), so each shape is
-           read from its own packet inside the shared written stream. */
-        int offset = 0;
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
-        check( example_read_vec2( &r, &r_vec2 ), "read Vec2" );
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
-        check( example_read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
-        check( example_read_span_u64( &r, &r_span_u64 ), "read SpanU64" );
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
-        check( example_read_span_i64( &r, &r_span_i64 ), "read SpanI64" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
-        check( example_read_span_one( &r, &r_span_one ), "read SpanOne" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
-        check( example_read_span_chunk( &r, &r_span_chunk ), "read SpanChunk" );
-        serialize_read_stream_init( &r, buffer + offset, 20 ); offset += 20;
-        check( example_read_span_tail( &r, &r_span_tail ), "read SpanTail" );
-        serialize_read_stream_init( &r, buffer + offset, 32 ); offset += 32;
-        check( example_read_span_twice( &r, &r_span_twice ), "read SpanTwice" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
-        check( example_read_trio( &r, &r_trio ), "read Trio" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
-        check( example_read_trio_sole( &r, &r_trio_sole ), "read TrioSole" );
-        serialize_read_stream_init( &r, buffer + offset, 10 ); offset += 10;
-        check( example_read_trio_first( &r, &r_trio_first ), "read TrioFirst" );
-        serialize_read_stream_init( &r, buffer + offset, 51 ); offset += 51;
+        /* The twelve shapes are one written stream: several objects framed in
+           one buffer. Read each through the per-type body, and let the last
+           one's public read run the one end check after the final object
+           (SPEC §5, "Read termination"). */
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( schema_example_read_vec2_body_( &r, &r_vec2 ), "read Vec2" );
+        check( schema_example_read_span_f64_body_( &r, &r_span_f64 ), "read SpanF64" );
+        check( schema_example_read_span_u64_body_( &r, &r_span_u64 ), "read SpanU64" );
+        check( schema_example_read_span_i64_body_( &r, &r_span_i64 ), "read SpanI64" );
+        check( schema_example_read_span_one_body_( &r, &r_span_one ), "read SpanOne" );
+        check( schema_example_read_span_chunk_body_( &r, &r_span_chunk ), "read SpanChunk" );
+        check( schema_example_read_span_tail_body_( &r, &r_span_tail ), "read SpanTail" );
+        check( schema_example_read_span_twice_body_( &r, &r_span_twice ), "read SpanTwice" );
+        check( schema_example_read_trio_body_( &r, &r_trio ), "read Trio" );
+        check( schema_example_read_trio_sole_body_( &r, &r_trio_sole ), "read TrioSole" );
+        check( schema_example_read_trio_first_body_( &r, &r_trio_first ), "read TrioFirst" );
         check( example_read_trio_straddle( &r, &r_straddle ), "read TrioStraddle" );
-        check( offset == serialize_write_bytes_processed( &w ), "the twelve packets cover the written stream" );
+        check( serialize_read_bits_processed( &r ) == serialize_write_bits_processed( &w ),
+               "the shared stream's one end check closes at the final object" );
 
         check( r_vec2.x == 1.5 && r_vec2.y == -2.25, "Vec2 round-trips" );
         check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75, "SpanF64 round-trips" );
