@@ -1622,31 +1622,8 @@ func (g *tableGen) emitMapBuilderSurfaces(members []*ir.Struct) {
 // mapNumberEdge descends one map's entries for the NUMBERING walk.
 func (g *tableGen) mapNumberEdge(f *ir.Field) {
 	g.emitMapEntryLoop(f, "value", "return false;", func(entry, elem, ind string) {
-		g.pf("%[1]sif ( !%[2]sNumber( ctx, numbering, %[3]s ) )\n%[1]s{\n%[1]s    TableMapRelease( cursor_%[4]s );\n%[1]s    return false;\n%[1]s}\n", ind, entry, elem, f.Name)
+		g.pf("%[1]sif ( !%[2]sNumberEdges( ctx, numbering, %[3]s ) )\n%[1]s{\n%[1]s    TableMapRelease( cursor_%[4]s );\n%[1]s    return false;\n%[1]s}\n", ind, entry, elem, f.Name)
 	})
-}
-
-// mapPackMeasureEdge descends one map's entries for the PACK MEASURE.
-func (g *tableGen) mapPackMeasureEdge(f *ir.Field) {
-	g.emitMapEntryLoop(f, "value", "return -1;", func(entry, elem, ind string) {
-		g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", ind, entry, elem)
-		g.pf("%[1]sif ( inner < 0 )\n%[1]s{\n%[1]s    TableMapRelease( cursor_%[2]s );\n%[1]s    return -1;\n%[1]s}\n", ind, f.Name)
-		g.pf("%sbytes += inner;\n", ind)
-	})
-}
-
-// mapPackEdge descends one map's entries for the PACK, against the array
-// <T>MapPack already placed in the node's extent.
-func (g *tableGen) mapPackEdge(f *ir.Field) {
-	entry := mapEntryOf(f)
-	g.emitMapEntryLoopHead(f, "src", "return false;")
-	g.pf("        %s * placed_%s = (%s *) ( dst.%s.entries.value != 0 ? ( (uint8_t *) &dst.%s.entries + dst.%s.entries.value ) : NULL );\n",
-		entry.Name, f.Name, entry.Name, f.Name, f.Name, f.Name)
-	g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
-	g.pf("            if ( !%sPackEdges( ctx, seen, *cursor_%s[i], placed_%s[i], base, capacity, used ) ) { TableMapRelease( cursor_%s ); return false; }\n",
-		entry.Name, f.Name, f.Name, f.Name)
-	g.pf("        }\n")
-	g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
 }
 
 // emitMapEntryLoopHead opens one map's sorted cursor over the given subject.

@@ -493,9 +493,11 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	if vars := g.varMembers(members); len(vars) > 0 {
 		g.pf("// ---- pointer-graph walkers: number (measure/save), pack (Lock) ----\n\n")
 		for _, st := range vars {
+			g.pf("template <typename Ctx>\ninline bool %[1]sNumberEdges( const Ctx & ctx, TableNumbering & numbering, const %[2]s & value );\n", st.Name, st.Name)
 			g.pf("template <typename Ctx>\ninline bool %[1]sNumber( const Ctx & ctx, TableNumbering & numbering, const %[2]s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline int64_t %[1]sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %[2]s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline bool %[1]sPack( const Ctx & ctx, TablePackMap & seen, const %[2]s & src, %[3]s & dst, uint8_t * base, int64_t capacity, int64_t & used );\n", st.Name, st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline int64_t %[1]sPackBytes( const Ctx & ctx, const %[2]s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sPackCopy( const Ctx & ctx, const %[2]s & src, void * dst, uint8_t * base, int64_t capacity );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sPackSlots( const Ctx & ctx, TablePackMap & seen, const %[2]s & src, %[3]s & dst, uint8_t * base );\n", st.Name, st.Name, st.Name)
 		}
 		g.pf("\n")
 		g.emitNodeThunkOverloads(vars)
@@ -596,16 +598,17 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 		g.owner = st
 		g.emitNumber(st)
 		g.emitCycleSlots(st)
-		g.emitPackMeasure(st)
-		g.emitPack(st)
+		g.emitPackBytes(st)
+		g.emitPackCopy(st)
+		g.emitPackSlots(st)
 	}
 	for _, st := range members {
 		// a map's generated ENTRY takes no builder and no public surface: it
 		// is §2.8's one exception to §7's "a root is any table", reached only
 		// through the map that generates it, so it gets no Open, no Cook, no
-		// Save and no Load of its own. Its walk — Number, PackMeasure, Pack
-		// and the body codecs — is emitted above and is the whole of what it
-		// carries.
+		// Save and no Load of its own. Its walk — Number, PackBytes, PackCopy,
+		// PackSlots and the body codecs — is emitted above and is the whole of
+		// what it carries.
 		if g.isVar(st.Name) && !st.IsMapEntry() {
 			g.emitBuilderAndPublicSurface(st)
 		}
@@ -619,16 +622,17 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 // pointer fields inside them. A node takes its index the first time it is
 // reached and never again.
 //
-// The numbering is DETERMINISTIC AND RE-DERIVED, NEVER CARRIED: measure derives
-// it from the graph and save derives the same one from the same graph, and
-// nothing passes between them. That is what makes measure == save hold across a
-// pointer graph.
+// The walk has ONE frame per node and an explicit work list, never a call per
+// pointer edge: a chain's length is not a stack depth. A close marker keeps a
+// node open until its whole subtree is numbered, which is what makes a back
+// edge the cycle it is.
 func (g *tableGen) emitNumber(st *ir.Struct) {
-	g.pf("// %sNumber: number everything %s POINTS AT, in first-visit order —\n", st.Name, st.Name)
-	g.pf("// the fields in declaration order, a by-value edge descended in place.\n")
-	g.pf("// A reference to an entry whose descent is still OPEN is a data cycle,\n")
-	g.pf("// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).\n")
-	g.pf("template <typename Ctx>\ninline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value )\n{\n", st.Name, st.Name)
+	// The per-node half: walk ONE node's by-value closure and push every first
+	// pointer target onto the work list, in encounter order.
+	g.pf("// %sNumberEdges: push the pointer targets named by ONE %s, in walk order.\n", st.Name, st.Name)
+	g.pf("// A by-value edge is descended in place; a pointer edge is never descended\n")
+	g.pf("// here (docs/SPEC-TABLES.md §3.1).\n")
+	g.pf("template <typename Ctx>\ninline bool %sNumberEdges( const Ctx & ctx, TableNumbering & numbering, const %s & value )\n{\n", st.Name, st.Name)
 	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx;\n    (void) numbering;\n    (void) value; // no pointers below this node\n")
 	}
@@ -640,22 +644,22 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("    {\n")
 			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot.Src, f.Name)
 			g.pf("        if ( pointee != NULL )\n        {\n")
-			g.pf("            bool taken = false;\n")
-			g.pf("            int64_t slot = 0;\n")
-			g.pf("            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,\n")
-			g.pf("                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit\n")
-			g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
-			g.pf("            if ( !taken )\n            {\n")
-			g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
+			g.pf("            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );\n")
+			g.pf("            if ( found != NULL )\n            {\n")
+			g.pf("                if ( found->open != 0 ) { return false; } // a data cycle\n")
 			g.pf("            }\n            else\n            {\n")
 			g.pf("                TableNodeEntry node;\n")
 			g.pf("                node.node = (const void *) pointee;\n")
 			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableWireId(wire), wire)
 			g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
 			g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
-			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
-			g.pf("                if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; }\n", t)
-			g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
+			g.pf("                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return %sPackBytes( *(const Ctx *) pack_ctx, *(const %s *) pack_node ); };\n", t, t)
+			g.pf("                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return %sPackCopy( *(const Ctx *) pack_ctx, *(const %s *) pack_src, pack_dst, pack_base, pack_capacity ); };\n", t, t)
+			g.pf("                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return %sPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const %s *) pack_src, *( %s * ) pack_dst, pack_base ); };\n", t, t, t)
+			g.pf("                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return %sNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const %s *) walk_node ); };\n", t, t)
+			g.pf("                node.close = false;\n")
+			g.pf("                node.hint = 0;\n")
+			g.pf("                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }\n")
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
@@ -666,134 +670,120 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("    {\n")
 			g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s ); // %s: a byte buffer\n", slot.Src, f.Name)
 			g.pf("        if ( blob != NULL )\n        {\n")
-			g.pf("            bool taken = false;\n")
-			g.pf("            int64_t slot = 0;\n")
-			g.pf("            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,\n")
-			g.pf("                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit\n")
-			g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
-			g.pf("            if ( taken )\n            {\n")
+			g.pf("            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );\n")
+			g.pf("            if ( found != NULL )\n            {\n")
+			g.pf("                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)\n")
+			g.pf("            }\n            else\n            {\n")
 			g.pf("                TableNodeEntry node;\n")
 			g.pf("                node.node = (const void *) blob;\n")
 			g.pf("                node.type_id = %s;\n", blobTypeIdConst(f))
 			g.pf("                node.measure = &TableBlobMeasureThunk<Ctx>;\n")
 			g.pf("                node.save = &TableBlobSaveThunk<Ctx>;\n")
-			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent\n")
-			g.pf("                TablePackMapClose( numbering.seen, (const void *) blob, slot );\n")
+			g.pf("                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, %v ); };\n", blobTerminated(f))
+			g.pf("                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool\n                {\n                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;\n                    const TableBlob * pack_blob = (const TableBlob *) pack_src;\n                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );\n                    return true;\n                };\n")
+			g.pf("                node.pack_slots = NULL;\n")
+			g.pf("                node.walk = NULL; // a blob reaches nothing: no descent\n")
+			g.pf("                node.close = false;\n")
+			g.pf("                node.hint = 0;\n")
+			g.pf("                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }\n")
 			g.pf("            }\n")
-			g.pf("            else { numbering.shared = true; } // a SECOND slot names the one blob (docs/SPEC-TABLES.md §2.5, §16.7)\n")
 			g.pf("        }\n    }\n")
 		},
 		descend: func(table string, expr edgeExpr, indent string) {
-			g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr.Src)
+			g.pf("%sif ( !%sNumberEdges( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr.Src)
 		},
 		mapField:  g.mapNumberEdge,
 		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },
 	})
 	g.pf("    return true;\n}\n\n")
+
+	g.pf("// %sNumber: number everything %s POINTS AT, in first-visit order —\n", st.Name, st.Name)
+	g.pf("// the fields in declaration order, a by-value edge descended in place.\n")
+	g.pf("// A reference to an entry whose descent is still OPEN is a data cycle,\n")
+	g.pf("// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).\n")
+	g.pf("template <typename Ctx>\ninline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("    const int64_t before = numbering.work_count;\n")
+	g.pf("    if ( !%sNumberEdges( ctx, numbering, value ) ) { return false; }\n", st.Name)
+	g.pf("    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )\n    {\n")
+	g.pf("        const TableNodeEntry swap = numbering.work[i];\n")
+	g.pf("        numbering.work[i] = numbering.work[j];\n")
+	g.pf("        numbering.work[j] = swap;\n")
+	g.pf("    }\n")
+	g.pf("    while ( numbering.work_count > before )\n    {\n")
+	g.pf("        const TableNodeEntry work = numbering.work[--numbering.work_count];\n")
+	g.pf("        if ( work.close )\n        {\n            TablePackMapClose( numbering.seen, work.node, work.hint );\n            continue;\n        }\n")
+	g.pf("        bool taken = false;\n")
+	g.pf("        int64_t slot = 0;\n")
+	g.pf("        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,\n")
+	g.pf("            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit\n")
+	g.pf("        if ( entry == NULL ) { return false; } // the map could not grow\n")
+	g.pf("        if ( !taken )\n        {\n")
+	g.pf("            if ( entry->open != 0 ) { return false; } // a data cycle\n")
+	g.pf("            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob\n")
+	g.pf("            continue;\n        }\n")
+	g.pf("        if ( !TableNumberingAppend( numbering, work ) ) { return false; }\n")
+	g.pf("        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing\n")
+	g.pf("        TableNodeEntry close;\n")
+	g.pf("        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;\n")
+	g.pf("        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;\n")
+	g.pf("        close.close = true; close.hint = slot;\n")
+	g.pf("        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }\n")
+	g.pf("        const int64_t first = numbering.work_count;\n")
+	g.pf("        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }\n")
+	g.pf("        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )\n        {\n")
+	g.pf("            const TableNodeEntry swap = numbering.work[i];\n")
+	g.pf("            numbering.work[i] = numbering.work[j];\n")
+	g.pf("            numbering.work[j] = swap;\n")
+	g.pf("        }\n")
+	g.pf("    }\n")
+	g.pf("    return true;\n}\n\n")
 }
 
-// emitPackMeasure emits the exact byte count of a value's DESCENDANT nodes in
-// the packed form — Lock's sizing half.
-func (g *tableGen) emitPackMeasure(st *ir.Struct) {
-	g.pf("// %sPackMeasure: the packed region bytes of everything %s POINTS AT.\n", st.Name, st.Name)
-	g.pf("// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a\n")
-	g.pf("// node two references name is measured ONCE and packed once, and a\n")
-	g.pf("// reference to a node whose descent is still open is a data cycle, refused.\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value )\n{\n", st.Name, st.Name)
-	g.pf("    int64_t bytes = 0;\n")
-	if g.noVariableEdges(st) {
-		g.pf("    (void) ctx;\n    (void) seen;\n    (void) value; // no pointers below this node\n")
-	}
-	g.emitEdgeWalk(st, edgeVisitor{
-		read: "value",
-		pointer: func(f *ir.Field, slot edgeExpr) {
-			t := f.Type.Name
-			g.pf("    {\n")
-			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot.Src, f.Name)
-			g.pf("        if ( pointee != NULL )\n        {\n")
-			// a pointer TARGET always has walkers (ir.PointerTargets feeds them), so
-			// there is no walker-less arm to write here
-			g.pf("            bool taken = false;\n")
-			g.pf("            int64_t slot = 0;\n")
-			g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );\n")
-			g.pf("            if ( entry == NULL ) { return -1; } // the map could not grow\n")
-			g.pf("            if ( !taken )\n            {\n")
-			g.pf("                if ( entry->open != 0 ) { return -1; } // a data cycle\n")
-			g.pf("            }\n            else\n            {\n")
-			g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee );\n", t)
-			g.pf("                if ( inner < 0 ) { return -1; }\n")
-			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
-			g.emitNodeBytes(t, "*pointee", "                ", "return -1;",
-				func(term string) { g.pf("                bytes += %s + inner;\n", term) },
-				func(term string) { g.pf("                bytes += %s + inner;\n", term) })
-			g.pf("            }\n")
-			g.pf("        }\n    }\n")
-		},
-		blob: func(f *ir.Field, slot edgeExpr) {
-			// a byte buffer's node beside the table pointees, where its slot is
-			// declared — the pack lays nodes out in first-visit order (§6.2)
-			g.pf("    {\n")
-			g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s ); // %s: a byte buffer, packed at its used size\n", slot.Src, f.Name)
-			g.pf("        if ( blob != NULL )\n        {\n")
-			g.pf("            bool taken = false;\n")
-			g.pf("            int64_t slot = 0;\n")
-			g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );\n")
-			g.pf("            if ( entry == NULL ) { return -1; } // the map could not grow\n")
-			g.pf("            if ( taken )\n            {\n")
-			g.pf("                TablePackMapClose( seen, (const void *) blob, slot );\n")
-			g.pf("                bytes += TableBlobStorage( (int64_t) blob->length, %v );\n", blobTerminated(f))
-			g.pf("            }\n")
-			g.pf("        }\n    }\n")
-		},
-		descend: func(table string, expr edgeExpr, indent string) {
-			g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", indent, table, expr.Src)
-			g.pf("%sif ( inner < 0 ) { return -1; }\n", indent)
-			g.pf("%sbytes += inner;\n", indent)
-		},
-		mapField:  g.mapPackMeasureEdge,
-		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return -1;") },
-	})
-	g.pf("    return bytes;\n}\n\n")
-}
-
-// emitPack copies one node into the packed region and lays its pointees out
-// depth-first behind it, rewriting every reference into the region's
-// self-relative encoding.
-func (g *tableGen) emitPack(st *ir.Struct) {
-	g.pf("// %sPack: copy src into dst (already placed), then lay every pointee out\n", st.Name)
-	g.pf("// depth-first behind it, in FIELD ORDER, by bump allocation.\n")
-	g.pf("//\n")
-	g.pf("// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and\n")
-	g.pf("// where it landed, so a node's FIRST reference lays it out and every later\n")
-	g.pf("// reference points BACK at that one body. A region delta therefore has no\n")
-	g.pf("// required sign (§6.3), and sharing and a back-reference are one fact. A\n")
-	g.pf("// reference to a node whose descent is still OPEN is a cycle, and this\n")
-	g.pf("// refuses it rather than packing one.\n")
-	if g.anyExtent {
-		// THE NODE'S EXTENT IS CARVED BEFORE ANY POINTEE IS PLACED
-		// (docs/SPEC-TABLES.md §2.8, §6.3): a node's extent runs to the next
-		// directory entry, so a pointee laid between two of its map arrays
-		// would break that. Pack is therefore two halves — the extent, then
-		// the pointer descent — and a by-value nesting or a map entry descends
-		// into the SECOND, because the first already reached it.
-		g.pf("template <typename Ctx>\ninline bool %sPackEdges( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used );\n\n", st.Name, st.Name, st.Name)
-		g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
-		g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
-		g.pf("    int64_t at = 0;\n")
-		g.pf("    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( %s ) );\n", st.Name)
-		g.pf("    const int64_t room = capacity - ( (int64_t) ( extent - base ) );\n")
-		g.pf("    if ( !%sExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }\n", st.Name)
-		g.pf("    return %sPackEdges( ctx, seen, src, dst, base, capacity, used );\n}\n\n", st.Name)
-		g.pf("template <typename Ctx>\ninline bool %sPackEdges( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
-		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx;\n    (void) seen;\n    (void) src;\n    (void) dst;\n    (void) base;\n    (void) capacity;\n    (void) used;\n")
-		}
+// emitPackBytes emits one node's own region bytes — its aligned storage and
+// its map/list extent — which is all Lock needs to size the region once the
+// numbering has named every node (docs/SPEC-TABLES.md §6.3).
+func (g *tableGen) emitPackBytes(st *ir.Struct) {
+	g.pf("// %sPackBytes: %s's OWN region bytes, its extent included.\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline int64_t %sPackBytes( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
+	if g.anyExtent && g.hasExtent(st) {
+		g.pf("    const int64_t extent = %sExtent( ctx, value );\n", st.Name)
+		g.pf("    if ( extent < 0 ) { return -1; }\n")
+		g.pf("    return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent );\n", st.Name)
 	} else {
-		g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
-		g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
-		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx;\n    (void) seen;\n    (void) base;\n    (void) capacity;\n    (void) used;\n")
-		}
+		g.pf("    (void) ctx;\n    (void) value; // no list or map below this record\n")
+		g.pf("    return TableAlignUp64( (int64_t) sizeof( %s ) );\n", st.Name)
+	}
+	g.pf("}\n\n")
+}
+
+// emitPackCopy emits one node's copy into its place in the region, with the
+// map/list extent carved beside it. It reaches no pointer: the numbering has
+// already fixed every node's place (docs/SPEC-TABLES.md §3.1, §6.3).
+func (g *tableGen) emitPackCopy(st *ir.Struct) {
+	g.pf("// %sPackCopy: copy one %s to its place, carving its extent.\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline bool %sPackCopy( const Ctx & ctx, const %s & src, void * dst_storage, uint8_t * base, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("    %s * dst = new ( dst_storage ) %s;\n", st.Name, st.Name)
+	g.pf("    memcpy( (void *) dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
+	if g.anyExtent && g.hasExtent(st) {
+		g.pf("    int64_t at = 0;\n")
+		g.pf("    uint8_t * extent = (uint8_t *) dst + TableAlignUp64( (int64_t) sizeof( %s ) );\n", st.Name)
+		g.pf("    const int64_t room = capacity - ( (int64_t) ( extent - base ) );\n")
+		g.pf("    if ( !%sExtentPack( ctx, src, *dst, extent, at, room ) ) { return false; }\n", st.Name)
+	} else {
+		g.pf("    (void) ctx;\n    (void) base;\n    (void) capacity; // no list or map below this record\n")
+	}
+	g.pf("    return true;\n}\n\n")
+}
+
+// emitPackSlots rewrites every pointer and blob slot in ONE node to the place
+// the numbering gave its target, and descends only by-value edges. The region
+// is already laid out, so no slot is placed here and no pointer is followed
+// (docs/SPEC-TABLES.md §3.1, §6.3).
+func (g *tableGen) emitPackSlots(st *ir.Struct) {
+	g.pf("// %sPackSlots: point one %s's slots at the region's already-placed nodes.\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline bool %sPackSlots( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base )\n{\n", st.Name, st.Name, st.Name)
+	if g.noVariableEdges(st) {
+		g.pf("    (void) ctx;\n    (void) seen;\n    (void) src;\n    (void) dst;\n    (void) base; // no pointers below this node\n")
 	}
 	g.emitEdgeWalk(st, edgeVisitor{
 		read:  "src",
@@ -805,71 +795,38 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 			g.pf("        %s.value = 0; // %s\n", dstSlot, f.Name)
 			g.pf("        const %s * pointee = %sAt( ctx, %s );\n", t, t, slot.Src)
 			g.pf("        if ( pointee != NULL )\n        {\n")
-			g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
-			g.pf("            bool taken = false;\n")
-			g.pf("            int64_t slot = 0;\n")
-			g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );\n")
-			g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
-			g.pf("            if ( !taken )\n            {\n")
-			g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
-			g.pf("                %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s ); // the one body it already has\n", dstSlot, dstSlot)
-			g.pf("            }\n            else\n            {\n")
-			g.emitNodeBytes(t, "*pointee", "                ", "return false;",
-				func(term string) {
-					g.pf("                if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
-					g.pf("                used = at + %s;\n", term)
-				},
-				func(term string) {
-					g.pf("                const int64_t node_bytes = %s;\n", term)
-					g.pf("                if ( at + node_bytes > capacity ) { return false; }\n")
-					g.pf("                used = at + node_bytes;\n")
-				})
-			g.pf("                %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
-			g.pf("                %s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &%s );\n", dstSlot, dstSlot)
-			g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }\n", t)
-			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
-			g.pf("            }\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );\n")
+			g.pf("            if ( entry == NULL ) { return false; } // the numbering and the pack disagree\n")
+			g.pf("            %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s );\n", dstSlot, dstSlot)
 			g.pf("        }\n    }\n")
 		},
-		blob: g.emitPackBlobField,
-		descend: func(table string, expr edgeExpr, indent string) {
-			call := "Pack"
-			if g.anyExtent {
-				call = "PackEdges" // the extent walk already reached this nesting
-			}
-			g.pf("%sif ( !%s%s( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", indent, table, call, expr.Src, expr.Dst)
+		blob: func(f *ir.Field, slot edgeExpr) {
+			g.pf("    {\n")
+			g.pf("        %s.value = 0; // %s: a byte buffer\n", slot.Dst, f.Name)
+			g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s );\n", slot.Src)
+			g.pf("        if ( blob != NULL )\n        {\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );\n")
+			g.pf("            if ( entry == NULL ) { return false; } // the numbering and the pack disagree\n")
+			g.pf("            %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s );\n", slot.Dst, slot.Dst)
+			g.pf("        }\n    }\n")
 		},
-		mapField:  g.mapPackEdge,
+		descend: func(table string, expr edgeExpr, indent string) {
+			g.pf("%sif ( !%sPackSlots( ctx, seen, %s, %s, base ) ) { return false; }\n", indent, table, expr.Src, expr.Dst)
+		},
+		mapField: func(f *ir.Field) {
+			entry := mapEntryOf(f)
+			g.emitMapEntryLoopHead(f, "src", "return false;")
+			g.pf("        %s * placed_%s = (%s *) ( dst.%s.entries.value != 0 ? ( (uint8_t *) &dst.%s.entries + dst.%s.entries.value ) : NULL );\n",
+				entry.Name, f.Name, entry.Name, f.Name, f.Name, f.Name)
+			g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
+			g.pf("            if ( !%sPackSlots( ctx, seen, *cursor_%s[i], placed_%s[i], base ) ) { TableMapRelease( cursor_%s ); return false; }\n",
+				entry.Name, f.Name, f.Name, f.Name)
+			g.pf("        }\n")
+			g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
+		},
 		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },
 	})
 	g.pf("    return true;\n}\n\n")
-}
-
-// emitPackBlobField lays a BYTE BUFFER's node out beside the table pointees,
-// where its slot is declared: the node is copied at its used size — the header
-// and the bytes; the region's zeros are its tail and a string's terminator —
-// and a blob two slots name is laid out once (docs/SPEC-TABLES.md §2.5).
-func (g *tableGen) emitPackBlobField(f *ir.Field, slot edgeExpr) {
-	g.pf("    {\n")
-	g.pf("        %s.value = 0; // %s: a byte buffer\n", slot.Dst, f.Name)
-	g.pf("        const TableBlob * blob = TableBlobAt( ctx, %s );\n", slot.Src)
-	g.pf("        if ( blob != NULL )\n        {\n")
-	g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
-	g.pf("            bool taken = false;\n")
-	g.pf("            int64_t slot = 0;\n")
-	g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );\n")
-	g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
-	g.pf("            if ( !taken )\n            {\n")
-	g.pf("                %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s ); // the one body it already has\n", slot.Dst, slot.Dst)
-	g.pf("            }\n            else\n            {\n")
-	g.pf("                int64_t storage = TableBlobStorage( (int64_t) blob->length, %v );\n", blobTerminated(f))
-	g.pf("                if ( at + storage > capacity ) { return false; }\n")
-	g.pf("                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );\n")
-	g.pf("                used = at + storage;\n")
-	g.pf("                %s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &%s );\n", slot.Dst, slot.Dst)
-	g.pf("                TablePackMapClose( seen, (const void *) blob, slot );\n")
-	g.pf("            }\n")
-	g.pf("        }\n    }\n")
 }
 
 // ---- the builder and the public surface ----
@@ -933,57 +890,60 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    bool Lock();\n")
 	g.pf("};\n\n")
 
+	g.pf("template <typename Ctx>\ninline bool %sNumberFrom( const Ctx & ctx, TableNumbering & numbering, const %s & root );\n\n", n, n)
 	g.pf("inline bool %sBuilder::Lock()\n{\n", n)
 	g.pf("    if ( arena.locked ) { return region != NULL; }\n")
 	g.pf("    if ( root_ref.null() ) { return false; }\n")
 	g.pf("    TableArenaCtx ctx = { &arena };\n")
 	g.pf("    const %s & root = *(const %s *) TableArenaAt( arena, (uint32_t) root_ref.value );\n", n, n)
-	g.pf("    // The ROOT takes the map's first entry: it is packed at offset 0, and its\n")
-	g.pf("    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).\n")
-	g.pf("    TablePackMap seen;\n")
-	g.pf("    TablePackMapInit( seen, arena.allocator );\n")
-	g.pf("    bool root_taken = false;\n")
-	g.pf("    int64_t root_slot = 0;\n")
-	g.pf("    int64_t below = -1;\n")
-	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )\n    {\n")
-	g.pf("        below = %sPackMeasure( ctx, seen, root );\n", n)
+	g.pf("    // ONE NUMBERING NAMES EVERY NODE, ONCE: the root at offset 0 and its\n")
+	g.pf("    // descendants in first-visit order. That order IS the region's order, so\n")
+	g.pf("    // no pass follows a pointer and a chain is not a stack depth\n")
+	g.pf("    // (docs/SPEC-TABLES.md §3.1, §6.3).\n")
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering, arena.allocator );\n")
+	g.pf("    int64_t total = -1;\n")
+	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
+	g.pf("        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );\n")
+	g.pf("        if ( root_entry != NULL ) { root_entry->offset = 0; }\n")
+	g.pf("        int64_t used = %sPackBytes( ctx, root );\n", n)
+	g.pf("        bool ok = root_entry != NULL && used >= 0;\n")
+	g.pf("        for ( int64_t k = 0; ok && k < numbering.count; k++ )\n        {\n")
+	g.pf("            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );\n")
+	g.pf("            if ( bytes < 0 ) { ok = false; break; }\n")
+	g.pf("            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );\n")
+	g.pf("            if ( entry == NULL ) { ok = false; break; }\n")
+	g.pf("            used = TableAlignUp64( used );\n")
+	g.pf("            entry->offset = used;\n")
+	g.pf("            used += bytes;\n")
+	g.pf("        }\n")
+	g.pf("        if ( ok ) { total = used; }\n")
 	g.pf("    }\n")
-	g.pf("    if ( below < 0 )\n    {\n        TablePackMapShutdown( seen );\n        return false;\n    } // a data cycle, named at the reference that closes it\n")
-	if g.anyExtent {
-		g.pf("    int64_t root_extent = %sExtent( ctx, root );\n", n)
-		g.pf("    if ( root_extent < 0 )\n    {\n        TablePackMapShutdown( seen );\n        return false;\n    } // the sort could not run\n")
-		g.pf("    int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent ) + below;\n", n)
-	} else {
-		g.pf("    int64_t total = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
-	}
+	g.pf("    if ( total < 0 )\n    {\n        TableNumberingShutdown( numbering );\n        return false;\n    } // a data cycle, a sort that could not run, or an allocator that refused\n")
 	g.pf("    // the AUTHORING path may allocate (§6.5), and it does so through the\n")
 	g.pf("    // builder's own pair. The region comes back ZEROED, which is the\n")
 	g.pf("    // allocator's contract: a packed region carries node padding.\n")
 	g.pf("    uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );\n")
-	g.pf("    if ( packed == NULL )\n    {\n        TablePackMapShutdown( seen );\n        return false;\n    }\n")
-	if g.anyExtent {
-		g.pf("    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", n)
-	} else {
-		g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
-	}
-	g.pf("    %s * destination = new ( packed ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", n, n)
-	g.pf("    // The pack walk RE-DERIVES the same numbering rather than carrying the\n")
-	g.pf("    // measure's — nothing passes between them, which is what makes\n")
-	g.pf("    // `used == total` below a real check and not a tautology (§3.1). The\n")
-	g.pf("    // map keeps the capacity the measure paid for, so the second walk\n")
-	g.pf("    // rehashes nothing.\n")
-	g.pf("    TablePackMapReset( seen );\n")
-	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||\n")
-	g.pf("        !%[1]sPack( ctx, seen, root, *destination, packed, total, used ) || used != total )\n    {\n", n)
-	g.pf("        TablePackMapShutdown( seen );\n")
-	g.pf("        table_release( arena.allocator, packed );\n        return false;\n    }\n")
-	g.pf("    TablePackMapShutdown( seen );\n")
+	g.pf("    if ( packed == NULL )\n    {\n        TableNumberingShutdown( numbering );\n        return false;\n    }\n")
+	g.pf("    bool ok = %sPackCopy( ctx, root, packed, packed, total );\n", n)
+	g.pf("    for ( int64_t k = 0; ok && k < numbering.count; k++ )\n    {\n")
+	g.pf("        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );\n")
+	g.pf("        if ( entry == NULL ) { ok = false; break; }\n")
+	g.pf("        ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );\n")
+	g.pf("    }\n")
+	g.pf("    if ( ok ) { ok = %sPackSlots( ctx, numbering.seen, root, *( %s * ) packed, packed ); }\n", n, n)
+	g.pf("    for ( int64_t k = 0; ok && k < numbering.count; k++ )\n    {\n")
+	g.pf("        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );\n")
+	g.pf("        if ( entry == NULL ) { ok = false; break; }\n")
+	g.pf("        if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots\n")
+	g.pf("    }\n")
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    if ( !ok )\n    {\n        table_release( arena.allocator, packed );\n        return false;\n    }\n")
 	g.pf("    region = packed;\n")
 	g.pf("    region_bytes = total;\n")
 	g.pf("    arena.locked = true; // MONOTONIC: there is no unlock\n")
 	g.pf("    TableArenaShutdown( arena );\n")
 	g.pf("    return true;\n}\n\n")
-
 	// wire out
 	g.pf("// ---- %s on the wire: the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----\n", n)
 	g.pf("//\n")
