@@ -13858,7 +13858,7 @@ in build version (§20.5).
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
-  FromJsonWith  ToJsonWith  ToJsonMeasureWith
+  FromJsonWith  ToJsonWith  ToJsonMeasureWith  FromJsonBytes
   SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   ReadStrict
   MeasureMessages  SaveMessages  LoadMessages

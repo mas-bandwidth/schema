@@ -306,6 +306,8 @@ func init() {
 		Name{Name: "TableVariableFormatG", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFreeze", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFromJson", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableFromJsonBytes", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableDeclaredTypes", What: "the JavaScript variable-form runtime module: the unit's declared type ids, a wrong-target pointer's test"},
 		Name{Name: "TableVariableGuardHolds", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableHeader", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableIds", What: "the JavaScript variable-form runtime module"},

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -17,6 +18,7 @@ import (
 // THE ROOT OBJECT IS THE WHOLE TEXT): whitespace and comments after the root
 // are part of the text, and any other trailing byte is not a read.
 func TestJavaJsonRootIsWholeText(t *testing.T) {
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 

@@ -4593,6 +4593,10 @@ var tableGeneratedVerbs = []string{
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure", "ToJsonMeasureReason",
+	// the JavaScript backend's byte-input text read (docs/SPEC-TABLES.md §16.2):
+	// <Name>FromJsonBytes takes the document's UTF-8 bytes, emitted at module
+	// scope beside <Name>FromJson, so its suffix is claimed on the same rule
+	"FromJsonBytes",
 	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
 	// calls beside the plain three, so their suffixes are claimed on the same rule
 	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
