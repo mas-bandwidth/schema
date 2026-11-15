@@ -5725,6 +5725,9 @@ int tableEntityFixedSave(List<TableEntity> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   final view = tableEntityFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -5884,8 +5887,10 @@ int tableEntityFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }
@@ -6182,6 +6187,9 @@ int tableStatFixedSave(List<TableStat> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   final view = tableStatFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -6341,8 +6349,10 @@ int tableStatFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }
@@ -7028,6 +7038,9 @@ int tableMixedFixedSave(List<TableMixed> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
   // record is asked before the first byte is written, so a refusal
   // leaves the caller's bytes as they were.
@@ -7193,8 +7206,10 @@ int tableMixedFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }

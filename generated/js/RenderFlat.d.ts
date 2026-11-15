@@ -12,7 +12,9 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteRenderSpriteFlat(view: DataView, value: RenderSprite): number;
 export declare function ReadRenderSpriteFlat(view: DataView, numBits: number, value: RenderSprite): boolean;
+export declare function ReadRenderSpriteFlatBits(view: DataView, numBits: number, value: RenderSprite): number | false;
 
 export declare function WriteRenderBlockFlat(view: DataView, value: RenderBlock): number;
 export declare function ReadRenderBlockFlat(view: DataView, numBits: number, value: RenderBlock): boolean;
+export declare function ReadRenderBlockFlatBits(view: DataView, numBits: number, value: RenderBlock): number | false;
 
