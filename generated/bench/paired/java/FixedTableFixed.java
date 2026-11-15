@@ -249,6 +249,9 @@ public final class FixedTableFixed {
             return -1;
         }
         assert count <= values.length;
+        // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6): the write
+        // contract refuses an empty batch in a debug build.
+        assert count > 0;
         final int need = measure(count);
         if (need < 0 || buffer.length < need) {
             return -1;
@@ -284,6 +287,12 @@ public final class FixedTableFixed {
             return p;
         }
     }
+
+    /**
+     * THE LOAD PATH'S SCRATCH VALUE, reused per thread: pass 0 lands each record here so a refusal
+     * never touches the caller's values, and a read allocates nothing on its success path (§4.2).
+     */
+    private static final ThreadLocal<Value> loadScratch = ThreadLocal.withInitial(Value::new);
 
     /** the plan a record under THIS build's own hash is read through. */
     public static TableFixed.Entry[] identityPlan() {
@@ -389,10 +398,11 @@ public final class FixedTableFixed {
         final long recordSize = known_.recordBytes;
 
         // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight
-        // or less and a ragged tail are framing damage and have no name — and the
-        // caller's capacity, which does.
+        // or less, a header and layout followed by no record, and a ragged tail
+        // are framing damage and have no name — and the caller's capacity, which
+        // does.
         final long rest = data.length - head.recordsAt;
-        if (recordSize <= 8 || rest % recordSize != 0) {
+        if (recordSize <= 8 || rest == 0 || rest % recordSize != 0) {
             report.damaged = true;
             return -1;
         }
@@ -409,41 +419,41 @@ public final class FixedTableFixed {
         // selected plan (§4.3), so this loop reads them and allocates nothing;
         // the list is empty when the plan is the identity plan.
         final int holeN = pre.count;
-        int at = head.recordsAt;
-        // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
-        // refusal has written not one destination byte.
+        // STEP 11, TOTAL OVER THE BATCH (§5.3): pass 0 checks EVERY record — its
+        // hash first, then its counts, lengths, text, bool and present bytes —
+        // by landing it in a scratch value the caller never sees; only then does
+        // pass 1 land the records, values already known good. A refusal at
+        // record k leaves values[0..k-1] exactly as untouched as values[k].
+        final Value scratch = loadScratch.get();
         final int widenedBefore = report.widened;
-        for (int k = 0; k < n; k++) {
-            if (TableFixed.get64(data, at) != fileHash) {
-                for (int j = 0; j < k; j++) {
-                    scatter(defaults, 0, values[j], TableFixed.discard());
+        for (int pass = 0; pass < 2; pass++) {
+            report.widened = widenedBefore;
+            int at = head.recordsAt;
+            for (int k = 0; k < n; k++) {
+                if (TableFixed.get64(data, at) != fileHash) {
+                    report.widened = widenedBefore;
+                    report.refuse(TableFixed.Reason.noLayout);
+                    return -1;
                 }
-                report.widened = widenedBefore;
-                report.refuse(TableFixed.Reason.noLayout);
-                return -1;
-            }
-            for (int h = 0; h < holeN; h++) {
-                final int off = pre.holes[h * 2];
-                final int hn = pre.holes[h * 2 + 1];
-                System.arraycopy(defaults, off, image, off, hn);
-            }
-            TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
-            scatter(image, 0, values[k], report);
-            if (report.refused) {
-                for (int j = 0; j <= k; j++) {
-                    scatter(defaults, 0, values[j], TableFixed.discard());
+                for (int h = 0; h < holeN; h++) {
+                    final int off = pre.holes[h * 2];
+                    final int hn = pre.holes[h * 2 + 1];
+                    System.arraycopy(defaults, off, image, off, hn);
                 }
-                report.widened = widenedBefore;
-                return -1;
-            }
-            // DAMAGE DISCARDS THE WHOLE LOAD (§4)
-            if (report.damaged) {
-                for (int j = 0; j <= k; j++) {
-                    scatter(defaults, 0, values[j], TableFixed.discard());
+                TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
+                scatter(image, 0, pass == 0 ? scratch : values[k], report);
+                // DAMAGE DISCARDS THE WHOLE LOAD (§4)
+                if (report.refused || report.damaged) {
+                    if (pass == 1) {
+                        for (int j = 0; j <= k; j++) {
+                            scatter(defaults, 0, values[j], TableFixed.discard());
+                        }
+                    }
+                    report.widened = widenedBefore;
+                    return -1;
                 }
-                return -1;
+                at += (int) recordSize;
             }
-            at += (int) recordSize;
         }
         // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that
         // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how
