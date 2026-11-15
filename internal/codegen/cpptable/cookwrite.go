@@ -322,6 +322,12 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// side reads (§20.2's `optional=true`)
 		p := pieces[len(pieces)-1]
 		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
+		// the element's declared default is, so the payload rides only when the
+		// field is present.
+		g.pf("    if ( %s_present )\n    {\n", name)
+		g.indent = "    "
 	}
 	switch {
 	case f.Type.Blob():
@@ -377,6 +383,10 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		}
 	default:
 		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d", base, value.Offset), name, "    ", sfx)
+	}
+	if f.Type.Optional {
+		g.indent = ""
+		g.pf("    }\n")
 	}
 }
 
@@ -460,7 +470,7 @@ func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx strin
 			// same writer
 			g.pf("%s        case %sType::%s:\n%s        {\n", indent, un.Name, ir.GoExportName(v.Name), indent)
 			saved := g.indent
-			g.indent = indent + "        "
+			g.indent = g.indent + indent + "        "
 			g.emitCookWriteFieldAs(nil, v.F, armOffset, armValue(value, v), at, sfx+"a")
 			g.indent = saved
 			g.pf("%s            break;\n%s        }\n", indent, indent)

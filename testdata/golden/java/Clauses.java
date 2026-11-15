@@ -978,6 +978,10 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRI3_MAX_BITS;
+        assert value.a >= 0;
+        assert value.a <= 1;
+        assert value.b >= 0;
+        assert value.b <= 3;
         return true;
     }
 
@@ -1212,6 +1216,10 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ELEVEN_MAX_BITS;
+        assert value.a >= 0;
+        assert value.a <= 7;
+        assert value.b >= 0;
+        assert value.b <= 255;
         return true;
     }
 
@@ -1729,6 +1737,10 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + HOLDS_EMPTY_UNION_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -1859,6 +1871,8 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + STRS_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         assert value.sLength >= 0;
         assert value.sLength <= 8;
         for (int utf8Index = 0; utf8Index < value.sLength; ) {
@@ -1894,6 +1908,8 @@ public final class Clauses {
         }
         assert value.bLength >= 0;
         assert value.bLength <= 8;
+        assert value.tail >= 0;
+        assert value.tail <= 7;
         return true;
     }
 
@@ -2107,8 +2123,12 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARR_NESTED_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 4;
+        assert value.tail >= 0;
+        assert value.tail <= 7;
         return true;
     }
 
@@ -2239,6 +2259,8 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + SOLE_MAX_BITS;
+        assert value.only >= 0;
+        assert value.only <= 8191;
         return true;
     }
 

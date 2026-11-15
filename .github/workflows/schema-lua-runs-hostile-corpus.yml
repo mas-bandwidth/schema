@@ -16,20 +16,11 @@ name: schema lua hostile corpus
 # never runs on fleet hardware.
 
 on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '31 3 * * *'
   workflow_dispatch:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-lua-runs-hostile-corpus.mk'
-      - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'
-      - '.github/workflows/schema-lua-runs-hostile-corpus.yml'
-  pull_request:
-    paths:
-      - 'make/schema-lua-runs-hostile-corpus.mk'
-      - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'
-      - '.github/workflows/schema-lua-runs-hostile-corpus.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}

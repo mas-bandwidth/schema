@@ -9,7 +9,7 @@ package luautable
 
 import (
 	"math/big"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
@@ -45,7 +45,7 @@ func emitRetainIds(g *luau.Gen) error {
 	for _, t := range g.Unit.Tables {
 		tableIDs = append(tableIDs, ir.TableWireId(t.WireName()))
 	}
-	sort.Slice(tableIDs, func(i, j int) bool { return tableIDs[i] < tableIDs[j] })
+	slices.Sort(tableIDs)
 	st := g.Require(RuntimeModule)
 	g.Pf("-- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)\n")
 	g.Pf("%s.wireIds({%s\n})\n\n", st, idList(ids))

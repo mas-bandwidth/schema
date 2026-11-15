@@ -194,7 +194,23 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	}
 	if f.Type.Optional {
 		g.pf("%stable_cook_put(%s+%d,%s_present ? 1 : 0,1,order);\n", ind, at, pieces[len(pieces)-1].Offset-offset, src)
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
+			return
+		} // the slot is the extent writer's, and an absent one is already zero
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
+		// the element's declared default is, so the payload is written only
+		// when the field is present.
+		g.pf("%sif(%s_present) {\n", ind, src)
+		g.cookFieldPayload(f, src, at, offset, ind+"    ", step)
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.cookFieldPayload(f, src, at, offset, ind, step)
+}
+
+func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, ind string, step *int) {
+	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return
 	} // zero until the extent writer places the array
