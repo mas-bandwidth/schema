@@ -95,6 +95,15 @@ namespace Example
 
         public static bool ReadRenderSprite(ReadStream stream, ref RenderSprite value)
         {
+            if (!ReadRenderSpriteBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRenderSpriteBody(ReadStream stream, ref RenderSprite value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRenderSpriteBatch(ref batch, ref value);
             batch.End();
@@ -198,6 +207,15 @@ namespace Example
         }
 
         public static bool ReadRenderBlock(ReadStream stream, ref RenderBlock value)
+        {
+            if (!ReadRenderBlockBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRenderBlockBody(ReadStream stream, ref RenderBlock value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRenderBlockBatch(ref batch, ref value);

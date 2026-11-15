@@ -33,7 +33,7 @@ const tableVariableJsonSource = `
             return ReadTable(text, ref input, empty, f.Table, depth + 1);
         }
         Span<byte> key = stackalloc byte[MaxName];
-        if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
         input.Pos++;
         if (!Same(key.Slice(0, used), "&node"))

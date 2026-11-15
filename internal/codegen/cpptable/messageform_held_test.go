@@ -765,6 +765,28 @@ static int64_t pack_refs(uint8_t * buf, int cap, int width, int nlead, uint64_t 
     }
     return (int64_t)(at + 7) / 8;
 }
+static int64_t pack_keyed(uint8_t * buf, int cap, int nlead, uint64_t keyed_ref, int count_bits, uint64_t count,
+    uint64_t key_ref, int nkeys, int elem_bits)
+{
+    const int width = 2;
+    int at = 16, i, b, k;
+    memset(buf, 0, (size_t)cap);
+    buf[0] = 2;
+    buf[1] = 0;
+    for (i = 0; i < nlead; i++) {
+        for (b = 0; b < width; b++) { if ((at >> 3) >= cap) return -1; if ((1u >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7)); at++; }
+    }
+    for (b = 0; b < width; b++) { if ((at >> 3) >= cap) return -1; if ((keyed_ref >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7)); at++; }
+    for (b = 0; b < count_bits; b++) { if ((at >> 3) >= cap) return -1; if ((count >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7)); at++; }
+    for (k = 0; k < nkeys; k++) {
+        for (b = 0; b < width; b++) { if ((at >> 3) >= cap) return -1; if ((key_ref >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7)); at++; }
+        at += elem_bits;
+    }
+    for (i = 0; i <= nlead; i++) {
+        for (b = 0; b < width; b++) { if ((at >> 3) >= cap) return -1; at++; }
+    }
+    return (int64_t)(at + 7) / 8;
+}
 static int load_one(const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n, Root & storage, int64_t & count, TableReport & report)
 {
     RootReset(storage);
@@ -797,7 +819,7 @@ int main()
 {
     uint8_t buf[128];
     int64_t n;
-    TableMessageEntry body, arm, arr[2], keyed6[2], keyed32[2], keyed13[2];
+    TableMessageEntry body, arm, arr[2], keyed6[3], keyed32[3], keyed13[3];
     fill_entry(body, 13);
     fill_entry(arm, 15);
     fill_entry(arr[0], 13);
@@ -812,16 +834,22 @@ int main()
     keyed6[1].max = 3;
     keyed6[1].elem_kind = 6;
     keyed6[1].elem_value_bits = 8;
+    fill_entry(keyed6[2], 0);
+    keyed6[2].id = 3;
     fill_entry(keyed32[0], 13);
     fill_entry(keyed32[1], 16);
     keyed32[1].id = 2;
     keyed32[1].max = 3;
     keyed32[1].elem_kind = 32;
+    fill_entry(keyed32[2], 0);
+    keyed32[2].id = 3;
     fill_entry(keyed13[0], 13);
     fill_entry(keyed13[1], 16);
     keyed13[1].id = 2;
     keyed13[1].max = 3;
     keyed13[1].elem_kind = 13;
+    fill_entry(keyed13[2], 0);
+    keyed13[2].id = 3;
     TableVocabulary body_v(&body, 1);
     body_v.count = 1;
     body_v.ref_bits = 1;
@@ -834,16 +862,16 @@ int main()
     arr_v.count = 2;
     arr_v.ref_bits = 2;
     arr_v.announced = true;
-    TableVocabulary keyed6_v(keyed6, 2);
-    keyed6_v.count = 2;
+    TableVocabulary keyed6_v(keyed6, 3);
+    keyed6_v.count = 3;
     keyed6_v.ref_bits = 2;
     keyed6_v.announced = true;
-    TableVocabulary keyed32_v(keyed32, 2);
-    keyed32_v.count = 2;
+    TableVocabulary keyed32_v(keyed32, 3);
+    keyed32_v.count = 3;
     keyed32_v.ref_bits = 2;
     keyed32_v.announced = true;
-    TableVocabulary keyed13_v(keyed13, 2);
-    keyed13_v.count = 2;
+    TableVocabulary keyed13_v(keyed13, 3);
+    keyed13_v.count = 3;
     keyed13_v.ref_bits = 2;
     keyed13_v.announced = true;
     n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
@@ -868,11 +896,11 @@ int main()
     if (n < 0 || expect_ok("skip_depth_array_at_128", arr_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
     if (n < 0 || expect_bad("skip_depth_above_128 array", arr_v, buf, n)) return 1;
-    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 139);
+    n = pack_keyed(buf, 128, 128, 2, 2, 1, 3, 1, 8);
     if (n < 0 || expect_ok("skip_depth_keyed_fixed_at_128", keyed6_v, buf, n)) return 1;
-    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 131);
+    n = pack_keyed(buf, 128, 128, 2, 2, 1, 3, 1, 0);
     if (n < 0 || expect_ok("skip_depth_keyed_nopayload_at_128", keyed32_v, buf, n)) return 1;
-    n = pack_refs(buf, 128, 2, 127, 1, 2, 2, 132);
+    n = pack_keyed(buf, 128, 127, 2, 2, 1, 3, 1, 2);
     if (n < 0 || expect_bad("skip_depth_above_128 keyed", keyed13_v, buf, n)) return 1;
     return 0;
 }

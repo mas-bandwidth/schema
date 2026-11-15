@@ -109,6 +109,9 @@ export function ReadProbeHeaderFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.probeId = bg;
+  if (((80 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -223,6 +226,12 @@ export function ReadProbeBitsFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.nonce = bg;
+  if (((202 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(25) & 0xfc) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -460,6 +469,13 @@ export function ReadProbeSampleFlat(view, numBits, value) {
     value.samples[i0] = v;
     br += 16;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -587,6 +603,9 @@ export function ReadProbeRingFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0xffff) >>> 0;
   value.radius = v;
+  if (((16 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -635,6 +654,12 @@ export function ReadProbeSlabFlat(view, numBits, value) {
   value.width = v | 0;
   v = (out >>> 7) & 0xff;
   value.height = v;
+  if (((15 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0x80) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -756,6 +781,13 @@ export function ReadProbeShapeFlat(view, numBits, value) {
       br += 15;
       break;
     }
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -1140,6 +1172,13 @@ export function ReadProbeColliderFlat(view, numBits, value) {
       }
     }
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1356,6 +1395,12 @@ export function ReadProbeConfigFlat(view, numBits, value) {
   out = view.getUint32(4, true);
   v = (out & 0xf) >>> 0;
   value.preferred = v;
+  if (((36 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(4) & 0xf0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1663,6 +1708,14 @@ export function ReadProbeArrayFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xf) >>> 0;
   value.config.preferred = v;
+  br += 4;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1820,7 +1873,10 @@ export function WriteHeartbeatFlat() {
 
 // ReadHeartbeatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadHeartbeatFlat() {
+export function ReadHeartbeatFlat(view, numBits) {
+  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1882,6 +1938,12 @@ export function ReadTestFlat(view, numBits, value) {
     return false;
   }
   value.testD = v | 0;
+  if (((46 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(5) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1995,6 +2057,13 @@ export function ReadBlockFlat(view, numBits, value) {
     value.data[i0] = view.getUint8(bi + i0);
   }
   br += value.dataLength * 8;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -2119,6 +2188,13 @@ export function ReadChatFlat(view, numBits, value) {
   }
   br += value.textLength * 8;
   if (!validText(value.text, value.textLength)) {
+    return false;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
     return false;
   }
   return true;
@@ -2262,6 +2338,12 @@ export function ReadProbeReportFlat(view, numBits, value) {
     return false;
   }
   value.echo.testD = v | 0;
+  if (((134 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(16) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -2819,6 +2901,13 @@ export function ReadTestDataFlat(view, numBits, value) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -3121,6 +3210,9 @@ export function ReadCompressedProbeFlat(view, numBits, value) {
     return false;
   }
   value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
+  if (((24 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 

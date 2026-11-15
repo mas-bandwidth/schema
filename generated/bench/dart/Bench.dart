@@ -211,7 +211,8 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
 }
 
 // readBenchPacket decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -351,6 +352,17 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
     bitsRead += 8;
     value.blob[i0] = v;
   }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -471,7 +483,8 @@ int writeBenchInts(BenchInts value, ByteData view) {
 }
 
 // readBenchInts decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -558,6 +571,17 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
     return false; // a smuggled offset is refused
   }
   value.f9 = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -648,7 +672,8 @@ int writeBenchBits(BenchBits value, ByteData view) {
 }
 
 // readBenchBits decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchBits(BenchBits value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -717,6 +742,17 @@ bool readBenchBits(BenchBits value, ByteData view, int numBits) {
   lo = window & 0xffffffffffff;
   bitsRead += 48;
   value.b48 = lo;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -995,7 +1031,8 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
 }
 
 // readMixedEntity decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1088,6 +1125,17 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   v = (window >>> 23) & 0x1;
   bitsRead += 1;
   value.firing = v != 0;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1138,7 +1186,8 @@ int writeMixedStat(MixedStat value, ByteData view) {
 }
 
 // readMixedStat decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedStat(MixedStat value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1173,6 +1222,17 @@ bool readMixedStat(MixedStat value, ByteData view, int numBits) {
   v = (window >>> 8) & 0x3ff;
   bitsRead += 10;
   value.delta = -512 + v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1236,7 +1296,8 @@ int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
 }
 
 // readMixedHitEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1277,6 +1338,17 @@ bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
   v = (window >>> 27) & 0x1;
   bitsRead += 1;
   value.crit = v != 0;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1327,7 +1399,8 @@ int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
 }
 
 // readMixedChatEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1362,6 +1435,17 @@ bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
   v = (window >>> 2) & 0xfff;
   bitsRead += 12;
   value.speaker = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1412,7 +1496,8 @@ int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
 }
 
 // readMixedPickupEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1447,6 +1532,17 @@ bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
   v = (window >>> 10) & 0xff;
   bitsRead += 8;
   value.amount = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1547,7 +1643,8 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
 }
 
 // readMixedEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1634,6 +1731,17 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       v = (window >>> 10) & 0xff;
       bitsRead += 8;
       value.pickup.amount = v;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -2312,7 +2420,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
 }
 
 // readBenchMixed decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -2918,5 +3027,16 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 33) & 0xf;
   bitsRead += 4;
   value.idleTicks = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
