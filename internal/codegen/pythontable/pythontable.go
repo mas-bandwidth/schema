@@ -367,6 +367,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		if codecOf(f) == "keyed" {
+			emitKeyedDesc(b, f)
+		}
 		fmt.Fprintf(b, "        ),\n")
 	}
 	if len(st.Fields) == 1 {
@@ -503,8 +506,8 @@ func emitKeyedClass(b *strings.Builder, st *ir.Struct, f *ir.Field) {
 	fmt.Fprintf(b, "        if key is None or key < 1 or key > %d:\n", count)
 	b.WriteString("            raise KeyError(key)\n")
 	b.WriteString("        return self._values[key - 1]\n\n")
-	b.WriteString("    def __setitem__(self, key: int, value: object) -> None:\n")
-	fmt.Fprintf(b, "        if key < 1 or key > %d:\n", count)
+	b.WriteString("    def __setitem__(self, key: int | None, value: object) -> None:\n")
+	fmt.Fprintf(b, "        if key is None or key < 1 or key > %d:\n", count)
 	b.WriteString("            raise KeyError(key)\n")
 	b.WriteString("        self._values[key - 1] = value\n\n")
 	b.WriteString("    def __eq__(self, other: object) -> bool:\n")
@@ -641,7 +644,59 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 	return b.String()
 }
 
+// emitKeyedDesc emits an enum-keyed array's element descriptor and its key
+// variants' wire ids in slot order (docs/SPEC-TABLES.md §2.4, §3.2): slot i
+// holds the variant whose value is i + 1, and a slot past the named variants
+// carries 0, a key no variant names, which a write refuses.
+func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
+	codec := keyedElemCodec(f)
+	lo, hi := intRange(f)
+	fmt.Fprintf(b, "            elem=FieldDesc(\n")
+	fmt.Fprintf(b, "                name=%s,\n", strconv.Quote(f.Name))
+	fmt.Fprintf(b, "                field_id=0,\n")
+	fmt.Fprintf(b, "                kind=%d,\n", ir.TableWireElemKind(f))
+	fmt.Fprintf(b, "                codec=%s,\n", strconv.Quote(codec))
+	fmt.Fprintf(b, "                lo=%s,\n", lo)
+	fmt.Fprintf(b, "                hi=%s,\n", hi)
+	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
+	fmt.Fprintf(b, "            ),\n")
+	keys := make([]string, 0, f.ArrayBound)
+	for i := 0; i < int(f.ArrayBound); i++ {
+		id := uint64(0)
+		if i < len(f.KeyEnumRef.Variants) {
+			id = ir.TableWireId(f.KeyEnumRef.VariantWireName(i))
+		}
+		keys = append(keys, hex64(id))
+	}
+	if len(keys) == 1 {
+		fmt.Fprintf(b, "            keys=(%s,),\n", keys[0])
+	} else {
+		fmt.Fprintf(b, "            keys=(%s),\n", strings.Join(keys, ", "))
+	}
+}
+
+// keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
+// element the keyed kind does not carry yet: bool, the integer and
+// fixed-point kinds, and tables by value.
+func keyedElemCodec(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed:
+		return "int"
+	case ir.TNamed:
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+			return "table"
+		}
+	}
+	return ""
+}
+
 func codecOf(f *ir.Field) string {
+	if f.KeyEnum != "" && f.KeyEnumRef != nil && !f.Type.Pointer && !f.Type.Optional && !f.IsMap() && keyedElemCodec(f) != "" {
+		return "keyed"
+	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			return "unsupported"
@@ -791,7 +846,13 @@ func valueDefault(f *ir.Field) string {
 }
 
 func descriptorDefault(f *ir.Field) string {
-	switch codecOf(f) {
+	return defaultFor(f, codecOf(f))
+}
+
+// defaultFor is the descriptor default of a field, or of a container's
+// element, carried under codec.
+func defaultFor(f *ir.Field, codec string) string {
+	switch codec {
 	case "bool":
 		return pyBool(f.HasDefault && f.DefBool)
 	case "int":

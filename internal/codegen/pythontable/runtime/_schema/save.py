@@ -6,11 +6,12 @@ flat node table and the id table. Measure runs the same walk into a counting
 sink, so the two agree byte for byte by construction.
 """
 
-from typing import Any
+from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
 from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_keyed
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -116,7 +117,12 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
         else:
-            kinds._REGISTRY[field.codec].validate(field, current, where)
+            kind = kinds._REGISTRY[field.codec]
+            kind.validate(field, current, where)
+            # a container kind that holds tables by value names them, and
+            # each is validated as a field's table is
+            for table, table_path in _held_tables(kind, field, current, where):
+                _validate(table, table.descriptor, table_path, seen)
 
 
 def _collect(value: Any, ctx: Ctx) -> None:
@@ -142,6 +148,20 @@ def _collect(value: Any, ctx: Ctx) -> None:
             if field.is_default(current):
                 continue
             _collect(current, ctx)
+        else:
+            # the tables a container holds by value are walked in place, in
+            # the order their bodies ride
+            for table, _ in _held_tables(kinds._REGISTRY[field.codec], field, current, ""):
+                _collect(table, ctx)
+
+
+def _held_tables(kind: Any, field: FieldDesc, value: Any, path: str) -> Iterator[tuple[Any, str]]:
+    """The tables a container kind holds by value: its tables() when it has one."""
+    tables = getattr(kind, "tables", None)
+    if tables is None:
+        return iter(())
+    held: Iterator[tuple[Any, str]] = tables(field, value, path)
+    return held
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:

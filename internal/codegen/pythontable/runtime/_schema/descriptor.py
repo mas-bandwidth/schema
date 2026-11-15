@@ -11,7 +11,13 @@ from typing import Any
 
 
 class FieldDesc:
-    """One field of a generated table (docs/SPEC-TABLES.md §8.1)."""
+    """One field of a generated table (docs/SPEC-TABLES.md §8.1).
+
+    A container field names its element in elem, a descriptor of its own
+    (its wire kind, codec, range, target and default); an enum-keyed array
+    also carries keys, the key variants' wire ids in slot order, so slot i
+    holds the variant whose value is i + 1 (§2.4, §3.2).
+    """
 
     __slots__ = (
         "name",
@@ -29,6 +35,8 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "elem",
+        "keys",
     )
 
     name: str
@@ -46,6 +54,8 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    elem: "FieldDesc | None"
+    keys: tuple[int, ...]
 
     def __init__(
         self,
@@ -64,6 +74,8 @@ class FieldDesc:
         bound: int = 0,
         key_enum: str = "",
         default: Any = None,
+        elem: "FieldDesc | None" = None,
+        keys: tuple[int, ...] = (),
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -80,6 +92,8 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.elem = elem
+        self.keys = keys
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
