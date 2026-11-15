@@ -1963,6 +1963,7 @@
       "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
+        "packet-end-java-negative-control",
         "packet-utf8-java-negative-control"
       ],
       "java": "21"
