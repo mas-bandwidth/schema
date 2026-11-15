@@ -1499,12 +1499,15 @@ fn jr_text(c: JvIn&, bound: i64) -> bool {
     return true;
 }
 
-// jr_base64 decodes one base64 string onto data (the bytes(N) row, §16.2):
-// placed false for a body outside the grammar, which is kind_mismatch and
-// appends nothing; past bound (when bound >= 0) clamps and counts.
+// jr_base64 decodes one CANONICAL base64 string onto data (the bytes(N) row,
+// §16.2, §16.8): placed false for a body outside the grammar — the standard
+// alphabet, padded, zero pad bits, exactly the writer's text — which is
+// kind_mismatch and appends nothing; past bound (when bound >= 0) clamps and
+// counts.
 fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
     var symbols: i64 = 0;
     var pads: i64 = 0;
+    var last: i64 = -1;
     var bad = false;
     let start = c.jr.pos;
     let ok = json_scan(c.jr, false) { unit, n =>
@@ -1516,6 +1519,7 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
                 } else if pads > 0 || json_b64_sextet(ch) < 0 {
                     bad = true;
                 } else {
+                    last = json_b64_sextet(ch);
                     symbols += 1;
                 }
             }
@@ -1524,8 +1528,14 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
     if !ok { return false, false; }
     if !bad {
         if pads > 0 {
-            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 { bad = true; }
-        } else if symbols % 4 == 1 {
+            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 {
+                bad = true;
+            } else if pads == 1 && (last & 3) != 0 {
+                bad = true;
+            } else if pads == 2 && (last & 15) != 0 {
+                bad = true;
+            }
+        } else if symbols % 4 != 0 {
             bad = true;
         }
     }
