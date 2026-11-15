@@ -126,8 +126,14 @@ func pointerTargetNestedRows(t *testing.T, root string) []pointerTargetManifestR
 		return append(b, 0x00)
 	})
 	control := frame(nodeType, func(ids *pointerTargetIDs) []byte { return nodeBody(ids, 11, 0) })
+	// A *bytes blob under the *Node slot is a wrong-type target too. Its body is
+	// the one byte 0x00, which is a lawful *bytes value AND a well-formed empty
+	// table body, so the refusal rests on the type id alone rather than on a
+	// body the record scan happens to reject.
+	blob := frame(ir.BytesWireTypeId, func(ids *pointerTargetIDs) []byte { return []byte{0x00} })
 	return []pointerTargetManifestRow{
 		{name: "nested-next-quant", unit: unit, root: "Node", wire: nested, unknown: -1},
+		{name: "nested-next-bytes", unit: unit, root: "Node", wire: blob, unknown: -1},
 		{name: "nested-next-node", unit: unit, root: "Node", wire: control, read: true, unknown: 0},
 	}
 }

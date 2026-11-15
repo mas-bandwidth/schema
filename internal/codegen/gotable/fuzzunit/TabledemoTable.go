@@ -3218,8 +3218,8 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 
 // Resolve places a pointer slot from its node index (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1,
 // §6.5). A record of a type this reader cannot name reads null; one of a type
-// it names that is not the type the slot requires refuses. The open's wire
-// check has already refused an index past the table and a blob named twice.
+// it names that is not the slot's target refuses, as does an unplaced reserved
+// blob. The open's wire check has refused an index past the table and a blob named twice.
 type TableNodeDirEntry struct{ Offset, TypeID uint64 }
 type TableNodeMap struct {
 	Base      unsafe.Pointer
@@ -3262,6 +3262,9 @@ func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableRepo
 	}
 	e := &m.Entries[index-1]
 	if e.Offset == ^uint64(0) {
+		if (e.TypeID == tableBytesTypeID || e.TypeID == tableStringTypeID) && e.TypeID != target {
+			r.Refuse(TableRefuseWireDamaged, "")
+		}
 		return
 	}
 	if e.TypeID != target {

@@ -105,7 +105,8 @@ const (
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +13: a pointer target's record type is the reader's DECLARED type, not one root's reachable set (docs/SPEC-TABLES.md §3.1)
 	// +8: the measure learns every record type before it checks any pointer, so a pointer inside a node record is held to its target type (docs/SPEC-TABLES.md §3.1)
-	goExamplesLineBudget = 60114
+	// +3: an unplaced reserved blob record under a slot of another type refuses (docs/SPEC-TABLES.md §3.1)
+	goExamplesLineBudget = 60117
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

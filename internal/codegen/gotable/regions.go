@@ -362,14 +362,14 @@ func tableRegionSaveReason(root unsafe.Pointer,info *TableTypeInfo,buffer []byte
 
 // Resolve places a pointer slot from its node index (docs/SPEC-TABLES.md §3.1,
 // §6.5). A record of a type this reader cannot name reads null; one of a type
-// it names that is not the type the slot requires refuses. The open's wire
-// check has already refused an index past the table and a blob named twice.
+// it names that is not the slot's target refuses, as does an unplaced reserved
+// blob. The open's wire check has refused an index past the table and a blob named twice.
 type TableNodeDirEntry struct { Offset,TypeID uint64 }
 type TableNodeMap struct { Base unsafe.Pointer; Entries []TableNodeDirEntry; Good bool; Arena bool; Once bool; Indexed bool; Count uint64; NodeTypes []uint64 }
 // Mark records that a slot the reader cannot name points at a node record, so
 // the graph walk starts there too (docs/SPEC-TABLES.md §4, §6.5).
 func (m TableNodeMap) Mark(index uint64) { if index==0||index>uint64(len(m.Entries)){return};e:=&m.Entries[index-1];if e.Offset==^uint64(0){return};if e.TypeID==tableBytesTypeID||e.TypeID==tableStringTypeID{if e.Offset&tableNodeBlobSeen!=0{e.Offset|=tableNodeWireNamed};e.Offset|=tableNodeBlobSeen;return};e.Offset|=tableNodeWireNamed }
-func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Refuse(TableRefuseWireDamaged,"");return};e:=&m.Entries[index-1];if e.Offset==^uint64(0){return};if e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"");return};if target==tableBytesTypeID||target==tableStringTypeID {if e.Offset&tableNodeBlobSeen!=0 {r.Refuse(TableRefuseBlobShared,"");return};e.Offset|=tableNodeBlobSeen;off:=e.Offset&^tableNodeBlobSeen;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))};return};if m.Indexed{*slot=int64(index);return};off:=e.Offset&^tableNodeWireNamed;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))} }
+func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Refuse(TableRefuseWireDamaged,"");return};e:=&m.Entries[index-1];if e.Offset==^uint64(0){if (e.TypeID==tableBytesTypeID||e.TypeID==tableStringTypeID)&&e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"")};return};if e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"");return};if target==tableBytesTypeID||target==tableStringTypeID {if e.Offset&tableNodeBlobSeen!=0 {r.Refuse(TableRefuseBlobShared,"");return};e.Offset|=tableNodeBlobSeen;off:=e.Offset&^tableNodeBlobSeen;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))};return};if m.Indexed{*slot=int64(index);return};off:=e.Offset&^tableNodeWireNamed;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))} }
 
 type tableNodeScan struct { payload TableReader; declared,records uint64; present,bad bool }
 func tableNodeScanBegin(r TableReader) tableNodeScan {
