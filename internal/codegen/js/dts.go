@@ -290,7 +290,8 @@ func (g *dgen) emitUnion(un *ir.Union, packet bool) {
 }
 
 // emitFlat declares BaseFlat.js: the read slack and one codec pair per type
-// and union, over the classes the runtime-tier module declares.
+// and union, plus the bits-consumed framing read, over the classes the
+// runtime-tier module declares.
 func (g *dgen) emitFlat() {
 	g.pf("export declare const FlatReadSlack: 8;\n\n")
 	for _, d := range ir.EmissionOrder(g.file) {
@@ -305,6 +306,7 @@ func (g *dgen) emitFlat() {
 		}
 		g.need(g.file.Base, name)
 		g.pf("export declare function Write%sFlat(view: DataView, value: %s): number;\n", name, name)
-		g.pf("export declare function Read%sFlat(view: DataView, numBits: number, value: %s): boolean;\n\n", name, name)
+		g.pf("export declare function Read%sFlat(view: DataView, numBits: number, value: %s): boolean;\n", name, name)
+		g.pf("export declare function Read%sFlatBits(view: DataView, numBits: number, value: %s): number | false;\n\n", name, name)
 	}
 }
