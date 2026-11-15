@@ -72,7 +72,7 @@ fn main() {
     count.items_count = 9; // the declared bound is 8
     let mut length = RootRow::default();
     length.wide_length = 9; // the declared bound is 8
-    length.wide[8] = 0x41;
+    length.wide.fill(0x41); // valid UTF-8: only the length is off its bound
 
     if cfg!(debug_assertions) {
         println!("ASSERT count {}", if measure_asserts(&count) && save_asserts(&count) { "ok" } else { "BAD" });
