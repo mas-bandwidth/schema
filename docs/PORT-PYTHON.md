@@ -274,6 +274,7 @@ per unit, named for the unit's package:
 |---|---|
 | `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
+| `compiler/carries_python_evolution.go` | the evolution kinds' record: value defaults and `was` rows name no §2 carry key, so the file registers nothing; the table emitter carries the kinds and the driver's whole-unit lists wait for the rows cards |
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
@@ -290,10 +291,13 @@ generated class per table and per map entry, each with its descriptor
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
   `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  the kinds the table core carries. The evolution card adds `kind_string.py`,
+  `kind_bytes.py` and `kind_enum.py` and one registration line each; a flags
+  mask is an integer of the u64 kind and rides `kind_int.py`. A later card adds
+  its module and one registration line, never an edit to the body walk.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -309,9 +313,24 @@ generated class per table and per map entry, each with its descriptor
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
   by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
+  variable class. The evolution card adds `string(N)`, `bytes(N)`, a flags mask
+  and an enum value to the form-1 wire, with their declared defaults: a value at
+  the default elides, an absent field reads back as the default, and a renamed
+  table, table field or enum variant keeps the old name's hash under `was`.
+  `*bytes`, `*string` (the blobs), `?T`, `[]T`, `[E]T`, maps and unions with
+  table arms have descriptors in this cut and refuse by name through
   `kind_unsupported.py` until their cards land.
+- **Evolution.** Every wire id is the FNV-1a hash of a declared or renamed
+  name, never its position: a table's node type id is `fnv1a64( WireName )`,
+  a field's id is `fnv1a64( TableFieldWireName )`, an enum value rides as the
+  reference to `fnv1a64( VariantWireName )`, and a union arm's header carries
+  `fnv1a64( WireName )`. The emitter reads those helpers for every id, so a
+  table, table field or enum variant declared `| was = "old"` reads an old
+  writer's bytes in silence and saves them back byte for byte. A string, bytes
+  or flags default is DATA in the descriptor: the fresh value is born at it, a
+  field at it elides, and a field the old writer omitted reads back as it.
+  Union arm ids follow the same law in the union descriptor; their value codec
+  is the unions card's.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.

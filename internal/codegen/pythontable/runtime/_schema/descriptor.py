@@ -28,6 +28,8 @@ class FieldDesc:
         "array",
         "bound",
         "key_enum",
+        "size",
+        "variant_ids",
         "default",
     )
 
@@ -45,6 +47,8 @@ class FieldDesc:
     array: bool
     bound: int
     key_enum: str
+    size: int
+    variant_ids: tuple[int, ...]
     default: Any
 
     def __init__(
@@ -63,6 +67,8 @@ class FieldDesc:
         array: bool = False,
         bound: int = 0,
         key_enum: str = "",
+        size: int = 0,
+        variant_ids: tuple[int, ...] = (),
         default: Any = None,
     ) -> None:
         self.name = name
@@ -79,14 +85,19 @@ class FieldDesc:
         self.array = array
         self.bound = bound
         self.key_enum = key_enum
+        self.size = size
+        self.variant_ids = variant_ids
         self.default = default
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
         if self.pointer or self.optional:
             return value is None
-        if self.codec in ("bool", "int", "unsupported"):
+        if self.codec in ("bool", "int", "enum", "string", "unsupported"):
             return bool(value == self.default)
+        if self.codec == "bytes":
+            raw = _as_bytes(value)
+            return raw is not None and bool(raw == self.default)
         if self.codec == "table":
             if value is None:
                 return True
@@ -94,6 +105,19 @@ class FieldDesc:
                 return False
             return bool(value == new_by_name(self.target))
         return bool(value == self.default)
+
+
+def _as_bytes(value: Any) -> bytes | None:
+    """The bytes a caller's byte value holds, or None when it is not one."""
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        if value.format != "B":
+            return None
+        return value.tobytes()
+    return None
 
 
 class TableDesc:

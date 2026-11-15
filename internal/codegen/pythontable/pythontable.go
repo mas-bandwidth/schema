@@ -366,6 +366,8 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
+		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
 		fmt.Fprintf(b, "        ),\n")
 	}
@@ -659,9 +661,22 @@ func codecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			// a flags mask rides as a u64 and holds an int; its declared
+			// default is the mask the declaration names.
+			return "int"
 		}
 	}
 	return "unsupported"
@@ -784,10 +799,59 @@ func valueDefault(f *ir.Field) string {
 			return "0"
 		case *ir.Union:
 			return fmt.Sprintf("new_union_by_name(%q)", ref.Name)
+		case *ir.Enum:
+			return strconv.FormatInt(enumDefaultValue(f), 10)
+		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.String()
+			}
+			return "0"
 		}
 		return "0"
 	}
 	return "None"
+}
+
+// enumDefaultValue is the ordinal a fresh enum field carries (SPEC §4.2): the
+// defaulted variant's number, or the implicit None at zero.
+func enumDefaultValue(f *ir.Field) int64 {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok || !f.HasDefault || f.DefVariant == "" || f.DefVariant == "None" {
+		return 0
+	}
+	for i, name := range ref.Variants {
+		if name == f.DefVariant {
+			return int64(i + 1)
+		}
+	}
+	return 0
+}
+
+// variantIds is an enum field's wire ids by ordinal: entry k-1 is the hash of
+// variant k's wire name, so a variant renamed under `was` keeps its id.
+func variantIds(f *ir.Field) string {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return "()"
+	}
+	ids := make([]string, 0, len(ref.Variants))
+	for i := range ref.Variants {
+		ids = append(ids, hex64(ir.TableWireId(ref.VariantWireName(i))))
+	}
+	if len(ids) == 1 {
+		return "(" + ids[0] + ",)"
+	}
+	return "(" + strings.Join(ids, ", ") + ")"
+}
+
+// fieldSize is a string or bytes field's declared byte bound, and 0 for every
+// field that declares none or is not a byte buffer.
+func fieldSize(f *ir.Field) int64 {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return f.Type.Size
+	}
+	return 0
 }
 
 func descriptorDefault(f *ir.Field) string {
@@ -799,6 +863,12 @@ func descriptorDefault(f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "string":
+		return strconv.Quote(string(f.DefBytes))
+	case "bytes":
+		return "b" + goBytesLiteral(f.DefBytes)
+	case "enum":
+		return strconv.FormatInt(enumDefaultValue(f), 10)
 	}
 	return "None"
 }
@@ -815,6 +885,15 @@ func intRange(f *ir.Field) (lo, hi string) {
 		}
 	case ir.TBits:
 		return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)).String()
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			// the value is the variant's ordinal, 0 for the implicit None
+			return "0", strconv.FormatInt(ref.Max, 10)
+		case *ir.Flags:
+			// a file carries a mask whole, so its width is the u64's own
+			return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)).String()
+		}
 	}
 	return widthRange(f.Type.Width, f.Type.Signed)
 }
