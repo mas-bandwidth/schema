@@ -98,16 +98,6 @@ lobster cook-write root_default relax/cook-dead-slots-zero-ports
 lobster cook-write root_default-be relax/cook-dead-slots-zero-ports
 lobster cook-write root_full relax/cook-dead-slots-zero-ports
 lobster cook-write root_full-be relax/cook-dead-slots-zero-ports
-lua cook-write archive relax/cook-dead-slots-zero-ports
-lua cook-write archive-be relax/cook-dead-slots-zero-ports
-lua cook-write loadout_full relax/cook-dead-slots-zero-ports
-lua cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-lua cook-write profile_elide relax/cook-dead-slots-zero-ports
-lua cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-lua cook-write root_default relax/cook-dead-slots-zero-ports
-lua cook-write root_default-be relax/cook-dead-slots-zero-ports
-lua cook-write root_full relax/cook-dead-slots-zero-ports
-lua cook-write root_full-be relax/cook-dead-slots-zero-ports
 luau cook-write archive relax/cook-dead-slots-zero-ports
 luau cook-write archive-be relax/cook-dead-slots-zero-ports
 luau cook-write loadout_full relax/cook-dead-slots-zero-ports
