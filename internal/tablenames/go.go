@@ -225,6 +225,9 @@ func init() {
 		Name{Name: "tableTimestampTime", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableJSONReadWide", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJSONNumberToken", What: "a number token's mantissa bounded before strconv converts it (§16.2)"},
+		Name{Name: "tableJSONWideIntegerKind", What: "a kind wider than 32 bits, whose JSON form is a string of digits (§16.2)"},
+		Name{Name: "tableJSONIntegerToken", What: "an integer field takes an integer token only: no fraction, no exponent, no -0 (§16.2)"},
+		Name{Name: "tableJSONShapeMatches", What: "a JSON value's shape against the field's: exact, or a string or number for a wide integer (§16.2)"},
 		Name{Name: "tableJSONWriteWide", What: "exact wide scalar text conversion"},
 
 		Name{Name: "tableIDCapacity", What: "the form-1 wire runtime"},
