@@ -155,8 +155,9 @@ print("OK")
 // TestPythonTablePacketTypesRefusals holds the other edge: the blanket refusal
 // is gone, and only a packet kind the packet wire still lacks is refused, by
 // name, naming the kind and the packet card. graphdemo's packet type uses
-// carried kinds only; tblw1's Badge uses string, tabledemo's Attachment uses
-// float32, and neither may be refused as "a packet type".
+// carried kinds only; tblw1's Badge uses string, tabledemo's ScoreBoard uses a
+// keyed array (its float32 Attachment is carried since the packet floats
+// landed), and neither may be refused as "a packet type".
 func TestPythonTablePacketTypesRefusals(t *testing.T) {
 	t.Parallel()
 	if _, err := Generate(loadPaths(t, filepath.Join("..", "..", "..", "tables", "pointers"))); err != nil {
@@ -167,7 +168,7 @@ func TestPythonTablePacketTypesRefusals(t *testing.T) {
 		kind string
 	}{
 		{filepath.Join("..", "..", "..", "test", "tables", "W1.schema"), "string"},
-		{filepath.Join("..", "..", "..", "tables", "examples"), "float32"},
+		{filepath.Join("..", "..", "..", "tables", "examples"), "array"},
 	} {
 		_, err := Generate(loadPaths(t, c.path))
 		if err == nil {
@@ -318,6 +319,147 @@ print("OK")
 		}
 	}
 	for _, path := range []string{"packetmapvalues", "packetmapvalues/_schema"} {
+		if out, err := pyrun.Analyze(t, dir, path); err != nil {
+			t.Fatalf("mypy --strict over %s:\n%s", path, out)
+		}
+	}
+}
+
+// TestPythonTablePacketTypesMapValueNegativeControl plants the fault in a COPY
+// of the generated runtime: the nested-body length the table writer emits for
+// the map entry's packet value is moved by one, and the probe's byte compare
+// against the Go engine's wire must go red by name.
+func TestPythonTablePacketTypesMapValueNegativeControl(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, packetMapValueSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "packetmapvalues/_schema/kind_table.py"
+	text := string(files[path])
+	const anchor = "w.varint(len(body))"
+	if !strings.Contains(text, anchor) {
+		t.Fatalf("the negative control's anchor %q is absent from %s", anchor, path)
+	}
+	files[path] = []byte(strings.Replace(text, anchor, "w.varint(len(body) + 1)", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Holder"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(packetMapValueText), &report) || !report.Silent() {
+		t.Fatalf("the Go engine did not place the value: %+v", report)
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatalf("the Go engine did not encode the value: %v", err)
+	}
+	main := pyrun.ImportPrelude + `from packetmapvalues import Holder
+with open("wire.bin", "rb") as handle:
+    data = handle.read()
+if Holder.load(data).save() != data:
+    raise SystemExit("wire differs")
+print("OK")
+`
+	_, stderr, runErr := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(main), "wire.bin": wire})
+	if runErr == nil {
+		t.Fatal("NEGATIVE CONTROL FAILED: moving the map value's nested body length left the probe green")
+	}
+	if !strings.Contains(stderr, "wire differs") {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not by name \"wire differs\":\n%s", stderr)
+	}
+}
+
+// packetFloatSchema is a packet type whose fields are the float and fixed
+// kinds the packet wire carries since the packet floats landed, carried by
+// value in a table field.
+const packetFloatSchema = `package packetfloats
+
+type Sample
+{
+    f32 float32
+    f64 float64
+    cf  float32 | min = -5, max = 5, resolution = 0.001
+    q   fixed(16, 16) | min = -180, max = 180
+}
+
+table Reading
+{
+    sample Sample
+}
+`
+
+const packetFloatText = `{"sample":{"f32":1.5,"f64":-2.25,"cf":1.25,"q":-90.5}}`
+
+// TestPythonTablePacketTypesFloatKinds holds what a packet type of float and
+// fixed fields does in a table field now that the packet wire carries those
+// kinds and the table runtime does not yet: Generate accepts it, the generated
+// package imports (the hosted packet codec's float checks resolve in the table
+// runtime) and is mypy --strict clean, the packet class's own wire round-trips,
+// and the table read and write refuse the float field by name through
+// kind_unsupported.py, the whole value or nothing, under both pinned
+// interpreters.
+func TestPythonTablePacketTypesFloatKinds(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, packetFloatSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate refused a packet type of carried float kinds: %v", err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Reading"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(packetFloatText), &report) || !report.Silent() {
+		t.Fatalf("the Go engine did not place the value: %+v", report)
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatalf("the Go engine did not encode the value: %v", err)
+	}
+	probe := pyrun.ImportPrelude + `import packetfloats
+from packetfloats import Reading, Sample
+
+sample = Sample()
+sample.f32 = 1.5
+sample.f64 = -2.25
+packet = sample.write()
+again = Sample.read(packet)
+print("packet", again.f32, again.f64, again.write() == packet)
+
+with open("wire.bin", "rb") as handle:
+    data = handle.read()
+try:
+    Reading.load(data)
+    print("table read")
+except packetfloats.Refused as err:
+    print("table read refused", err.reason)
+try:
+    Reading().save()
+    print("table written")
+except packetfloats.InvalidValue:
+    print("table write refused")
+print("OK")
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "wire.bin": wire}
+	got := string(pyrun.Run(t, dir, "main.py", inputs))
+	gotFloor := string(pyrun.RunFloor(t, dir, "main.py", inputs))
+	if got != gotFloor {
+		t.Fatalf("the two pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", got, gotFloor)
+	}
+	for _, line := range []string{
+		"packet 1.5 -2.25 True",
+		"table read refused unsupported_kind",
+		"table write refused",
+		"OK",
+	} {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("probe output lacks %q:\n%s", line, got)
+		}
+	}
+	for _, path := range []string{"packetfloats", "packetfloats/_schema"} {
 		if out, err := pyrun.Analyze(t, dir, path); err != nil {
 			t.Fatalf("mypy --strict over %s:\n%s", path, out)
 		}

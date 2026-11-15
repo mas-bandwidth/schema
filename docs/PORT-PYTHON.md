@@ -336,6 +336,11 @@ generated class per table and per map entry, each with its descriptor
   the table runtime so that class's `read`/`write` still work. The table
   descriptor is the one the table walk reads; it is registered by name only,
   because a packet type by value never rides the node table's type ids.
+  A packet type whose fields are float or fixed-point kinds, which the packet
+  wire carries, is generated, imports and passes the analyzer, and its own
+  `read`/`write` work; on the table wire its body walk refuses those fields by
+  name through `kind_unsupported.py`, the whole value or nothing, until the
+  table runtime carries floats (`TestPythonTablePacketTypesFloatKinds`).
 - **Nothing the unit declares is dropped.** In a unit with tables, every
   packet type and packet union is generated, reached by a table or not,
   through the same `python.Host`: the class and codec the packet leg emits
@@ -343,8 +348,8 @@ generated class per table and per map entry, each with its descriptor
   second runtime. Only the ones a table reaches carry a table descriptor.
 - **An uncarried packet kind is refused by name.** A packet type or packet
   union of the unit, reached by a table or not, whose own fields use a kind
-  the PACKET wire does not carry (a `string`, a `float32`, a fixed-point or
-  128-bit integer, an array, ...) is refused at generate time, naming the
+  the PACKET wire does not carry (a `string`, `bytes`, `bits`, a 128-bit
+  integer, an array, ...) is refused at generate time, naming the
   type, the field, the kind and P4 the packet wire. It is never a blanket refusal of the unit, so a
   unit is refused only for the packet kind that is still missing.
 - **The compiler keeps the shared carry checks.** Before table dispatch it
