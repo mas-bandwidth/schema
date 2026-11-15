@@ -48,7 +48,7 @@ export function ZeroRenderSprite(value) {
 }
 
 export function WriteRenderSprite(stream, value) {
-  if (value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.sortKey !== "bigint" || value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.sortKey;

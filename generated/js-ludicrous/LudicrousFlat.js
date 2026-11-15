@@ -429,7 +429,7 @@ export function ReadUnsignedProbeFlatBits(view, numBits, value) {
 export function WriteWideProbeFlat(view, value) {
   let v = 0, lo = 0;
   let bg = 0n;
-  if (value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+  if (typeof value.entityId !== "bigint" || value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return -1;
   }
   bg = value.entityId;
@@ -474,7 +474,7 @@ export function WriteWideProbeFlat(view, value) {
   SC.setBigUint64(0, value.bias - -1000n, true);
   v = SC.getUint32(0, true) & 0x7ff;
   lo = (lo | (v << 8)) >>> 0;
-  if (value.seed < 0n || value.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+  if (typeof value.seed !== "bigint" || value.seed < 0n || value.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return -1;
   }
   bg = value.seed;
@@ -714,7 +714,7 @@ export function WriteLudicrousStateFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (21 - sb);
     }
   }
-  if (value.wide.entityId < 0n || value.wide.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+  if (typeof value.wide.entityId !== "bigint" || value.wide.entityId < 0n || value.wide.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return -1;
   }
   bg = value.wide.entityId;
@@ -833,7 +833,7 @@ export function WriteLudicrousStateFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  if (value.wide.seed < 0n || value.wide.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+  if (typeof value.wide.seed !== "bigint" || value.wide.seed < 0n || value.wide.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return -1;
   }
   bg = value.wide.seed;
@@ -888,7 +888,7 @@ export function WriteLudicrousStateFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.keysCount; i0++) {
-    if (value.keys[i0] < 0n || value.keys[i0] > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    if (typeof value.keys[i0] !== "bigint" || value.keys[i0] < 0n || value.keys[i0] > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
       return -1;
     }
     bg = value.keys[i0];
@@ -941,7 +941,7 @@ export function WriteLudicrousStateFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.hasTarget) {
-    if (value.targetId < 0n || value.targetId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    if (typeof value.targetId !== "bigint" || value.targetId < 0n || value.targetId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
       return -1;
     }
     bg = value.targetId;

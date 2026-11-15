@@ -1271,7 +1271,7 @@ export function WriteInputPacketFlat(view, value) {
   if (!Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
     return -1;
   }
-  if (value.currentFrame < 0n || value.currentFrame > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.currentFrame !== "bigint" || value.currentFrame < 0n || value.currentFrame > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.synchronizeSequence) & 0xffff));
@@ -1282,7 +1282,7 @@ export function WriteInputPacketFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
-  if (value.startFrame < 0n || value.startFrame > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.startFrame !== "bigint" || value.startFrame < 0n || value.startFrame > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.startFrame, true);
@@ -2136,7 +2136,7 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(20, v, true);
-  if (value.floorDefault < -9223372036854775808n || value.floorDefault > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.floorDefault !== "bigint" || value.floorDefault < -9223372036854775808n || value.floorDefault > 9223372036854775807n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.floorDefault, true);
@@ -2144,7 +2144,7 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(28, v, true);
-  if (value.ceilingDefault < 0n || value.ceilingDefault > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.ceilingDefault !== "bigint" || value.ceilingDefault < 0n || value.ceilingDefault > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.ceilingDefault, true);
@@ -2303,7 +2303,7 @@ export function WriteExtremeRowFlat(view, value) {
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
-  if (value.floorDef < -9223372036854775808n || value.floorDef > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.floorDef !== "bigint" || value.floorDef < -9223372036854775808n || value.floorDef > 9223372036854775807n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.floorDef, true);
@@ -2311,7 +2311,7 @@ export function WriteExtremeRowFlat(view, value) {
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(20, v, true);
-  if (value.ceilingDef < 0n || value.ceilingDef > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.ceilingDef !== "bigint" || value.ceilingDef < 0n || value.ceilingDef > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.ceilingDef, true);

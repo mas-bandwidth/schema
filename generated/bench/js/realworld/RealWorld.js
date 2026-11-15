@@ -480,7 +480,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (value.f008U64 < 0n || value.f008U64 > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.f008U64 !== "bigint" || value.f008U64 < 0n || value.f008U64 > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.f008U64;
@@ -590,7 +590,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  if (value.f029I64 < -9223372036854775808n || value.f029I64 > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.f029I64 !== "bigint" || value.f029I64 < -9223372036854775808n || value.f029I64 > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f029I64);
@@ -775,7 +775,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  if (value.f063I64 < -9223372036854775808n || value.f063I64 > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.f063I64 !== "bigint" || value.f063I64 < -9223372036854775808n || value.f063I64 > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f063I64);
@@ -866,7 +866,7 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   if (value.f074Bool) {
-    if (value.f075U64 < 0n || value.f075U64 > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof value.f075U64 !== "bigint" || value.f075U64 < 0n || value.f075U64 > 18446744073709551615n) { // a bare integer must fit its width
       return false;
     }
     BIGINT_SCRATCH.value = value.f075U64;

@@ -213,7 +213,7 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeAlign()) {
     return false;
   }
-  if (value.probeId < 0n || value.probeId > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.probeId !== "bigint" || value.probeId < 0n || value.probeId > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.probeId;
@@ -419,7 +419,7 @@ export function WriteProbeSample(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.bigDelta !== "bigint" || value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.bigDelta);
@@ -1388,14 +1388,14 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.uint64Value < 0n || value.uint64Value > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.uint64Value !== "bigint" || value.uint64Value < 0n || value.uint64Value > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.uint64Value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.int64Full !== "bigint" || value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Full);

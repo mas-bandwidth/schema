@@ -72,7 +72,7 @@ export function WriteProbeHeaderFlat(view, value) {
     return -1;
   }
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
-  if (value.probeId < 0n || value.probeId > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.probeId !== "bigint" || value.probeId < 0n || value.probeId > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.probeId, true);
@@ -320,7 +320,7 @@ export function WriteProbeSampleFlat(view, value) {
   if (!Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
     return -1;
   }
-  if (value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.bigDelta !== "bigint" || value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
     return -1;
   }
   v = (((value.rawDelta >>> 0) >>> 0)) >>> 0;
@@ -1536,7 +1536,7 @@ export function WriteProbeArrayFlat(view, value) {
     if (!Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
       return -1;
     }
-    if (e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+    if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
       return -1;
     }
     v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
@@ -2353,7 +2353,7 @@ export function WriteProbeReportFlat(view, value) {
     return -1;
   }
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
-  if (value.header.probeId < 0n || value.header.probeId > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.header.probeId !== "bigint" || value.header.probeId < 0n || value.header.probeId > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.header.probeId, true);
@@ -2647,7 +2647,7 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  if (value.uint64Value < 0n || value.uint64Value > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.uint64Value !== "bigint" || value.uint64Value < 0n || value.uint64Value > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   v = (((value.uint32Value) >>> 0)) >>> 0;
@@ -2678,7 +2678,7 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
+  if (typeof value.int64Full !== "bigint" || value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.int64Full, true);

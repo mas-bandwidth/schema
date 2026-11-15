@@ -282,7 +282,7 @@ export function ZeroWideProbe(value) {
 }
 
 export function WriteWideProbe(stream, value) {
-  if (value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+  if (typeof value.entityId !== "bigint" || value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.entityId;
@@ -301,7 +301,7 @@ export function WriteWideProbe(stream, value) {
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1000n, 1000n)) {
     return false;
   }
-  if (value.seed < 0n || value.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+  if (typeof value.seed !== "bigint" || value.seed < 0n || value.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.seed;
@@ -400,7 +400,7 @@ export function WriteLudicrousState(stream, value) {
     return false;
   }
   for (let i = 0; i < value.keysCount; i++) {
-    if (value.keys[i] < 0n || value.keys[i] > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    if (typeof value.keys[i] !== "bigint" || value.keys[i] < 0n || value.keys[i] > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
       return false;
     }
     BIGINT_SCRATCH.value = value.keys[i];
@@ -413,7 +413,7 @@ export function WriteLudicrousState(stream, value) {
     return false;
   }
   if (value.hasTarget) {
-    if (value.targetId < 0n || value.targetId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    if (typeof value.targetId !== "bigint" || value.targetId < 0n || value.targetId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
       return false;
     }
     BIGINT_SCRATCH.value = value.targetId;

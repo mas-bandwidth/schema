@@ -186,7 +186,7 @@ export function ReadSpanF64FlatBits(view, numBits, value) {
 export function WriteSpanU64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (value.values[i0] < 0n || value.values[i0] > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof value.values[i0] !== "bigint" || value.values[i0] < 0n || value.values[i0] > 18446744073709551615n) { // a bare integer must fit its width
       return -1;
     }
     SC.setBigUint64(0, value.values[i0], true);
@@ -294,7 +294,7 @@ export function ReadSpanU64FlatBits(view, numBits, value) {
 export function WriteSpanI64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (value.values[i0] < -9223372036854775808n || value.values[i0] > 9223372036854775807n) { // a bare integer must fit its width
+    if (typeof value.values[i0] !== "bigint" || value.values[i0] < -9223372036854775808n || value.values[i0] > 9223372036854775807n) { // a bare integer must fit its width
       return -1;
     }
     SC.setBigUint64(0, value.values[i0], true);
@@ -402,7 +402,7 @@ export function ReadSpanI64FlatBits(view, numBits, value) {
 export function WriteSpanOneFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 1; i0++) {
-    if (value.values[i0] < 0n || value.values[i0] > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof value.values[i0] !== "bigint" || value.values[i0] < 0n || value.values[i0] > 18446744073709551615n) { // a bare integer must fit its width
       return -1;
     }
     SC.setBigUint64(0, value.values[i0], true);

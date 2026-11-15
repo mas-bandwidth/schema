@@ -19,7 +19,7 @@ export const FlatReadSlack = 8;
 // must hold RenderSpriteMaxBytes.
 export function WriteRenderSpriteFlat(view, value) {
   let v = 0, lo = 0;
-  if (value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+  if (typeof value.sortKey !== "bigint" || value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
   SC.setBigUint64(0, value.sortKey, true);
@@ -143,7 +143,7 @@ export function WriteRenderBlockFlat(view, value) {
   sb = 7;
   for (let i0 = 0; i0 < value.spritesCount; i0++) {
     const e0 = value.sprites[i0];
-    if (e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
       return -1;
     }
     SC.setBigUint64(0, e0.sortKey, true);

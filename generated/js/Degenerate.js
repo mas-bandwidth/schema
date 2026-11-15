@@ -126,7 +126,7 @@ export function ZeroSpanU64(value) {
 
 export function WriteSpanU64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
       return false;
     }
     BIGINT_SCRATCH.value = value.values[i];
@@ -171,7 +171,7 @@ export function ZeroSpanI64(value) {
 
 export function WriteSpanI64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (value.values[i] < -9223372036854775808n || value.values[i] > 9223372036854775807n) { // a bare integer must fit its width
+    if (typeof value.values[i] !== "bigint" || value.values[i] < -9223372036854775808n || value.values[i] > 9223372036854775807n) { // a bare integer must fit its width
       return false;
     }
     BIGINT_SCRATCH.value = BigInt.asUintN(64, value.values[i]);
@@ -216,7 +216,7 @@ export function ZeroSpanOne(value) {
 
 export function WriteSpanOne(stream, value) {
   for (let i = 0; i < 1; i++) {
-    if (value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
+    if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
       return false;
     }
     BIGINT_SCRATCH.value = value.values[i];
