@@ -2441,7 +2441,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 debug; 10 not yet held
+  - packet `Write`: 1–8 and 10 debug
 
 - **Dart**
 
