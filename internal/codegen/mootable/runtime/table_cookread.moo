@@ -242,7 +242,10 @@ end
 local function readElement(ctx: any, owner: string, fd: any, e: any, at: number, w: number, list: boolean): any
 	local s = e.s
 	if s == "ptr" then
-		local t = target(ctx, at, 1)
+		-- every byte of the pointee record must lie in the region
+		local d = S.lookup(e.t)
+		local need: number = records[d.name].size
+		local t = target(ctx, at, need)
 		if t == false then
 			return fail(ctx, "bad_reference", owner, fd)
 		end
@@ -253,7 +256,6 @@ local function readElement(ctx: any, owner: string, fd: any, e: any, at: number,
 		if got ~= nil then
 			return got
 		end
-		local d = S.lookup(e.t)
 		local inst = d.new()
 		ctx.memo[t] = inst
 		readRecord(ctx, d, inst, t)
