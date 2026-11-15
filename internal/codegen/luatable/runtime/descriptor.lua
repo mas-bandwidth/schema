@@ -1061,6 +1061,14 @@ function D.prepare(T)
   end
   T.TypeIds = ids
   if T.Fixed ~= nil then require("fixed").prepare(T) end
+  if T.BlockForm == true then
+    -- the block graph is a constant too: each fixed table's block layout is
+    -- built here, once, and BlockOpen reads it (block.lua B.prepare)
+    local B = require("block")
+    for name, d in pairs(T.Tables) do
+      if d.block_eligible == true then B.prepare(T, name, d) end
+    end
+  end
 end
 
 -- A unit with a table that has no fixed block form needs the block runtime to
