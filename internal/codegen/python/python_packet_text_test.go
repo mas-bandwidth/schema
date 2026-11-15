@@ -191,12 +191,12 @@ func usesText(u *ir.Unit, root string) bool {
 // the class (SPEC §5).
 const textContractSchema = `package pytext
 
-type Name
+type Label
 {
     name string(5)
 }
 
-type Blob
+type Payload
 {
     blob bytes(5)
 }
@@ -222,7 +222,7 @@ type Texts
 const textContractProbe = `
 import sys
 from array import array
-from pytext.Text import Blob, Name, Texts
+from pytext.Text import Label, Payload, Texts
 from pytext import InvalidValue, Refused
 
 def fail(msg):
@@ -325,25 +325,25 @@ def accepted(cls, wire, attr, want):
     if got != want or type(got) is not type(want):
         fail("%s read %r, want %r" % (cls.__name__, got, want))
 
-for cls in (Name, Blob):
+for cls in (Label, Payload):
     refused(cls, b"", "empty")
     refused(cls, bytes([6]) + b"abcdef", "length past N")
     refused(cls, bytes([7]) + b"abcdefg", "length past N")
     refused(cls, bytes([2 | 8]) + b"ab", "nonzero padding")
     refused(cls, bytes([3]) + b"ab", "past-end payload")
-refused(Name, bytes([3]) + b"a\x00b", "interior NUL")
-refused(Name, bytes([1]) + b"\x00", "NUL")
-refused(Name, bytes([3]) + b"\xed\xa0\x80", "surrogate")
-refused(Name, bytes([2]) + b"\xc0\xaf", "overlong")
-refused(Name, bytes([1]) + b"\xff", "byte ff")
-refused(Name, bytes([1]) + b"\x80", "lone continuation")
-refused(Name, bytes([2]) + b"\xe2\x82", "truncated sequence")
-refused(Name, bytes([4]) + b"\xf4\x90\x80\x80", "above 10FFFF")
-accepted(Name, bytes([3]) + b"\xe2\x82\xac", "name", "€")
-accepted(Name, bytes([4]) + b"\xf4\x8f\xbf\xbf", "name", "\U0010ffff")
-accepted(Name, bytes([5]) + b"abcde", "name", "abcde")
-accepted(Blob, bytes([3]) + b"\x00\xed\xff", "blob", b"\x00\xed\xff")
-accepted(Blob, bytes([0]), "blob", b"")
+refused(Label, bytes([3]) + b"a\x00b", "interior NUL")
+refused(Label, bytes([1]) + b"\x00", "NUL")
+refused(Label, bytes([3]) + b"\xed\xa0\x80", "surrogate")
+refused(Label, bytes([2]) + b"\xc0\xaf", "overlong")
+refused(Label, bytes([1]) + b"\xff", "byte ff")
+refused(Label, bytes([1]) + b"\x80", "lone continuation")
+refused(Label, bytes([2]) + b"\xe2\x82", "truncated sequence")
+refused(Label, bytes([4]) + b"\xf4\x90\x80\x80", "above 10FFFF")
+accepted(Label, bytes([3]) + b"\xe2\x82\xac", "name", "€")
+accepted(Label, bytes([4]) + b"\xf4\x8f\xbf\xbf", "name", "\U0010ffff")
+accepted(Label, bytes([5]) + b"abcde", "name", "abcde")
+accepted(Payload, bytes([3]) + b"\x00\xed\xff", "blob", b"\x00\xed\xff")
+accepted(Payload, bytes([0]), "blob", b"")
 print("ok")
 `
 
@@ -427,7 +427,7 @@ func TestPythonPacketText(t *testing.T) {
 		rows := textCorpus(t, root)
 		utf8 := 0
 		for _, r := range rows {
-			if r.refused && !strings.Contains(r.name, "nul") && !strings.Contains(r.name, "past-end") && !strings.Contains(r.name, "padding") {
+			if r.refused && !strings.Contains(r.name, "refuse-nul-") && !strings.Contains(r.name, "past-end") && !strings.Contains(r.name, "padding") {
 				utf8++
 			}
 		}
