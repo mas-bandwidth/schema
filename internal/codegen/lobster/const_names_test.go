@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -40,7 +41,101 @@ func TestLobsterConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 			runPacketConstNames(t, tc.dir, tc.base, tc.main)
 		})
 	}
+	t.Run("type named value", func(t *testing.T) {
+		t.Parallel()
+		runPacketTypeNames(t, "package probe\n\ntype value\n{\n    x uint8\n}\n\ntype Holder\n{\n    a    value\n    data uint8\n    tail uint8\n}\n")
+	})
+	t.Run("declarations named as locals", func(t *testing.T) {
+		t.Parallel()
+		baseline := t.TempDir()
+		copySchemas(t, filepath.Join("..", "..", "..", "examples"), baseline)
+		files, err := Generate(unitFromDir(t, baseline))
+		if err != nil {
+			t.Fatal(err)
+		}
+		plain, _ := splitConstNames(generatedLocals(t, string(files["Wire.lobster"])))
+		var kept []string
+		for _, name := range plain {
+			if packetSchemaGenerates(t, localNamedDeclarations([]string{name})) {
+				kept = append(kept, name)
+			}
+		}
+		if len(kept) == 0 {
+			t.Fatal("no generated local can name a schema declaration")
+		}
+		t.Logf("declarations named %v", kept)
+		runPacketTypeNames(t, localNamedDeclarations(kept))
+	})
 }
+
+// localNamedDeclarations declares a type, enum, flags or union per name, in
+// turn, and a Holder carrying each of them and a tail byte.
+func localNamedDeclarations(names []string) string {
+	var b strings.Builder
+	b.WriteString("package probe\n\ntype ProbeArm\n{\n    x uint8\n}\n\n")
+	for i, name := range names {
+		switch i % 4 {
+		case 0:
+			b.WriteString("type " + name + "\n{\n    x uint8\n}\n\n")
+		case 1:
+			b.WriteString("enum " + name + "\n{ Alpha, Beta }\n\n")
+		case 2:
+			b.WriteString("flags " + name + "\n{ Alpha, Beta }\n\n")
+		default:
+			b.WriteString("union " + name + "\n{\n    arm ProbeArm\n}\n\n")
+		}
+	}
+	b.WriteString("type Holder\n{\n")
+	for i, name := range names {
+		b.WriteString("    f" + strconv.Itoa(i) + " " + name + "\n")
+	}
+	b.WriteString("    tail uint8\n}\n")
+	return b.String()
+}
+
+// packetSchemaGenerates reports whether the compiler accepts src for Lobster.
+func packetSchemaGenerates(t *testing.T, src string) bool {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, dir, "Probe.schema", src)
+	_, err := Generate(unitFromDir(t, dir))
+	return err == nil
+}
+
+// runPacketTypeNames generates src (package probe, a type Holder with a tail
+// byte) and requires the pinned Lobster to compile the module and round-trip
+// one Holder.
+func runPacketTypeNames(t *testing.T, src string) {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, dir, "Probe.schema", src)
+	files, err := Generate(unitFromDir(t, dir))
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, src)
+	}
+	run := t.TempDir()
+	writeAll(t, run, files)
+	writeFile(t, run, "main.lobster", typeNamesProbe)
+	if out := strings.TrimSpace(string(lobsterrun.Run(t, run, "main.lobster", nil))); out != "ok" {
+		t.Fatalf("schema printed %q\n%s", out, src)
+	}
+}
+
+const typeNamesProbe = `import .Probe
+import .serialize
+
+let v = probe.NewHolder()
+v.Tail = 7
+let w = serialize_write_stream(ensure_size("", 1024, 0))
+assert probe.WriteHolder(w, v)
+w.flush()
+let r = serialize_read_stream_padded(substring(w.buffer, 0, w.bytes_processed()))
+let out = probe.NewHolder()
+assert probe.ReadHolder(r, out)
+assert r.serialize_end()
+assert out.Tail == 7
+print("ok")
+`
 
 func runPacketConstNames(t *testing.T, srcDir, base, main string) {
 	t.Helper()
@@ -56,6 +151,9 @@ func runPacketConstNames(t *testing.T, srcDir, base, main string) {
 		t.Fatal(err)
 	}
 	plain, underscore := splitConstNames(names)
+	if len(plain) == 0 {
+		t.Fatal("no generated local can be spelled as a schema const")
+	}
 	for i, set := range [][]string{plain, underscore} {
 		if i == 1 && len(set) == 0 {
 			continue
@@ -98,7 +196,9 @@ func generatedLocals(t *testing.T, src string) []string {
 	t.Helper()
 	names := map[string]bool{}
 	add := func(name string) {
-		name = strings.TrimSpace(name)
+		// The spelling before the emitter's mark is the one a schema
+		// identifier could take.
+		name = strings.TrimSuffix(strings.TrimSpace(name), localMark)
 		if name != "" {
 			names[name] = true
 		}

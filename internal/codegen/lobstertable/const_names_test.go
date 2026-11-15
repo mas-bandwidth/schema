@@ -5,12 +5,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/scanner"
 )
 
@@ -48,6 +50,9 @@ func TestLobsterTableConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 	}
 	names = uniqueNames(names)
 	plain, underscore := splitTableConstNames(names)
+	if len(plain) == 0 {
+		t.Fatal("no generated local can be spelled as a schema const")
+	}
 	for i, set := range [][]string{plain, underscore} {
 		if i == 1 && len(set) == 0 {
 			continue
@@ -71,7 +76,106 @@ func TestLobsterTableConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 			t.Fatalf("consts %v printed %q", set, out)
 		}
 	}
+	t.Run("type named value", func(t *testing.T) {
+		t.Parallel()
+		runTableTypeNames(t, "package probe\n\ntype value\n{\n    x uint8\n}\n\nfixed table ProbeRoot\n{\n    a    value\n    data uint8\n    tail uint8\n}\n")
+	})
+	t.Run("declarations named as locals", func(t *testing.T) {
+		t.Parallel()
+		var kept []string
+		for _, name := range plain {
+			if tableSchemaGenerates(tableLocalNamedDeclarations([]string{name})) {
+				kept = append(kept, name)
+			}
+		}
+		if len(kept) == 0 {
+			t.Fatal("no generated local can name a schema declaration")
+		}
+		t.Logf("declarations named %v", kept)
+		runTableTypeNames(t, tableLocalNamedDeclarations(kept))
+	})
 }
+
+// tableLocalNamedDeclarations declares a type, enum, flags or union per name,
+// in turn, and a fixed table ProbeRoot carrying each of them and a tail byte.
+func tableLocalNamedDeclarations(names []string) string {
+	var b strings.Builder
+	b.WriteString("package probe\n\ntype ProbeArm\n{\n    x uint8\n}\n\n")
+	for i, name := range names {
+		switch i % 4 {
+		case 0:
+			b.WriteString("type " + name + "\n{\n    x uint8\n}\n\n")
+		case 1:
+			b.WriteString("enum " + name + "\n{ Alpha, Beta }\n\n")
+		case 2:
+			b.WriteString("flags " + name + "\n{ Alpha, Beta }\n\n")
+		default:
+			b.WriteString("union " + name + "\n{\n    arm ProbeArm\n}\n\n")
+		}
+	}
+	b.WriteString("fixed table ProbeRoot\n{\n")
+	for i, name := range names {
+		b.WriteString("    f" + strconv.Itoa(i) + " " + name + "\n")
+	}
+	b.WriteString("    tail uint8\n}\n")
+	return b.String()
+}
+
+// tableSchemaGenerates reports whether the compiler accepts src for both
+// Lobster emitters.
+func tableSchemaGenerates(src string) bool {
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		return false
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		return false
+	}
+	if _, err := lobster.Generate(u); err != nil {
+		return false
+	}
+	_, err := Generate(u)
+	return err == nil
+}
+
+// runTableTypeNames generates src (package probe, a fixed table ProbeRoot)
+// with both Lobster emitters and requires the pinned Lobster to compile the
+// modules and round-trip one ProbeRoot through the fixed form.
+func runTableTypeNames(t *testing.T, src string) {
+	t.Helper()
+	u := lobsterUnitOf(t, src)
+	files, err := lobster.Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v\n%s", err, src)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate tables: %v\n%s", err, src)
+	}
+	for name, data := range tables {
+		files[name] = data
+	}
+	dir := t.TempDir()
+	tableWriteAll(t, dir, files)
+	tableWriteFile(t, dir, "main.lobster", tableTypeNamesProbe)
+	if out := strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", nil))); out != "ok" {
+		t.Fatalf("schema printed %q\n%s", out, src)
+	}
+}
+
+const tableTypeNamesProbe = `import .ProbeTable
+
+let v = probe.NewProbeRoot()
+v.Tail = 7
+let wire = probe.ProbeRootFixedSave([v])
+let back = probe.ProbeRootFixedDecode(wire)
+assert length(back) == 1
+assert back[0].Tail == 7
+print("ok")
+`
 
 func tableWriteFile(t *testing.T, dir, name, data string) {
 	t.Helper()
@@ -106,7 +210,9 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 	t.Helper()
 	var names []string
 	add := func(name string) {
-		name = strings.TrimSpace(name)
+		// The spelling before the emitter's mark is the one a schema
+		// identifier could take.
+		name = strings.TrimSuffix(strings.TrimSpace(name), "·")
 		if name != "" {
 			names = append(names, name)
 		}
