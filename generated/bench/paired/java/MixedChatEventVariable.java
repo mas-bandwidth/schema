@@ -934,7 +934,7 @@ public final class MixedChatEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 3);
+                        long placed = in.integer(true, false, 0, 3);
                         if (!in.rejected) {
                             v.channel = (int) placed;
                         }
@@ -955,7 +955,7 @@ public final class MixedChatEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xfffL);
+                        long placed = in.integer(false, false, 0L, 0xfffL);
                         if (!in.rejected) {
                             v.speaker = (int) placed;
                         }
