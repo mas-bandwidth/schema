@@ -38,7 +38,8 @@ func TestJsGraphCheckedOverEveryPointer(t *testing.T) {
 		{"graph_reach_unknown_field", true},
 		{"graph_reach_unknown_nested", true},
 		{"graph_reach_unknown_union_arm", true},
-		{"graph_reach_unknown_keyed_slot", true},
+		// Element kind 17 is off the keyed body's closed list (docs/SPEC-TABLES.md §3), so this vector refuses wire_damaged.
+		{"graph_reach_unknown_keyed_slot", false},
 	}
 	rows := make([]row, 0, len(cases)+1)
 	files := make(map[string][]byte, len(cases)+1)

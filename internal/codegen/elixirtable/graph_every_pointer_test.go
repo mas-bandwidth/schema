@@ -47,7 +47,8 @@ func TestElixirGraphCheckedOverEveryPointer(t *testing.T) {
 		{"graph_reach_unknown_field", "Scene", true},
 		{"graph_reach_unknown_nested", "Scene", true},
 		{"graph_reach_unknown_union_arm", "Scene", true},
-		{"graph_reach_unknown_keyed_slot", "Scene", true},
+		// Element kind 17 is off the keyed body's closed list (docs/SPEC-TABLES.md §3), so this vector refuses wire_damaged.
+		{"graph_reach_unknown_keyed_slot", "Scene", false},
 		{"node_chain_two", "ListNode", true},
 	}
 	var probe strings.Builder

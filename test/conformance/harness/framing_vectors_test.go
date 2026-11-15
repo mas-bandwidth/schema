@@ -678,8 +678,9 @@ var framingVectors = []framingVector{
 	//
 	// READ: a record of a type this reader cannot name reads null and counts
 	// unknown, reached from an unknown kind-17 root field, from inside an
-	// unknown nested table, from the kind-17 arm of an unknown union, and from
-	// a kind-17 slot of an unknown enum-keyed body.
+	// unknown nested table, and from the kind-17 arm of an unknown union. The
+	// last vector puts kind 17 in an unknown enum-keyed body, which is off
+	// that body's closed list (§3), so it is damage and refuses.
 	{name: "graph_reach_unknown_field", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
 		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 	{name: "graph_reach_unknown_nested", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,

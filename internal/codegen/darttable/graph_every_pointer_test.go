@@ -41,12 +41,13 @@ func TestDartGraphCheckedOverEveryPointer(t *testing.T) {
 		"graph_string_blob_zero_byte",
 		"graph_unknown_type_unreached",
 		"graph_string_blob_unreached",
+		// Element kind 17 is off the keyed body's closed list (docs/SPEC-TABLES.md §3), so this vector refuses wire_damaged.
+		"graph_reach_unknown_keyed_slot",
 	}
 	read := []string{
 		"graph_reach_unknown_field",
 		"graph_reach_unknown_nested",
 		"graph_reach_unknown_union_arm",
-		"graph_reach_unknown_keyed_slot",
 	}
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

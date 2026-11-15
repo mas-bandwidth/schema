@@ -29,13 +29,14 @@ var heldGraphVectors = []struct {
 	{name: "graph_string_blob_ill_formed", accepted: false},
 	{name: "graph_string_blob_zero_byte", accepted: false},
 	{name: "graph_unknown_type_unreached", accepted: false},
+	// Element kind 17 is off the keyed body's closed list (docs/SPEC-TABLES.md §3), so this vector refuses wire_damaged.
+	{name: "graph_reach_unknown_keyed_slot", accepted: false},
 	{name: "graph_string_blob_unreached", accepted: false},
 	// READ: a record of a type this reader cannot name reads null and counts
 	// unknown, whichever unspecified pointer reaches it.
 	{name: "graph_reach_unknown_field", accepted: true},
 	{name: "graph_reach_unknown_nested", accepted: true},
 	{name: "graph_reach_unknown_union_arm", accepted: true},
-	{name: "graph_reach_unknown_keyed_slot", accepted: true},
 }
 
 // TestHeldGraphVectorsAnswerTheEngine reads each held graph vector's pinned
