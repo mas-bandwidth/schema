@@ -305,6 +305,13 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
 	// name it or not, exactly as on the variable form (§3).
 	seen := map[uint64]bool{}
+	// lastKnown is the declaration index of the last field this body carried:
+	// a body writes its fields in the writer's declaration order (§3.3, §22.2),
+	// so a field at or before one already read is out of order and refused. A
+	// field this reader cannot name still has its place, but its index is not
+	// one the reader holds, so only the fields it names are ordered against
+	// each other.
+	lastKnown := -1
 	for {
 		ref, ok := d.reference()
 		if !ok {
@@ -327,6 +334,11 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			}
 			continue
 		}
+		if i <= lastKnown {
+			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "fields out of the writer's declaration order"})
+			return false
+		}
+		lastKnown = i
 		fv := &inst.Fields[i]
 		mine := ir.TableFieldEntry(fv.Def)
 		if entry.Kind != mine.Kind || entry.Shape.Elem != mine.Shape.Elem {
@@ -362,6 +374,16 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		if fv.Def.Type.Optional && fv.Def.Array == ir.ArrayNone {
 			fv.Present = true
 		}
+		// THE NON-CANONICAL SPELLINGS (§3.3, §4; docs/rulings.json
+		// reads-refuse-non-canonical): a field stored at the default the writer
+		// elides. A UNION's None and a POINTER's null are their own spellings
+		// and are refused where they are read. The default refusal needs the
+		// sender's default, which the reader knows only at its own build
+		// version.
+		if d.v.buildVersion == ir.BuildVersion(d.m.Unit) && !fv.Def.Required && !fv.Def.Type.Optional && fieldElided(d.m, fv) {
+			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
+			return false
+		}
 	}
 }
 
@@ -376,7 +398,7 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	case f.Array != ir.ArrayNone:
 		return d.array(fv, entry)
 	case tabletext.UnionOf(f) != nil:
-		return d.unionCell(&fv.Cell, fv, -1)
+		return d.unionCell(&fv.Cell, fv, -1, true)
 	case tabletext.EnumOf(f) != nil:
 		return d.enumCell(&fv.Cell, f, false)
 	case tabletext.StructOf(f) != nil:
@@ -575,7 +597,7 @@ func (d *bitDecoder) element(fv *tabletext.Field, i int, cell *tabletext.Cell, s
 		cell.Tab = d.m.New(tabletext.StructOf(f))
 		return d.body(cell.Tab)
 	case ir.TableKindUnion:
-		return d.unionCell(cell, fv, i)
+		return d.unionCell(cell, fv, i, false)
 	case ir.TableKindEnum:
 		return d.enumCell(cell, f, true)
 	}
@@ -651,7 +673,12 @@ func (d *bitDecoder) keyedReference(seen map[uint64]bool) (ir.TableVocabularyEnt
 // of the arm's type would carry. An arm this reader cannot name is §4's
 // ordinary `unknown`, so the field reads None and one event counts, and the
 // arm's payload is skipped by the ARM's own announced entry.
-func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int) bool {
+//
+// `field` is true where the union is a FIELD's own payload: a conforming writer
+// elides a `None` field, so an explicit arm reference `0` there is refused
+// (docs/rulings.json reads-refuse-non-canonical). A `None` element of an array
+// of unions and a nested union's `None` arm are positional and stay lawful.
+func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int, field bool) bool {
 	f := fv.Def
 	un := tabletext.UnionOf(f)
 	ref, ok := d.reference()
@@ -661,6 +688,10 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	}
 	if ref == 0 {
 		cell.U = 0
+		if field && !f.Required {
+			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a union written with arm reference 0"})
+			return false
+		}
 		return true
 	}
 	entry, named := d.arm(ref)
@@ -711,7 +742,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	case af.Array != ir.ArrayNone:
 		return d.array(afv, entry)
 	case tabletext.UnionOf(af) != nil:
-		return d.unionCell(&afv.Cell, afv, -1)
+		return d.unionCell(&afv.Cell, afv, -1, false)
 	case tabletext.EnumOf(af) != nil:
 		return d.enumCell(&afv.Cell, af, false)
 	case tabletext.StructOf(af) != nil:

@@ -109,9 +109,9 @@ func headerAt(t *testing.T, wire []byte, id uint64, kind byte) int {
 	return -1
 }
 
-// withField prepends one field to a wire's ROOT body under an id the table
-// gains an entry for. Field ORDER within a body is not part of the contract
-// (§3), so a reader finds it wherever it sits.
+// withField appends one field to a wire's ROOT body under an id the table
+// gains an entry for, so the table stays in first-use order (§3): a reader
+// finds the field wherever it sits and skips it.
 func withField(t *testing.T, wire []byte, id uint64, kind byte, payload []byte) []byte {
 	t.Helper()
 	body, ids := trailerOf(t, wire)
@@ -122,10 +122,11 @@ func withField(t *testing.T, wire []byte, id uint64, kind byte, payload []byte) 
 		}
 	}
 	out := []byte{ir.TableWireForm}
+	out = append(out, body[:len(body)-1]...) // the body's fields, before the terminator
 	out = append(out, leb(ref)...)
 	out = append(out, kind)
 	out = append(out, payload...)
-	out = append(out, body...)
+	out = append(out, 0) // the terminator
 	if ref > uint64(len(ids)) {
 		ids = append(ids, id)
 	}
@@ -235,8 +236,8 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// an unknown u32 field ahead of the body's own, under an id the table
-	// gains an entry for
+	// an unknown u32 field after the body's own, under an id the table gains an
+	// entry for
 	hostile := withField(t, wire, 0xEEEEEEEEEEEEEEEE, ir.TableKindU32, []byte{1, 0, 0, 0})
 
 	back := m.New(m.Lookup("GlobalSettings"))
@@ -249,13 +250,14 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 	}
 	fv, _ := back.FieldByKey("tick_rate")
 	if fv.Cell.U != 90 {
-		t.Fatal("the field after the unknown one did not decode")
+		t.Fatal("the field before the unknown one did not decode")
 	}
 }
 
-// §3: an entry this reader cannot name is never counted at RESOLVE time — a
-// table with an unnameable entry no body references counts nothing at all.
-func TestUnnameableEntryCountsNothing(t *testing.T) {
+// §3: an id-table entry no body references is a spelling no conforming writer
+// produces, so the read refuses it rather than resolving it (docs/rulings.json
+// reads-refuse-non-canonical).
+func TestUnusedIdTableEntryIsRefused(t *testing.T) {
 	m := formOneModel(t)
 	inst := place(t, m, "GlobalSettings", `{ "tick_rate": 90 }`)
 	wire, err := tablewire.Encode(m, inst)
@@ -271,11 +273,11 @@ func TestUnnameableEntryCountsNothing(t *testing.T) {
 
 	back := m.New(m.Lookup("GlobalSettings"))
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, back, out, &r); !ok || err != nil {
-		t.Fatalf("an unreferenced entry should not stop the decode: %v %+v", err, r)
+	if ok, err := tablewire.Decode(m, back, out, &r); ok || err == nil {
+		t.Fatalf("an unused entry did not refuse: ok=%t err=%v %+v", ok, err, r)
 	}
-	if !r.Silent() {
-		t.Fatalf("resolving an unnameable entry counted something: %+v", r)
+	if !r.Refused {
+		t.Fatalf("the report does not say refused: %+v", r)
 	}
 }
 

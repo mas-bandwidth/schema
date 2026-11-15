@@ -16,9 +16,10 @@ const highLoadoutWireSortJSON = `{"grade":"Gold","grades":["Gold","Gold","Gold",
 
 // TestEngineWireEnumVariantRefSort is the engine's half of the Go test above:
 // the same two crashers through internal/tablewire's Decode. A variant
-// reference resolves BY ENTRY (docs/SPEC-TABLES.md §3): reference 0 is None,
-// entry 3 is a field-name id so it counts one unknown, and the first-use
-// renumbering of a None spelling is not a decode event (§16.11's carve-out).
+// reference resolves BY ENTRY (docs/SPEC-TABLES.md §3), and a reference past
+// the table is damage. A reference moved to another entry or to None reorders
+// the id table's first use, which the read refuses (docs/rulings.json
+// reads-refuse-non-canonical), rather than re-encoding on the next save.
 func TestEngineWireEnumVariantRefSort(t *testing.T) {
 	t.Parallel()
 	c := compiler.New()
@@ -45,25 +46,6 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 		}
 		return w
 	}
-	grade := func(t *testing.T, inst *tabletext.Instance) uint64 {
-		t.Helper()
-		for i := range inst.Fields {
-			if inst.Fields[i].Def.Name == "grade" {
-				return inst.Fields[i].Cell.U
-			}
-		}
-		t.Fatal("no grade field")
-		return 0
-	}
-	entries := func(w []byte) [][]byte {
-		n := int(binary.LittleEndian.Uint64(w[len(w)-8:]))
-		start := len(w) - 8 - n*8
-		out := make([][]byte, n)
-		for i := range out {
-			out[i] = w[start+i*8 : start+i*8+8]
-		}
-		return out
-	}
 	for _, tc := range []struct {
 		name   string
 		text   string
@@ -88,50 +70,30 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 				t.Fatalf("clean sample re-encodes to %x, want %x (%v)", again, base, err)
 			}
 
-			none := bytes.Clone(base)
-			none[3] = 0x00
-			noneBack := m.New(root)
-			var silent tabletext.Report
-			if ok, err := tablewire.Decode(m, noneBack, none, &silent); !ok || err != nil || !silent.Silent() {
-				t.Fatalf("None reference: %v %v %+v", ok, err, silent)
-			}
-			if got := grade(t, noneBack); got != 0 {
-				t.Fatalf("None reference read as grade %d, want None", got)
-			}
-			noneAgain, err := tablewire.Encode(m, noneBack)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if bytes.Equal(noneAgain, none) || len(noneAgain) != len(none) {
-				t.Fatalf("None reference re-encoded to %d bytes, want the same %d and a first-use difference", len(noneAgain), len(none))
-			}
-			before, after := entries(none), entries(noneAgain)
-			if !bytes.Equal(before[1], after[2]) || !bytes.Equal(before[2], after[1]) {
-				t.Fatalf("the id table did not swap entries 2 and 3: before %x after %x", before, after)
-			}
+		none := bytes.Clone(base)
+		none[3] = 0x00
+		noneBack := m.New(root)
+		var silent tabletext.Report
+		if ok, _ := tablewire.Decode(m, noneBack, none, &silent); ok || !silent.Refused {
+			t.Fatalf("a None reference that leaves the variant's first use later did not refuse: ok=%t report=%+v", ok, silent)
+		}
 
-			other := bytes.Clone(base)
-			other[3] = 0x03
-			otherBack := m.New(root)
-			var unknown tabletext.Report
-			if ok, err := tablewire.Decode(m, otherBack, other, &unknown); !ok || err != nil {
-				t.Fatalf("entry-3 reference: %v %v %+v", ok, err, unknown)
-			}
-			if unknown.Unknown != 1 {
-				t.Fatalf("entry-3 reference report %+v, want exactly one unknown", unknown)
-			}
-			if got := grade(t, otherBack); got != 0 {
-				t.Fatalf("entry-3 reference read as grade %d, want None", got)
-			}
+		other := bytes.Clone(base)
+		other[3] = 0x03
+		otherBack := m.New(root)
+		var unknown tabletext.Report
+		if ok, _ := tablewire.Decode(m, otherBack, other, &unknown); ok || !unknown.Refused {
+			t.Fatalf("a reference that reorders the variant's first use did not refuse: ok=%t report=%+v", ok, unknown)
+		}
 
-			over := bytes.Clone(base)
-			count := byte(binary.LittleEndian.Uint64(over[len(over)-8:]))
-			over[3] = count + 1
-			overBack := m.New(root)
-			var damaged tabletext.Report
-			if ok, _ := tablewire.Decode(m, overBack, over, &damaged); ok || !damaged.Refused {
-				t.Fatalf("reference past the table: ok=%v report=%+v, want malformed", ok, damaged)
-			}
-		})
+		over := bytes.Clone(base)
+		count := byte(binary.LittleEndian.Uint64(over[len(over)-8:]))
+		over[3] = count + 1
+		overBack := m.New(root)
+		var damaged tabletext.Report
+		if ok, _ := tablewire.Decode(m, overBack, over, &damaged); ok || !damaged.Refused {
+			t.Fatalf("reference past the table: ok=%v report=%+v, want malformed", ok, damaged)
+		}
+	})
 	}
 }

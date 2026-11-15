@@ -16,6 +16,7 @@
 package tablewire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -405,6 +406,10 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
+	// lastKnown is the declaration index of the last field this body carried:
+	// a body writes its fields in declaration order (§3, §22.2), so a field at
+	// or before one already read is out of the writer's order and refused.
+	lastKnown := -1
 	for {
 		if r.err() != nil {
 			return false
@@ -455,6 +460,10 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			}
 			continue
 		}
+		if i <= lastKnown {
+			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "fields out of the writer's declaration order"})
+		}
+		lastKnown = i
 		fv := &inst.Fields[i]
 		seen[i] = true
 		if int(kind) != wireKind(fv.Def) {
@@ -484,7 +493,40 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			// (docs/SPEC-TABLES.md §2.3)
 			fv.Present = true
 		}
+		// A FIELD STORED AT THE DEFAULT THE WRITER ELIDES IS REFUSED (§3, §4;
+		// docs/rulings.json reads-refuse-non-canonical), before the value is
+		// used. A `| required` field never elides and a present `?T` rides, so
+		// neither is judged here. A UNION's None and a POINTER's null are their
+		// own spellings and are refused in the arm and pointer reads.
+		if !fv.Def.Required && !fv.Def.Type.Optional && fieldElided(r.m, fv) {
+			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
+		}
 	}
+}
+
+// fieldElided reports whether a conforming writer elides the field at the value
+// a read just decoded (docs/SPEC-TABLES.md §3, §22.2): a scalar, a `flags` mask
+// or a fixed-point value at its declared default, a string or bytes at its
+// default, an empty counted array or map. The field rode, so an elided value is
+// a spelling no conforming writer produces (docs/rulings.json
+// reads-refuse-non-canonical). An enum, a union and a pointer are not judged
+// here: their defaults are read off the wire's own reference (an unknown
+// variant or arm reads the default but is lawful evolution), and their
+// spellings are refused where they are read.
+func fieldElided(m *tabletext.Model, fv *tabletext.Field) bool {
+	f := fv.Def
+	switch {
+	case f.IsMap():
+		return len(fv.Entries) == 0
+	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
+		return bytes.Equal(fv.Cell.Str, f.DefBytes)
+	case f.CountedOnWire():
+		return fv.Count == 0
+	case f.Array == ir.ArrayNone && !f.Type.Pointer && tabletext.EnumOf(f) == nil &&
+		tabletext.UnionOf(f) == nil && tabletext.StructOf(f) == nil:
+		return cellIsDefault(&encoder{m: m}, f, &fv.Cell)
+	}
+	return false
 }
 
 func (r *wireReader) field(fv *tabletext.Field) bool {
@@ -500,6 +542,13 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		if !ok {
 			return r.damage("a node index that is truncated or not canonical")
 		}
+		if index == ir.NodeWireIndexNull && !f.Required {
+			// NULL ELIDES, so an explicit null at a field is a spelling no
+			// conforming writer produces (§3.1, docs/rulings.json
+			// reads-refuse-non-canonical). A `| required` null rides, and a
+			// null slot of an ARRAY of pointers is lawful.
+			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "an explicit null pointer at a field"})
+		}
 		return r.resolveCell(&fv.Cell, f, index)
 	case f.KeyEnum != "":
 		return r.keyed(fv)
@@ -514,7 +563,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		return r.arrayBody(fv, -1)
 	case tabletext.UnionOf(f) != nil:
-		return r.unionCell(&fv.Cell, fv, -1)
+		return r.unionCell(&fv.Cell, fv, -1, true)
 	case tabletext.EnumOf(f) != nil:
 		return r.enumCell(&fv.Cell, f, false)
 	case tabletext.StructOf(f) != nil:
@@ -873,7 +922,7 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 		// kind, so the arm rules apply once per element (§3)
 		fv.Elems[i].U = 0
 		fv.Elems[i].Tab = nil
-		return r.unionCell(&fv.Elems[i], fv, i)
+		return r.unionCell(&fv.Elems[i], fv, i, false)
 	}
 	if f.Type.Pointer {
 		// an element of an array of pointers: a node index, resolved and
@@ -993,7 +1042,12 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 // unionCell decodes the union framing into one cell — a field's, or an element
 // of an array of unions (§3). AN ARM HEADER IS A FIELD HEADER: the arm id
 // reference, the arm's KIND byte, `L`, then `L` bytes of arm payload.
-func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int) bool {
+//
+// `field` is true where the union is a FIELD's own payload: a conforming writer
+// elides a `None` field, so an explicit arm reference `0` there is refused
+// (docs/rulings.json reads-refuse-non-canonical). A `None` element of an array
+// of unions and a nested union's `None` arm are positional and stay lawful.
+func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int, field bool) bool {
 	f := fv.Def
 	un := tabletext.UnionOf(f)
 	ref, ok := r.leb()
@@ -1004,6 +1058,9 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	cell.Tab = nil
 	cell.Arm = nil
 	if ref == 0 {
+		if field && !f.Required {
+			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "a union written with arm reference 0"})
+		}
 		return true // empty: the id is the whole payload, not even a kind byte
 	}
 	armID, named := r.id(ref)
@@ -1104,7 +1161,7 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 			return false
 		}
 	case tabletext.UnionOf(f) != nil:
-		if !r.unionCell(&av.Cell, av, -1) {
+		if !r.unionCell(&av.Cell, av, -1, false) {
 			return false
 		}
 	case tabletext.EnumOf(f) != nil:

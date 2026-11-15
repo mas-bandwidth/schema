@@ -317,6 +317,7 @@ func TestOracleRetainedFloatIsTested(t *testing.T) {
 	reader := listModel(t, "package rf\n\ntable T\n{\n    x int32\n}\n")
 	inst := writer.New(writer.Lookup("T"))
 	oracleField(t, inst, "x").Cell.I = 7
+	oracleField(t, inst, "x").Cell.U = 7
 	oracleField(t, inst, "f").Cell.F = float64(float32(0.75))
 	oracleField(t, inst, "d").Cell.F = 2.0e50
 	wire, err := tablewire.Encode(writer, inst)
