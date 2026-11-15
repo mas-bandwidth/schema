@@ -81,6 +81,7 @@ func TestCTableReachThroughUnknownUnionAndKeyed(t *testing.T) {
 		{"graph_reach_unknown_field", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_reach_unknown_nested", file(reachCat(reachB(11, 13, 4, 7, 17, 2, 0), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_reach_unknown_union_arm", file(reachCat(reachB(11, 15, 17, 17, 1, 2), nodeTable(1, unknown), reachB(0))), true},
+		// Element kind 17 is forbidden in an enum-keyed body (§3), so this refuses.
 		{"graph_reach_unknown_keyed_slot", file(reachCat(reachB(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, unknown), reachB(0))), false},
 		{"graph_reach_unknown_table_elem_array_kind", file(reachCat(reachB(11, 14, 7, 13, 1, 4, 3, 17, 2, 0), nodeTable(1, unknownBadArray), reachB(0))), false},
 		{"graph_reach_unknown_field_array_kind", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknownBadArray), reachB(0))), false},
