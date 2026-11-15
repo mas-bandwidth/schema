@@ -1028,7 +1028,8 @@ def message_body(m:MessageRead, rec:Record) -> bool:
                         return message_refuse(rep, "missing_required")
             m.body_fields = body_fields
             return true
-        if ref <= last_ref:
+        // A repeated reference is left to the duplicate check below.
+        if ref < last_ref:
             return message_refuse(rep, "wire_damaged")
         last_ref = ref
         body_fields++
