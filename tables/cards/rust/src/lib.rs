@@ -796,6 +796,7 @@ fn upgrade_seam(wire: &[u8], retain_bytes: usize, retain_ids: usize) -> Result<(
     let mut retain = TableRetain {
         bytes: Vec::with_capacity(retain_bytes),
         ids: Vec::with_capacity(retain_ids),
+        nodes: Default::default(),
     };
     let card = match card_load_retain(wire, &mut retain, &mut report) {
         Some(c) => c,

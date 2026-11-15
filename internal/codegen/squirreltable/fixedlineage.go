@@ -532,7 +532,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 	}
 	if node.size == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
-		fixedEmitRange128Guard(m, f, expr, ind)
+		fixedEmitRange128Guard(m, f, expr, ind, "return \"out_of_range\";")
 		return
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {

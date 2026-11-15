@@ -132,34 +132,14 @@ func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
 		return false
 	}
 	defer b.Shutdown()
-	ok := RootFromJSON(&b, text, rep)
-	if !ok {
-		if b.GetRoot() != nil {
-			*v = *b.GetRoot()
-		}
-		return false
-	}
-	if !b.Lock() {
+	// A refusal returns no partial value (docs/SPEC-TABLES.md §4, §6.5): the
+	// value form's contract, value at its defaults, is what the probe sees.
+	if !RootFromJSON(&b, text, rep) || !b.Lock() {
+		RootReset(v)
 		return false
 	}
 	*v = *b.AsConst()
 	return true
-}
-
-func probeFromJSONTolerant(text []byte, rep *TableReport) (*Root, bool) {
-	var b RootBuilder
-	if !b.initSized(1) {
-		return nil, false
-	}
-	if !RootFromJSONTolerant(&b, text, rep) {
-		b.Shutdown()
-		return nil, false
-	}
-	if !b.Lock() {
-		b.Shutdown()
-		return nil, false
-	}
-	return b.AsConst(), true
 }
 
 func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
@@ -174,19 +154,7 @@ func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	return v, v != nil
 }
 
-func probeLoadTolerant(wire []byte, rep *TableReport) (*Root, bool) {
-	n := RootLoadMeasure(wire)
-	var region []byte
-	if n > 0 {
-		raw := make([]byte, n+64)
-		off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-		region = raw[off : off+uintptr(n)]
-	}
-	v := RootLoadTolerant(region, wire, rep)
-	return v, v != nil
-}
-
-func probeLoadBuilderTolerant(wire []byte, rep *TableReport) (*Root, bool) {
+func probeLoadBuilder(wire []byte, rep *TableReport) (*Root, bool) {
 	n := RootLoadMeasure(wire)
 	if n < 0 {
 		n = 0
@@ -194,7 +162,7 @@ func probeLoadBuilderTolerant(wire []byte, rep *TableReport) (*Root, bool) {
 	if !probeScratchBuilder.initSized(n) {
 		return nil, false
 	}
-	if !RootLoadBuilderTolerant(&probeScratchBuilder, wire, rep) {
+	if !RootLoadBuilder(&probeScratchBuilder, wire, rep) {
 		probeScratchBuilder.Shutdown()
 		return nil, false
 	}
@@ -212,7 +180,7 @@ var probeScratchBuilder RootBuilder
 func probeLoadMeasureReason(wire []byte) (int64, error) {
 	return RootLoadMeasureReason(wire)
 }
-`, hasIntegrity)
+`, hasIntegrity) + probeFileHelpersSource(false)
 	}
 	return fmt.Sprintf(`package probe
 
@@ -230,13 +198,6 @@ func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
 	return RootFromJSON(v, text, rep)
 }
 
-func probeFromJSONTolerant(text []byte, rep *TableReport) (*Root, bool) {
-	v := new(Root)
-	RootReset(v)
-	ok := RootFromJSONTolerant(v, text, rep)
-	return v, ok
-}
-
 func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	v := new(Root)
 	RootReset(v)
@@ -244,21 +205,52 @@ func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	return v, ok
 }
 
-func probeLoadTolerant(wire []byte, rep *TableReport) (*Root, bool) {
-	v := new(Root)
-	RootReset(v)
-	ok := RootLoadTolerant(v, wire, rep)
-	return v, ok
-}
-
-func probeLoadBuilderTolerant(wire []byte, rep *TableReport) (*Root, bool) {
-	return probeLoadTolerant(wire, rep)
+func probeLoadBuilder(wire []byte, rep *TableReport) (*Root, bool) {
+	return probeLoad(wire, rep)
 }
 
 func probeLoadMeasureReason(wire []byte) (int64, error) {
 	return 0, nil
 }
-`, hasIntegrity)
+`, hasIntegrity) + probeFileHelpersSource(st != nil && st.FixedDeclared && ir.TableFixedEmitted(u, st))
+}
+
+// probeFileHelpersSource is the file round trip: Save and Load for a variable-
+// class root (form 1), FixedSave and FixedLoad for a fixed-class root, whose
+// file is form 3 and whose Load refuses form 1 as previous_form
+// (docs/SPEC-TABLES.md §3.4).
+func probeFileHelpersSource(fixedFile bool) string {
+	if fixedFile {
+		return `
+func probeFileSave(v *Root) ([]byte, bool) {
+	wire := make([]byte, RootFixedMeasure(1))
+	return wire, RootFixedSave([]Root{*v}, wire) == int64(len(wire))
+}
+
+func probeFileLoad(wire []byte, rep *TableReport) (*Root, bool) {
+	values := make([]Root, 1)
+	plan := make([]TableFixedEntry, 4096)
+	if RootFixedLoad(values, wire, plan, rep) != 1 {
+		return nil, false
+	}
+	return &values[0], true
+}
+`
+	}
+	return `
+func probeFileSave(v *Root) ([]byte, bool) {
+	m, reason := RootMeasureReason(v)
+	if m < 0 || reason != nil || RootMeasure(v) != m {
+		return nil, false
+	}
+	wire := make([]byte, m)
+	return wire, RootSave(v, wire) == m
+}
+
+func probeFileLoad(wire []byte, rep *TableReport) (*Root, bool) {
+	return probeLoad(wire, rep)
+}
+`
 }
 
 // runGeneratedTableUnit mirrors the house runGeneratedUnit pattern
@@ -504,13 +496,12 @@ func TestProbe(t *testing.T) {
 					}
 				var before, after runtime.MemStats
 				runtime.ReadMemStats(&before)
-					var tr, sr, br, ltr TableReport
-					tv, tok := probeLoadTolerant(in, &tr)
-					if tok && tv != nil {
-						_, _ = RootMeasureReason(tv)
-					}
+					var sr, br, ltr TableReport
 					sv, sok := probeLoad(in, &sr)
-					bv, bok := probeLoadBuilderTolerant(in, &br)
+					if sok && sv != nil {
+						_, _ = RootMeasureReason(sv)
+					}
+					bv, bok := probeLoadBuilder(in, &br)
 					var m int64 = -1
 					var merr error
 					if hasLoadMeasure {
@@ -537,20 +528,15 @@ func TestProbe(t *testing.T) {
 					} else if !errors.Is(serr, wantErr) {
 						record(&div, "integrity-wrong-reason %d ReadStrict got=%v want=%v %x", i, serr, wantErr, d)
 					}
-					if tok || tv != nil {
-						record(&div, "integrity-read-clean %d LoadTolerant %x", i, d)
-					} else if !errors.Is(tr.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && (!tr.Malformed || tr.Reason != "integrity_mismatch" || tr.Verdict != TableOpenDamaged)) {
-						record(&div, "integrity-wrong-reason %d LoadTolerant report=%+v err=%v want=%v %x", i, tr, tr.Err(), wantErr, d)
-					}
 					if sok || sv != nil {
 						record(&div, "integrity-read-clean %d Load %x", i, d)
-					} else if !errors.Is(sr.Err(), wantErr) {
+					} else if !errors.Is(sr.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && sr.Verdict != TableOpenDamaged) {
 						record(&div, "integrity-wrong-reason %d Load report=%+v err=%v want=%v %x", i, sr, sr.Err(), wantErr, d)
 					}
 					if bok || bv != nil {
-						record(&div, "integrity-read-clean %d LoadBuilderTolerant %x", i, d)
-					} else if !errors.Is(br.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && (!br.Malformed || br.Reason != "integrity_mismatch" || br.Verdict != TableOpenDamaged)) {
-						record(&div, "integrity-wrong-reason %d LoadBuilderTolerant report=%+v err=%v want=%v %x", i, br, br.Err(), wantErr, d)
+						record(&div, "integrity-read-clean %d LoadBuilder %x", i, d)
+					} else if !errors.Is(br.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && br.Verdict != TableOpenDamaged) {
+						record(&div, "integrity-wrong-reason %d LoadBuilder report=%+v err=%v want=%v %x", i, br, br.Err(), wantErr, d)
 					}
 					if hasLoadMeasure {
 						if merr == nil || m >= 0 {

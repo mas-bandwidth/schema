@@ -409,7 +409,10 @@ public final class TableMessage {
                     if (r.err || !r.align()) {
                         return false;
                     }
-                    return r.skipBits(n * 8L);
+                    // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes
+                    // this reader does not keep are still damage when ill-formed.
+                    final int start = r.atByte();
+                    return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
                 }
             case 31:
                 {

@@ -203,9 +203,6 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		cook = cookWithoutUnions(cook, anyExtent)
 		retain = withoutRetainUnions(retain)
 	}
-	if len(unionNames) == 0 {
-		runtime = withoutInertEmpty(runtime)
-	}
 	if len(unionNames) > 0 {
 		retain = withRetainArmKinds(retain, armKinds)
 	}
@@ -232,7 +229,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
 		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
@@ -250,21 +247,6 @@ func withoutArrayRoots(source string) string {
 		source = strings.ReplaceAll(source, block, "")
 	}
 	return source
-}
-
-// withoutInertEmpty drops the arm helper a unit with no union can never call,
-// so the emitted module carries no unused function.
-func withoutInertEmpty(source string) string {
-	const block = `  # An inert arm keeps the empty value its kind declares (docs/SPEC-TABLES.md §4).
-  defp inert_empty(%{t: :bytes}), do: <<>>
-  defp inert_empty(%{t: :list}), do: []
-  defp inert_empty(_f), do: %{}
-
-`
-	if strings.Count(source, block) != 1 {
-		panic("elixirtable: inert arm helper not found exactly once")
-	}
-	return strings.Replace(source, block, "", 1)
 }
 
 // uncarriedRootNames is the compatibility roster for region measurement.
@@ -622,6 +604,12 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 			}
 			continue
 		}
+		// The blank line after a dropped item stays when the text before it
+		// does not already end in one: a one-line clause directly above the
+		// dropped item keeps the blank line mix format wants before the next.
+		if out := b.String(); lines[k-1] == "\n" && out != "" && !strings.HasSuffix(out, "\n\n") && !strings.HasSuffix(out, " do\n") {
+			b.WriteString("\n")
+		}
 		i = k
 	}
 	return b.String()
@@ -688,8 +676,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     # DISTINCT node: a table node two fields share is numbered once, so the
     # saved wire matches the reference backends byte for byte (§3.1), and a
     # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
-    # are two records. A blob the strict read found named from two slots
-    # refuses the save by name, blob_shared (§2.5).
+    # are two records. A blob a second slot names refuses the save by name,
+    # blob_shared (§2.5, §6.5), as the strict read refuses it.
     try do
       nodes = collect_root(desc, value)
       idx_map = node_index(nodes)
@@ -727,8 +715,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # the body that holds it (the root, or the table node by its content) and its
   # position among that body's blob slots in declaration order. The node walk
   # and the body writer meet a body's blob slots in the same order, so the two
-  # name the same site. A {:blob_shared, bytes} slot is the strict read's
-  # mark of a blob a second slot named, and every writer refuses it (§2.5).
+  # name the same site. A {:blob_shared, bytes} slot a caller hands the writer
+  # names a blob a second slot names, and every writer refuses it (§2.5,
+  # §6.5); the strict read itself already refused that wire.
   defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
 
   defp blob_site({:__wire_blob__, idx, order, _bytes}), do: {:wire_blob, idx, order}
@@ -1425,7 +1414,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
 
-  def load(table, data) when is_binary(data) do
+  # THE ONE READ (docs/plans/strict-only.md; docs/SPEC-TABLES.md §4): a load
+  # returns the whole value or refuses the whole load, and nothing between.
+  def load(table, data) when is_binary(data), do: variable_read(table, data)
+
+  # variable_load is the same read with a declared fixed root's own clauses
+  # passed over: the root is read as the variable class, its form-1 wire
+  # included. The conformance framing battery reads through it.
+  def variable_load(table, data) when is_binary(data), do: variable_read(table, data)
+
+  defp variable_read(table, data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
@@ -1434,19 +1432,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:ok, body, ids} ->
         {fields, nodes, terminated} =
-          case entries(body, ids, desc, desc.variable) do
+          case entries(body, ids, desc, true) do
             {:ok, fields, nodes} -> {fields, nodes, true}
             {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
           end
 
-        {{value, report}, shared} =
+        {value, report} =
           with_node_directory(table, nodes, fn ->
             blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
           end)
 
         if not terminated, do: throw(:wire_damaged)
 
-        report = Map.put(report, :blob_shared, shared)
+        strict_syntax!(body, nodes, ids)
+
+        # A BLOB NAMED FROM TWO SLOTS already refused the read at its second
+        # naming (blob_shared, §2.5), so a read that lands reports 0
+        report = Map.put(report, :blob_shared, 0)
 
         # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
         # that met damage anywhere returns no value, only its report
@@ -1464,6 +1466,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     {:count_over_extent_cap, report} ->
       {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
+
+    # A BLOB NAMED FROM TWO SLOTS refuses the read (docs/SPEC-TABLES.md §2.5,
+    # §6.5): no value lands.
+    :blob_shared ->
+      {:error, :blob_shared, reasoned(empty_report(), :blob_shared)}
 
     # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
     # strict one too, and outranks any damage the walk would have met after
@@ -1499,6 +1506,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp reasoned(report, :count_over_extent_cap),
     do: Map.put(report, :reason, "count_over_extent_cap")
+
+  defp reasoned(report, :blob_shared), do: Map.put(report, :reason, "blob_shared")
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
@@ -1719,19 +1728,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
          true <- byte_size(r2) >= len do
       bytes = binary_part(r2, 0, len)
 
+      # A RECORD THIS READER CANNOT NAME keeps its body ({:unknown, body}):
+      # the value reads it as nothing, but the reach walk still reads its
+      # pointer payloads, as every record's are (§3.1, §4)
       node =
         case resolve(ids, sref) do
           :error ->
-            :unknown
+            {:unknown, bytes}
 
           @string_id ->
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
             # no *string cannot place the record at all (§3.1)
-            if is_map(allowed) and allowed.string_blob do
-              if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
-            else
-              :unknown
+            cond do
+              not utf8_valid?(bytes) -> :malformed
+              is_map(allowed) and allowed.string_blob -> {:blob, :string, bytes}
+              true -> {:unknown, :blob}
             end
 
           tid ->
@@ -1739,15 +1751,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               {:ok, :bytes} ->
                 if is_map(allowed) and allowed.bytes_blob,
                   do: {:blob, :bytes, bytes},
-                  else: :unknown
+                  else: {:unknown, :blob}
 
               {:ok, name} ->
                 if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
                   do: {:table, name, bytes},
-                  else: :unknown
+                  else: {:unknown, bytes}
 
               :error ->
-                :unknown
+                {:unknown, bytes}
             end
         end
 
@@ -1757,26 +1769,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # THE TOLERANT READ OF A SHARED BLOB (docs/SPEC-TABLES.md §2.5): a blob is
-  # owned by one slot, and a wire whose two slots name ONE blob record is read,
-  # not refused. Final stored slots use bytes for the first owner and
-  # {:blob_shared, bytes} for each other owner, never a copy. The report counts
-  # extra read namings; writers refuse only ownership that survives replacement.
-  # A read site is the body holding it (root or table node by index) and its
-  # position among that body's blob reads, so a table node a second pointer
-  # decodes again names the same slots and is not a sharing.
+  # A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5, §6.5): a wire whose
+  # two slots name ONE blob record is refused, never read — the second naming
+  # throws blob_shared on the plain and the retaining read alike, so no value
+  # is returned and nothing is retained. A read site is the body holding it
+  # (root or table node by index) and its position among that body's blob
+  # reads, so a table node a second pointer decodes again names the same slots
+  # and is not a sharing.
   defp blob_namings(fun) do
     Process.put(:elixir_blob_read, %{
       holder: :root,
       n: 0,
       next: 0,
-      named: %{},
-      shared: MapSet.new()
+      named: %{}
     })
 
     try do
-      result = fun.()
-      {result, MapSet.size(Process.get(:elixir_blob_read).shared)}
+      fun.()
     after
       Process.delete(:elixir_blob_read)
     end
@@ -1813,7 +1822,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           case Map.fetch(st.named, idx) do
             :error -> %{st | named: Map.put(st.named, idx, site)}
             {:ok, ^site} -> st
-            {:ok, _first} -> %{st | shared: MapSet.put(st.shared, site)}
+            {:ok, _first} -> throw(:blob_shared)
           end
 
         Process.put(:elixir_blob_read, st)
@@ -1911,11 +1920,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           # body was read (directory_report), so this is never taken
           :null
 
-        _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+        {:unknown, _body} ->
+          # A NODE WHOSE TYPE ID THIS READER CANNOT NAME is skipped by its
+          # length, counted unknown, keeps its index, and every pointer
+          # naming it reads null (docs/SPEC-TABLES.md §3.1), as the
+          # retaining read and Go's oracle (internal/tablewire) already do
+          :null
       end
     end
   end
@@ -1923,8 +1933,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
+    if ends_early?(body, ids), do: throw(:wire_damaged)
+
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
+      {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
@@ -1933,7 +1945,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp directory_report(nodes, report, retaining) do
     if :malformed in nodes, do: throw(:wire_damaged)
 
-    unknown = Enum.count(nodes, &(&1 == :unknown))
+    unknown = Enum.count(nodes, &match?({:unknown, _}, &1))
 
     %{
       report
@@ -2073,7 +2085,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
-            if payload != :unframed, do: strict_unknown!(kind, payload, nodes, ids)
+            if payload != :unframed,
+              do: strict_unknown!(kind, payload, nodes, ids)
 
             if payload == :unframed,
               do: {:halt, {:halt, value, report}},
@@ -2100,9 +2113,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
-                  {:cont, :inert, _report} ->
-                    throw(:wire_damaged)
-
                   {:cont, v, report} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report}}
 
@@ -2143,11 +2153,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
-
-  # An inert arm keeps the empty value its kind declares (docs/SPEC-TABLES.md §4).
-  defp inert_empty(%{t: :bytes}), do: <<>>
-  defp inert_empty(%{t: :list}), do: []
-  defp inert_empty(_f), do: %{}
 
   defp find_field(desc, id) do
     Enum.find(desc.fields, fn f -> f.id == id end)
@@ -2292,23 +2297,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
-  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
-  # declared size clamps.
+  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. The bytes after the
+  # count number exactly the count, never fewer and never more, and a body too
+  # short for its header is damage.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
+      # a body too short to carry its own header is damage (§3, §4)
       {_len, arr} when byte_size(arr) < 2 ->
-        {:cont, :inert, report}
+        {:cont, <<>>, throw(:wire_damaged)}
 
       {_len, <<actual, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, bytes} when actual == 6 ->
             if n > f.size, do: throw(:wire_damaged)
 
-            keep = min(n, f.size)
-            report = report
-
-            if byte_size(bytes) >= keep do
-              {:cont, binary_part(bytes, 0, keep), report}
+            # a count the body cannot cover, and bytes left inside the L after
+            # the count's bytes, are both damage (§3, §4)
+            if byte_size(bytes) == n do
+              {:cont, bytes, report}
             else
               {:cont, bytes, throw(:wire_damaged)}
             end
@@ -2337,9 +2343,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:cont, :map_key_mismatch, report} ->
         {:cont, %{}, report}
 
-      {:cont, :inert, report} ->
-        {:cont, :inert, report}
-
       {:cont, entries, report} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
         keys = Enum.map(entries, &Map.get(&1, "key", kf.default))
@@ -2364,14 +2367,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): the element kind, the
   # pair count, then (key reference, L, element) pairs. A key this reader cannot
   # name counts unknown and its element is skipped by its L.
-  # A body of fewer than two bytes is inert (§4); a foreign element kind is
+  # A body of fewer than two bytes is damage (§3, §4); a foreign element kind is
   # a kind mismatch; a count that does not complete
   # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
   # the parent, it is a count the body cannot cover).
   defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
-        {:cont, :inert, report}
+        {:cont, %{}, throw(:wire_damaged)}
 
       {_len, <<ek, rest::binary>>} ->
         case leb(rest) do
@@ -2393,8 +2396,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} when byte_size(arr) < 2 ->
-        # a body too short to carry its header is inert (§4, H2)
-        {:cont, :inert, report}
+        # a body too short to carry its header is damage (§3, §4)
+        {:cont, [], throw(:wire_damaged)}
 
       {_len, <<elem_kind, count_rest::binary>>} ->
         case leb(count_rest) do
@@ -2620,7 +2623,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
-      {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
       {:cont, v, report} -> {:cont, {name, v}, report}
       {:halt, v, report} -> {:halt, {name, v}, report}
     end
@@ -2662,7 +2664,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4): every slot is framed by its own L, so no widening leaves any.
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -2674,12 +2682,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
-            {:cont, v, report} ->
-              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+          if Map.has_key?(acc, name) do
+            # a keyed body names each slot at most once (§3.2); a second pair
+            # whose key resolves to a placed slot is damage (§4)
+            {:cont, acc, throw(:wire_damaged)}
+          else
+            case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+              {:cont, v, report} ->
+                read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-            {:halt, v, report} ->
-              {:halt, Map.put(acc, name, v), report}
+              {:halt, v, report} ->
+                {:halt, Map.put(acc, name, v), report}
+            end
           end
 
         :error ->
@@ -2813,9 +2827,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
   defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
-    # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and bytes left in its L
-    # are damage like any other (§2.9, §4).
+    # Bytes left inside an array's L after its elements are damage (§3, §4),
+    # a widened element kind's too: its elements read at the wire kind's
+    # width and fill the L exactly, as Go's oracle holds (internal/tablewire).
     if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
@@ -3112,17 +3126,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp field_active?(_f, _desc, _value), do: true
 
-  defp validate_record(desc, value) do
+  # zero_ok is THE TEXT WRITER'S CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md
+  # §5.1): well-formed text, a zero byte included, which the text spells
+  # \u0000. The binary writers refuse a zero byte, because their readers do.
+  defp validate_record(desc, value), do: validate_record(desc, value, false)
+
+  defp validate_record(desc, value, zero_ok) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default))
+        validate_text_list(f, Map.get(value, f.name, f.default), zero_ok)
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
         end
       end
 
@@ -3130,7 +3149,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
         end
       end
 
@@ -3474,7 +3493,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements) do
+  defp validate_text_list(f, elements, zero_ok) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -3485,7 +3504,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or
+        if not is_binary(value) or not text_valid?(value, zero_ok) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -3516,6 +3535,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
+
+  defp text_valid?(raw, true), do: String.valid?(raw)
+  defp text_valid?(raw, false), do: utf8_valid?(raw)
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
@@ -3614,9 +3636,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
@@ -3653,7 +3680,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: tally_node(name, v, acc)
 
   # a blob is its slot's own (§2.5), so equal bytes in two slots are two
-  # strings; only the strict read's {:blob_shared, bytes} mark is a sharing
+  # strings; a {:blob_shared, bytes} slot a caller hands the writer is a sharing
   defp tally_field(%{t: :blob, type_id: id}, {:blob_shared, _bytes}, acc),
     do: Map.put(acc, {:blob, id, :shared}, 2)
 
@@ -3729,12 +3756,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value)
+    validate_record(desc, value, true)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -3830,7 +3857,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1))
+    Enum.each(pairs, &validate_record(entry_desc, &1, true))
 
     if pairs == [] do
       "{}"
@@ -5125,10 +5152,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
   # ---- objects, arrays, strings with escapes, numbers, booleans and null
 
-  defp json_value(_bin, depth) when depth > 128, do: :error
-
+  # THE DEPTH CAP COUNTS CONTAINERS (docs/SPEC-TABLES.md §16.2): the root
+  # container sits at depth 0 and a container past depth 128 is refused, so a
+  # scalar member of a depth-128 object (graph_chain_text's deepest node) reads.
   defp json_value(bin, depth) do
     case json_skip(bin) do
+      <<c, _::binary>> when c in [?{, ?[] and depth > 128 -> :error
       <<"{", rest::binary>> -> json_object_p(rest, depth)
       <<"[", rest::binary>> -> json_array_p(rest, depth)
       <<"\"", rest::binary>> -> json_string(rest, [])
@@ -5948,7 +5977,7 @@ const variableRetainSource = `
 
         # the node directory's memo: a node a second pointer names is the
         # one value, read and retained once (§6.6, the path's first step)
-        {{value, report, retain}, shared} =
+        {value, report, retain} =
           with_node_directory(table, nodes, fn ->
             blob_namings(fn ->
               decode_directory_retain(desc, fields, nodes, ids, retain, report, terminated)
@@ -5957,9 +5986,13 @@ const variableRetainSource = `
 
         if not terminated, do: throw(:wire_damaged)
 
-        report =
-          Map.put(report, :blob_shared, shared)
-          |> Map.update(:missing_required, missing_before, &(&1 + missing_before))
+        strict_syntax!(body, nodes, ids)
+
+        # A BLOB NAMED FROM TWO SLOTS already refused the read at its second
+        # naming (blob_shared, §2.5), so a read that lands reports 0
+        report = Map.put(report, :blob_shared, 0)
+
+        report = Map.update(report, :missing_required, missing_before, &(&1 + missing_before))
 
         # the records were kept newest first; they are saved in the order
         # retained
@@ -5988,6 +6021,13 @@ const variableRetainSource = `
 
     {:count_over_extent_cap, refused_report} ->
       {:error, :count_over_extent_cap, reasoned(refused_report, :count_over_extent_cap),
+       %{retain | records: [], used: 0, ids: []}}
+
+    # A BLOB NAMED FROM TWO SLOTS refuses the retaining read as it does the
+    # plain one (docs/SPEC-TABLES.md §2.5, §6.5): nothing lands and nothing is
+    # retained.
+    :blob_shared ->
+      {:error, :blob_shared, reasoned(report, :blob_shared),
        %{retain | records: [], used: 0, ids: []}}
 
     # a NaN or an infinity refuses the retaining read as it does the plain one
@@ -6464,8 +6504,7 @@ const variableRetainSource = `
     desc.name <> ".0x" <> hex
   end
 
-  # Array, map, keyed and byte bodies must carry their full two-byte header
-  # (docs/SPEC-TABLES.md §3, §4).
+  # A body too short to carry its own header is damage (§3, §4).
   defp read_payload_retain(
          %{t: t},
          <<len, body::binary>>,
@@ -6666,8 +6705,8 @@ const variableRetainSource = `
     read_arm_retain(f.elem, f.ordinal, payload, nodes, ids, report, retain, path)
   end
 
-  # an enum-keyed array: slot k is the step pair {ordinal, k}; a slot written
-  # again resets the earlier one's records.
+  # an enum-keyed array: slot k is the step pair {ordinal, k}; a second pair
+  # naming a slot already placed is damage (§3.2, §4).
   defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
@@ -6972,8 +7011,13 @@ const variableRetainSource = `
     end
   end
 
-  defp read_keyed_retain(_f, _bin, 0, _nodes, _ids, acc, report, retain, _path),
-    do: {:cont, acc, report, retain}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4), as on the plain read.
+  defp read_keyed_retain(_f, bin, 0, _nodes, _ids, acc, report, retain, _path) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report, retain}
+  end
 
   defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
     with {kref, r1} <- leb(bin),
@@ -6985,25 +7029,31 @@ const variableRetainSource = `
 
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          slot = Enum.find_index(f.key_names, &(&1 == name))
-          retain = retain_reset(retain, path, f.ordinal, slot)
+          if Map.has_key?(acc, name) do
+            # a keyed body names each slot at most once (§3.2); a second pair
+            # whose key resolves to a placed slot is damage (§4)
+            {:cont, acc, throw(:wire_damaged), retain}
+          else
+            slot = Enum.find_index(f.key_names, &(&1 == name))
+            retain = retain_reset(retain, path, f.ordinal, slot)
 
-          case read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot) do
-            {:cont, v, report, retain} ->
-              read_keyed_retain(
-                f,
-                rest,
-                n - 1,
-                nodes,
-                ids,
-                Map.put(acc, name, v),
-                report,
-                retain,
-                path
-              )
+            case read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot) do
+              {:cont, v, report, retain} ->
+                read_keyed_retain(
+                  f,
+                  rest,
+                  n - 1,
+                  nodes,
+                  ids,
+                  Map.put(acc, name, v),
+                  report,
+                  retain,
+                  path
+                )
 
-            {:halt, v, report, retain} ->
-              {:halt, Map.put(acc, name, v), report, retain}
+              {:halt, v, report, retain} ->
+                {:halt, Map.put(acc, name, v), report, retain}
+            end
           end
 
         :error ->
@@ -7086,7 +7136,9 @@ const variableRetainSource = `
     value =
       case node_value(nodes, idx, ids, f) do
         {:value, :wrong_type} ->
-          if Enum.at(nodes, idx - 2) in [:unknown, :malformed],
+          node = Enum.at(nodes, idx - 2)
+
+          if match?({:unknown, _}, node) or node == :malformed,
             do: :null,
             else: {:value, :wrong_type}
 
@@ -7100,11 +7152,11 @@ const variableRetainSource = `
   defp decode_directory_retain(desc, fields, nodes, ids, retain, report, terminated) do
     report = directory_report(nodes, report, true)
 
-    {records, report, retain} =
+    {records, report, retain, node_fields} =
       nodes
       |> Enum.with_index(2)
-      |> Enum.reduce({%{}, report, retain}, fn
-        {{:table, name, body}, idx}, {records, report, retain} ->
+      |> Enum.reduce({%{}, report, retain, %{}}, fn
+        {{:table, name, body}, idx}, {records, report, retain, node_fields} ->
           {node_desc, fields_of_node, node_ok} = decoded_fields(name, body, ids)
 
           {_status, value, report, retain} =
@@ -7123,7 +7175,9 @@ const variableRetainSource = `
 
           if not node_ok, do: throw(:wire_damaged)
           value = Map.put(value, :__retain_node__, idx)
-          {Map.put(records, idx, value), report, retain}
+
+          {Map.put(records, idx, value), report, retain,
+           Map.put(node_fields, idx, fields_of_node)}
 
         _, state ->
           state
@@ -7133,6 +7187,9 @@ const variableRetainSource = `
       decode_retain(desc, fields, nodes, ids, retain, report, [], terminated)
 
     if not terminated, do: throw(:wire_damaged)
+
+    strict_wire_reachable!(fields, node_fields, nodes, ids)
+
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     value = assemble_directory(records)
     {value, report, retain}

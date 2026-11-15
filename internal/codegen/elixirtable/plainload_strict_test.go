@@ -70,7 +70,7 @@ for {name, result, save} <- [
 ] do
   case result do
     {:ok, v, _report} ->
-      check.(want, label <> ": " <> name <> " refused a lawful wire")
+      check.(want, label <> ": " <> name <> " landed a damaged wire")
       if round_trip do
         case save.(v) do
           {:ok, out} -> check.(out == wire, label <> ": " <> name <> " save does not reproduce the wire")
@@ -78,7 +78,7 @@ for {name, result, save} <- [
         end
       end
     {:error, reason, report} when is_atom(reason) ->
-      check.(not want, label <> ": " <> name <> " landed a damaged wire")
+      check.(not want, label <> ": " <> name <> " refused a lawful wire")
       check.(report.reason != "", label <> ": " <> name <> " refusal carries no reason")
     other -> check.(false, label <> ": " <> name <> " answered " <> inspect(other))
   end
@@ -87,8 +87,10 @@ end
 		if c.retain {
 			b.WriteString(`
 case T.load_retain(` + fmt.Sprintf("%q", root) + `, wire, store, zero) do
+  {:ok, _v, _report, _retain} ->
+    check.(want, label <> ": retaining load landed a damaged wire")
   {:error, reason, report, retain} when is_atom(reason) ->
-    check.(not want, label <> ": retaining load landed a damaged wire")
+    check.(not want, label <> ": retaining load refused a lawful wire")
     check.(report.reason != "", label <> ": retaining refusal carries no reason")
     check.(retain.records == [], label <> ": refusal left the retaining store populated")
   other -> check.(false, label <> ": retaining load answered " <> inspect(other))

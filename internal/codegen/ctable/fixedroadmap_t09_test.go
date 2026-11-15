@@ -8,7 +8,7 @@ package ctable
 // task id, table-driven, t.Parallel() first, and every one of them is a
 // [capability]: the leg WRITES a non-default or boundary value, READS it back,
 // and asserts the loaded value — and, where the declaration bounds the field,
-// the read-side clamp at each declared bound.
+// the whole-load `out_of_range` refusal past each declared bound.
 //
 // THE LAW IS docs/SPEC-TABLES.md §3.4: "EVERY FIELD RIDES AS ITS DECLARED
 // STORAGE IMAGE, LITTLE-ENDIAN, AT ITS DECLARED STORAGE WIDTH, AND NOTHING IS
@@ -16,15 +16,16 @@ package ctable
 // width — int8..int64 are 1/2/4/8 bytes, `bits(N)` its declared storage width,
 // float32/float64 are 4/8, a compressed float is 4 ("it rides as the float,
 // not as a quantized index"), `fixed(I,F)`/`ufixed(I,F)` the raw scaled
-// integer, and `flags` 8. A bounded field clamps on LOAD to the reader's own
-// declared bound and counts `clamped`; the fixed record is positional, so the
-// read loop copies bytes and the bounds pass runs straight-line over storage
-// after the copy (docs/SPEC-TABLES.md §3.4, the read-side bounds in
-// fixedform.go). What the card's roadmap task carries as `:remaining` is
-// exactly "exact round-trip values ... signedness edges" and "read/write
-// assertions with non-default values and boundary cases; map the invoked test
-// to an execution receipt" — so every subtest here compiles and RUNS the
-// generated codec, and its assertion is the round trip, not the emitted text.
+// integer, and `flags` 8. A bounded field read past the reader's own declared
+// bound refuses the whole load `out_of_range` in the report's refuse_reason;
+// the fixed record is positional, so the read loop copies bytes and the bounds
+// pass runs straight-line over storage after the copy (docs/SPEC-TABLES.md
+// §3.4, the read-side bounds in fixedform.go). What the card's roadmap task
+// carries as `:remaining` is exactly "exact round-trip values ... signedness
+// edges" and "read/write assertions with non-default values and boundary cases;
+// map the invoked test to an execution receipt" — so every subtest here compiles
+// and RUNS the generated codec, and its assertion is the round trip, not the
+// emitted text.
 //
 // THE WIDE ROWS RESOLVE THE SIBLING AT RUNTIME, NEVER ON A RECORDED STRING.
 // int128/uint128 storage — and ufixed(I,F) with I+F=128, the only fixed width
@@ -78,8 +79,8 @@ const t09Check = `#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s
 
 // TestFixedRoadmapCT09IntegersFloats proves each value row by a compiled
 // round trip: save a value holding non-default and boundary bytes, load it
-// back, and assert the loaded value (and report.clamped at each declared
-// bound).
+// back, and assert the loaded value (and an `out_of_range` refusal past each
+// declared bound).
 func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -207,10 +208,20 @@ int main(void)
     value[0].bounded = serialize_int128_from_int64(0);
     value[1].bounded = serialize_int128_from_int64(-1000);  /* the declared min */
     value[2].bounded = serialize_int128_from_int64(1000);   /* the declared max */
-    value[3].bounded = serialize_int128_from_int64(2000);   /* past the max: the read refuses */
+    value[3].bounded = serialize_int128_from_int64(999);
     need = signed_wide_fixed_measure(4);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(signed_wide_fixed_save(value, 4, file, (int64_t)sizeof(file)) == need);
+    /* past the max, forged into record 3's bounded field (low limb, then a
+       zero high limb): the writer asserts its write check, so a debug build
+       never writes it (docs/SPEC.md §5.1) */
+    {
+        uint8_t * bounded = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof(signed_wide_fixed_layout)
+                          + 3 * signed_wide_fixed_record_bytes + 8 + 16;
+        CHECK(table_fixed_get64(bounded) == 999u && table_fixed_get64(bounded + 8) == 0u);
+        table_fixed_put64(bounded, 2000u);
+        table_fixed_put64(bounded + 8, 0u);
+    }
     {
         /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 2's wide
            field rides as its 16-byte storage image, low half first
@@ -312,10 +323,19 @@ int main(void)
     int64_t need, n;
     memset(&value, 0, sizeof(value));
     value[0].v = 4095;  /* the width bound 2^12 - 1 */
-    value[1].v = 4096;  /* one past the bound: the read refuses */
+    value[1].v = 0xABC;
     need = bits_value_fixed_measure(2);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(bits_value_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
+    /* one past the bound, forged into record 1 where the saved 0xABC is
+       checked first: the writer asserts its write check, so a debug build
+       never writes it (docs/SPEC.md §5.1) */
+    {
+        uint8_t * v = file + kTableFixedHeaderBytes + 4 + bits_value_fixed_layout_bytes
+                    + 1 * bits_value_fixed_record_bytes + 8;
+        CHECK(v[0] == 0xBC && v[1] == 0x0A);
+        table_fixed_put16(v, 4096u);
+    }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = bits_value_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
@@ -462,11 +482,22 @@ int main(void)
     value[0].v = 32768;    /* 0.5 in whole units */
     value[1].v = 65536;    /* 1.0, the declared max */
     value[2].v = -65536;   /* -1.0, the declared min */
-    value[3].v = 131072;   /* 2.0: the read refuses */
-    value[4].v = -131072;  /* -2.0: the read refuses */
+    value[3].v = 12345;
+    value[4].v = -12345;
     need = fixed_point_fixed_measure(5);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(fixed_point_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
+    /* 2.0 and -2.0, forged into records 3 and 4 where the saved values are
+       checked first: the writer asserts its write check, so a debug build
+       never writes them (docs/SPEC.md §5.1) */
+    {
+        uint8_t * r3 = file + kTableFixedHeaderBytes + 4 + fixed_point_fixed_layout_bytes
+                     + 3 * fixed_point_fixed_record_bytes + 8;
+        uint8_t * r4 = r3 + fixed_point_fixed_record_bytes;
+        CHECK(table_fixed_get32(r3) == (uint32_t) 12345 && table_fixed_get32(r4) == (uint32_t) -12345);
+        table_fixed_put32(r3, (uint32_t) 131072);
+        table_fixed_put32(r4, (uint32_t) -131072);
+    }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = fixed_point_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
@@ -507,16 +538,26 @@ int main(void)
     memset(&value, 0, sizeof(value));
     value[0].v = 32768;   /* 0.5 in whole units */
     value[1].v = 65536;   /* 1.0, the declared max */
-    value[2].v = 131072;  /* 2.0: the read refuses */
+    value[2].v = 12345;
     /* w's declared max is 2^32 whole units, so the raw scaled max is 2^64:
-       its storage image has a NONZERO HIGH 64-BIT LIMB, and the value one
-       raw unit past the max clamps back onto that limb */
+       its storage image has a NONZERO HIGH 64-BIT LIMB */
     value[0].w = serialize_uint128_make(0, 0);
     value[1].w = serialize_uint128_make(1, 0);  /* raw 2^64: exactly the declared max */
-    value[2].w = serialize_uint128_make(1, 1);  /* one past it: clamped to raw 2^64 */
+    value[2].w = serialize_uint128_make(0, 0x0102030405060708ULL);
     need = u_fixed_point_fixed_measure(3);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(u_fixed_point_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
+    /* record 2 past both bounds, forged after the save: v = 2.0, and w one
+       raw unit past 2^64 (low limb 1, high limb 1). The writer asserts its
+       write check, so a debug build never writes them (docs/SPEC.md §5.1). */
+    {
+        uint8_t * rec = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof(u_fixed_point_fixed_layout)
+                      + 2 * u_fixed_point_fixed_record_bytes + 8;
+        CHECK(table_fixed_get32(rec) == 12345u && table_fixed_get64(rec + 4) == 0x0102030405060708ull && table_fixed_get64(rec + 4 + 8) == 0u);
+        table_fixed_put32(rec, 131072u);
+        table_fixed_put64(rec + 4, 1u);
+        table_fixed_put64(rec + 4 + 8, 1u);
+    }
     {
         /* the NONZERO HIGH 64-BIT LIMB ON THE FIXED WIRE: record 1's wide
            ufixed rides as its 16-byte raw scaled integer, low half first

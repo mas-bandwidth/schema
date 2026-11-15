@@ -218,9 +218,15 @@ static SCHEMA_UNUSED void table_retain_commit(TableRetainWalk keep,uint8_t * rec
    for a known field, and the load answers the refusal at its end. */
 static SCHEMA_UNUSED int table_retain_capture(TableReader * r,uint64_t id,uint8_t kind,TableRetainWalk keep)
 {
- TableRetainIn s;TableReader source=*r;uint8_t * record;if(!table_reader_skip(r,kind))return 0;if(!keep.retain)return 1;
+ TableRetainIn s;TableReader source=*r,check;uint8_t * record;int64_t nodes;
+ if(!table_reader_skip(r,kind))return 0;
  if(kind==10||kind==11){uint64_t raw=0;int64_t i;for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
   if(kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw)){table_non_finite_float(r->report);return 1;}}
+ /* AN UNKNOWN FIELD IS VALIDATED BEFORE IT IS KEPT, exactly as the plain
+    read validates one it skips (docs/SPEC-TABLES.md §4, §6.6). */
+ nodes=(r->nodes!=NULL?(int64_t)r->nodes->count-1:0);check=source;
+ if(!table_skip_value(&check,kind,nodes,0)||check.offset!=r->offset)return 0;
+ if(!keep.retain)return 1;
  record=table_retain_begin(keep,id,kind,&s);if(!record){r->report->retain_lost++;return 1;}source.size=r->offset;s.input=source;
  if(!table_retain_in_payload(&s,kind,0)||s.input.offset!=source.size){r->report->retain_lost++;return 1;}table_retain_commit(keep,record,&s,r->report);return 1;
 }

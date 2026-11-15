@@ -19,11 +19,12 @@ import (
 // for a form byte this reader does not carry (§3) and wire_damaged for framing
 // damage, with the report's malformed flag set beside it.
 //
-// list_scalar_widen.bin respells an int32 element kind to int8 and leaves the
-// wider slots inside the array's L: the bytes left there are damage (§3, §4),
-// and both the plain and the strict reads refuse it. The lawful widening is
-// driven from a writer whose scores are genuinely int8: the value lands at the
-// wire width and one widened counts.
+// list_scalar_widen.bin is that wire: the corpus answers it refused on every
+// leg, as the engine does (bytes left inside an array's L after its elements).
+// It respells an int32 element kind to int8 and leaves the wider slots inside
+// the array's L, and both reads refuse it. The lawful widening is driven from
+// a writer whose scores are genuinely int8: the value lands at the wire width
+// and one widened counts.
 func TestWideningReasonsElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)
@@ -87,8 +88,8 @@ Probe.check(report.unknown == 0, "a widening is no other event: #{inspect(report
 damaged = Base.decode16!("` + hex.EncodeToString(damaged) + `", case: :lower)
 for {name, result} <- [{"load", Listdemo.Table.load("Save", damaged)}, {"variable_load", Listdemo.Table.variable_load("Save", damaged)}] do
   case result do
-    {:error, reason, refused} when is_atom(reason) ->
-      Probe.check(refused.reason != "", name <> " refusal carries no reason: #{inspect(refused)}")
+    {:error, :malformed, refused} ->
+      Probe.check(refused.reason == "wire_damaged", name <> " says wire_damaged: #{inspect(refused)}")
 
     other ->
       Probe.check(false, name <> " landed the damaged wire: #{inspect(other)}")

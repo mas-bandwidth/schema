@@ -517,7 +517,12 @@ public final class TableFixed {
         nonFiniteFloat,
         outOfRange,
         countOverBound,
-        lengthOverBound
+        lengthOverBound,
+        /**
+         * A BOOL OR A PRESENT BYTE OTHER THAN 0 OR 1 in live data (docs/FIXED-FORM-ALGORITHM.md
+         * §4.5): no writer emits one, and the read refuses it by name rather than land it.
+         */
+        wireDamaged
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */

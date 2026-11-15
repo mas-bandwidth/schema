@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -215,12 +216,14 @@ public abstract unsafe class TableBuilder : IDisposable
 }
 `
 
-const tableBuilderWireSource = `
+func tableBuilderWireSource(u *ir.Unit) string {
+	cap := ir.TableWireIdCapacity(u)
+	return `
     public static void ResetNative(IntPtr pointer, TableTypeInfo type) { NativeReset(new NativeValue((byte*)pointer, 0), type); }
     public static long MeasureBuilder(IntPtr root, TableTypeInfo type, TableAllocator allocator, bool mutable = false)
-    { Span<ulong> ids = stackalloc ulong[tableOwnVocabulary.Count]; return SaveRegion(root, type, Span<byte>.Empty, ids, true, allocator, mutable); }
+    { Span<ulong> ids = stackalloc ulong[` + strconv.Itoa(cap) + `]; return SaveRegion(root, type, Span<byte>.Empty, ids, true, allocator, mutable); }
     public static long SaveBuilder(IntPtr root, TableTypeInfo type, Span<byte> bytes, TableAllocator allocator, bool mutable = false)
-    { Span<ulong> ids = stackalloc ulong[tableOwnVocabulary.Count]; return SaveRegion(root, type, bytes, ids, false, allocator, mutable); }
+    { Span<ulong> ids = stackalloc ulong[` + strconv.Itoa(cap) + `]; return SaveRegion(root, type, bytes, ids, false, allocator, mutable); }
     public static long PackSize(IntPtr pointer, TableTypeInfo type, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
     {
         data = attribution = 0; if (pointer == IntPtr.Zero) { return -1; }
@@ -261,3 +264,4 @@ const tableBuilderWireSource = `
         return (IntPtr)target;
     }
 `
+}
