@@ -1893,17 +1893,18 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  # nothing on it can fail for want of a plan: an entry whose plan would not\n")
 	g.pf("  # build carries its own refusal reason, and this is where it is read.\n")
 	g.pf("  defp %s_fixed_lane(i, records, hash, report, cap, bcap, copy) do\n", snake)
+	g.pf("    dead = R.dead_lane(__MODULE__, :%s, i)\n\n", snake)
 	g.pf("    case R.lineage_lane(__MODULE__, :%s, i) do\n", snake)
 	g.pf("      :identity ->\n")
 	identityArgs := []node{rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
-		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")}
+		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}"), raw("dead")}
 	laneArgs := []node{raw("plan"), raw("size"), raw("records"), raw("hash"), raw("report"), raw("copy"),
-		raw("bcap"), raw("{u, k}")}
+		raw("bcap"), raw("{u, k}"), raw("dead")}
 	if writerBounds {
 		// THE LANE'S WRITER RANGES RIDE WITH ITS CENSUS: both are facts of the
 		// lineage entry the file selected, fixed when the build laid it down.
-		identityArgs[len(identityArgs)-1] = raw("{0, 0, []}")
-		laneArgs[len(laneArgs)-1] = rawf("{u, k, %s_fixed_writer_bounds(i)}", snake)
+		identityArgs[len(identityArgs)-2] = raw("{0, 0, []}")
+		laneArgs[len(laneArgs)-2] = rawf("{u, k, %s_fixed_writer_bounds(i)}", snake)
 	}
 	g.pf("        %s\n", call(snake+"_fixed_run", identityArgs...).render(8, 8, 0))
 	g.pf("\n")
@@ -1921,7 +1922,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE\n")
 	g.pf("  # a byte is landed. Neither plan clamps a ranged integer: the generated\n")
 	g.pf("  # projection holds the bound after the loop, the same pass for either plan.\n")
-	g.pf("  defp %s_fixed_run(plan, size, records, hash, report, copy, bcap, census) do\n", snake)
+	g.pf("  defp %s_fixed_run(plan, size, records, hash, report, copy, bcap, census, dead) do\n", snake)
 	if writerBounds {
 		g.pf("    {census_u, census_k, bounds} = census\n\n")
 	} else {
@@ -1939,6 +1940,11 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("    try do\n")
 	g.pf("      with :ok <- R.batch_within(byte_size(records), size + 8, bcap),\n")
 	g.pf("           {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
+	g.pf("        # THE CHECK PASS: every dead byte in every record is held to zero\n")
+	g.pf("        # BEFORE the first record lands (docs/FIXED-FORM-ALGORITHM.md §5.3\n")
+	g.pf("        # step 11, docs/SPEC-TABLES.md §3.4, §13.10). A non-zero one refuses\n")
+	g.pf("        # the whole load as wire_damaged and leaves the caller holding nothing.\n")
+	g.pf("        Enum.each(bodies, fn body -> R.dead_check(body, dead) end)\n\n")
 	g.pf("        {values, report} =\n")
 	g.pf("          Enum.map_reduce(bodies, report, fn body, report ->\n")
 	// the formatter breaks a match past column 98 after its `=`, and a

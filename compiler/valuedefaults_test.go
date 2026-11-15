@@ -93,10 +93,10 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			code := string(out["ProbeTable.lobster"])
 			for _, want := range []string{
-				`value.Name = schema_rt.put(value.Name, "untitled")`,
-				"value.NameLength = 8",
-				`value.Tag = schema_rt.put(value.Tag, "ab")`,
-				"value.TagLength = 2",
+				`value·.Name = schema_rt.put(value·.Name, "untitled")`,
+				"value·.NameLength = 8",
+				`value·.Tag = schema_rt.put(value·.Tag, "ab")`,
+				"value·.TagLength = 2",
 				"Caps: 3 // specified default (SPEC §5)",
 				`has_def: true, def_str: "untitled"`,
 			} {

@@ -1415,9 +1415,9 @@ fn main() {
 
     let mut report = TableReport::default();
     let Some(loaded) = root_config_load(&wire, &mut report) else {
-        panic!("framing damage: report.malformed is set");
+        panic!("framing damage: report.damaged is set");
     };
-    if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+    if report.unknown != 0 || report.widened != 0 {
         // the data came from a different schema generation: loaded is still
         // fully usable; log the counts so drift is visible
     }

@@ -160,7 +160,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "broad compiler change",
 			files: "compiler/compiler.go",
-			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
+			want:  `yes|./compiler|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
 		},
 		{
 			name:  "lobster leg only",
@@ -183,6 +183,18 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			name:  "usage page",
 			files: "docs/USAGE.md",
 			want:  `no|./internal/goldens|[]`,
+		},
+		{
+			// a card's targets live in their own make/<lang>-<topic>.mk,
+			// which selects its leg as make/<lang>.mk does
+			name:  "elixir card make file",
+			files: "make/elixir-packet-write-text.mk",
+			want:  `no|./internal/codegen/elixirtable|["elixir"]`,
+		},
+		{
+			name:  "c card make file",
+			files: "make/c-packet-write-text.mk",
+			want:  `no|./internal/codegen/ctable|["c"]`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -235,7 +247,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
 		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
 		{"docs only", "docs/CONTRIBUTING.md", `[]|`},
-		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./...`},
+		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./compiler`},
 		// the shared packet corpora are every lens's input
 		{"packet examples", "examples/Types.schema", `["dart","go","lua"]|./internal/goldens`},
 		{"128-bit examples", "examples128/Ludicrous.schema", `["dart","go","lua"]|./internal/goldens`},

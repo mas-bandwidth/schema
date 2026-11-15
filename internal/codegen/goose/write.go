@@ -68,6 +68,14 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 		// length in [0, N], align, then the used bytes: the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7)
 		w.Pf("%sif %s < 0 || %s > %d { %s }\n", ind, length, length, t.Size, refuseRange)
+		if t.Kind == ir.TString {
+			// the used bytes hold the content the read accepts (SPEC §4.7,
+			// §5.1 row 8): well-formed UTF-8, then no zero byte, each
+			// refused by its own reason in every build
+			w.Pf("%sif !serialize_valid_utf8(%s[0..%s]) { return SERIALIZE_ERROR_INVALID_UTF8; } // malformed UTF-8 is not a value of the type\n", ind, expr, length)
+			c := w.tmp("c")
+			w.Pf("%sfor %s in %s[0..%s] { if %s == 0 { return SERIALIZE_ERROR_EMBEDDED_NUL; } } // a zero byte is not a value of the type\n", ind, c, expr, length, c)
+		}
 		w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, length, bits)
 		w.streamCall(ind, "%sserialize_bytes(s, %s[0..%s]);\n", ind, expr, length)
 	case ir.TFixed:
@@ -206,6 +214,7 @@ func (w *wgen) emitWriteCompressed(f *ir.Field, expr, ind string) {
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
 	w.Pf("%sif !serialize_float_bits_are_finite(serialize_f32_bits(%s)) { return SERIALIZE_ERROR_NON_FINITE_FLOAT; } // NaN and the infinities are not values of the type (SPEC §4.3)\n", ind, expr)
+	w.Pf("%sif %s < %s || %s > %s { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }\n", ind, expr, floatLit32(min32), expr, floatLit32(float32(f.FMax)))
 	w.streamCall(ind, "%sserialize_compressed_float_precomputed(s, %s, %d, %d, %s, %s);\n", ind, expr, steps, bits, floatLit32(delta), floatLit32(min32))
 }
 

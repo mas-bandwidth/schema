@@ -351,12 +351,14 @@ use crate::*;
 	for _, un := range unions {
 		g.emitFixedWriteUnion(un)
 		g.emitFixedScatterUnion(un)
+		g.emitFixedDeadUnion(un)
 		g.emitFixedClampUnion(un)
 		g.emitFixedFiniteUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
+		g.emitFixedDead(st)
 		g.emitFixedClampBody(st)
 		g.emitFixedFiniteBody(st)
 	}
@@ -544,6 +546,9 @@ func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 	g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 	g.pf("%s{\n", ind)
 	g.pf("%s    let n = value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
+	if f.Type.Kind == ir.TString {
+		g.pf("%s    debug_assert!(table_utf8_valid(&value.%s[..n]), \"%s is ill-formed text\");\n", ind, f.Name, f.Name)
+	}
 	g.pf("%s    b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", ind, base+4, base+4, f.Name)
 	g.pf("%s}\n", ind)
 }
@@ -561,6 +566,65 @@ func (g *gen) fixedWriteBound(member string, bound int64, what, ind string) {
 	g.pf("%s    value.%s >= 0 && value.%s <= %d,\n", ind, member, member, bound)
 	g.pf("%s    \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n", ind, what)
 	g.pf("%s);\n", ind)
+}
+
+// fixedScalarWriteCheck is the debug-only write contract over one fixed-form
+// scalar slot (docs/SPEC.md §5.1 rows 1, 2 and 5): a ranged integer or a
+// fixed/ufixed raw value off its raw min/max, a bits(N) value wider than N, and
+// an enum ordinal past the enum's top wire value. It is emitted before the
+// store, so a debug build refuses the value at the call site.
+func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind string) {
+	if f.Type.Kind == ir.TNamed {
+		if extent, ranged := fixedEnumExtent(f, width); ranged {
+			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
+		}
+		return
+	}
+	at := expr
+	if _, wide := fixedWide128(f); wide {
+		// a 128-bit slot IS the aligned wrapper; `.0` is the integer
+		at += ".0"
+	}
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		minBits, maxBits := fixedStorageLimits(width, f.Type.Signed)
+		var conds []string
+		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
+		if low {
+			conds = append(conds, fmt.Sprintf("%s >= %s", at, lo.String()))
+		}
+		if high {
+			conds = append(conds, fmt.Sprintf("%s <= %s", at, hi.String()))
+		}
+		if len(conds) > 0 {
+			what := f.Name + " out of range"
+			if f.Type.Kind == ir.TFixed {
+				what = f.Name + " raw value out of range"
+			}
+			span := fmt.Sprintf("[%s, %s]", lo.String(), hi.String())
+			switch {
+			case low && !high:
+				span = ">= " + lo.String()
+			case high && !low:
+				span = "<= " + hi.String()
+			}
+			g.pf("%sdebug_assert!(%s, \"%s %s\");\n", ind, strings.Join(conds, " && "), what, span)
+		}
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < width*8 {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		g.pf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, at, maxv, f.Name, f.Type.Width)
+	}
+}
+
+// fixedStorageLimits is the few representable value of a fixed-form store of
+// `width` bytes and the given signedness.
+func fixedStorageLimits(width int64, signed bool) (min, max *big.Int) {
+	one := new(big.Int).Lsh(big.NewInt(1), uint(width*8))
+	if signed {
+		half := new(big.Int).Rsh(one, 1)
+		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1))
+	}
+	return big.NewInt(0), new(big.Int).Sub(one, big.NewInt(1))
 }
 
 func (g *gen) emitFixedWriteSlots(f *ir.Field, base int64, count string, indent int) {
@@ -581,6 +645,7 @@ func (g *gen) emitFixedWriteElementAt(f *ir.Field, at, expr string, indent int) 
 		return
 	}
 	width := ir.TableFixedElementBytes(f)
+	g.fixedScalarWriteCheck(f, expr, width, ind)
 	g.pf("%slet at = %s;\n", ind, at)
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -836,6 +901,167 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 	}
 }
 
+// ---- the dead-byte check (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3) ---
+//
+// EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+// fixed-dead-bytes-are-zero): an absent optional's payload, a counted array's
+// slots past its count, a text's or bytes' units past its length, and an
+// inactive union arm. These functions walk the record image and answer whether
+// any dead range holds a byte other than zero; the load runs them over every
+// record BEFORE the plan does, so a refusal lands nothing. A nested type inside
+// a dead array slot or an inactive arm is dead whole and is not descended.
+func (g *gen) emitFixedDead(st *ir.Struct) {
+	g.pf("/// %s: true when a DEAD byte of this record image is not zero.\n", st.Name)
+	g.pf("pub fn %s(b: &[u8]) -> bool {\n", fn(st.Name, "fixed_dead"))
+	g.pf("    let _ = b;\n")
+	off := int64(0)
+	for _, f := range st.Fields {
+		g.emitFixedDeadField(f, off, 4)
+		off += ir.TableFixedFieldBytes(f)
+	}
+	g.pf("    false\n}\n\n")
+}
+
+// emitFixedDeadField is one field's dead regions. An absent optional's payload
+// is dead WHOLE — nothing in it is read as a value — and a present one descends
+// to its own dead regions.
+func (g *gen) emitFixedDeadField(f *ir.Field, base int64, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if !f.Type.Optional {
+		g.emitFixedDeadPayload(f, base, indent)
+		return
+	}
+	start := base + ir.TableFixedPresentBytes
+	payload := ir.TableFixedFieldBytes(f) - ir.TableFixedPresentBytes
+	g.pf("%sif b[%d] == 1 {\n", ind, base)
+	g.emitFixedDeadPayload(f, start, indent+4)
+	g.pf("%s}", ind)
+	if payload > 0 {
+		// Only a cleared flag (0) makes the payload dead. A present byte
+		// other than 0 or 1 is the hostile-byte path, which discards the
+		// load as damage and resets every caller row to its default.
+		g.pf(" else if b[%d] == 0 && b[%d..%d].iter().any(|&x| x != 0) {\n", base, start, start+payload)
+		g.pf("%s    return true;\n%s}", ind, ind)
+	}
+	g.pf("\n")
+}
+
+// emitFixedDeadPayload is one value's dead regions: a counted array's slots
+// past its count, a text's or bytes' units past its length, and the dead bytes
+// inside every LIVE element or arm.
+func (g *gen) emitFixedDeadPayload(f *ir.Field, base int64, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		elem := ir.TableFixedElementBytes(f)
+		if f.KeyEnumRef == nil || f.KeyEnumRef.Max == 0 {
+			return
+		}
+		g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
+		if _, _, nested := fixedNestedBody(f); nested {
+			g.emitFixedDeadElement(f, fixedSlotOffset(base, elem), indent+4)
+		} else {
+			g.pf("%s    let _ = i;\n", ind)
+		}
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		elem := ir.TableFixedElementBytes(f)
+		if f.ArrayBound == 0 {
+			return
+		}
+		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		if _, _, nested := fixedNestedBody(f); nested {
+			g.emitFixedDeadElement(f, fixedSlotOffset(base, elem), indent+4)
+		} else {
+			g.pf("%s    let _ = i;\n", ind)
+		}
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		elem := ir.TableFixedElementBytes(f)
+		g.pf("%s{\n", ind)
+		g.pf("%s    let count = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
+			ind, base, base+4, f.ArrayBound)
+		if f.ArrayBound > 0 {
+			g.pf("%s    if b[%d + count * %d..%d].iter().any(|&x| x != 0) {\n",
+				ind, base+ir.TableFixedCountBytes, elem, base+ir.TableFixedCountBytes+f.ArrayBound*elem)
+			g.pf("%s        return true;\n%s    }\n", ind, ind)
+			g.pf("%s    for i in 0..count {\n", ind)
+			if _, _, nested := fixedNestedBody(f); nested {
+				g.emitFixedDeadElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), indent+8)
+			} else {
+				g.pf("%s        let _ = i;\n", ind)
+			}
+			g.pf("%s    }\n", ind)
+		}
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		g.pf("%s{\n", ind)
+		g.pf("%s    let used = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
+			ind, base, base+4, f.Type.Size)
+		if f.Type.Size > 0 {
+			g.pf("%s    if b[%d + used..%d].iter().any(|&x| x != 0) {\n", ind, base+4, base+4+f.Type.Size)
+			g.pf("%s        return true;\n%s    }\n", ind, ind)
+		}
+		g.pf("%s}\n", ind)
+	default:
+		g.emitFixedDeadElement(f, fmt.Sprintf("%d", base), indent)
+	}
+}
+
+// emitFixedDeadElement descends into a LIVE element or arm that is a
+// declaration of its own; a leaf carries no dead bytes.
+func (g *gen) emitFixedDeadElement(f *ir.Field, at string, indent int) {
+	name, n, nested := fixedNestedBody(f)
+	if !nested {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
+	g.pf("%s    if %s(&b[at..at + %d]) {\n%s        return true;\n%s    }\n", ind, fn(name, "fixed_dead"), n, ind, ind)
+	g.pf("%s}\n", ind)
+}
+
+// emitFixedDeadUnion is one union image's dead bytes: the whole arm span under
+// tag 0, the bytes past a narrower taken arm, and the dead regions inside the
+// taken arm itself. A tag no arm names is not dead: the bounds pass refuses it
+// as out of range.
+func (g *gen) emitFixedDeadUnion(un *ir.Union) {
+	tagw := ir.TableFixedUnionTagBytes(un)
+	span := ir.TableFixedUnionBytes(un)
+	g.pf("/// %s: true when a DEAD byte of this union image is not zero.\n", un.Name)
+	g.pf("pub fn %s(b: &[u8]) -> bool {\n", fn(un.Name, "fixed_dead"))
+	g.pf("    let _ = b;\n")
+	if tagw == 1 {
+		g.pf("    let tag = b[0] as u64;\n")
+	} else {
+		g.pf("    let tag = %s::from_le_bytes(b[0..%d].try_into().expect(\"the tag's width\")) as u64;\n",
+			fixedRawUint(tagw), tagw)
+	}
+	g.pf("    if tag == 0 {\n")
+	if span > tagw {
+		g.pf("        return b[%d..%d].iter().any(|&x| x != 0);\n", tagw, span)
+	} else {
+		g.pf("        return false;\n")
+	}
+	g.pf("    }\n")
+	g.pf("    match tag {\n")
+	for i, v := range un.Variants {
+		arm := int64(0)
+		if v.F != nil {
+			arm = ir.TableFixedFieldBytes(v.F)
+		}
+		g.pf("        %d => {\n", i+1)
+		if span > tagw+arm {
+			g.pf("            if b[%d..%d].iter().any(|&x| x != 0) {\n                return true;\n            }\n", tagw+arm, span)
+		}
+		if v.F != nil {
+			g.emitFixedDeadPayload(v.F, tagw, 12)
+		}
+		g.pf("            false\n        }\n")
+	}
+	g.pf("        _ => false,\n    }\n}\n\n")
+}
+
 // fixedEnumExtent answers an ENUM leaf's top wire value and whether a range
 // check on it is worth emitting at all: an enum whose extent is every value its
 // storage width holds has no out-of-range ordinal to close, and a comparison
@@ -893,6 +1119,9 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 	g.pf("/// they stay the template's zeros, which this function reaches by not\n")
 	g.pf("/// touching them (§3.4).\n")
 	g.pf("pub fn %s(b: &mut [u8], value: &%sRow) {\n", fn(un.Name, "fixed_write_body"), un.Name)
+	if int64(len(un.Variants)) < tagMax(tagw) {
+		g.pf("    debug_assert!(value.tag <= %d, \"%s tag outside its arm set\");\n", len(un.Variants), un.Name)
+	}
 	if tagw == 1 {
 		g.pf("    b[0] = value.tag;\n")
 	} else {
@@ -910,9 +1139,10 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 		g.pf("        %d => {\n", i+1)
 		g.pf("            // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
 		g.pf("            // and the same one the C reference's storage struct carries. The\n")
-		g.pf("            // tag was just matched against `%s`, every arm is plain data\n", v.Name)
-		g.pf("            // with no niche in it, and the overlay's zero form is a value of\n")
-		g.pf("            // every arm — so a Row whose tag was set without its arm reads a\n")
+		g.pf("            // tag was just matched against `%s`, and the overlay's zero form\n", v.Name)
+		g.pf("            // is a value of every arm — zero is valid for every scalar and\n")
+		g.pf("            // every bool, and a zero self-relative delta is the null\n")
+		g.pf("            // reference — so a Row whose tag was set without its arm reads a\n")
 		g.pf("            // zero payload rather than an invalid one.\n")
 		g.pf("            let arm = unsafe { value.arms.%s };\n", v.Name)
 		g.emitFixedWriteArm(v.F, tagw, "arm", 12)
@@ -951,6 +1181,9 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 			ind, ind, armExpr, armExpr, f.Type.Size, ind, ind)
 		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
 		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s    debug_assert!(table_utf8_valid(&%s.value[..n]), \"%s is ill-formed text\");\n", ind, armExpr, f.Name)
+		}
 		g.pf("%s    b[%d..%d + n].copy_from_slice(&%s.value[..n]);\n%s}\n", ind, base+4, base+4, armExpr, ind)
 	default:
 		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), armExpr, indent)
@@ -1315,6 +1548,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf(".\n")
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
+	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6). The write\n")
+	g.pf("    // contract is a debug assert, as this leg's other write checks are.\n")
+	g.pf("    debug_assert!(\n")
+	g.pf("        !values.is_empty(),\n")
+	g.pf("        \"a fixed-form file holds at least one record (docs/SPEC-TABLES.md §22.6)\"\n")
+	g.pf("    );\n")
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
 	if finite {
@@ -1368,10 +1607,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf(") -> Option<usize> {\n")
 	g.pf("    let damaged_before = report.damaged;\n")
 	g.pf("    report.damaged = false;\n")
-	g.pf("    let read = %s(values, data, plan, remap, report);\n", fn(st.Name, "fixed_load_records"))
+	g.pf("    let mut untouched = false;\n")
+	g.pf("    let read = %s(values, data, plan, remap, report, &mut untouched);\n", fn(st.Name, "fixed_load_records"))
 	g.pf("    let damaged = report.damaged;\n")
 	g.pf("    report.damaged |= damaged_before;\n")
-	g.pf("    if damaged {\n")
+	g.pf("    if damaged && !untouched {\n")
 	g.pf("        for value in values.iter_mut() {\n")
 	g.pf("            %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 	g.pf("        }\n")
@@ -1384,6 +1624,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    plan: &mut [TableFixedEntry],\n")
 	g.pf("    remap: &mut [u16],\n")
 	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf("    untouched: &mut bool,\n")
 	g.pf(") -> Option<usize> {\n")
 	g.pf("    if data.is_empty() {\n        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
@@ -1489,12 +1730,45 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // The REMAP lane is the build's too, laid beside the plan it belongs to;\n")
 	g.pf("    // the caller's slice stays in the signature as the capacity it always was.\n")
 	g.pf("    let _ = remap;\n")
-	g.pf("    // A ROOT IS ONE RECORD (§3.4): a caller with room for exactly one and a\n")
-	g.pf("    // file carrying none has no value to read, which is truncation.\n")
-	g.pf("    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) || (rest.len() == 0 && values.len() == 1) {\n")
+	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):\n")
+	g.pf("    // a header and a layout followed by no record is truncation, at any\n")
+	g.pf("    // capacity. A record size of 8 or less, or a ragged tail, is the same.\n")
+	g.pf("    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
 	g.pf("        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
+	g.pf("    // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
+	g.pf("    // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte\n")
+	g.pf("    // no live value covers is zero, and a non-zero one refuses the whole load\n")
+	g.pf("    // BEFORE any record lands. An absent optional's payload, a counted array's\n")
+	g.pf("    // slots past its count, a text's or bytes' units past its length, and an\n")
+	g.pf("    // inactive union arm are the four dead regions.\n")
+	// Identity walks this build's own layout: its plan is one Copy and cannot
+	// see a tail. A compiled plan walks the selected writer's entries, whose
+	// source offsets are the file's, and refuses before any record lands.
+	deadInd := "    "
+	if len(lineage) > 1 {
+		g.pf("    if identity {\n")
+		deadInd = "        "
+	}
+	g.pf("%sfor k in 0..n {\n", deadInd)
+	g.pf("%s    if %s(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n", deadInd, fn(st.Name, "fixed_dead"))
+	g.pf("%s        report.damaged = true;\n", deadInd)
+	g.pf("%s        *untouched = true;\n", deadInd)
+	g.pf("%s        return None;\n", deadInd)
+	g.pf("%s    }\n", deadInd)
+	g.pf("%s}\n", deadInd)
+	if len(lineage) > 1 {
+		g.pf("    } else {\n")
+		g.pf("        for k in 0..n {\n")
+		g.pf("            if table_fixed_dead(entries, guards, &rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n")
+		g.pf("                report.damaged = true;\n")
+		g.pf("                *untouched = true;\n")
+		g.pf("                return None;\n")
+		g.pf("            }\n")
+		g.pf("        }\n")
+		g.pf("    }\n")
+	}
 	g.pf("    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")
 	g.pf("    // `Copy` over the whole body, so the hole list is empty and the loop below\n")
 	g.pf("    // is a no-op. A compiled plan that leaves a field out has that field in\n")
@@ -1934,12 +2208,15 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	if f.HasFloatRange {
 		// A FLOAT RANGE IS ALWAYS BOTH ENDS: there is no storage limit to fold
-		// either of them into the way an integer's has.
+		// either of them into the way an integer's has. A compressed float's -0
+		// lands as +0, uncounted (docs/SPEC-TABLES.md §3.3,
+		// docs/rulings.json fixed-compressed-negzero).
 		suffix := "_f64"
 		if f.Type.Kind == ir.TFloat32 {
 			suffix = "_f32"
 		}
 		g.emitFixedClampSelect(lhs, fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix, true, true, ind, "")
+		g.pf("%sif %s == 0.0%s {\n%s    %s = 0.0%s;\n%s}\n", ind, lhs, suffix, ind, lhs, suffix, ind)
 		return
 	}
 	if low, high := fixedClampEnds(f); low || high {

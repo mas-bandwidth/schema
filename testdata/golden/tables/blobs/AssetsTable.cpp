@@ -543,8 +543,8 @@ struct TableJsonOut
     int64_t capacity;
     int64_t offset;
     bool overflow;
-    // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
-    // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+    // storage that is not text (ill-formed UTF-8, a zero byte, an unpaired
+    // surrogate) refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
     bool invalid;
     void * graph; // the pointered write's identity map (§16.7); NULL for a fixed table
 
@@ -945,8 +945,11 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). No wire and no text can
 // put ill-formed UTF-8 into a narrow field, so storage that holds it was put
 // there by a program, and the WRITE REFUSES (docs/SPEC-TABLES.md §16.14 W0):
-// a silent U+FFFD would make two different strings one text. The sink is
-// marked invalid and the write answers -1; nothing it wrote is a text.
+// a silent U+FFFD would make two different strings one text. A zero byte is
+// storage that is not text here too: the reader refuses a placed U+0000
+// (§16.3), so the writer refuses it rather than spelling a text its own
+// reader refuses. The sink is marked invalid and the write answers -1;
+// nothing it wrote is a text.
 inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -964,6 +967,12 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
             case '\r': out.raw( "\\r", 2 ); break;
             case '\t': out.raw( "\\t", 2 ); break;
             default:
+                if ( c == 0 )
+                {
+                    out.invalid = true; // not text: the write refuses (§16.14 W0)
+                    out.put( '"' );
+                    return;
+                }
                 if ( c < 0x20 )
                 {
                     char escape[6] = { '\\', 'u', '0', '0', hex[c >> 4], hex[c & 0xf] };
@@ -1576,7 +1585,114 @@ struct TableJsonIn
     TableReport * report;
     bool bad;     // the text is not JSON: the walk stops and the read is discarded whole
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
+    // EVERY KEY OF EVERY OBJECT THE TEXT WALKS (docs/SPEC-TABLES.md §16.2,
+    // §16.12), decoded into one stack: an object marks the count when it opens,
+    // compares only the keys above its mark, and cuts the stack back when it
+    // closes, so a key repeated in one object refuses while the same key in two
+    // objects, or in an object and one nested inside it, does not. The arrays
+    // grow with the text and never past it.
+    char * key_bytes;
+    int64_t key_bytes_size;
+    int64_t key_bytes_used;
+    int64_t * key_offset;
+    int32_t * key_length;
+    int64_t key_count;
+    int64_t key_capacity;
+    int64_t key_mark; // the first key of the object being walked
 };
+
+inline void TableJsonKeysInit( TableJsonIn & in )
+{
+    in.key_bytes = NULL;
+    in.key_bytes_size = 0;
+    in.key_bytes_used = 0;
+    in.key_offset = NULL;
+    in.key_length = NULL;
+    in.key_count = 0;
+    in.key_capacity = 0;
+    in.key_mark = 0;
+}
+
+inline void TableJsonKeysShutdown( TableJsonIn & in )
+{
+    free( in.key_bytes );
+    free( in.key_offset );
+    free( in.key_length );
+    TableJsonKeysInit( in );
+}
+
+// ONE OBJECT's key window: the stack's mark at its opening is where it must be
+// when the object closes, so a nested object's keys never stand among its own,
+// and its own window starts there, so its enclosing objects' keys never stand
+// among a nested object's.
+struct TableJsonKeyScope
+{
+    TableJsonIn & in;
+    int64_t count;
+    int64_t used;
+    int64_t mark;
+    TableJsonKeyScope( TableJsonIn & owner ) : in( owner ), count( owner.key_count ), used( owner.key_bytes_used ), mark( owner.key_mark )
+    {
+        in.key_mark = in.key_count;
+    }
+    ~TableJsonKeyScope()
+    {
+        in.key_count = count;
+        in.key_bytes_used = used;
+        in.key_mark = mark;
+    }
+};
+
+inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
+{
+    if ( count > in.key_capacity )
+    {
+        int64_t capacity = in.key_capacity != 0 ? in.key_capacity : 16;
+        while ( capacity < count ) { capacity *= 2; }
+        int64_t * offset = (int64_t *) realloc( in.key_offset, (size_t) capacity * sizeof( int64_t ) );
+        if ( offset == NULL ) { return false; }
+        in.key_offset = offset;
+        int32_t * length = (int32_t *) realloc( in.key_length, (size_t) capacity * sizeof( int32_t ) );
+        if ( length == NULL ) { return false; }
+        in.key_length = length;
+        in.key_capacity = capacity;
+    }
+    if ( bytes > in.key_bytes_size )
+    {
+        int64_t size = in.key_bytes_size != 0 ? in.key_bytes_size : 64;
+        while ( size < bytes ) { size *= 2; }
+        char * grown = (char *) realloc( in.key_bytes, (size_t) size );
+        if ( grown == NULL ) { return false; }
+        in.key_bytes = grown;
+        in.key_bytes_size = size;
+    }
+    return true;
+}
+
+// A key the object has already decoded refuses the read with the verdict a
+// repeated field key takes; the first one is remembered for the rest of the
+// object.
+inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t length )
+{
+    for ( int64_t i = in.key_mark; i < in.key_count; i++ )
+    {
+        if ( in.key_length[i] == length && ( length == 0 || memcmp( in.key_bytes + in.key_offset[i], key, (size_t) length ) == 0 ) )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = malformed;
+            return true;
+        }
+    }
+    const int64_t count = in.key_count + 1;
+    const int64_t bytes = in.key_bytes_used + (int64_t) length;
+    if ( !TableJsonKeysGrow( in, count, bytes ) ) { in.bad = true; return false; }
+    if ( length != 0 ) { memcpy( in.key_bytes + in.key_bytes_used, key, (size_t) length ); }
+    in.key_offset[in.key_count] = in.key_bytes_used;
+    in.key_length[in.key_count] = length;
+    in.key_count = count;
+    in.key_bytes_used = bytes;
+    return true;
+}
 
 // TableJsonRequireSeen closes ONE object: every field marked required
 // (docs/SPEC-TABLES.md §2.3; oracle internal/codegen/gotable/json.go
@@ -1584,7 +1700,7 @@ struct TableJsonIn
 // as missing_required, in declaration order, exactly as the binary reader
 // refuses a record that omitted it. A required field inside an if guard is
 // demanded only while its guard holds: with the branch off it is absent and
-// no refusal is owed. The seen bitmap is the repeated tracker, sized to every
+// no refusal is owed. The seen bitmap is the presence tracker, sized to every
 // field the table declares, so no index is past its window.
 inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
 {
@@ -2018,6 +2134,7 @@ inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool *
 {
     int64_t symbols = 0;
     int64_t pad = 0;
+    int32_t last = -1;
     bool shape = true;
     for ( ;; )
     {
@@ -2036,23 +2153,33 @@ inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool *
             shape = false;
             continue;
         }
-        if ( TableJsonBase64Value( (uint8_t) c ) < 0 )
+        const int32_t value = TableJsonBase64Value( (uint8_t) c );
+        if ( value < 0 )
         {
             shape = false;
             continue;
         }
+        last = value;
         symbols++;
     }
     if ( shape )
     {
+        // CANONICAL base64 (docs/SPEC-TABLES.md §16.2, §16.8): the standard
+        // alphabet, padded, pad bits zero, and exactly the spelling the writer
+        // writes. A body that decodes but is unpadded, or whose final symbol
+        // leaves pad bits set, is not that spelling.
+        bool canonical = false;
         if ( pad > 0 )
         {
             if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { shape = false; }
+            const int32_t mask = pad == 1 ? 0x03 : 0x0f;
+            canonical = last >= 0 && ( last & mask ) == 0;
         }
-        else if ( symbols % 4 == 1 )
+        else
         {
-            shape = false;
+            canonical = symbols % 4 == 0;
         }
+        if ( !canonical ) { shape = false; }
     }
     *symbols_out = symbols;
     *base64 = shape;
@@ -2767,40 +2894,6 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
     return true;
 }
 
-// TableJsonSeenKeys is ONE object's key spellings, so a key named twice refuses
-// in every object of the text, the objects this walk skips included
-// (docs/SPEC-TABLES.md §16.2, §16.12). The storage is fixed, so the walk
-// allocates nothing; an object with more keys than this still reads, its
-// repeats simply stop being counted.
-static const int32_t kTableJsonSeenKeySlots = 512;
-static const int32_t kTableJsonSeenKeyBytes = 8192;
-
-struct TableJsonSeenKeys
-{
-    char text[kTableJsonSeenKeyBytes];
-    int32_t off[kTableJsonSeenKeySlots];
-    int32_t len[kTableJsonSeenKeySlots];
-    int32_t count = 0;
-    int32_t used = 0;
-};
-
-inline bool TableJsonKeyOnce( TableJsonSeenKeys & keys, const char * key, int32_t key_length )
-{
-    for ( int32_t i = 0; i < keys.count; i++ )
-    {
-        if ( keys.len[i] == key_length && memcmp( keys.text + keys.off[i], key, (size_t) key_length ) == 0 ) { return false; }
-    }
-    if ( keys.count < kTableJsonSeenKeySlots && keys.used + key_length <= kTableJsonSeenKeyBytes )
-    {
-        memcpy( keys.text + keys.used, key, (size_t) key_length );
-        keys.off[keys.count] = keys.used;
-        keys.len[keys.count] = key_length;
-        keys.count++;
-        keys.used += key_length;
-    }
-    return true;
-}
-
 inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth );
 
 inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth )
@@ -2811,8 +2904,8 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         return false;
     }
     in.pos++; // the opening bracket
+    TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
-    TableJsonSeenKeys keys;
     for ( ;; )
     {
         char c = TableJsonPeek( in );
@@ -2837,17 +2930,13 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             int32_t key_length = 0;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
-            if ( !TableJsonKeyOnce( keys, key, key_length ) )
-            {
-                in.report->refused = true;
-                in.report->refuse_reason = malformed;
-            }
             if ( TableJsonPeek( in ) != ':' )
             {
                 in.bad = true;
                 return false;
             }
             in.pos++;
+            if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
             if ( key[0] == '&' && in.graph != NULL )
             {
                 if ( !first )
@@ -3769,18 +3858,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         }
         // A variant name is a key: repeating it refuses the whole read as
         // malformed (§16.2). Track resolved slots in an allocation-free bitmask
-        // sized to every slot the array declares; the key-spelling set below
-        // also catches repeats with no slot.
+        // sized to every slot the array declares; the object's key set beside
+        // it also catches repeats with no slot, at any spelling and any length
+        // the text spells (§16.12).
         uint64_t seen[kTableJsonSlotSeenWords] = {};
-        // A repeated KEY refuses, the resolved slot or none (docs/SPEC-TABLES.md
-        // §16.2): a key that names no slot -- an unknown variant, or "None" -- is
-        // a repeat the second time it stands here, so the key SPELLINGS are
-        // tracked beside the slots, bounded and allocation-free like them.
-        char seen_key_text[8192];
-        int32_t seen_key_off[512];
-        int32_t seen_key_len[512];
-        int32_t seen_keys = 0;
-        int32_t seen_used = 0;
+        TableJsonKeyScope keys( in );
         for ( ;; )
         {
             char c = TableJsonPeek( in );
@@ -3798,36 +3880,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             int32_t key_length = 0;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
-            {
-                bool repeated = false;
-                for ( int32_t i = 0; i < seen_keys; i++ )
-                {
-                    if ( seen_key_len[i] == key_length && memcmp( seen_key_text + seen_key_off[i], key, (size_t) key_length ) == 0 )
-                    {
-                        repeated = true;
-                        break;
-                    }
-                }
-                if ( repeated )
-                {
-                    in.report->refused = true;
-                    in.report->refuse_reason = malformed;
-                }
-                else if ( seen_keys < 512 && seen_used + key_length <= (int32_t) sizeof( seen_key_text ) )
-                {
-                    memcpy( seen_key_text + seen_used, key, (size_t) key_length );
-                    seen_key_off[seen_keys] = seen_used;
-                    seen_key_len[seen_keys] = key_length;
-                    seen_keys++;
-                    seen_used += key_length;
-                }
-            }
             if ( TableJsonPeek( in ) != ':' )
             {
                 in.bad = true;
                 return false;
             }
             in.pos++;
+            if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
             int64_t slot = -1;
             for ( int64_t v = 0; v < f->array_bound; v++ )
             {
@@ -4026,11 +4085,10 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // it before scanning the rest.
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length )
 {
-    // repeated tracking, allocation-free: the bitmap is sized to the unit's
-    // widest table, so every field index this table declares is tracked. The
-    // keys this table does NOT name are tracked beside it (§16.2).
+    // the presence bitmap answers required fields; the key set answers repeats,
+    // including a key that names no field
     uint64_t seen[kTableJsonFieldSeenWords] = {};
-    TableJsonSeenKeys unknown_keys;
+    TableJsonKeyScope keys( in );
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
@@ -4064,6 +4122,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             }
             in.pos++;
         }
+        if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
         int32_t index = -1;
         for ( int32_t i = 0; i < info->num_fields; i++ )
         {
@@ -4088,11 +4147,6 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         }
         if ( index < 0 )
         {
-            if ( !TableJsonKeyOnce( unknown_keys, key, key_length ) )
-            {
-                in.report->refused = true;
-                in.report->refuse_reason = malformed;
-            }
             in.report->unknown++;
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
@@ -4197,6 +4251,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     in.report = report != NULL ? report : &ignored;
     in.bad = false;
     in.graph = NULL;
+    TableJsonKeysInit( in );
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
@@ -4211,6 +4266,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         TableJsonSpace( in );
         if ( in.pos != in.size ) { in.bad = true; } // trailing rubbish is not one text
     }
+    TableJsonKeysShutdown( in );
     if ( in.bad || !ok )
     {
         // a missing required field is its own refusal (§2.3), not damage
@@ -4813,6 +4869,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     in.report = report != NULL ? report : &ignored;
     in.bad = false;
     in.graph = &graph;
+    TableJsonKeysInit( in );
     info->reset( root );
     if ( text == NULL || bytes < 0 )
     {
@@ -4827,6 +4884,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
         TableJsonSpace( in );
         if ( in.pos != in.size ) { in.bad = true; } // trailing rubbish is not one text
     }
+    TableJsonKeysShutdown( in );
     TableJsonGraphMapShutdown( graph.labels );
     if ( in.bad || !ok )
     {

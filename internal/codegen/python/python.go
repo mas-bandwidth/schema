@@ -8,10 +8,9 @@
 //	<package>/_schema/      the runtime: the errors, and serialize.py vendored
 //
 // The packet core carries the class surface of every declaration and the codec
-// of the core packet kinds (bool, int8..uint64, enums, flags,
-// types by value, unions and if/else branches). A field or item of any other
-// kind is refused by name, naming the design's packet layer
-// (docs/PORT-PYTHON.md, THE PACKET CORE CUT).
+// of each packet kind docs/PORT-PYTHON.md, THE PACKET CORE CUT, marks carried.
+// A field or item of any other kind is refused by name, naming the design's
+// packet layer (docs/PORT-PYTHON.md, THE PACKET CORE CUT).
 package python
 
 import (
@@ -151,6 +150,16 @@ func emitModuleMode(u *ir.Unit, f *ir.File, surfaceOnly bool) string {
 	return m.assemble()
 }
 
+// packageInitExports are the names __init__.py always exports, before
+// declaration re-exports. packageInit seeds its export set from this map.
+// checkModule refuses a module base equal to one of them: importing
+// <package>.<name> rebinds that package attribute to the module.
+var packageInitExports = map[string]bool{
+	"InvalidValue": true,
+	"PROTOCOL_ID":  true,
+	"Refused":      true,
+}
+
 // packageInit is the unit's __init__.py: the protocol id, the errors every
 // read and write raises, every declaration re-exported, and one import per
 // module so `import <package>` loads the whole unit without redefining a
@@ -160,14 +169,14 @@ func packageInit(u *ir.Unit, bases []string) string {
 	for _, f := range u.Files {
 		byBase[f.Base] = f
 	}
-	exportedSet := map[string]bool{
-		"InvalidValue": true,
-		"PROTOCOL_ID":  true,
-		"Refused":      true,
+	exportedSet := make(map[string]bool, len(packageInitExports))
+	exported := make([]string, 0, len(packageInitExports))
+	for name := range packageInitExports {
+		exportedSet[name] = true
+		exported = append(exported, name)
 	}
 	importedFrom := map[string]bool{}
 	var declImports strings.Builder
-	exported := []string{"InvalidValue", "PROTOCOL_ID", "Refused"}
 	for _, base := range bases {
 		f := byBase[base]
 		if f == nil {
