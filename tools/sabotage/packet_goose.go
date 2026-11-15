@@ -9,6 +9,12 @@ func init() {
 		old: `w.Pf("%sguard serialize_valid_utf8(%s[0..%s]) else {`,
 		new: `/* SABOTAGED */ w.Pf("%sguard true || serialize_valid_utf8(%s[0..%s]) else {`,
 	}}
+	// SPEC §5: the public read's one end check after the top-level object,
+	// so a trailing byte and set padding read as the value again.
+	sabotages["packet-end-goose"] = []edit{{
+		old: `	w.Pf("    guard serialize_end(s) else { return false; } // one packet's end: no trailing byte, no set padding (SPEC §5)\n")`,
+		new: `	// SABOTAGED: the end check removed`,
+	}}
 	// SPEC §4.2: the constructor's byte default, its length kept.
 	sabotages["packet-defaults-goose-constructor-bytes"] = []edit{{
 		old: `out = append(out, Slot{Name: name, Type: fmt.Sprintf("%s[%d]", unit, size), Init: init, Comment:`,
