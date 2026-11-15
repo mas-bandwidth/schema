@@ -664,8 +664,11 @@ build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) t
 # scalars (the WIDE KINDS as array elements) are carried by two pieces of
 # cookwrite_form1.go / cookwrite.go. Each leg removes one from a COPY of the
 # emitter, regenerates that unit beside the tree, compiles a copy of the driver
-# against it, and requires the harness to go red on that unit's cook-write
-# rows and on nothing else. No tracked file is written to.
+# against it, and requires the harness to go red on that unit's cook-write rows
+# and on nothing else. The clean driver's own failure set is the baseline, so a
+# row another group already owns is not read as this plant's; every row this
+# plant adds beyond its own still fails the control. No tracked file is written
+# to.
 DART_COOKWRITE_NC := build/dart-cookwrite-nc
 # $(1) leg, $(2) emitter file, $(3) sed sabotage, $(4) unit dir in the tree,
 # $(5) schema source, $(6) the failing rows' name prefix
@@ -682,6 +685,15 @@ define dart-cookwrite-nc-leg
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
 	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
+	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
+			--work $(DART_COOKWRITE_NC)/$(1)/clean-work > $(DART_COOKWRITE_NC)/$(1)/clean-log 2>&1 || true
+	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/clean-log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt
+	@if grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the clean leg is already red on a $(6) cook-write row"; \
+		grep "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; exit 1; \
+	fi
 	@printf 'dart %s/$(DART_COOKWRITE_NC)/$(1)/driver-bin\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/drivers.txt
 	@if ./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/drivers.txt \
 			--work $(DART_COOKWRITE_NC)/$(1)/work > $(DART_COOKWRITE_NC)/$(1)/log 2>&1; then \
@@ -691,8 +703,14 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@if awk '/^FAILURES/ { f = 1; next } f && /^  /' $(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)"; then \
-		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; exit 1; \
+	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
+		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
+		grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt; exit 1; \
 	fi
 	@grep -m1 "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log
 endef
