@@ -2,8 +2,9 @@ package luatable
 
 // ReadFixed is one record of the batch read (docs/FIXED-FORM-ALGORITHM.md §4
 // "ONE path", §2 step 7, §5.3). A file this leg wrote with two records is
-// refused, the same verdict FixedLoad gives at a capacity of one. One record
-// plus a trailing byte is refused. The refusal's name is not the contract.
+// refused, the same verdict FixedLoad gives at a capacity of one, as is a
+// two-record file whose second record carries a damaged hash. One record plus
+// a trailing byte is refused. The refusal's name is not the contract.
 
 import (
 	"fmt"
@@ -62,6 +63,13 @@ print("two " .. verdict(ok2) .. " " .. verdict(okL2))
 local okT = pcall(T.ReadFixed, "Row", one .. string.char(0))
 local okLT = pcall(T.FixedLoad, "Row", one .. string.char(0), 1)
 print("trail " .. verdict(okT) .. " " .. verdict(okLT))
+-- the second record starts where the first ends: its hash is the first byte
+-- of that record, so flipping a byte there leaves the first record whole.
+local at = #one + 1
+local dmg = two:sub(1, at - 1) .. string.char((two:byte(at) + 1) %% 256) .. two:sub(at + 1)
+local okD = pcall(T.ReadFixed, "Row", dmg)
+local okLD = pcall(T.FixedLoad, "Row", dmg, 1)
+print("dmg " .. verdict(okD) .. " " .. verdict(okLD))
 local okZ = pcall(T.ReadFixed, "Row", zero)
 print("zero " .. verdict(okZ))
 `, ModuleName(unit)))
@@ -75,6 +83,7 @@ print("zero " .. verdict(okZ))
 		"one 7,one 7,one",
 		"two refused refused",
 		"trail refused refused",
+		"dmg refused refused",
 		"zero refused",
 	}
 	for _, line := range want {
