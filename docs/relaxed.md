@@ -152,8 +152,10 @@ listed case that passes fails the leg until its line is removed.
   still write the element defaults (the C++ reference behind
   `tables-tool-cook-differential` too). Files: internal/codegen/gotable/cookwrite_test.go,
   whose `TestCookWriterMatchesIndependentLayout/fixed` skips (the Go writer
-  writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
-  the dead slots, and the Go case runs again.
+  writes the defaults the tool now zeroes), and internal/codegen/goosetable/cook_write_test.go,
+  whose `TestGooseCookWriterMatchesIndependentLayout/fixed` skips the same way
+  (the Goose writer writes the defaults; 2026-11-15). Real fix: every cook
+  writer zeroes the dead slots, and the Go and Goose cases run again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
   of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau,
   moo and squirrel in `test/conformance/relaxed.txt`: each still writes
