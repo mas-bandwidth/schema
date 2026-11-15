@@ -37,16 +37,6 @@ dart cook-write root_default relax/cook-dead-slots-zero-ports
 dart cook-write root_default-be relax/cook-dead-slots-zero-ports
 dart cook-write root_full relax/cook-dead-slots-zero-ports
 dart cook-write root_full-be relax/cook-dead-slots-zero-ports
-elixir cook-write archive relax/cook-dead-slots-zero-ports
-elixir cook-write archive-be relax/cook-dead-slots-zero-ports
-elixir cook-write loadout_full relax/cook-dead-slots-zero-ports
-elixir cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-elixir cook-write profile_elide relax/cook-dead-slots-zero-ports
-elixir cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-elixir cook-write root_default relax/cook-dead-slots-zero-ports
-elixir cook-write root_default-be relax/cook-dead-slots-zero-ports
-elixir cook-write root_full relax/cook-dead-slots-zero-ports
-elixir cook-write root_full-be relax/cook-dead-slots-zero-ports
 goose cook-write archive relax/cook-dead-slots-zero-ports
 goose cook-write archive-be relax/cook-dead-slots-zero-ports
 goose cook-write loadout_full relax/cook-dead-slots-zero-ports
