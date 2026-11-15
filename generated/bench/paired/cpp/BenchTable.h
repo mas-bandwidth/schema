@@ -1401,7 +1401,7 @@ struct TableStrictWalk
     // ONE TABLE BODY, whose terminator must be its LAST byte. Only the root
     // admits the node table's reserved id, as kind 12, and hands its payload
     // back; the same field id twice in one body is damage (§4).
-    bool body( const uint8_t * b, int64_t len, bool root, const uint8_t ** table, int64_t * table_bytes )
+    bool body( const uint8_t * b, int64_t len, bool root, const uint8_t ** table, int64_t * node_table_bytes )
     {
         uint64_t seen[kTableProbeBound / 64];
         for ( int64_t w = 0; w < ( ids->count + 63 ) / 64; w++ ) { seen[w] = 0; }
@@ -1425,7 +1425,7 @@ struct TableStrictWalk
                 int64_t after = 0;
                 if ( !leb( b, len, off, n, after ) || n > uint64_t( len - after ) ) { return false; }
                 *table = b + after;
-                *table_bytes = int64_t( n );
+                *node_table_bytes = int64_t( n );
                 off = after + int64_t( n );
                 continue;
             }
@@ -1674,9 +1674,9 @@ inline TableRefuseReason TableWireStrict( const uint8_t * body, int64_t bytes, c
     TableStrictWalk walk;
     walk.ids = &ids;
     const uint8_t * table = NULL;
-    int64_t table_bytes = -1;
-    if ( !walk.body( body, bytes, true, &table, &table_bytes ) ) { return walk.refused(); }
-    if ( table_bytes < 0 )
+    int64_t node_table_bytes = -1;
+    if ( !walk.body( body, bytes, true, &table, &node_table_bytes ) ) { return walk.refused(); }
+    if ( node_table_bytes < 0 )
     {
         // NO NODE TABLE: the root is the only node, so every index is null;
         // index 1 names the root, whose descent is open, and is a cycle
@@ -1691,17 +1691,17 @@ inline TableRefuseReason TableWireStrict( const uint8_t * body, int64_t bytes, c
     // with it is malformed, and nothing is sized from node_count
     uint64_t declared = 0;
     int64_t first = 0;
-    if ( !TableStrictWalk::leb( table, table_bytes, 0, declared, first ) ) { return wire_damaged; }
+    if ( !TableStrictWalk::leb( table, node_table_bytes, 0, declared, first ) ) { return wire_damaged; }
     int64_t records = 0;
-    for ( int64_t off = first; off < table_bytes; records++ )
+    for ( int64_t off = first; off < node_table_bytes; records++ )
     {
         uint64_t ref = 0;
         uint64_t n = 0;
         int64_t after = 0;
-        if ( !TableStrictWalk::leb( table, table_bytes, off, ref, off ) ) { return wire_damaged; }
+        if ( !TableStrictWalk::leb( table, node_table_bytes, off, ref, off ) ) { return wire_damaged; }
         if ( ref == 0 || ref > uint64_t( ids.count ) ) { return wire_damaged; }      // a type reference that names no id
         if ( TableStrictWalk::reserved( ids.at( ref ) ) ) { return wire_damaged; } // a reserved id in a record's type position
-        if ( !TableStrictWalk::leb( table, table_bytes, off, n, after ) || n > uint64_t( table_bytes - after ) ) { return wire_damaged; }
+        if ( !TableStrictWalk::leb( table, node_table_bytes, off, n, after ) || n > uint64_t( node_table_bytes - after ) ) { return wire_damaged; }
         off = after + int64_t( n );
     }
     if ( declared != uint64_t( records ) ) { return wire_damaged; }
@@ -1717,7 +1717,7 @@ inline TableRefuseReason TableWireStrict( const uint8_t * body, int64_t bytes, c
         uint64_t ref = 0;
         uint64_t n = 0;
         int64_t after = 0;
-        if ( !TableStrictWalk::leb( table, table_bytes, off, ref, off ) || !TableStrictWalk::leb( table, table_bytes, off, n, after ) )
+        if ( !TableStrictWalk::leb( table, node_table_bytes, off, ref, off ) || !TableStrictWalk::leb( table, node_table_bytes, off, n, after ) )
         {
             verdict = wire_damaged;
             break;
