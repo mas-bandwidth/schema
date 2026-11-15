@@ -1069,11 +1069,32 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	return fmt.Sprintf("{ s: \"int\", js: %q, %s }", integerJSONShape(f), intProps(f))
 }
 
+// integerJSONShape is the JSON value a shape check expects: an integer wider
+// than 32 bits reads as a string OR a number (§16.2), so it carries "N", and
+// every other integer or a timestamp is exact.
 func integerJSONShape(f *ir.Field) string {
 	if f.Type.Timestamp {
 		return "s"
 	}
+	if intIsWide(f) {
+		return "N"
+	}
 	return "n"
+}
+
+// intIsWide reports whether an integer-shaped field's storage is wider than 32
+// bits — int64, uint64, int128, uint128, and the 64- and 128-bit fixed-point
+// kinds — the kinds the JSON form writes as a string of digits (§16.2,
+// docs/rulings.json json-wide-integers-are-strings).
+func intIsWide(f *ir.Field) bool {
+	switch ir.TableWireScalarKind(f) {
+	case ir.TableKindI64, ir.TableKindU64,
+		ir.TableKindFixed64, ir.TableKindUFixed64,
+		ir.TableKindI128, ir.TableKindU128,
+		ir.TableKindFixed128, ir.TableKindUFixed128:
+		return true
+	}
+	return false
 }
 
 // Array-root tables keep their array shape when held by value, including
