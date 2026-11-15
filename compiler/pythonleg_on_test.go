@@ -29,7 +29,7 @@ func writeSchemas(t *testing.T, files map[string]string) []string {
 }
 
 // TestPythonTargetIsRegistered: the tagged build carries the python target,
-// registered from its own init, with its carries set registered empty.
+// registered from its own init, with the timestamp construct this layer adds.
 func TestPythonTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "python") {
@@ -39,8 +39,8 @@ func TestPythonTargetIsRegistered(t *testing.T) {
 	if !ok {
 		t.Fatal("the python target registered no carries set (compiler/carries_python.go)")
 	}
-	if len(got) != 0 {
-		t.Fatalf("the python skeleton carries %v; it carries nothing until a layer registers a construct", got)
+	if !slices.Contains(got, carryTimestamp) {
+		t.Fatalf("the python target carries %v; want the timestamp construct", got)
 	}
 }
 

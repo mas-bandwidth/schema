@@ -1377,6 +1377,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(TextValid(value.S[..value.SLength]), "value.S holds a zero byte or is not well-formed UTF-8"); // the used bytes hold no zero byte and are well-formed UTF-8 (SPEC §5.1 row 8)
             if (!stream.SerializeBytes(value.S[..value.SLength]))
             {
                 return false;
@@ -1423,32 +1424,9 @@ namespace Example
             {
                 return false;
             }
-            for (int utf8Index = 0; utf8Index < value.SLength;)
+            if (!TextValid(value.S[..value.SLength])) // a zero byte or malformed UTF-8 is content the read refuses (SPEC §4.7)
             {
-                int utf8Lead = value.S[utf8Index++];
-                if (utf8Lead < 0x80) continue;
-                int utf8Remaining, utf8Point;
-                if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-                else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-                else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-                else return false; // malformed UTF-8 lead (SPEC §4.7)
-                if (utf8Remaining > value.SLength - utf8Index) return false;
-                for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-                {
-                    int utf8Byte = value.S[utf8Index++];
-                    if ((utf8Byte & 0xC0) != 0x80) return false;
-                    utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-                }
-                if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-                if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-                if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-            }
-            for (int i = 0; i < value.SLength; i++)
-            {
-                if (value.S[i] == 0) // an interior null is content the read refuses (SPEC §4.7)
-                {
-                    return false;
-                }
+                return false;
             }
             if (!stream.SerializeInt(ref value.BLength, 0, 8)) // the length guards the slice (§6.3)
             {

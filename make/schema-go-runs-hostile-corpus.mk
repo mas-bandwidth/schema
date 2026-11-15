@@ -19,11 +19,7 @@ GO_HOSTILE_STAGE := $(GO_HOSTILE_BUILD)/corpus-stage
 schema-go-hostile-generate: bin/schema tables-go-sibling-runtime
 	@rm -rf $(GO_HOSTILE_STAGE) && mkdir -p $(GO_HOSTILE_STAGE)
 	@cp -R "$(GO_HOSTILE_CORPUS)/." $(GO_HOSTILE_STAGE)/
-	@# RELAXED 2026-11-14 (maintainer: get main green): the generated Go JSON
-	@# walk does not validate a skipped value, so it reads a zero escape under an
-	@# unknown key that the skipped-value rule refuses; the staged manifest drops
-	@# that one row. re-enable: relax/hostile-rows-go
-	@awk -F'\t' 'BEGIN { OFS = "\t" } $$1 == "conformance-str-zero-escape-unknown-key" { next } $$3 == "tables/examples/Guarded.schema" { $$3 = "tables/examples" } { print }' \
+	@awk -F'\t' 'BEGIN { OFS = "\t" } $$3 == "tables/examples/Guarded.schema" { $$3 = "tables/examples" } { print }' \
 		"$(GO_HOSTILE_CORPUS)/manifest.tsv" > $(GO_HOSTILE_STAGE)/manifest.tsv
 	@if cmp -s "$(GO_HOSTILE_CORPUS)/manifest.tsv" $(GO_HOSTILE_STAGE)/manifest.tsv; then \
 		echo 'go hostile corpus: the Guarded.schema row no longer names tables/examples/Guarded.schema; re-anchor the locked-unit staging in make/schema-go-runs-hostile-corpus.mk'; exit 1; fi

@@ -583,6 +583,8 @@ int writeProbeSample(ProbeSample value, ByteData view) {
   }
   scratch |= v << scratchBits;
   scratchBits += 16;
+  assert(value.rawDelta >= -2147483648);
+  assert(value.rawDelta <= 2147483647);
   v = value.rawDelta & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
@@ -608,6 +610,8 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       scratch = v >>> (5 - scratchBits);
     }
     if (value.hasTarget) {
+      assert(value.targetId >= 0);
+      assert(value.targetId <= 65535);
       v = value.targetId & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
@@ -619,6 +623,8 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       }
     }
   } else {
+    assert(value.idleTicks >= 0);
+    assert(value.idleTicks <= 4294967295);
     v = value.idleTicks & 0xffffffff;
     scratch |= v << scratchBits;
     scratchBits += 32;
@@ -896,6 +902,8 @@ int writeProbeRing(ProbeRing value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.radius >= 0);
+  assert(value.radius <= 65535);
   v = value.radius & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;
@@ -1009,6 +1017,8 @@ int writeProbeSlab(ProbeSlab value, ByteData view) {
   var v = 0;
   assert(value.width >= 0);
   assert(value.width <= 100);
+  assert(value.height >= 0);
+  assert(value.height <= 255);
   v = (value.width & 0x7f) | ((value.height & 0xff) << 7);
   scratch |= v << scratchBits;
   scratchBits += 15;
@@ -1153,12 +1163,16 @@ int writeProbeShape(ProbeShape value, ByteData view) {
   scratchBits += 2;
   switch (value.type) {
     case ProbeShapeType.ring:
+      assert(value.ring.radius >= 0);
+      assert(value.ring.radius <= 65535);
       v = value.ring.radius & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
     case ProbeShapeType.slab:
       assert(value.slab.width >= 0);
       assert(value.slab.width <= 100);
+      assert(value.slab.height >= 0);
+      assert(value.slab.height <= 255);
       v = (value.slab.width & 0x7f) | ((value.slab.height & 0xff) << 7);
       scratch |= v << scratchBits;
       scratchBits += 15;
@@ -1320,6 +1334,8 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.armor >= 0);
+  assert(value.armor <= 255);
   assert(value.shape.type >= 0);
   assert(value.shape.type <= 2);
   v = (value.armor & 0xff) | ((value.shape.type & 0x3) << 8);
@@ -1327,12 +1343,16 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   scratchBits += 10;
   switch (value.shape.type) {
     case ProbeShapeType.ring:
+      assert(value.shape.ring.radius >= 0);
+      assert(value.shape.ring.radius <= 65535);
       v = value.shape.ring.radius & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
     case ProbeShapeType.slab:
       assert(value.shape.slab.width >= 0);
       assert(value.shape.slab.width <= 100);
+      assert(value.shape.slab.height >= 0);
+      assert(value.shape.slab.height <= 255);
       v =
           (value.shape.slab.width & 0x7f) |
           ((value.shape.slab.height & 0xff) << 7);
@@ -1346,12 +1366,16 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   scratchBits += 2;
   switch (value.backup.type) {
     case ProbeShapeType.ring:
+      assert(value.backup.ring.radius >= 0);
+      assert(value.backup.ring.radius <= 65535);
       v = value.backup.ring.radius & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
     case ProbeShapeType.slab:
       assert(value.backup.slab.width >= 0);
       assert(value.backup.slab.width <= 100);
+      assert(value.backup.slab.height >= 0);
+      assert(value.backup.slab.height <= 255);
       v =
           (value.backup.slab.width & 0x7f) |
           ((value.backup.slab.height & 0xff) << 7);
@@ -1378,6 +1402,8 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
     }
     switch (e0.type) {
       case ProbeShapeType.ring:
+        assert(e0.ring.radius >= 0);
+        assert(e0.ring.radius <= 65535);
         v = e0.ring.radius & 0xffff;
         scratch |= v << scratchBits;
         scratchBits += 16;
@@ -1390,6 +1416,8 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
       case ProbeShapeType.slab:
         assert(e0.slab.width >= 0);
         assert(e0.slab.width <= 100);
+        assert(e0.slab.height >= 0);
+        assert(e0.slab.height <= 255);
         v = (e0.slab.width & 0x7f) | ((e0.slab.height & 0xff) << 7);
         scratch |= v << scratchBits;
         scratchBits += 15;
@@ -1666,6 +1694,8 @@ int writeProbeConfig(ProbeConfig value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.retries >= -2147483648);
+  assert(value.retries <= 2147483647);
   assert(value.preferred >= 0);
   assert(value.preferred <= 15);
   v = (value.retries & 0xffffffff) | ((value.preferred & 0xf) << 32);
@@ -1817,6 +1847,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (16 - scratchBits);
     }
+    assert(e0.rawDelta >= -2147483648);
+    assert(e0.rawDelta <= 2147483647);
     v = e0.rawDelta & 0xffffffff;
     scratch |= v << scratchBits;
     scratchBits += 32;
@@ -1848,6 +1880,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         scratch = v >>> (5 - scratchBits);
       }
       if (e0.hasTarget) {
+        assert(e0.targetId >= 0);
+        assert(e0.targetId <= 65535);
         v = e0.targetId & 0xffff;
         scratch |= v << scratchBits;
         scratchBits += 16;
@@ -1859,6 +1893,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         }
       }
     } else {
+      assert(e0.idleTicks >= 0);
+      assert(e0.idleTicks <= 4294967295);
       v = e0.idleTicks & 0xffffffff;
       scratch |= v << scratchBits;
       scratchBits += 32;
@@ -1910,6 +1946,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
       }
     }
   }
+  assert(value.config.retries >= -2147483648);
+  assert(value.config.retries <= 2147483647);
   assert(value.config.preferred >= 0);
   assert(value.config.preferred <= 15);
   v =
@@ -2259,6 +2297,8 @@ int writeTest(Test value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.testA >= 0);
+  assert(value.testA <= 65535);
   assert(value.testB >= 0);
   assert(value.testB <= 1000);
   assert(value.testC >= 0);
@@ -2766,6 +2806,8 @@ int writeProbeReport(ProbeReport value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.echo.testA >= 0);
+  assert(value.echo.testA <= 65535);
   assert(value.echo.testB >= 0);
   assert(value.echo.testB <= 1000);
   assert(value.echo.testC >= 0);
@@ -3147,6 +3189,8 @@ int writeTestData(TestData value, ByteData view) {
     scratch = v >>> (10 - scratchBits);
   }
   assert(value.doubleValue.isFinite);
+  assert(value.int8Value >= -128);
+  assert(value.int8Value <= 127);
   v = Schema.float64BitsFromDouble(value.doubleValue);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -3156,6 +3200,14 @@ int writeTestData(TestData value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.int16Value >= -32768);
+  assert(value.int16Value <= 32767);
+  assert(value.uint8Value >= 0);
+  assert(value.uint8Value <= 255);
+  assert(value.uint16Value >= 0);
+  assert(value.uint16Value <= 65535);
+  assert(value.uint32Value >= 0);
+  assert(value.uint32Value <= 4294967295);
   v =
       (value.int8Value & 0xff) |
       ((value.int16Value & 0xffff) << 8) |

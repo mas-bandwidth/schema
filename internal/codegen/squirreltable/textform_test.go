@@ -439,6 +439,16 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 			}
 			want[k] = oracleJSON(e)
 		}
+		if stem == "kinds" {
+			// A wide integer is written as a JSON string of decimal digits
+			// (docs/SPEC-TABLES.md §16.2, W10), so the oracle's exact decimal
+			// is the same digits the JSON form spells.
+			for _, k := range []string{"signed", "unsigned"} {
+				if n, ok := want[k].(json.Number); ok {
+					want[k] = string(n)
+				}
+			}
+		}
 		same(stem+" value", v, want)
 		count++
 	}
