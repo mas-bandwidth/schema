@@ -2208,10 +2208,6 @@ type TableFixedDst struct {
 	Counted, Arg, Meta    uint8
 }
 
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
-
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count   int32
@@ -3359,9 +3355,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -8006,7 +7999,11 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut64(b[26:], uint64(value.Nonce))
 	tableFixedPut64(b[34:], uint64(value.WorldTime))
 	tableFixedPut64(b[42:], uint64(value.FrameTick))
-	tableFixedPutF32(b[50:], value.ServerTime)
+	if value.ServerTime == 0 {
+		tableFixedPutF32(b[50:], 0)
+	} else {
+		tableFixedPutF32(b[50:], value.ServerTime)
+	}
 	tableFixedPut32(b[54:], uint32(value.EntitiesCount))
 	{
 		livei := min(max(int64(value.EntitiesCount), 0), 8)
@@ -8041,14 +8038,30 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	copy(b[1128:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1147:], uint32(value.PayloadLength))
 	copy(b[1147:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1167:], value.AimX)
-	tableFixedPutF32(b[1171:], value.AimY)
-	tableFixedPutF32(b[1175:], value.AimZ)
+	if value.AimX == 0 {
+		tableFixedPutF32(b[1167:], 0)
+	} else {
+		tableFixedPutF32(b[1167:], value.AimX)
+	}
+	if value.AimY == 0 {
+		tableFixedPutF32(b[1171:], 0)
+	} else {
+		tableFixedPutF32(b[1171:], value.AimY)
+	}
+	if value.AimZ == 0 {
+		tableFixedPutF32(b[1175:], 0)
+	} else {
+		tableFixedPutF32(b[1175:], value.AimZ)
+	}
 	tableFixedPutF32(b[1179:], value.Recoil)
 	tableFixedPutF64(b[1183:], value.Drift)
 	tableFixedPut64(b[1191:], uint64(value.WideKey))
 	tableFixedPut64(b[1199:], uint64(value.Flux))
-	tableFixedPutF32(b[1207:], value.Ping)
+	if value.Ping == 0 {
+		tableFixedPutF32(b[1207:], 0)
+	} else {
+		tableFixedPutF32(b[1207:], value.Ping)
+	}
 	tableFixedPut32(b[1211:], uint32(value.CrcHint))
 	{
 		p := uint8(0)
@@ -8732,10 +8745,10 @@ func TableEntityFixedMeasure(count int64) int64 {
 }
 
 // TableEntityFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
 	need := TableEntityFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -8854,6 +8867,11 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -8988,10 +9006,10 @@ func TableStatFixedMeasure(count int64) int64 {
 }
 
 // TableStatFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
 	need := TableStatFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9110,6 +9128,11 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -9468,10 +9491,10 @@ func TableMixedFixedMeasure(count int64) int64 {
 }
 
 // TableMixedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableMixedFixedSave(values []TableMixed, buffer []byte) int64 {
 	need := TableMixedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9591,6 +9614,11 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
