@@ -685,6 +685,7 @@ public final class BenchPacketRetain {
             TableRetain retain,
             byte[] buf,
             TableVariable.Report report) {
+        assert BenchPacketVariable.checkWrite(v);
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
