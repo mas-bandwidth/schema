@@ -144,6 +144,11 @@ name: CI fast
 # and `systemctl --user start 'nova-runner-schema-*'` to bring it back.
 
 on:
+  # every push to main: the sprint tells a card's red from main's own by this
+  # lane's verdict on the base tip, so every main tip needs one. A push diffs
+  # against the push's before sha (the plan job below).
+  push:
+    branches: [main]
   # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
   workflow_dispatch:
@@ -152,7 +157,9 @@ on:
 # branch, and an interactive gate that queues behind its own stale runs is the
 # thing this file is fixing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  # a push to main is grouped by its own sha, so no main tip loses its verdict
+  # to the next push
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The same sibling pins ci-full.yml and certify.yml carry, for the same reason: a
@@ -199,10 +206,22 @@ jobs:
         id: pick
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}
+          BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           set -euo pipefail
-          git fetch --quiet origin "$BASE"
-          files=$(git diff --name-only "origin/$BASE...HEAD")
+          # a push diffs against the tip it replaced; a new ref (all-zero
+          # before) or a before sha this clone lacks gets the broad selection
+          if [ -n "$BEFORE" ]; then
+            if [ "${BEFORE//0/}" != "" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              files=$(git diff --name-only "$BEFORE" HEAD)
+            else
+              echo "::notice::the push has no usable before sha ($BEFORE) — running the broad selection"
+              files="ir/"
+            fi
+          else
+            git fetch --quiet origin "$BASE"
+            files=$(git diff --name-only "origin/$BASE...HEAD")
+          fi
           if [ -z "$files" ]; then
             echo "::notice::the diff is empty against origin/$BASE — running the broad selection"
             files="ir/"
@@ -228,31 +247,31 @@ jobs:
           while read -r f; do
             [ -n "$f" ] || continue
             case "$f" in
-              internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|test/conformance/go/*|make/go.mk) add_leg go ;;
+              internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|test/conformance/go/*|make/go.mk|make/go-*.mk) add_leg go ;;
             esac
             case "$f" in
-              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk|make/checks/c-clean-*|tools/sabotage/c_clean.go) add_leg c ;;
+              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk|make/c-*.mk|make/checks/c-clean-*|tools/sabotage/c_clean.go) add_leg c ;;
             esac
             case "$f" in
-              internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
+              internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
             esac
             case "$f" in
-              internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk) add_leg rust ;;
+              internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk|make/rust-*.mk) add_leg rust ;;
             esac
             case "$f" in
-              internal/codegen/jstable/*|internal/codegen/js/*|generated/js/*|test/js-tables/*|make/js.mk) add_leg js ;;
+              internal/codegen/jstable/*|internal/codegen/js/*|generated/js/*|test/js-tables/*|make/js.mk|make/js-*.mk) add_leg js ;;
             esac
             case "$f" in
-              internal/codegen/cstable/*|internal/codegen/csharp/*|generated/cs/*|test/cs-tables/*|make/cs.mk) add_leg cs ;;
+              internal/codegen/cstable/*|internal/codegen/csharp/*|generated/cs/*|test/cs-tables/*|make/cs.mk|make/cs-*.mk) add_leg cs ;;
             esac
             case "$f" in
-              internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk) add_leg java ;;
+              internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk|make/java-*.mk) add_leg java ;;
             esac
             case "$f" in
-              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk) add_leg dart ;;
+              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk) add_leg dart ;;
             esac
             case "$f" in
-              internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
+              internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk) add_leg elixir ;;
             esac
             case "$f" in
               internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
@@ -505,8 +524,20 @@ jobs:
       # on every pull-request push, so it carries the check here instead. The
       # pin below is the one ci-full.yml carries — the version gopls's own
       # module tags — and is bumped by hand in both files together.
+      # THE FLEET'S MODERNIZE BINARY, never `go run`: building the tool from
+      # the module cache was the step's whole cost and ran past the two-minute
+      # cap on a busy runner (PR 3954, main at d7008bdfbd94); the installed
+      # v0.23.0 binary analyses the whole tree in seconds. A runner without it
+      # is a loud red that names the tool, never a skip.
       - name: modernize
-        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
+        run: |
+          export PATH="$HOME/sdk/bin:$PATH"
+          bin=$(command -v modernize || true)
+          if [ -z "$bin" ] || ! readlink -f "$bin" | grep 'modernize-0\.23\.0/' >/dev/null; then
+            echo "::error::tool missing: modernize 0.23.0 (the fleet install is ~/sdk/bin/modernize -> ~/sdk/modernize-0.23.0/modernize; found: ${bin:-nothing})"
+            exit 1
+          fi
+          modernize ./...
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
       # test exits 0 — so a make target running a bare `go test` on such a
@@ -820,7 +851,8 @@ jobs:
           set -euo pipefail
           case "$TARGET" in
             tables-go-fixedform) make tables-go-fixedform ;;
-            conformance-go-rows) make conformance-go-rows ;;
+            conformance-go-rows-a) make conformance-go-rows-a ;;
+            conformance-go-rows-b) make conformance-go-rows-b ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 

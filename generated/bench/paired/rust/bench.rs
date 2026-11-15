@@ -1130,6 +1130,8 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
         }
     }
     debug_assert!(value.player_name_length >= 0 && value.player_name_length <= 15, "player_name_length out of range [0, 15]");
+    debug_assert!(!value.player_name[..value.player_name_length as usize].contains(&0), "player_name holds a zero byte");
+    debug_assert!(std::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_ok(), "player_name is not well-formed UTF-8");
     {
         let mut offset_value = value.player_name_length as u32;
         stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)

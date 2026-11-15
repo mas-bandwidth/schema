@@ -8,6 +8,7 @@ only by relative import, so two generated packages never share or shadow each
 other's runtime.
 """
 
+import math
 import struct
 
 __all__ = ["InvalidValue", "Refused"]
@@ -58,6 +59,45 @@ def validate_bool(value: object, path: str) -> None:
     """Hold a bool field to True or False; 0 and 1 are refused."""
     if type(value) is not bool:
         raise InvalidValue(path, "expected bool")
+
+
+def _finite_float32(value: object, path: str) -> float:
+    """value rounded to float32, or InvalidValue: not a float, not finite, or
+    a finite double that rounds past the largest float32."""
+    if type(value) is not float:
+        raise InvalidValue(path, "expected float")
+    if not math.isfinite(value):
+        raise InvalidValue(path, f"{value!r} is not finite")
+    try:
+        rounded: float = struct.unpack("<f", struct.pack("<f", value))[0]
+    except OverflowError:
+        raise InvalidValue(path, f"{value!r} rounds to an infinity in float32") from None
+    return rounded
+
+
+def validate_float32(value: object, path: str) -> None:
+    """Hold a float32 field to a finite float that rounds to a finite float32.
+
+    Rounding is not a refusal: a double rides as its nearest float32. An int
+    is refused where a float is declared.
+    """
+    _finite_float32(value, path)
+
+
+def validate_float64(value: object, path: str) -> None:
+    """Hold a float64 field to a finite float; an int is refused."""
+    if type(value) is not float:
+        raise InvalidValue(path, "expected float")
+    if not math.isfinite(value):
+        raise InvalidValue(path, f"{value!r} is not finite")
+
+
+def validate_compressed_float(value: object, path: str, min: float, max: float) -> None:
+    """Hold a compressed float32 field to a finite float whose float32 value is
+    inside the declared [min, max] (min and max are float32 values)."""
+    rounded = _finite_float32(value, path)
+    if rounded < min or rounded > max:
+        raise InvalidValue(path, f"{value!r} is outside [{min!r}, {max!r}]")
 
 
 def wire_input(data: object) -> bytes:

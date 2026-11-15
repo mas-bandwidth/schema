@@ -93,10 +93,11 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		g.pf("    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)\n}\n\n")
 	}
 
-	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", d.Name, d.Name)
+	g.pf("SCHEMA_READ_INLINE bool Read%sBody( serialize::ReadStream & stream, %s & value )\n{\n", d.Name, d.Name)
 	if d.Max == 0 {
 		g.pf("    (void) stream; // zero wire bits — only None exists\n")
 		g.pf("    value.type = %s::None;\n    return true;\n}\n\n", tag)
+		g.emitReadEnd(d.Name)
 		return
 	}
 	g.pf("    int32_t tag_value = 0;\n")
@@ -115,9 +116,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		}
 		g.needsNew = true
 		g.pf("            ::new ( static_cast<void *>( &value.%s ) ) %s{};\n", v.Name, v.Type)
-		g.pf("            return Read%s( stream, value.%s );\n", v.Type, v.Name)
+		g.pf("            return Read%sBody( stream, value.%s );\n", v.Type, v.Name)
 	}
 	g.pf("    }\n    return false;\n}\n\n")
+	g.emitReadEnd(d.Name)
 }
 
 // emitStructWire emits the split Write/Read pair for a type or message, in
@@ -155,7 +157,7 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 	}
 	g.pf("    return true;\n}\n\n")
 
-	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", st.Name, st.Name)
+	g.pf("SCHEMA_READ_INLINE bool Read%sBody( serialize::ReadStream & stream, %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n")
 	} else {
@@ -167,6 +169,18 @@ func (g *gen) emitStructWire(st *ir.Struct) {
 		}
 		g.emitReadItems(st.Items, "    ")
 	}
+	g.pf("    return true;\n}\n\n")
+	g.emitReadEnd(st.Name)
+}
+
+// emitReadEnd emits the public one-packet read: the per-type body above, then
+// the runtime's end check. The check runs once, after the top-level object,
+// and never inside a nested type's body (SPEC §5).
+func (g *gen) emitReadEnd(name string) {
+	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", name, name)
+	g.pf("    if ( !Read%sBody( stream, value ) )\n    {\n        return false;\n    }\n", name)
+	g.pf("    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count\n")
+	g.pf("    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)\n")
 	g.pf("    return true;\n}\n\n")
 }
 
@@ -441,6 +455,12 @@ func (g *gen) emitRangeAssert(cast, expr, lo, hi string, vac halves, ind string)
 // value narrowed to int32_t could land inside the range.
 func (g *gen) emitWriteRangedFold32(cast, expr, lo, hi string, bits int64, loZero bool, vac halves, ind string) {
 	g.emitRangeAssert(cast, expr, lo, hi, vac, ind)
+	g.emitWriteRangedFold32Bits(expr, lo, bits, loZero, ind)
+}
+
+// emitWriteRangedFold32Bits writes the value alone, for a caller that has
+// already emitted the range assert where the field's checks belong.
+func (g *gen) emitWriteRangedFold32Bits(expr, lo string, bits int64, loZero bool, ind string) {
 	if bits == 0 {
 		// A degenerate range costs ZERO BITS -- the value is known from the
 		// range alone. Emit the range assert and nothing else: write_bits( .., 0 )
@@ -637,15 +657,20 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%swrite_double( stream, %s );\n", ind, name)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
-		// serialize_string framing over a buffer of N + 1 (SPEC §4.7)
+		// serialize_string framing over a buffer of N + 1 (SPEC §4.7). The
+		// length is asserted before the text checks below because it indexes
+		// them, and a bad length must not reach a loop.
+		g.emitRangeAssert("int32_t", name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), halves{}, ind) // int32_t length storage
 		if f.Type.Kind == ir.TString {
 			// interior nulls are writer misuse: debug-assert per §5 (the read
 			// side rejects them as validation — §4.7)
 			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
+			// well-formed UTF-8 in the used bytes, beside the length assert
+			// and under the same debug mechanism (SPEC §5.1 row 8)
+			g.pf("%sserialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) );\n", ind, name, name)
 		}
-		g.emitWriteRangedFold32("int32_t", name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
+		g.emitWriteRangedFold32Bits(name+"_length", "0", bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
 		g.pf("%swrite_bytes( stream, %s, %s_length );\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -831,8 +856,9 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			g.pf("%sread_bits( stream, %s, %d );\n", ind, name, ref.WireBits)
 		case *ir.Struct, *ir.Union:
 			// a refused nested read returns false from here, exactly as a
-			// refused read_* macro does (objectmacros.go)
-			g.pf("%sschema_read_object( stream, Read%s, %s );\n", ind, f.Type.Name, name)
+			// refused read_* macro does (objectmacros.go); a nested body does
+			// not end the packet (SPEC §5)
+			g.pf("%sschema_read_object( stream, Read%sBody, %s );\n", ind, f.Type.Name, name)
 		}
 	}
 }
