@@ -61,9 +61,10 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
-# The timestamp control: the generated runtime's kind-int width for kind 36 is
-# moved in a copy, and the interpreter probe must go red naming the positive
-# case. It needs the pins, so test-python depends on it and it is registered in
+# The timestamp controls: one fault per probe check (the kind-36 width, the
+# kind_mismatch reason, the second widening direction, the cut-body reason, the
+# int check and the range) is planted in a copy of the generated runtime, and
+# the interpreter probe must go red naming that check's case. It needs the pins, so test-python depends on it and it is registered in
 # make/negative-controls.json as a gate test-python runs.
 python-vt-timestamp-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtTimestampNegativeControl' ./internal/codegen/pythontable/ -count=1

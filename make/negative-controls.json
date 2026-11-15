@@ -1053,7 +1053,7 @@
     {
       "name": "python-vt-timestamp",
       "when": "pull-request",
-      "why": "the timestamp kind's wire-width control (make/python.mk): the generated runtime's kind_int width for kind 36 is moved from eight bytes to four in a copy, and the pinned-interpreter probe must go red naming the positive case. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "why": "the timestamp kind's controls (make/python.mk): one fault per probe check is planted in a copy of the generated runtime, and the pinned-interpreter probe must go red naming that check's case: the kind-36 width moved from eight bytes to four (positive), the kind_mismatch reason renamed (kind_int64), an int64 field opened to a kind-36 wire (timestamp_wire_as_int64), the cut-body reason renamed (payload_cut), the int check loosened to isinstance (write_type_bool), and the range's top moved by one (write_range_max). It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
       "targets": [
         "python-vt-timestamp-negative-control"
       ],

@@ -316,12 +316,15 @@ generated class per table and per map entry, each with its descriptor
   rides kind `36` with an eight-byte two's-complement little-endian
   nanosecond count (docs/SPEC-TABLES.md §2.11). Its Python value is an `int`
   in int64's range, checked on write as every integer is, and the descriptor
-  carries that range. The zero count elides like the int64 zero, a field
-  respelled `int64` (kind `5`) refuses as `kind_mismatch`, and neither
-  spelling widens into the other. The text forms land with the text cards
-  (py-json-2, py-handtext-2) and the fixed form with py-fixed-form-2;
-  `TestPythonVtTimestamp` holds the form-1 read-then-write to the Go engine's
-  wire under both pinned interpreters, with its negative control.
+  carries that range. The zero count elides like the int64 zero, and a
+  field respelled between `int64` (kind `5`) and `timestamp` (kind `36`)
+  refuses as `kind_mismatch` in both directions: neither spelling widens
+  into the other. The text forms land with the text cards (py-json-2,
+  py-handtext-2) and the fixed form with py-fixed-form-2;
+  `TestPythonVtTimestamp` holds the form-1 read-then-write, both respelling
+  directions, a wire cut inside the count and the write refusals to the Go
+  engine's bytes and reasons under both pinned interpreters, and its
+  negative controls plant one fault per check.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
