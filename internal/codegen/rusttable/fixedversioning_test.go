@@ -780,6 +780,7 @@ fn v_%[1]s() {
     let body = 20 + layout_bytes + 8;
     data[body] = 0;
     data[body + 1] = 0;
+    data[body + 2..body + 6].fill(0); // the absent payload is dead
     assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
     assert!(!values[0].flag && !values[0].note_present);
     assert_eq!(values[0].pick.labelled().unwrap().label_length, 5);
