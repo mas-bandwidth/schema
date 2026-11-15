@@ -106,6 +106,54 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
+// _jsonSkipValue holds a value the read only SKIPS to the grammar and text
+// rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
+// the parser has judged its grammar, and every object key and every string in
+// it goes through the same text check a placed string does, so one that
+// decodes to U+0000 refuses the read as a placed one would. Every object key
+// also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+void _jsonSkipValue(dynamic val, TableTextReport r) {
+  if (val is String) {
+    _jsonText(val);
+    return;
+  }
+  if (val is _JObj) {
+    for (final entry in val.entries) {
+      _jsonText(entry.key);
+      _jsonName(entry.key, r);
+      _jsonSkipValue(entry.value, r);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipValue(item, r);
+    }
+    return;
+  }
+  if (val is Map) {
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonText(key);
+      _jsonName(key, r);
+      _jsonSkipValue(entry.value, r);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -349,16 +397,27 @@ String _jsonWide(BigInt raw, int frac, bool integer) {
 // §16.2, internal/tabletext ParseWide and WideClamp): the value times 2^frac,
 // exactly; a value this Q I.F cannot spell is a kind mismatch and places
 // nothing; a magnitude past the storage domain saturates and counts a clamp,
-// and the declared raw range clamps after.
-BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, BigInt? lo, BigInt? hi, BigInt def) {
-  String token;
-  if (val is int) {
+// and the declared raw range clamps after. wide admits the string form a kind
+// wider than 32 bits is written as; integer holds a 128-bit integer to the
+// integer-token rule inside either form.
+BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, BigInt? lo, BigInt? hi, BigInt def, [bool wide = false, bool integer = false]) {
+  String? token;
+  if (val is String) {
+    if (!wide) {
+      r.refuse('kind_mismatch');
+      return def;
+    }
+    token = val;
+  } else if (val is int) {
     token = val.toString();
   } else if (val is _JNum) {
     token = val.token;
-  } else if (val is double) {
-    token = val.toString();
-  } else {
+  }
+  if (token == null) {
+    r.refuse('kind_mismatch');
+    return def;
+  }
+  if (integer && !_jsonIntegerToken(token)) {
     r.refuse('kind_mismatch');
     return def;
   }
@@ -422,7 +481,8 @@ bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
-      final b = base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
       if (b.length > bound) {
         r.refuse('length_over_bound');
         return def;
@@ -448,7 +508,9 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
+      return b;
     } on FormatException {
       r.refuse('kind_mismatch');
       return null;
@@ -502,9 +564,15 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
+      // AN UNKNOWN KEY AND ITS VALUE are held to the text and grammar rules a
+      // placed one is held to (docs/SPEC-TABLES.md §16.3, §4): a key or a
+      // string inside the value that decodes to U+0000 refuses the read.
+      _jsonText(entry.key);
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
+      _jsonSkipValue(entry.value, r);
       r.unknown++;
       continue;
     }
@@ -554,70 +622,17 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     r.refuse('kind_mismatch');
     return null;
   }
-  var i = 0;
-  var negative = false;
-  if (i < k.length && k.codeUnitAt(i) == 0x2d) {
-    negative = true;
-    i++;
-  }
-  if (i >= k.length) throw const FormatException('invalid integer map key');
-  final intStart = i;
-  final c0 = k.codeUnitAt(i);
-  if (c0 == 0x30) {
-    i++;
-  } else if (c0 >= 0x31 && c0 <= 0x39) {
-    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
-  } else {
-    throw const FormatException('invalid integer map key');
-  }
-  final intDigits = k.substring(intStart, i);
-  var fracDigits = '';
-  if (i < k.length && k.codeUnitAt(i) == 0x2e) {
-    i++;
-    final fracStart = i;
-    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
-    if (i == fracStart) throw const FormatException('invalid integer map key');
-    fracDigits = k.substring(fracStart, i);
-  }
-  var exp = 0;
-  if (i < k.length && (k.codeUnitAt(i) == 0x65 || k.codeUnitAt(i) == 0x45)) {
-    i++;
-    var expNeg = false;
-    if (i < k.length && (k.codeUnitAt(i) == 0x2b || k.codeUnitAt(i) == 0x2d)) {
-      expNeg = k.codeUnitAt(i) == 0x2d;
-      i++;
-    }
-    final expStart = i;
-    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (k.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (i == expStart) throw const FormatException('invalid integer map key');
-    if (expNeg) exp = -exp;
-  }
-  if (i != k.length) throw const FormatException('invalid integer map key');
-  final all = intDigits + fracDigits;
-  var start = 0;
-  var point = intDigits.length + exp;
-  while (start < all.length && all.codeUnitAt(start) == 0x30) {
-    start++;
-    point--;
-  }
-  var end = all.length;
-  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
-  final digits = all.substring(start, end);
-  BigInt mag;
-  if (digits.isEmpty) {
-    mag = BigInt.zero;
-    negative = false;
-  } else if (point < digits.length || point > 20) {
+  // AN INTEGER KEY IS THE INTEGER'S OWN SPELLING AND NOTHING ELSE (§16.2):
+  // digits with an optional minus, no fraction, no exponent, no negative zero,
+  // and no leading zero. A key is an identity, so a key the kind cannot hold
+  // drops the entry and never clamps.
+  if (!_jsonIntegerToken(k)) {
     r.refuse('kind_mismatch');
     return null;
-  } else {
-    mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
   }
+  final mag = BigInt.parse(k);
   if (unsigned) {
-    if (negative) {
+    if (mag.isNegative) {
       r.refuse('kind_mismatch');
       return null;
     }
@@ -630,14 +645,13 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
     return signed.toInt();
   }
-  final val = negative ? -mag : mag;
   final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
   final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
-  if (val < minS || val > maxS) {
+  if (mag < minS || mag > maxS) {
     r.refuse('kind_mismatch');
     return null;
   }
-  return val.toInt();
+  return mag.toInt();
 }
 
 `)
@@ -666,6 +680,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tif (val is! List) { r.refuse('kind_mismatch'); return def; }\n")
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
+		g.pf("\t\tif (item is String && !_jsonName(item, r)) return def;\n")
 		g.pf("\t\tswitch (item) {\n")
 		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
@@ -706,6 +721,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (entries.isEmpty) return v;\n")
 		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\tif (!_jsonName(entries.first.key, r)) return v;\n")
 		g.pf("\tfinal item = entries.first.value;\n")
 		g.pf("\tswitch (entries.first.key) {\n")
 		for i, arm := range un.Variants {
@@ -721,7 +737,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipValue(item, r);\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")
@@ -844,7 +860,13 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%s%s(out, %s, %s, sh);\n", ind, unionFn(unionRef(f), "ToJson"), expr, depthExpr(d))
 	case isWide(f):
 		k := wideKind(f)
-		g.pf("%sout.raw(_jsonWide(%s, %d, %v));\n", ind, expr, f.Type.FracBits, k == ir.TableKindI128 || k == ir.TableKindU128)
+		spelling := fmt.Sprintf("_jsonWide(%s, %d, %v)", expr, f.Type.FracBits, k == ir.TableKindI128 || k == ir.TableKindU128)
+		if jsonWideIntegerKind(k) {
+			// a kind wider than 32 bits is written as a STRING of decimal
+			// digits (§16.2, docs/rulings.json json-wide-integers-are-strings)
+			spelling = "_jsonString(" + spelling + ")"
+		}
+		g.pf("%sout.raw(%s);\n", ind, spelling)
 	case isFlags(f):
 		g.pf("%s%s(out, %s, %s);\n", ind, flagsFn(flagsRef(f), "ToJson"), expr, depthExpr(d))
 	case f.Type.Timestamp:
@@ -859,6 +881,12 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, expr, f.Type.Kind == ir.TFloat32)
 	case enumRef(f) != nil:
 		g.pf("%sout.raw(_jsonEnum(%s, %sName, '%s'));\n", ind, expr, dartName(enumRef(f).Name), where)
+	case jsonIntegerWide(f):
+		if f.Type.Kind == ir.TInt && f.Type.Signed {
+			g.pf("%sout.raw(_jsonString(%s.toString()));\n", ind, expr)
+		} else {
+			g.pf("%sout.raw(_jsonString(BigInt.from(%s).toUnsigned(64).toString()));\n", ind, expr)
+		}
 	case f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64:
 		g.pf("%sout.raw(BigInt.from(%s).toUnsigned(64).toString());\n", ind, expr)
 	default:
@@ -887,6 +915,9 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 		cond = item + " is String"
 	case f.Type.Kind == ir.TBool:
 		cond = item + " is bool"
+	case jsonIntegerWide(f), isWide(f) && jsonWideIntegerKind(wideKind(f)):
+		// a wide integer or fixed kind reads as a string OR a number (§16.2)
+		cond = "(" + item + " is String || " + item + " is num || " + item + " is _JNum)"
 	default:
 		cond = "(" + item + " is num || " + item + " is _JNum)"
 	}
@@ -977,7 +1008,10 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		if fb != "" {
 			wdef = fb
 		}
-		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s)", val, f.Type.FracBits, ir.TableKindSigned(wideKind(f)), lo, hi, wdef)
+		k := wideKind(f)
+		wideString := jsonWideIntegerKind(k)
+		integer := k == ir.TableKindI128 || k == ir.TableKindU128
+		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s, %t, %t)", val, f.Type.FracBits, ir.TableKindSigned(k), lo, hi, wdef, wideString, integer)
 	case isFlags(f):
 		return fmt.Sprintf("%s(%s, r%s)", flagsFn(flagsRef(f), "FromJson"), val, fbArg)
 	case f.Type.Timestamp:
@@ -997,9 +1031,15 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		if f.Type.Width < 64 {
 			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
 		}
+		if jsonIntegerWide(f) {
+			return fmt.Sprintf("_jsonWideIntField(%s, r, null, %s, true%s)", val, hi, fbArg)
+		}
 		return fmt.Sprintf("_jsonIntField(%s, r, null, %s, true%s)", val, hi, fbArg)
 	default:
 		lo, hi := jsonIntBounds(f)
+		if jsonIntegerWide(f) {
+			return fmt.Sprintf("_jsonWideIntField(%s, r, %s, %s, %s%s)", val, lo, hi, jsonUnsigned(f), fbArg)
+		}
 		return fmt.Sprintf("_jsonIntField(%s, r, %s, %s, %s%s)", val, lo, hi, jsonUnsigned(f), fbArg)
 	}
 }

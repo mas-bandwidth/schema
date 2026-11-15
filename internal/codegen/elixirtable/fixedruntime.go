@@ -157,9 +157,14 @@ const fixedRuntimeBody = `  @moduledoc """
   A RAGGED TAIL IS NOT THIS STEP'S TO NAME: step 9 runs first and answers
   ` + "`" + `malformed` + "`" + `, so a ` + "`" + `rest` + "`" + ` that is not a whole number of records passes
   through here untouched and the split reports it.
+
+  A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (step 9): a header and a layout
+  followed by no record is ` + "`" + `:truncated` + "`" + `, because a batch of none holds no
+  value to read.
   """
   def batch_within(rest, record_bytes, capacity) do
     cond do
+      rest == 0 -> {:error, :truncated}
       record_bytes <= 0 -> :ok
       rem(rest, record_bytes) != 0 -> :ok
       div(rest, record_bytes) > capacity -> {:error, :batch_too_large}
@@ -1649,6 +1654,213 @@ const fixedRuntimeBody = `  @moduledoc """
     {assemble(writes, prefill), report}
   end
 
+  # ---------------------------------------------------------------------------
+  # THE CHECK PASS: EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1,
+  # §4.5, §5.3; docs/SPEC-TABLES.md §3.4, §13.10)
+  # ---------------------------------------------------------------------------
+  #
+  # A DEAD-BYTE PLAN is built ONCE per lineage entry, from the writer's layout
+  # and this reader's own rows, and a read runs it over every record's RAW body
+  # BEFORE the plan lands anything. Its ops carry offsets RELATIVE to the type
+  # they describe; the evaluator adds the base as it descends, which is what lets
+  # one op describe a slot inside a counted array at any element.
+  #
+  # The four kinds are an absent optional's payload (present byte 0), a counted
+  # array's slots past its count, a string(N)'s or bytes(N)'s bytes past its used
+  # length, and an inactive union arm — the bytes under tag 0 and the bytes past a
+  # narrower taken arm inside the widest arm's span. A fixed array and a keyed
+  # array have no dead bytes of their own, but their elements do, so the plan
+  # descends into every live element. Nothing outside the plan is read.
+
+  @doc """
+  Hold every dead byte of ` + "`" + `body` + "`" + ` to zero, or refuse the whole load as
+  ` + "`" + `wire_damaged` + "`" + `. The check runs before any record lands.
+  """
+  def dead_check(body, ops), do: dead_run(ops, body, 0)
+
+  defp dead_run([], _body, _base), do: :ok
+
+  defp dead_run([{:dead_at, off, inner} | rest], body, base) do
+    dead_run(inner, body, base + off)
+    dead_run(rest, body, base)
+  end
+
+  defp dead_run([{:dead_present, off, payload, size, inner} | rest], body, base) do
+    # ABSENT: the whole payload is dead and held to zero as one span, so nothing
+    # in it is read as a value. PRESENT: its own dead bytes are still dead, and
+    # the payload's plan runs from the byte behind the present byte.
+    case raw_int(body, base + off, 1) do
+      0 -> check_zero(binary_part(body, base + payload, size))
+      _ -> dead_run(inner, body, base + payload)
+    end
+
+    dead_run(rest, body, base)
+  end
+
+  defp dead_run([{:dead_count, off, first, elem, max, inner} | rest], body, base) do
+    raw = raw_int(body, base + off, 4)
+    used = max(min(raw, max), 0)
+
+    if used < max do
+      check_zero(binary_part(body, base + first + used * elem, (max - used) * elem))
+    end
+
+    for i <- 0..(used - 1)//1 do
+      dead_run(inner, body, base + first + i * elem)
+    end
+
+    dead_run(rest, body, base)
+  end
+
+  defp dead_run([{:dead_each, first, elem, n, inner} | rest], body, base) do
+    for i <- 0..(n - 1)//1 do
+      dead_run(inner, body, base + first + i * elem)
+    end
+
+    dead_run(rest, body, base)
+  end
+
+  defp dead_run([{:dead_text, off, first, cap} | rest], body, base) do
+    raw = raw_int(body, base + off, 4)
+    used = max(min(raw, cap), 0)
+
+    if used < cap do
+      check_zero(binary_part(body, base + first + used, cap - used))
+    end
+
+    dead_run(rest, body, base)
+  end
+
+  defp dead_run([{:dead_union, off, tagw, widest, sizes, arms} | rest], body, base) do
+    tag = raw_int(body, base + off, tagw)
+    arm = base + off + tagw
+
+    cond do
+      tag == 0 ->
+        check_zero(binary_part(body, arm, widest))
+
+      tag <= tuple_size(sizes) ->
+        taken = elem(sizes, tag - 1)
+        if taken < widest, do: check_zero(binary_part(body, arm + taken, widest - taken))
+        dead_run(elem(arms, tag - 1), body, arm)
+
+      true ->
+        # A TAG PAST THE WRITER'S ARM SET NAMES NO ARM and is the bounds pass's
+        # out_of_range (§4.6); it is not the inactive-arm case, so no dead span
+        # here preempts that name.
+        :ok
+    end
+
+    dead_run(rest, body, base)
+  end
+
+  defp raw_int(body, at, width) do
+    <<_::binary-size(^at), v::little-unsigned-size(^width)-unit(8), _::binary>> = body
+    v
+  end
+
+  defp check_zero(<<>>), do: :ok
+  defp check_zero(<<0, rest::binary>>), do: check_zero(rest)
+  defp check_zero(_), do: throw({:refuse, :wire_damaged})
+
+  # THE PLAN is the writer's layout walked against mine, field by field, by id —
+  # the same match the compiled plan makes. A field I cannot name is not mine to
+  # check; a field of mine the writer does not carry has no bytes here.
+  def dead_plan(theirs, mine, dst), do: dead_children(theirs, 0, mine, 0, dst)
+
+  defp dead_children(theirs, ti, mine, mi, dst) do
+    their_children = children_at(theirs, ti)
+    my_children = children_at(mine, mi)
+
+    Enum.flat_map(offsets(mine, mi, my_children), fn mc ->
+      case find_id(theirs, ti, their_children, 0, id_at(mine, mc)) do
+        nil -> []
+        {tc, toff} -> [{:dead_at, toff, dead_entry(theirs, tc, mine, mc, dst)}]
+      end
+    end)
+  end
+
+  defp dead_entry(theirs, ti, mine, mi, dst) do
+    their_kind = kind_at(theirs, ti)
+    my_kind = kind_at(mine, mi)
+
+    cond do
+      # T INTO ?T: the reader wrapped a plain writer field, so the writer has no
+      # present byte and its bytes are the payload's.
+      my_kind == 35 and their_kind != 35 ->
+        dead_entry(theirs, ti, mine, mi + 1, dst)
+
+      their_kind != my_kind ->
+        []
+
+      true ->
+        dead_same(theirs, ti, mine, mi, dst, elem(dst, mi))
+    end
+  end
+
+  defp dead_same(theirs, ti, mine, mi, dst, row) do
+    case kind_at(theirs, ti) do
+      35 ->
+        inner = dead_entry(theirs, ti + 1, mine, mi + 1, dst)
+        [{:dead_present, 0, 1, size_at(theirs, ti) - 1, inner}]
+
+      13 ->
+        dead_children(theirs, ti, mine, mi, dst)
+
+      14 ->
+        elem_size = size_at(theirs, ti + 1)
+        inner = dead_entry(theirs, ti + 1, mine, mi + 1, dst)
+
+        if elem(row, 3) == 1 do
+          max = if elem_size == 0, do: 0, else: div(size_at(theirs, ti) - 4, elem_size)
+          [{:dead_count, 0, 4, elem_size, max, inner}]
+        else
+          n = if elem_size == 0, do: 0, else: div(size_at(theirs, ti), elem_size)
+          [{:dead_each, 0, elem_size, n, inner}]
+        end
+
+      16 ->
+        their_elem = ti + 1 + sub(theirs, ti + 1)
+        my_elem = mi + 1 + sub(mine, mi + 1)
+        elem_size = size_at(theirs, their_elem)
+        n = if elem_size == 0, do: 0, else: div(size_at(theirs, ti), elem_size)
+        inner = dead_entry(theirs, their_elem, mine, my_elem, dst)
+        [{:dead_each, 0, elem_size, n, inner}]
+
+      15 ->
+        widest = union_arm_bytes(theirs, ti)
+        tag = tag_bytes(theirs, ti)
+        their_arms = offsets(theirs, ti, children_at(theirs, ti))
+
+        sizes =
+          their_arms
+          |> Enum.map(&size_at(theirs, &1))
+          |> List.to_tuple()
+
+        arms =
+          their_arms
+          |> Enum.map(fn ta ->
+            case find_arm(mine, mi, id_at(theirs, ta)) do
+              nil -> []
+              ma -> dead_entry(theirs, ta, mine, ma, dst)
+            end
+          end)
+          |> List.to_tuple()
+
+        [{:dead_union, 0, tag, widest, sizes, arms}]
+
+      12 ->
+        [{:dead_text, 0, 4, size_at(theirs, ti) - 4}]
+
+      _ ->
+        []
+    end
+  end
+
+  defp find_arm(mine, mi, id) do
+    Enum.find(offsets(mine, mi, children_at(mine, mi)), fn ma -> id_at(mine, ma) == id end)
+  end
+
   defp step([], _body, writes, report), do: {writes, report}
 
   defp step([{:live, count_dst, index, inner} | rest], body, writes, report) do
@@ -2111,6 +2323,26 @@ const fixedRuntimeBody = `  @moduledoc """
       end
 
     :persistent_term.put({module, :fixed_lineage, root}, List.to_tuple(lanes))
+
+    # THE DEAD-BYTE PLAN FOR EACH ENTRY, built here so no read parses a layout:
+    # this build's own layout for its own hash, the lock's layout for an older
+    # one. An entry whose layout will not parse is already a refusal lane, and
+    # its dead plan is empty because no read reaches it.
+    dead =
+      for i <- 0..(tuple_size(known) - 1) do
+        k = elem(known, i)
+
+        if k.hash == own do
+          dead_plan(mine, mine, dst)
+        else
+          case parse_layout(k.layout) do
+            {:ok, theirs} -> dead_plan(theirs, mine, dst)
+            {:error, _why} -> []
+          end
+        end
+      end
+
+    :persistent_term.put({module, :fixed_dead, root}, List.to_tuple(dead))
     :ok
   end
 
@@ -2147,6 +2379,16 @@ const fixedRuntimeBody = `  @moduledoc """
     case :persistent_term.get({module, :fixed_lineage, root}, nil) do
       nil -> {:error, :layout_malformed}
       lanes -> elem(lanes, i)
+    end
+  end
+
+  @doc """
+  The dead-byte plan the build laid down for lineage index i of root.
+  """
+  def dead_lane(module, root, i) do
+    case :persistent_term.get({module, :fixed_dead, root}, nil) do
+      nil -> []
+      plans -> elem(plans, i)
     end
   end
 

@@ -119,7 +119,7 @@ func t02R1(t *testing.T) {
 	}
 	src := string(files["TFixed.java"])
 
-	t02Has(t, src, "static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash)", "R1 the plans are static data built from the lock")
+	t02Has(t, src, "static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash, bodyBytes)", "R1 the plans are static data built from the lock")
 	block := t02Block(t, src, "known = {", "};")
 	olderAt := strings.Index(block, fmt.Sprintf("0x%016xL", older.Wire))
 	ownAt := strings.Index(block, fmt.Sprintf("0x%016xL", own.Wire))
@@ -231,9 +231,9 @@ func t02R26(t *testing.T) {
 	}
 	runtime := string(files["TableFixed.java"])
 	load := string(files["TFixed.java"])
-	t02Has(t, runtime, "out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed);", "R26 an unbuildable entry carries layout_malformed")
+	t02Has(t, runtime, "out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed, null);", "R26 an unbuildable entry carries layout_malformed")
 	t02Has(t, runtime, "final Reason why = (census.refused && (census.reason == Reason.layoutRecordTooLarge || census.reason == Reason.layoutMalformed)) ? census.reason : Reason.planTooLarge;", "R26 the lane keeps the entry's own reason")
-	t02Has(t, runtime, "out[i] = new Plan(null, 0, null, 0, why);", "R26 the reason rides the lane")
+	t02Has(t, runtime, "out[i] = new Plan(null, 0, null, 0, why, null);", "R26 the reason rides the lane")
 	t02Has(t, load, "if (lane == null || lane.why != TableFixed.Reason.none) {", "R26 the load reads the lane")
 	t02Has(t, load, "report.refuse(lane == null ? TableFixed.Reason.layoutMalformed : lane.why);", "R26 the refusal is by name")
 	if strings.Contains(t02Block(t, runtime, "public static Plan[] lineagePlans(", "\n    }"), "throw ") {

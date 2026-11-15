@@ -1,23 +1,8 @@
 name: schema-engine-is-the-oracle
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'internal/tablewire/**'
-      - 'internal/tabletext/**'
-      - 'internal/codegen/**'
-      - 'internal/ci/schema_engine_is_the_oracle_test.go'
-      - 'make/checks/schema-engine-is-the-oracle.mk'
-      - '.github/workflows/schema-engine-is-the-oracle.yml'
-  pull_request:
-    paths:
-      - 'internal/tablewire/**'
-      - 'internal/tabletext/**'
-      - 'internal/codegen/**'
-      - 'internal/ci/schema_engine_is_the_oracle_test.go'
-      - 'make/checks/schema-engine-is-the-oracle.mk'
-      - '.github/workflows/schema-engine-is-the-oracle.yml'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:

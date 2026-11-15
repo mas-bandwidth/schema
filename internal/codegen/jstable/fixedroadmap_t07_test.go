@@ -145,11 +145,10 @@ func t07C14(t *testing.T) {
 	}
 }
 
-// t07W4: W4 [weak] "read slack unspecified" (§3.1: "Slack is UNSPECIFIED on
-// read and not a refusal: a reader validates the USED UNITS only, and non-zero
-// slack is not malformed, not a refusal, and moves no counter."). The emitted
-// decode never looks past the used units: the range refusal is inside the live
-// loop and no content check sets malformed.
+// t07W4: W4 [verify] "dead bytes are zero; the live walk is unchanged"
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). The bounds pass still
+// walks only the used units — the range refusal is inside the live loop — and
+// the separate CHECK pass holds every dead byte to zero as wire_damaged.
 func t07W4(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
@@ -158,8 +157,10 @@ func t07W4(t *testing.T) {
 		t.Error("W4: the range refusal does not stand inside the live loop, so slack would be clamped")
 	}
 	if strings.Contains(dec, "malformed") {
-		t.Error("W4: the decode refuses on body content; non-zero slack is not malformed")
+		t.Error("W4: the decode refuses on body content; a dead byte is wire_damaged")
 	}
+	check := t02Norm(jsFn(src, "TFixedCheckDead"))
+	t02Has(t, check, "TableFixedRefusal.WireDamaged", "W4 the check pass holds dead bytes to zero")
 }
 
 // t07W9: W9 [verify] "prefill unwritten ranges only" (§3.1's reader: the

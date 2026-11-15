@@ -64,7 +64,48 @@ export function ReadRenderSpriteFlat(view, numBits, value) {
     return false;
   }
   value.team = v;
+  if (((138 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(17) & 0xfc) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadRenderSpriteFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadRenderSpriteFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadRenderSpriteFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (138 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.sortKey = bg;
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  value.meshId = v;
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  value.materialId = v;
+  out = view.getUint32(16, true);
+  v = (out & 0xff) >>> 0;
+  value.layer = v;
+  v = (out >>> 8) & 0x3;
+  if (v > 2) { // headroom above the wire range is refused
+    return false;
+  }
+  value.team = v;
+  return 138;
 }
 
 // ---- type RenderBlock: the flat codec ----
@@ -217,6 +258,95 @@ export function ReadRenderBlockFlat(view, numBits, value) {
     e0.team = v;
     br += 10;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadRenderBlockFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadRenderBlockFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadRenderBlockFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (64 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  value.workerIndex = v;
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  value.spriteCountHint = v;
+  if (71 > numBits) {
+    return false;
+  }
+  out = view.getUint32(8, true);
+  v = (out & 0x7f) >>> 0;
+  if (v > 64) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.spritesCount = v;
+  br = 71;
+  if (br + value.spritesCount * 138 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.spritesCount; i0++) {
+    const e0 = value.sprites[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    e0.sortKey = bg;
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    e0.meshId = v;
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    e0.materialId = v;
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xff) >>> 0;
+    e0.layer = v;
+    v = (out >>> 8) & 0x3;
+    if (v > 2) { // headroom above the wire range is refused
+      return false;
+    }
+    e0.team = v;
+    br += 10;
+  }
+  return br;
 }
 

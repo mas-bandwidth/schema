@@ -806,7 +806,14 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
+		payload := len(b.plan)
 		b.buildPayload(owner, f, expr, baseSlot, wireOff, id, size-fixedPresentBytes, guard, arg)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD, never a value: the payload's
+		// entries answer to the present byte, so a clear flag skips every one
+		// of them and the destination keeps its declared defaults. The CHECK
+		// pass holds the whole payload to zero (docs/rulings.json
+		// fixed-dead-bytes-are-zero).
+		b.stampGuard(payload, fieldWireBase, 1, 1)
 		return
 	}
 
@@ -1297,7 +1304,9 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
+		payload := len(b.plan)
 		b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size-fixedPresentBytes, guard, arg)
+		b.stampGuard(payload, fieldWireBase, 1, 1)
 		return
 	}
 
@@ -1984,6 +1993,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes + %d;\n}\n\n", name, name, integrityTrailerBytes(st))
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// the writer refuses an empty batch, a debug-only assert as every write
+	// contract on this leg is (docs/SPEC.md §5.1).
+	g.pf("    System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
@@ -2132,15 +2145,32 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
-	// A ROOT READ IS ONE RECORD: handed room for exactly one value, a file of
-	// none holds no value to read, and the engine answers it truncated.
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0 || (rest == 0 && values.Length == 1))\n    {\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6,
+	// docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout followed
+	// by no record is truncated, whatever capacity the caller offered.
+	g.pf("    if (record_bytes <= 8 || rest == 0 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
 	g.pf("    if (n > values.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
+	// THE DEAD-BYTE CHECK PASS (docs/rulings.json fixed-dead-bytes-are-zero;
+	// docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). EVERY record's
+	// dead bytes are held to zero BEFORE the first record lands, so a refusal
+	// leaves the caller's destination as it was. The walk follows the WRITER's
+	// layout (the identity entry's own bytes, or the selected lineage entry's)
+	// and reads this reader's rows only for counted-ness and the bytes flavour.
+	g.pf("    {\n")
+	g.pf("        TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);\n")
+	g.pf("        TableFixedLayoutView dead_reader = TableFixedWire.View(%sFixedLayout);\n", name)
+	g.pf("        for (int k = 0; k < n; ++k)\n        {\n")
+	g.pf("            ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));\n")
+	g.pf("            string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, %sFixedDst, rec.Slice(8, (int)(record_bytes - 8)));\n", name)
+	g.pf("            if (dead_why != null)\n            {\n")
+	g.pf("                if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("                return -1;\n            }\n")
+	g.pf("        }\n    }\n")
 	// THE WIDEN SCRATCH IS HOISTED OUT OF THE RECORD LOOP. A widened run needs
 	// a buffer wider than the bytes it reads, and taking that buffer inside the
 	// loop charged one allocation per widened run PER RECORD. One buffer serves

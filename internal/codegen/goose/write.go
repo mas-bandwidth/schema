@@ -206,6 +206,7 @@ func (w *wgen) emitWriteCompressed(f *ir.Field, expr, ind string) {
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
 	w.Pf("%sif !serialize_float_bits_are_finite(serialize_f32_bits(%s)) { return SERIALIZE_ERROR_NON_FINITE_FLOAT; } // NaN and the infinities are not values of the type (SPEC §4.3)\n", ind, expr)
+	w.Pf("%sif %s < %s || %s > %s { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }\n", ind, expr, floatLit32(min32), expr, floatLit32(float32(f.FMax)))
 	w.streamCall(ind, "%sserialize_compressed_float_precomputed(s, %s, %d, %d, %s, %s);\n", ind, expr, steps, bits, floatLit32(delta), floatLit32(min32))
 }
 

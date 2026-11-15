@@ -359,7 +359,7 @@ namespace Blockhome
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
             int count_0 = v.FiringGroupsCount;
-            if (count_0 < 0 || count_0 > 32) return false;
+            System.Diagnostics.Debug.Assert(count_0 >= 0 && count_0 <= 32);
             if (count_0 > 0)
             {
                 if (!ids.Add(0x260b8ca6b0c3db7ful)) return false;
@@ -369,7 +369,7 @@ namespace Blockhome
                 }
             }
             int count_1 = v.MissileGroupsCount;
-            if (count_1 < 0 || count_1 > 4) return false;
+            System.Diagnostics.Debug.Assert(count_1 >= 0 && count_1 <= 4);
             if (count_1 > 0)
             {
                 if (!ids.Add(0x3c99105aa087f6bcul)) return false;
@@ -594,6 +594,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -632,6 +633,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -671,6 +673,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -708,6 +711,7 @@ namespace Blockhome
                 info.RootElemSlots = 36;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {

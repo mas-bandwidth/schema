@@ -162,53 +162,59 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # exactly as test/go/go.mod already does for the packet corpus.
 build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
-	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
-	# The pointer corpus exercises the wire, region and cook read surfaces.
-	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
-	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
-	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
-	./bin/schema generate --lang go --out build/tables-generated-go/v1 test/tables/V1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p2 test/tables/P2.schema
+	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
+	# independent, and run one after another they alone passed the 110 s
+	# per-commit wall on a loaded runner (CI full 43662375199, hulk-2). The
+	# pointer corpus exercises the wire, region and cook read surfaces. Each
+	# unit's go.mod is written below, after every generation has finished.
+	printf '%s\n' \
+		'build/tables-generated-go/examples tables/examples' \
+		'build/tables-generated-go/pointers tables/pointers' \
+		'build/tables-generated-go/block tables/block' \
+		'build/tables-generated-go/blockhome tables/blockhome' \
+		'build/tables-generated-go/v1 test/tables/V1.schema' \
+		'build/tables-generated-go/v2 test/tables/V2.schema' \
+		'build/tables-generated-go/p1 test/tables/P1.schema' \
+		'build/tables-generated-go/p3 test/tables/P3.schema' \
+		'build/tables-generated-go/p2 test/tables/P2.schema' \
+		'build/tables-generated-go/w1 test/tables/W1.schema' \
+		'build/tables-generated-go/w2 test/tables/W2.schema' \
+		'build/tables-generated-go/g1 test/tables/G1.schema' \
+		'build/tables-generated-go/m1 test/tables/M1.schema' \
+		'build/tables-generated-go/m2 test/tables/M2.schema' \
+		'build/tables-generated-go/a1 test/tables/A1.schema' \
+		'build/tables-generated-go/a2 test/tables/A2.schema' \
+		'build/tables-generated-go/k1 test/tables/K1.schema' \
+		'build/tables-generated-go/k2 test/tables/K2.schema' \
+		'build/tables-generated-go/r1 test/tables/R1.schema' \
+		'build/tables-generated-go/r2 test/tables/R2.schema' \
+		'build/tables-generated-go/scalars tables/scalars' \
+		'build/tables-generated-go/scalars2 test/tables/Scalars2.schema' \
+		'build/tables-generated-go/messages tables/messages' \
+		'build/tables-generated-go/stream tables/stream' \
+		'build/tables-generated-go/blobs tables/blobs' \
+		'build/tables-generated-go/lists tables/lists' \
+		'build/tables-generated-go/widelist tables/widelist' \
+		'build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema' \
+		'build/tables-generated-go/maps tables/maps' \
+		'build/tables-generated-go/backend tables/backend' \
+		'build/tables-generated-go/vocab tables/vocab' \
+		'build/tables-generated-go/vocab9 tables/vocab9' \
+		'build/tables-generated-go/rt1 test/tables/RT1.schema' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
 	$(call go_table_module,p2,tblp2)
-	./bin/schema generate --lang go --out build/tables-generated-go/w1 test/tables/W1.schema
 	$(call go_table_module,w1,tblw1)
-	./bin/schema generate --lang go --out build/tables-generated-go/w2 test/tables/W2.schema
 	$(call go_table_module,w2,tblw2)
-	./bin/schema generate --lang go --out build/tables-generated-go/g1 test/tables/G1.schema
 	$(call go_table_module,g1,tblg1)
-	./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
-	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/messages tables/messages
-	./bin/schema generate --lang go --out build/tables-generated-go/stream tables/stream
 	$(call go_table_module,stream,streamdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/blobs tables/blobs
 	$(call go_table_module,blobs,blobdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
 	$(call go_table_module,lists,listdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
 	$(call go_table_module,widelist,widelistdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(call go_table_module,featurewitnesses,featurewitnesses)
-	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
 	$(call go_table_module,backend,backenddemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/vocab tables/vocab
 	$(call go_table_module,vocab,vocabdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
 	$(call go_table_module,vocab9,vocab9demo)
-	./bin/schema generate --lang go --out build/tables-generated-go/rt1 test/tables/RT1.schema
 	$(call go_table_module,rt1,tblrt1)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
@@ -1319,20 +1325,19 @@ conformance-negative-control-go-cycle: build/conformance-harness build/conforman
 
 test-go: conformance-negative-control-go-cycle
 # DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): each
-# sabotage removes one discard guard from a COPY of the emitter, reached
-# through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go red on
-# that guard's own line: the fixed LoadTolerant's (read.go) hands back the
-# fixed value it decoded, and the region load's (regions.go) hands back its
-# root. Nothing tracked is written to.
+# sabotage removes a strict-load discard guard from a COPY of the emitter,
+# reached through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go
+# red on the fixed load accepting damage or the region load returning a root.
+# Nothing tracked is written to.
 GO_DISCARD_NC := build/go-discard-nc
 .PHONY: tables-go-discard-negative-control
 tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
+	@SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadGo$$' ./internal/codegen/gotable
 	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {/if false {/' \
-		-e 's/n := rest \/ recordBytes/_ = rest; n := int64(1); for len(at) < int(recordBytes) { at = append(at, 0) }/' \
 		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
-	@grep -q 'if false {' $(GO_DISCARD_NC)/fixedform.go.txt && grep -q '_ = rest; n := int64(1)' $(GO_DISCARD_NC)/fixedform.go.txt || \
-		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage did not patch both the length guard and the record count"; exit 1; }
+	@if cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt; then \
+		echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
@@ -1340,13 +1345,13 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
 	fi
-	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
+	@grep -q "fixed: RootFixedLoad accepted damaged input" $(GO_DISCARD_NC)/fixed.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
-	@sed -e 's/if report.Refused(){clear(region);return nil}/if false{clear(region);return nil}/' -e 's/if root==nil||read.Refused()/if root==nil/' \
+	@sed -e 's/if report.Refused(){clear(region);return nil}/if false{clear(region);return nil}/g' -e 's/if root==nil||read.Refused()/if root==nil/' \
 		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
-	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true
+	@if cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt; then \
+		echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
@@ -1354,7 +1359,7 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/region.log; exit 1; \
 	fi
-	@grep -q "variable: LoadTolerant handed back a root on damage" $(GO_DISCARD_NC)/region.log || \
+	@grep -q "variable: GraphLoad returned a root on damage" $(GO_DISCARD_NC)/region.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the region gate went red for some other reason"; \
 		  cat $(GO_DISCARD_NC)/region.log; exit 1; }
 	@echo "negative control: removing either Go discard guard turns TestDamageDiscardsTheWholeLoadGo RED"
