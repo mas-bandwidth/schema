@@ -86,7 +86,6 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 			{"uint32", TableKindU32},
 		}
 		for _, row := range rows {
-			row := row
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				_, hi := kindDomain(row.kind)
