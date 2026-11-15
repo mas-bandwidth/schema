@@ -333,15 +333,11 @@ def _placeable(root: type[Any]) -> frozenset[int]:
         if desc.name in visited:
             continue
         visited.add(desc.name)
-<<<<<<< HEAD
-        for field in desc.fields:
+        for field in _reached_fields(desc.fields):
             if field.codec == "bytes_blob" and not entry:
                 out.add(_BYTES_WIRE_TYPE_ID)
             elif field.codec == "string_blob" and not entry:
                 out.add(_STRING_WIRE_TYPE_ID)
-=======
-        for field in _reached_fields(desc.fields):
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
             if not field.target:
                 continue
             target = descriptor.by_name(field.target)
