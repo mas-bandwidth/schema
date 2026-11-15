@@ -77,20 +77,19 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-dart`: base64-unpadded only: its hostile row, and its row in the port's hostile-corpus run (carried findings). The str-zero-escape-unknown-key row is refused.
   - `relax/hostile-rows-elixir`: str-zero-escape-unknown-key, jref_zero_byte, and that row in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
   - `relax/hostile-rows-go`: the generated Go JSON walk (not the engine)
     reads str-zero-escape-unknown-key: it does not validate a skipped value.
     Its hostile-corpus run drops that row from the staged manifest
     (`make/schema-go-runs-hostile-corpus.mk`). The fix is more than the zero
     check in `scanText`: the generated tests textzero (a skipped zero reads)
-    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the dart and js text-boundary controls do not count their legs' relaxed json-hostile cases (relax/hostile-rows-dart, -js).
+    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the js text-boundary control does not count its leg's relaxed json-hostile cases (relax/hostile-rows-js).
   - `relax/hostile-rows-goose`: both hostile rows.
   - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-lobster`: str-zero-escape-unknown-key, jref_zero_byte, and str-zero-escape-unknown-key in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
+  - `relax/hostile-rows-lobster`: jref_zero_byte only. The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
-  - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-luau`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
   - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-squirrel`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried in `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
@@ -156,8 +155,8 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, lua,
-  luau, moo and squirrel in `test/conformance/relaxed.txt`: each still writes
+  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, luau,
+  moo and squirrel in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C and the
   tool are right. WIP: none.
 

@@ -195,6 +195,10 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 		}}},
 		{"union", &ir.Union{Name: "Event"}},
 		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}},
+		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", HasIntRange: true, IntMin: big.NewInt(-100), IntMax: big.NewInt(100),
+			Type: ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32, IntBits: 16, FracBits: 16}}}}},
+		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}},
+		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}},
 	}
 	for _, c := range generates {
 		u := emptyUnit("game", "Game")
@@ -209,9 +213,6 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 		want string
 	}{
 		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
-		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16}}}}, "uses fixed"},
-		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}, "uses float32"},
-		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}, "uses float64"},
 		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
 		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
 		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
@@ -292,6 +293,23 @@ func TestPythonIdentifierRules(t *testing.T) {
 		if err := CheckNames(c.unit); err != nil {
 			t.Errorf("%s: refused: %v", c.name, err)
 		}
+	}
+}
+
+// TestCheckModuleRefusesPackageExports: a schema file named for a binding
+// __init__.py always exports becomes <pkg>/<Name>.py, and importing that
+// module rebinds the package attribute. Generate refuses those bases.
+func TestCheckModuleRefusesPackageExports(t *testing.T) {
+	t.Parallel()
+	for _, base := range []string{"Refused", "InvalidValue", "PROTOCOL_ID"} {
+		u := emptyUnit("game", base)
+		files, err := Generate(u)
+		if err == nil || !strings.Contains(err.Error(), base) || !strings.Contains(err.Error(), "exports") {
+			t.Errorf("%s.schema: got %v (%d files), want a refusal naming %s as an export", base, err, len(files), base)
+		}
+	}
+	if _, err := Generate(emptyUnit("game", "Wire")); err != nil {
+		t.Fatalf("Wire.schema: %v", err)
 	}
 }
 
