@@ -104,7 +104,7 @@ tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/c
 	./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster.bin $(LOBSTER_WIRE_FUZZ_RELAX)
 	./build/conformance-harness wire-fuzz --builder --driver '$(LOBSTER_WIRE_FUZZ_HOST) --builder' \
-		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-builder.bin $(LOBSTER_WIRE_FUZZ_RELAX)
+		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-builder.bin
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-retain.bin

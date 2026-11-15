@@ -125,13 +125,17 @@ func deadByteMutant(root *wireRoot, reply legReply, ans oracleAnswer, data []byt
 }
 
 // deadByteAcceptedMutant says the mutant is one a leg's
-// relax/dead-bytes-read-<lang> leaves uncompared: a fixed-class root, the
-// leg ACCEPTS, the oracle refuses, and the leg's write-back has the input's
-// length, differs from it only in bytes the leg wrote as zero, and is itself
-// a record the oracle reads and writes back unchanged. The fixed form has
-// one size, so that is the mutant with non-zero dead bytes and nothing else
-// wrong: the leg read the live value and dropped the dead bytes. Any other
-// disagreement stays a failure.
+// relax/dead-bytes-read-<lang> leaves uncompared: a fixed-class root (not the
+// message form), the leg ACCEPTS, the oracle refuses, and the leg's
+// write-back is a record the oracle reads and writes back unchanged, has the
+// input's length, and differs from the input ONLY at bytes the engine names
+// dead in that record's layout (tablewire.FixedDeadBytes: an absent
+// optional's payload, slots past a count, units past a used length, a union
+// span no arm or a narrower arm leaves), each written as zero. The live
+// bytes are the mutant's own, so the dead layout the write-back has is the
+// mutant's: its one fault is its dead bytes. A leg that zeroes a LIVE byte
+// (a forged tag, a present byte above one) differs outside the mask and
+// stays a failure, as does every other disagreement.
 // RELAXED 2026-11-15 (maintainer: get main green); re-enable:
 // relax/dead-bytes-read-<lang>.
 func deadByteAcceptedMutant(root *wireRoot, reply legReply, ans oracleAnswer, data []byte) bool {
@@ -141,16 +145,20 @@ func deadByteAcceptedMutant(root *wireRoot, reply legReply, ans oracleAnswer, da
 	if len(reply.saved) != len(data) || bytes.Equal(reply.saved, data) {
 		return false
 	}
+	clean, err := root.oracle(reply.saved)
+	if err != nil || !clean.accepted || clean.encFail || !bytes.Equal(clean.encoded, reply.saved) {
+		return false
+	}
+	dead := tablewire.FixedDeadBytes(root.model, root.model.New(root.def), reply.saved)
+	if dead == nil {
+		return false
+	}
 	for i := range data {
-		if reply.saved[i] != data[i] && reply.saved[i] != 0 {
+		if reply.saved[i] != data[i] && (!dead[i] || reply.saved[i] != 0) {
 			return false
 		}
 	}
-	clean, err := root.oracle(reply.saved)
-	if err != nil || !clean.accepted || clean.encFail {
-		return false
-	}
-	return bytes.Equal(clean.encoded, reply.saved)
+	return true
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to

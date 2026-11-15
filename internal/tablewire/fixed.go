@@ -276,6 +276,36 @@ func getFixedUint(b []byte, width int64) uint64 {
 // asked (docs/FIXED-FORM-ALGORITHM.md §5.3): form 1 is previous_form, form 2 is
 // message_form_as_file, and any other byte is newer_form.
 func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) error {
+	return decodeFixedMarked(m, inst, data, report, nil)
+}
+
+// FixedDeadBytes reads a fixed root's file exactly as DecodeRegion does and,
+// when the read accepts it, answers which of its bytes are DEAD in this
+// record's own layout: an absent optional's payload, a counted array's slots
+// past its count, a text's or bytes' units past its used length, and the span
+// of a union no arm or a narrower arm leaves. It answers nil when the read
+// refuses, and an all-false mask when the file is read through the lineage
+// rather than the root's own layout. The conformance harness uses it to hold
+// the tracked relaxation relax/dead-bytes-read-<lang> to dead bytes alone
+// (docs/relaxed.md); no read decides anything by it.
+func FixedDeadBytes(m *tabletext.Model, inst *tabletext.Instance, data []byte) []bool {
+	mask := make([]bool, len(data))
+	mark := func(start, end int) {
+		for i := max(start, 0); i < end && i < len(mask); i++ {
+			mask[i] = true
+		}
+	}
+	if err := decodeFixedMarked(m, inst, data, &tabletext.Report{}, mark); err != nil {
+		m.Clear(inst)
+		return nil
+	}
+	return mask
+}
+
+// decodeFixedMarked is decodeFixed with an optional mark, which the record
+// walk calls with each dead range it checks, as offsets into data.
+func decodeFixedMarked(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, mark func(start, end int)) error {
+	base := cap(data)
 	st := inst.Def
 	refuse := func(reason string) error {
 		return &FixedRefusal{Reason: reason}
@@ -342,7 +372,7 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	if binary.LittleEndian.Uint64(rest) != hash {
 		return refuse(FixedReasonLayoutMalformed)
 	}
-	d := &fixedDecoder{m: m, report: report}
+	d := &fixedDecoder{m: m, report: report, mark: mark, base: base}
 	if reason := d.body(rest[8:], inst); reason != "" {
 		return refuse(reason)
 	}
@@ -356,6 +386,20 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 type fixedDecoder struct {
 	m      *tabletext.Model
 	report *tabletext.Report
+	// mark, when set, is told each dead range the walk checks, as offsets
+	// into the file whose backing array has capacity base (FixedDeadBytes)
+	mark func(start, end int)
+	base int
+}
+
+// dead is fixedDead over one dead range of the record, which it first names
+// to mark when the walk was asked for the dead bytes.
+func (d *fixedDecoder) dead(b []byte) string {
+	if d.mark != nil {
+		at := d.base - cap(b)
+		d.mark(at, at+len(b))
+	}
+	return fixedDead(b)
 }
 
 // body lands every field at its own offset, and answers a refusal's name when
@@ -387,7 +431,7 @@ func (d *fixedDecoder) field(b []byte, fv *tabletext.Field) string {
 		fv.Present = b[0] != 0
 		if !fv.Present {
 			// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD, and every dead byte is zero
-			return fixedDead(b[ir.TableFixedPresentBytes:])
+			return d.dead(b[ir.TableFixedPresentBytes:])
 		}
 		return d.payload(b[ir.TableFixedPresentBytes:], fv)
 	}
@@ -431,7 +475,7 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 		if count < 0 || int64(count) > f.ArrayBound {
 			return FixedReasonCountOverBound
 		}
-		if reason := fixedDead(b[ir.TableFixedCountBytes+int64(count)*elem : ir.TableFixedCountBytes+f.ArrayBound*elem]); reason != "" {
+		if reason := d.dead(b[ir.TableFixedCountBytes+int64(count)*elem : ir.TableFixedCountBytes+f.ArrayBound*elem]); reason != "" {
 			return reason // a slot past the count is dead
 		}
 		fv.Count = int(count)
@@ -445,7 +489,7 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 		if used < 0 || int64(used) > f.Type.Size {
 			return FixedReasonLengthOverBound
 		}
-		if reason := fixedDead(b[4+int64(used) : 4+f.Type.Size]); reason != "" {
+		if reason := d.dead(b[4+int64(used) : 4+f.Type.Size]); reason != "" {
 			return reason // the units past the used length are dead
 		}
 		text := b[4 : 4+used]
@@ -472,7 +516,7 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		*cell = tabletext.Cell{}
 		span := ir.TableFixedUnionBytes(un)
 		if tag == 0 {
-			return fixedDead(b[tagBytes:span]) // tag 0 names no arm: all of it is dead
+			return d.dead(b[tagBytes:span]) // tag 0 names no arm: all of it is dead
 		}
 		if tag > uint64(len(un.Variants)) {
 			// A FORGED TAG: outside the writer's set, which on the identity
@@ -484,7 +528,7 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		if !arm.Void() {
 			live += ir.TableFixedFieldBytes(arm.F)
 		}
-		if reason := fixedDead(b[live:span]); reason != "" {
+		if reason := d.dead(b[live:span]); reason != "" {
 			return reason // the bytes past a narrower taken arm are dead
 		}
 		cell.U = tag
