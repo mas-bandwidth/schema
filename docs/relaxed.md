@@ -69,7 +69,7 @@ listed case that passes fails the leg until its line is removed.
   `test/conformance/relaxed.txt`. The table-base64 harness
   (`test/table-base64/harness`) expects the canonical rule too; its `-relax
   <slug>` flag, which keeps the old accept for the non-canonical cases only,
-  is passed by no run since 2026-11-15 (`make/checks/table-base64.mk`). Real fix, per
+  is no longer passed by the C++ run (2026-11-15) and goes from the C and C# runs with the card sm-a1-main-green-relax-and-conformance (`make/checks/table-base64.mk`). Real fix, per
   leg: its JSON read refuses unpadded Base64 and set pad bits, and validates a
   skipped value; its text writer refuses a zero byte (a debug assert in C,
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
@@ -79,12 +79,12 @@ listed case that passes fails the leg until its line is removed.
   listed only because `test/proof/in-progress.json` still names its proof
   cells (`tools/matrix` refuses a relaxed cell whose slug is not listed here);
   the entry goes with those cells at the next `make proof-write`.
-  - `relax/hostile-rows-c`: gated again (both hostile rows, jref_zero_byte, table-base64).
+  - `relax/hostile-rows-c`: gated again (both hostile rows, jref_zero_byte, table-base64; the relaxed.txt lines and the table-base64 flag go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-cpp`: gated again (both hostile rows, jref_zero_byte, table-base64, the hostile-corpus run, and the pack hostile-value gate, `Makefile`).
-  - `relax/hostile-rows-cs`: gated again (both hostile rows, jref_zero_byte, table-base64, and the hostile-corpus run).
+  - `relax/hostile-rows-cs`: gated again (both hostile rows, jref_zero_byte, table-base64, and the hostile-corpus run; the relaxed.txt lines and the table-base64 flag go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-elixir`: gated again (str-zero-escape-unknown-key, jref_zero_byte, and the hostile-corpus run).
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
-  - `relax/hostile-rows-goose`: gated again (both hostile rows).
+  - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
