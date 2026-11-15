@@ -1971,9 +1971,10 @@
     {
       "name": "java-packet-b",
       "when": "pull-request",
-      "why": "slice 2 of 2 of java-packet, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: packet-finite-java-negative-control 12 s.",
+      "why": "slice 2 of 2 of java-packet, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: packet-finite-java-negative-control 12 s. packet-write-cfloat-java-negative-control is the compressed-float range assert (SPEC §5.1 row 10), the same shape of generate-and-run.",
       "targets": [
-        "packet-finite-java-negative-control"
+        "packet-finite-java-negative-control",
+        "packet-write-cfloat-java-negative-control"
       ],
       "java": "21"
     },
