@@ -33,6 +33,54 @@ local function bits_range(lo, hi)
   return bits_max(hi - lo)
 end
 
+-- A COMPRESSED FLOAT QUANTIZES BY THE PACKET WIRE'S RULE (docs/SPEC-TABLES.md
+-- §3.3, SPEC.md §4.3): the step count and the width derive from the announced
+-- triple, and the quantization and dequantization are float32 at every step.
+-- f32 narrows a double to float32 (round to nearest, ties to even).
+local function f32(x)
+  return string.unpack("<f", string.pack("<f", x))
+end
+
+-- quant_facts returns the step count, delta and narrowed min; ok is false for
+-- a triple SPEC.md calls non-conforming.
+local function quant_facts(qmin, qmax, qres)
+  local mn, mx, rs = f32(qmin), f32(qmax), f32(qres)
+  if not (mn < mx) or not (rs > 0) then return 0, 0, false, mn end
+  local delta = f32(mx - mn)
+  local values = f32(delta / rs)
+  if delta - delta ~= 0 or values - values ~= 0 then return 0, 0, false, mn end
+  if not (values >= 1) then
+    values = 1
+  elseif values > 4294967040.0 then
+    values = 4294967040.0
+  end
+  return math.tointeger(math.ceil(values)), delta, true, mn
+end
+
+local function quantize(qmin, qmax, qres, value)
+  local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
+  if not ok then return 0 end
+  local normalized = f32(f32(f32(value) - mn) / delta)
+  if not (normalized >= 0) then
+    normalized = 0
+  elseif not (normalized <= 1) then
+    normalized = 1
+  end
+  local scaled = f32(normalized * f32(count))
+  local index = math.tointeger(math.floor(f32(scaled + 0.5)))
+  if index > count then index = count end
+  return index
+end
+
+local function dequantize(qmin, qmax, qres, index)
+  local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
+  if not ok then return mn end
+  if index > count then index = count end
+  local normalized = f32(f32(index) / f32(count))
+  local scaled = f32(normalized * delta)
+  return f32(scaled + mn)
+end
+
 -- UNSIGNED 64-BIT COMPARISON AND BIT WIDTH, for the halves of a 128-bit value.
 -- Lua's integer comparison is signed; a uint64's high bit is not a sign
 -- (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS).
@@ -438,6 +486,14 @@ local function read_scalar(R, d, e)
     end
     return { lo = lo, hi = hi }, true
   elseif s == "float" then
+    if e ~= nil and e.packing == 2 then
+      local index, ok = R:get(e.bits or 0)
+      if not ok then return 0.0, false end
+      if index > (e.count or 0) then return 0.0, false end
+      local v = dequantize(e.qmin, e.qmax, e.qres, index)
+      if v - v ~= 0 then return 0.0, false, true end
+      return v, true
+    end
     -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
     -- §3.3), before they become a number: the third answer says so, and the
     -- batch refuses as non_finite_float and lands nothing.
@@ -488,8 +544,10 @@ skip_entry = function(R, e, ctx)
     return true
   elseif k == 10 then
     if e.packing == 2 then
-      local _, ok = R:get(e.bits or 0)
-      return ok
+      local index, ok = R:get(e.bits or 0)
+      if not ok or index > (e.count or 0) then return false end
+      local v = dequantize(e.qmin, e.qmax, e.qres, index)
+      return v - v == 0
     end
     local _, ok = R:get(32)
     return ok
@@ -838,7 +896,13 @@ local function write_scalar(W, d, v)
     if d.f32 then
       local b = string.unpack("<I4", string.pack("<f", v))
       if b & D.F32_EXP == D.F32_EXP then return false end
-      W:put(b, 32)
+      if d.res ~= nil then
+        local count, _, ok = quant_facts(d.fmin, d.fmax, d.res)
+        if not ok then return false end
+        W:put(quantize(d.fmin, d.fmax, d.res, v), bits_max(count))
+      else
+        W:put(b, 32)
+      end
     else
       if v - v ~= 0 then return false end
       W:put(string.unpack("<I8", string.pack("<d", v)), 64)
@@ -1018,7 +1082,15 @@ local function read_shape(e, s, at)
     at = at + 1
     if packing == 0 then return at end
     if packing ~= 2 or at + 11 > #s then return nil end
+    local qmin = string.unpack("<f", s, at)
+    local qmax = string.unpack("<f", s, at + 4)
+    local qres = string.unpack("<f", s, at + 8)
+    local count, _, ok = quant_facts(qmin, qmax, qres)
+    if not ok then return nil end
     e.packing = 2
+    e.qmin, e.qmax, e.qres = qmin, qmax, qres
+    e.count = count
+    e.bits = bits_max(count)
     return at + 12
   elseif kind >= 20 and kind <= 29 then
     if at > #s then return nil end
