@@ -57,7 +57,7 @@ union Empty {}
 	for _, want := range []string{
 		"return write_payload( stream, &value->as.payload );",
 		"value->as.payload = new_payload();",
-		"return read_payload( stream, &value->as.payload );",
+		"return schema_read_payload_body_( stream, &value->as.payload );",
 	} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("the mixed union lost ordinary payload construction or dispatch: %q", want)

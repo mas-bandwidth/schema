@@ -51,7 +51,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_render_sprite( seri
 }
 
 /* Reads RenderSprite. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_sprite( serialize_read_stream_t * stream, example_render_sprite_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_render_sprite_body_( serialize_read_stream_t * stream, example_render_sprite_t * value )
 {
     /* fixed 138-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 138 )
@@ -106,6 +106,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_sprite( serial
     return 1;
 }
 
+/* Reads RenderSprite as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_sprite( serialize_read_stream_t * stream, example_render_sprite_t * value )
+{
+    if ( !schema_example_read_render_sprite_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes RenderBlock. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_render_block( serialize_write_stream_t * stream, const example_render_block_t * value )
 {
@@ -136,7 +146,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_render_block( seria
 }
 
 /* Reads RenderBlock. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_block( serialize_read_stream_t * stream, example_render_block_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_render_block_body_( serialize_read_stream_t * stream, example_render_block_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -162,13 +172,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_block( seriali
         int32_t i;
         for ( i = 0; i < value->sprites_count; i++ )
         {
-            if ( !example_read_render_sprite( stream, &value->sprites[i] ) )
+            if ( !schema_example_read_render_sprite_body_( stream, &value->sprites[i] ) )
             {
                 return 0;
             }
         }
     }
     return 1;
+}
+
+/* Reads RenderBlock as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_block( serialize_read_stream_t * stream, example_render_block_t * value )
+{
+    if ( !schema_example_read_render_block_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

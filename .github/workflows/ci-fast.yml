@@ -97,6 +97,15 @@ name: CI fast
 # which runs each step as its own process group and kills the whole group when
 # the step ends. internal/ci holds both rules for every workflow file.
 #
+# TWO MINUTES, NEVER MORE (the owner, 2026-11-15: "you have 2m max per-CI to
+# test and verify code. that's it. never any more. never."). Every job here,
+# and every job of any workflow a push or a pull request starts, has
+# `timeout-minutes: 2`; a job that cannot finish in two minutes runs nightly
+# (internal/ci/nightly_test.go). Measured over the last 200 runs of this file
+# (2026-11-15, median / p90): plan 7 / 14 s, go-test-touched 16 / 52 s,
+# block-gate 22 / 69 s, lint-fast 26 / 60 s, lang-lint 20 / 108 s, the
+# fixed-form and versioning rows 34 / 106 s.
+#
 # THESE ARE REPOSITORY RUNNERS, NOT THE ORG POOL, because schema is PUBLIC and the
 # organization's Default runner group refuses public repositories. A public
 # repository's pull request from a fork must never reach them: see the fork guard
@@ -165,7 +174,7 @@ jobs:
   plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -256,6 +265,7 @@ jobs:
           done <<EOF
           $files
           EOF
+          touched_legs=$legs
           if [ "$broad" = yes ]; then
             legs="cpp go c rust js cs java dart elixir goose lobster luau squirrel"
           fi
@@ -272,9 +282,15 @@ jobs:
           # directory here fails by name — #958 and #960, go-test-touched:
           #   main module (github.com/mas-bandwidth/schema/v2) does not
           #   contain package .../generated/go
-          if [ "$broad" = yes ]; then
-            packages="./..."
-          else
+          #
+          # A BROAD DIFF TOO (the owner, 2026-11-15: "you have 2m max per-CI to
+          # test and verify code. that's it. never any more. never."). The
+          # broad rule once selected `./...`, and the rows step cut that into
+          # 42 go-test-touched jobs for a diff that touched one package (#3723:
+          # a workflow edit). The packages follow the diff alone, the legs the
+          # diff touched and not the broad rule's every leg, and the whole
+          # suite runs nightly in ci-full.yml.
+          {
             packages=""
             for f in $files; do
               case "$f" in
@@ -308,7 +324,7 @@ jobs:
                 case " $packages " in *" ./internal/codegen/$p "*) ;; *) packages="$packages ./internal/codegen/$p" ;; esac
               done
             done
-            for leg in $legs; do
+            for leg in $touched_legs; do
               case "$leg" in
                 cpp)     ps=./internal/codegen/cpptable ;;
                 # the Lobster leg is two packages: the type surface and the
@@ -349,7 +365,7 @@ jobs:
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
             packages=$(echo "$packages" | xargs || true)
-          fi
+          }
 
           # THE LANGUAGE LINTS (the owner, 2026-11-15: "run only the fastest
           # unit tests as verification, on a per-language basis"). The
@@ -439,7 +455,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
-    timeout-minutes: 15
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -523,7 +539,7 @@ jobs:
     if: needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     name: lang-lint (${{ matrix.lint }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -596,7 +612,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
-    timeout-minutes: 10
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -643,7 +659,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -822,12 +838,12 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
     # 10-minute cap that left a green row at 91%
-    timeout-minutes: 15
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1018,12 +1034,12 @@ jobs:
   # pull request labelled full-ci.
   leg-gate-lobster:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (lobster ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1104,12 +1120,12 @@ jobs:
   # run, in parallel with it.
   leg-gate-rust:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"rust"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (rust probes)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1151,12 +1167,12 @@ jobs:
   # row-seconds negative 104
   leg-gate-squirrel:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"squirrel"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (squirrel ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1209,12 +1225,12 @@ jobs:
   #           with the pinned clang-format
   leg-gate-cpp:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"cpp"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (cpp ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

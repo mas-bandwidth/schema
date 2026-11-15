@@ -309,6 +309,8 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		// declared defaults
 		g.pf("%sif ( !%s.has( 2 ) ) { break; }\n", ind, rdr)
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
+		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableArrayElementKind( %[2]s ) )\n%[1]s    {\n%[1]s        %[3]s = %[4]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, ek, tag, none)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
 		g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, n, tag, none)
 		if widenableElement(f) {
