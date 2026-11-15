@@ -3822,7 +3822,6 @@ namespace Tabledemo
 
         public static long RootConfigFixedSave(ReadOnlySpan<RootConfig> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -3958,7 +3957,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -4431,7 +4430,6 @@ namespace Tabledemo
 
         public static long WeaponConfigFixedSave(ReadOnlySpan<WeaponConfig> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -4567,7 +4565,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5306,7 +5304,6 @@ namespace Tabledemo
 
         public static long LoadoutConfigFixedSave(ReadOnlySpan<LoadoutConfig> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -5442,7 +5439,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -6283,7 +6280,6 @@ namespace Tabledemo
 
         public static long ProfileConfigFixedSave(ReadOnlySpan<ProfileConfig> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -6419,7 +6415,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

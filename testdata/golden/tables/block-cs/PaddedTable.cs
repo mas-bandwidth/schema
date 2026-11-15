@@ -991,7 +991,6 @@ namespace Blockdemo
 
         public static long PaddedRowFixedSave(ReadOnlySpan<PaddedRow> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PaddedRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PaddedRowFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -1127,7 +1126,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -4950,7 +4949,6 @@ namespace Blockdemo
 
         public static long PaddedFrameFixedSave(ReadOnlySpan<PaddedFrame> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PaddedFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PaddedFrameFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -5086,7 +5084,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
