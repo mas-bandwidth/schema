@@ -89,7 +89,8 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
 }
 
 // readRenderSprite decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -156,6 +157,17 @@ bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
     return false; // headroom above the wire range is refused
   }
   value.team = Team(v);
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -267,7 +279,8 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
 }
 
 // readRenderBlock decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -364,6 +377,17 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
       return false; // headroom above the wire range is refused
     }
     e0.team = Team(v);
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }

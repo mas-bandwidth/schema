@@ -242,7 +242,10 @@ end
 local function readElement(ctx: any, owner: string, fd: any, e: any, at: number, w: number, list: boolean): any
 	local s = e.s
 	if s == "ptr" then
-		local t = target(ctx, at, 1)
+		-- every byte of the pointee record must lie in the region
+		local d = S.lookup(e.t)
+		local need: number = records[d.name].size
+		local t = target(ctx, at, need)
 		if t == false then
 			return fail(ctx, "bad_reference", owner, fd)
 		end
@@ -253,10 +256,9 @@ local function readElement(ctx: any, owner: string, fd: any, e: any, at: number,
 		if got ~= nil then
 			return got
 		end
-		local d = S.lookup(e.t)
 		local inst = d.new()
 		ctx.memo[t] = inst
-		readRecord(ctx, d, inst, t)
+		ctx.pending[#ctx.pending + 1] = { d = d, inst = inst, at = t }
 		return inst
 	elseif s == "sblob" or s == "bblob" then
 		local blob = blobAt(ctx, at)
@@ -410,9 +412,15 @@ end
 -- { name, field } (non_finite_float, bad_reference).
 function C.read(handle: any): (any, any)
 	local d = S.lookup(handle.root)
-	local ctx = { buffer = handle.buffer, region = handle.region, regionLength = handle.regionLength, memo = {}, why = nil }
+	local ctx = { buffer = handle.buffer, region = handle.region, regionLength = handle.regionLength, memo = {}, pending = {}, why = nil }
 	local v = d.new()
 	readRecord(ctx, d, v, handle.region)
+	local next = 1
+	while next <= #ctx.pending do
+		local p = ctx.pending[next]
+		next += 1
+		readRecord(ctx, p.d, p.inst, p.at)
+	end
 	if ctx.why ~= nil then
 		return nil, ctx.why
 	end

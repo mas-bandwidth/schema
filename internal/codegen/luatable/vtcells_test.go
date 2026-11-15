@@ -314,7 +314,7 @@ func TestLuaVariableTableCellsNegativeControl(t *testing.T) {
 		// record-hash test inverted: every reference names another field and
 		// every fixed record is refused
 		{"load-id-order", both(plant("load.lua", "    seen[id] = true\n    table_ids[i + 1] = id\n  end\n  -- roots end", "    seen[id] = true\n    table_ids[count - i] = id\n  end\n  -- roots end"),
-			plant("fixed.lua", `  if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end`, `  if string.unpack("<I8", buf, at) == hash then error("no_layout") end`))},
+			plant("fixed.lua", `    if string.unpack("<I8", buf, at) ~= hash then error("no_layout", 0) end`, `    if string.unpack("<I8", buf, at) == hash then error("no_layout", 0) end`))},
 	} {
 		for _, c := range luaVTCells {
 			t.Run(ctl.name+"/"+c.row, func(t *testing.T) {

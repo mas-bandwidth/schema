@@ -124,6 +124,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     TableJsonGraphEntry * entry;
     char key[kTableJsonMaxKey], c;
     int32_t length = 0;
+    int64_t quote;
     uint64_t label = 0;
     int taken = 0, bare;
     void * node;
@@ -134,8 +135,9 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     {
         node = table_json_emplace(graph,slot,f->table);
         if ( node == NULL ) { in->bad = 1; return 0; }
-        return table_json_read_table_keys(in,node,f->table,depth+1,NULL);
+        return table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1);
     }
+    quote = in->pos;
     if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
     key[length] = 0;
     if ( table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
@@ -144,7 +146,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     {
         node = table_json_emplace(graph,slot,f->table);
         if ( node == NULL ) { in->bad = 1; return 0; }
-        return table_json_read_table_keys(in,node,f->table,depth+1,key);
+        return table_json_read_table_keys(in,node,f->table,depth+1,key,length,quote);
     }
     if ( !table_json_scan_label(in,&label) ) { return 0; }
     entry = table_json_graph_reach(&graph->labels,label,&taken);
@@ -165,7 +167,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     node = table_json_emplace(graph,slot,f->table);
     if ( node == NULL ) { in->bad = 1; return 0; }
     entry->open = 1;
-    if ( !table_json_read_table_keys(in,node,f->table,depth+1,NULL) ) { return 0; }
+    if ( !table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1) ) { return 0; }
     entry = table_json_graph_find(&graph->labels,label);
     if ( entry == NULL ) { in->bad = 1; return 0; }
     entry->node = (uint32_t)((TableRef *)slot)->value; entry->type = f->table; entry->open = 0; return 1;

@@ -27,6 +27,7 @@
 #include "PackTable.h"
 #include "FU1Table.h"
 #include "FU2Table.h"
+#include "FD1Table.h"
 #include "DeadBytesTable.h"
 
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
@@ -1716,6 +1717,136 @@ static bool vlists_files( const char * dir )
 
 // ==== END rowan/cpp-versioning-lists =======================================
 
+// ---- deprecated fields are carried ----------------------------------------
+//
+// docs/SPEC-TABLES.md §3.4, §21.2, §22.6 and docs/rulings.json
+// fixed-deprecated-field-is-carried: a `| deprecated` field in the fixed form
+// reads and writes like any other field, and its declared default applies only
+// where the record does not supply the field. FD1's FdRoot declares one
+// deprecated field of each shape; each file below holds a lawful value that is
+// NOT that field's declared default and ordinary values elsewhere
+// (internal/fixedvector.DeprecatedField names them).
+//
+// The reference reads each file back under its own layout, and the dump
+// refuses to write the row unless the read lands the stored value in the
+// deprecated field and the landed record saves back to the same bytes. So
+// `expect=` is what the reference landed, and it is the stored values: the
+// same list as `values=`.
+template <typename Same>
+static bool deprecated_file( const char * dir, const char * name, const std::vector<tblfd1::FdRoot> & v, Same same )
+{
+    std::vector<uint8_t> out( (size_t) tblfd1::FdRootFixedMeasure( 1 ) );
+    if ( tblfd1::FdRootFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+    {
+        std::fprintf( stderr, "%s: save refused\n", name );
+        g_values.clear();
+        return false;
+    }
+    tblfd1::FdRoot back;
+    tblfd1::FdRootReset( back );
+    tblfd1::TableReport r;
+    std::vector<tblfd1::TableFixedEntry> plan( 4096 );
+    const int64_t n = tblfd1::FdRootFixedLoad( &back, 1, out.data(), (int64_t) out.size(), plan.data(), 4096, NULL, &r );
+    if ( n != 1 || !same( v[0], back ) )
+    {
+        std::fprintf( stderr, "%s: the reference's read answered n=%lld and did not land the stored deprecated value\n",
+                      name, (long long) n );
+        g_values.clear();
+        return false;
+    }
+    std::vector<uint8_t> again( out.size() );
+    if ( tblfd1::FdRootFixedSave( &back, 1, again.data(), (int64_t) again.size() ) != (int64_t) again.size() || again != out )
+    {
+        std::fprintf( stderr, "%s: the landed record does not save back to the same bytes\n", name );
+        g_values.clear();
+        return false;
+    }
+    std::string expect;
+    for ( size_t k = 0; k < g_values.size(); ++k )
+    {
+        if ( k != 0 ) { expect += ","; }
+        expect += g_values[k];
+    }
+    g_expect = expect;
+    man_finish( name, man_root_of( typeid( tblfd1::FdRoot ).name() ).c_str(), 1 );
+    return spill( dir, name, out );
+}
+
+static bool deprecated_files( const char * dir )
+{
+    // a scalar: old_count int32 = 4, holding 99
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_count, 99 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_scalar.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_count == a.old_count; } ) ) { return false; }
+    }
+    // a text: old_tag string(8) = "abc", holding "hi"
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        std::memset( (void *) v[0].old_tag, 0, sizeof( v[0].old_tag ) );
+        MS( v[0].lead, 11 );
+        MSTR( v[0].old_tag, "hi" );
+        MS( v[0].old_tag_length, 2 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_string.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_tag_length == a.old_tag_length && std::memcmp( b.old_tag, a.old_tag, sizeof( a.old_tag ) ) == 0; } ) ) { return false; }
+    }
+    // a counted array: old_marks [..3]uint16, empty by default, holding two
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_marks[0], 300 );
+        MS( v[0].old_marks[1], 400 );
+        MS( v[0].old_marks_count, 2 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_array.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_marks_count == 2 && b.old_marks[0] == a.old_marks[0] && b.old_marks[1] == a.old_marks[1]; } ) ) { return false; }
+    }
+    // an optional: old_bonus ?uint16, absent by default, present
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_bonus_present, true );
+        MS( v[0].old_bonus, 77 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_optional.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_bonus_present && b.old_bonus == a.old_bonus; } ) ) { return false; }
+    }
+    // a nested type: old_spot Spot { x = 5, y = 6 }, holding (50, 60)
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_spot.x, 50 );
+        MS( v[0].old_spot.y, 60 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_nested.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_spot.x == a.old_spot.x && b.old_spot.y == a.old_spot.y; } ) ) { return false; }
+    }
+    // a union: old_pick Pick, None by default, taking its `spot` arm (a type)
+    // off that type's defaults
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MSE( v[0].old_pick.type, tblfd1::PickType::Spot );
+        MS( v[0].old_pick.spot.x, 70 );
+        MS( v[0].old_pick.spot.y, 80 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_union.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_pick.type == tblfd1::PickType::Spot && b.old_pick.spot.x == a.old_pick.spot.x &&
+                      b.old_pick.spot.y == a.old_pick.spot.y; } ) ) { return false; }
+    }
+    return true;
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
@@ -1730,6 +1861,7 @@ int main( int argc, char ** argv )
     // ==== BEGIN rowan/cpp-versioning-lists ====
     if ( !vlists_files( dir ) ) { return 1; }
     // ==== END rowan/cpp-versioning-lists =====
+    if ( !deprecated_files( dir ) ) { return 1; }
     // ---- rowan/corpus-manifest ----
     // THE MANIFEST, beside the bytes it describes (§5.7 step 1, ruling #32)
     if ( !man_write( dir ) ) { return 1; }
