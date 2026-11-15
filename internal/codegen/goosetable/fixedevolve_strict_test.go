@@ -208,14 +208,11 @@ func runEvolveStrictFiles(t *testing.T, files map[string][]byte, filesIn map[str
 	return strings.TrimSpace(string(gooserun.Run(t, dir, "main.goose", nil)))
 }
 
-func TestGooseFixedEvolveLoadRefusesNeverClamps(t *testing.T) {
-	t.Parallel()
-	files, eOld, eNew := evolveStrictFiles(t)
-	code := string(files["ProbeTable.goose"])
-	for _, b := range evolveStrictProblems(code) {
-		t.Error(b)
-	}
-	filesIn := map[string][]byte{
+// evolveStrictInputs is every file the probe reads: a clean older file, and
+// each off-range value, forged ordinal and forged tag in the second record,
+// read through the older layout and through the current one.
+func evolveStrictInputs(eOld, eNew FixedEvolutionEntry) map[string][]byte {
+	return map[string][]byte{
 		"old_clean.bin":       makeFixedFile(eOld.Wire, eOld.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(2, 2, 22, 60, 8)),
 		"old_bad_ticks.bin":   makeFixedFile(eOld.Wire, eOld.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(2, 2, 22, 150, 8)),
 		"old_bad_ordinal.bin": makeFixedFile(eOld.Wire, eOld.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(4, 2, 22, 60, 8)),
@@ -224,7 +221,16 @@ func TestGooseFixedEvolveLoadRefusesNeverClamps(t *testing.T) {
 		"cur_bad_ordinal.bin": makeFixedFile(eNew.Wire, eNew.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(5, 2, 22, 60, 8)),
 		"cur_bad_tag.bin":     makeFixedFile(eNew.Wire, eNew.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(2, 4, 22, 60, 8)),
 	}
-	if got := runEvolveStrictFiles(t, files, filesIn); got != evolveStrictWant {
+}
+
+func TestGooseFixedEvolveLoadRefusesNeverClamps(t *testing.T) {
+	t.Parallel()
+	files, eOld, eNew := evolveStrictFiles(t)
+	code := string(files["ProbeTable.goose"])
+	for _, b := range evolveStrictProblems(code) {
+		t.Error(b)
+	}
+	if got := runEvolveStrictFiles(t, files, evolveStrictInputs(eOld, eNew)); got != evolveStrictWant {
 		t.Fatalf("strict lineage probe:\n got:\n%s\nwant:\n%s", got, evolveStrictWant)
 	}
 }
@@ -251,13 +257,14 @@ func TestGooseFixedEvolveLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	}
 	clampFiles := maps.Clone(files)
 	clampFiles["ProbeTable.goose"] = []byte(clamping)
-	filesIn := map[string][]byte{
-		"old_bad_ticks.bin":   makeFixedFile(eOld.Wire, eOld.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(2, 2, 22, 150, 8)),
-		"cur_bad_ticks.bin":   makeFixedFile(eNew.Wire, eNew.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(2, 2, 22, 250, 8)),
-		"cur_bad_ordinal.bin": makeFixedFile(eNew.Wire, eNew.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(5, 2, 22, 60, 8)),
-		"cur_bad_tag.bin":     makeFixedFile(eNew.Wire, eNew.Layout, evolveStrictBody(1, 1, 11, 50, 7), evolveStrictBody(2, 4, 22, 60, 8)),
+	got := runEvolveStrictFiles(t, clampFiles, evolveStrictInputs(eOld, eNew))
+	if strings.Contains(got, "read-failed") {
+		t.Fatalf("negative control: the probe did not read every input:\n%s", got)
 	}
-	if got := runEvolveStrictFiles(t, clampFiles, filesIn); got == evolveStrictWant {
-		t.Fatal("negative control: runtime probe still passed when LineageFixedEvolveLoad clamped instead of refusing")
+	// The planted clamp must turn the identity plan's off-range line red by
+	// name, with every input read, so the probe's answer is the reader's.
+	const strictTicks = "cur_bad_ticks.bin -1 out_of_range 0 0 0 0 0 42 0 0 0 42"
+	if got == evolveStrictWant || strings.Contains(got, strictTicks+"\n") {
+		t.Fatalf("negative control: runtime probe still passed when LineageFixedEvolveLoad clamped instead of refusing:\n%s", got)
 	}
 }
