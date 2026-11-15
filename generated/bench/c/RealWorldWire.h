@@ -39,6 +39,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     {
         return 0;
     }
+    serialize_assert( value->f004_cf32 >= 0.0f && value->f004_cf32 <= 2000.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f004_cf32, 20000u, 15, 2000.0f, 0.0f ) )
     {
         return 0;
@@ -150,6 +151,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     {
         return 0;
     }
+    serialize_assert( value->f027_cf32 >= -2.0f && value->f027_cf32 <= 2.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f027_cf32, 16u, 5, 4.0f, -2.0f ) )
     {
         return 0;
@@ -309,6 +311,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     {
         return 0;
     }
+    serialize_assert( value->f061_cf32 >= -90.0f && value->f061_cf32 <= 90.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f061_cf32, 360u, 9, 180.0f, -90.0f ) )
     {
         return 0;
@@ -327,6 +330,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     {
         return 0;
     }
+    serialize_assert( value->f065_cf32 >= 0.0f && value->f065_cf32 <= 30.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f065_cf32, 60u, 6, 30.0f, 0.0f ) )
     {
         return 0;
@@ -338,10 +342,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
             return 0;
         }
     }
+    serialize_assert( value->f067_cf32 >= -100.0f && value->f067_cf32 <= 100.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f067_cf32, 800u, 10, 200.0f, -100.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->f068_cf32 >= 0.0f && value->f068_cf32 <= 2000.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f068_cf32, 2000u, 11, 2000.0f, 0.0f ) )
     {
         return 0;
@@ -355,10 +361,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     {
         return 0;
     }
+    serialize_assert( value->f071_cf32 >= 0.0f && value->f071_cf32 <= 10.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f071_cf32, 500u, 9, 10.0f, 0.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->f072_cf32 >= 0.0f && value->f072_cf32 <= 100.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->f072_cf32, 10000u, 14, 100.0f, 0.0f ) )
     {
         return 0;
@@ -499,7 +507,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
 }
 
 /* Reads RealPacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serialize_read_stream_t * stream, realworld_real_packet_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_realworld_read_real_packet_body_( serialize_read_stream_t * stream, realworld_real_packet_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -1424,6 +1432,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
         value->f097_bits = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads RealPacket as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serialize_read_stream_t * stream, realworld_real_packet_t * value )
+{
+    if ( !schema_realworld_read_real_packet_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

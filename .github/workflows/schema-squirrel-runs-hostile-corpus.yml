@@ -17,25 +17,8 @@ name: Squirrel runs the hostile corpus
 # alone so a plant that stops going red is named every night.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-squirrel-runs-hostile-corpus.mk'
-      - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
-      - 'internal/ci/schema_squirrel_runs_hostile_corpus_test.go'
-      - 'internal/ci/hostilecorpus/**'
-      - 'internal/codegen/squirrel/**'
-      - 'internal/codegen/squirreltable/**'
-      - 'docs/HOSTILE-CORPUS.md'
-  pull_request:
-    paths:
-      - 'make/schema-squirrel-runs-hostile-corpus.mk'
-      - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
-      - 'internal/ci/schema_squirrel_runs_hostile_corpus_test.go'
-      - 'internal/ci/hostilecorpus/**'
-      - 'internal/codegen/squirrel/**'
-      - 'internal/codegen/squirreltable/**'
-      - 'docs/HOSTILE-CORPUS.md'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '41 8 * * *'
   workflow_dispatch:

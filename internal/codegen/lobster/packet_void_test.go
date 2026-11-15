@@ -93,10 +93,10 @@ func TestLobsterPacketVoidArms(t *testing.T) {
 func TestLobsterPacketVoidArmsNegativeControls(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ dir, anchor, with string }{
-		{"write", "    s.serialize_bits(v.Type, 2) // the union tag (SPEC §4.8)\n    if v.Type == MixedTypePayload:",
-			"    s.serialize_bits(v.Type, 2) // the union tag (SPEC §4.8)\n    if v.Type == MixedTypePing: s.serialize_bits(0, 1)\n    if v.Type == MixedTypePayload:"},
-		{"read", "    value.Type = MixedType(rv)\n",
-			"    value.Type = MixedType(rv)\n    if value.Type == MixedTypePing:\n        rv, rok = stream.serialize_bits(rv, 1)\n"},
+		{"write", "    s·.serialize_bits(v·.Type, 2) // the union tag (SPEC §4.8)\n    if v·.Type == MixedTypePayload:",
+			"    s·.serialize_bits(v·.Type, 2) // the union tag (SPEC §4.8)\n    if v·.Type == MixedTypePing: s·.serialize_bits(0, 1)\n    if v·.Type == MixedTypePayload:"},
+		{"read", "    value·.Type = MixedType(rv·)\n",
+			"    value·.Type = MixedType(rv·)\n    if value·.Type == MixedTypePing:\n        rv·, rok· = stream·.serialize_bits(rv·, 1)\n"},
 	} {
 		t.Run(tc.dir, func(t *testing.T) {
 			t.Parallel()

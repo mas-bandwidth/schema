@@ -336,13 +336,15 @@ int main(void)
 	})
 
 	// c/R24 "ill-formed text in the USED units refuses by name; counted in bytes
-	// with the clamp in units; slack unspecified on read and not a refusal"
-	// (docs/FIXED-FORM-ALGORITHM.md §4.5, docs/SPEC-TABLES.md §3.4).
+	// with the clamp in units; a non-zero dead byte past the used length refuses
+	// wire_damaged" (docs/FIXED-FORM-ALGORITHM.md §4.5, docs/SPEC-TABLES.md §3.4,
+	// docs/rulings.json fixed-dead-bytes-are-zero).
 	t.Run("c/R24", func(t *testing.T) {
 		t.Parallel()
 		// clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
-		// clause 3 (slack not judged), and clauses 1+2 together (the clamp and
-		// the refusal on the SAME record, the counter staying zero)
+		// clause 3 (a non-zero dead byte past the used length), and clauses 1+2
+		// together (the clamp and the refusal on the SAME record, the counter
+		// staying zero)
 		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
 #include "ProbeTable.h"
 #include <stdio.h>
@@ -380,12 +382,11 @@ int main(void)
     value.s_length = 2;
     memcpy(value.s, "ab", 2);
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
-    memset(buf + off + 4 + 2, 0xFF, 6); /* garbage in the slack past the used 2 */
+    memset(buf + off + 4 + 2, 0xFF, 6); /* garbage in the dead bytes past the used 2 */
     memset(&r, 0, sizeof(r));
     n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.refused);
-    CHECK(out.s_length == 2 && memcmp(out.s, "ab", 2) == 0);
+    CHECK(n == -1);
+    CHECK(r.refused == 1 && r.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
     /* clauses 1 AND 2 TOGETHER: the length forged past the bound AND the used
        bytes ill-formed — two faults on the SAME record. REFUSE is total
        (§5.8): the length bound refuses, and no value lands. Both faults are

@@ -76,7 +76,7 @@ def verdict(name:string, file:string):
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)), "\n"), "\n") {
 		name, verdict, ok := strings.Cut(line, "|")
 		if !ok {
 			t.Fatalf("unexpected verdict line %q", line)

@@ -168,16 +168,16 @@ func cT12C14(t *testing.T) {
 	cT04Has(t, load, "lineage_fixed_clamp_( values + k, report )", "C14 the bounds pass walks the live storage it just wrote")
 }
 
-// ---- c/W4 — "read slack unspecified" ---------------------------------------
+// ---- c/W4 — "the content rule reads the used units; dead bytes are zero" ----
 //
-// SPEC-TABLES §3.4, "THE SLACK RULE": a string's length, an array's count, a
-// union arm and a present flag all stand before their slack, and "a reader
-// validates the USED UNITS ONLY and never looks at the slack" — non-zero slack
-// is not malformed, not a refusal, and moves no counter. The emitted read's
-// content rule checks UTF-8 over the STATED length (`s_length`), never over the
-// declared capacity N.
+// SPEC-TABLES §3.4: the emitted read's content rule checks UTF-8 over the
+// STATED length (`s_length`), never over the declared capacity N. The bytes
+// past the used length are DEAD and must be zero; that verdict belongs to the
+// dead-byte check and is pinned by TestFixedDeadBytesAreZero
+// (docs/rulings.json fixed-dead-bytes-are-zero), not by this content rule.
 func cT12W4(t *testing.T) {
-	clamp := cT12Def(cT12Header(t, cT12UnitSrc), "lineage_fixed_clamp_body_")
+	header := cT12Header(t, cT12UnitSrc)
+	clamp := cT12Def(header, "lineage_fixed_clamp_body_")
 	if clamp == "" {
 		t.Fatal("W4: lineage_fixed_clamp_body is not emitted")
 	}
@@ -187,6 +187,8 @@ func cT12W4(t *testing.T) {
 	if strings.Contains(clamp, "value->s[ 8 ]") || strings.Contains(clamp, "value->s[8]") {
 		t.Error("W4: the content rule walks the declared capacity and not the used units")
 	}
+	cT04Has(t, cT04Fn(header, "lineage_fixed_load"),
+		"table_fixed_dead_refuses(", "W4 the dead bytes past the used length are judged by the zero check")
 }
 
 // ---- c/W9 — "prefill unwritten ranges only" --------------------------------

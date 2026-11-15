@@ -1347,6 +1347,9 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -1422,13 +1425,31 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
   }
+  {
+    const x = Math.fround(value.aimX);
+    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.aimX;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
+  {
+    const x = Math.fround(value.aimY);
+    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.aimY;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
+  }
+  {
+    const x = Math.fround(value.aimZ);
+    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
   }
   NUMBER_SCRATCH.value = value.aimZ;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {

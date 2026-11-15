@@ -61,6 +61,13 @@ pub fn write_arms_agree(stream: &mut WriteStream<'_>, value: &ArmsAgree) -> Resu
 
 #[inline]
 pub fn read_arms_agree(stream: &mut ReadStream<'_>, value: &mut ArmsAgree) -> Result {
+    read_arms_agree_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arms_agree_body(stream: &mut ReadStream<'_>, value: &mut ArmsAgree) -> Result {
     let mut c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
@@ -134,6 +141,13 @@ pub fn write_arms_disagree(stream: &mut WriteStream<'_>, value: &ArmsDisagree) -
 
 #[inline]
 pub fn read_arms_disagree(stream: &mut ReadStream<'_>, value: &mut ArmsDisagree) -> Result {
+    read_arms_disagree_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arms_disagree_body(stream: &mut ReadStream<'_>, value: &mut ArmsDisagree) -> Result {
     let mut c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
@@ -197,6 +211,13 @@ pub fn write_arm_empty(stream: &mut WriteStream<'_>, value: &ArmEmpty) -> Result
 
 #[inline]
 pub fn read_arm_empty(stream: &mut ReadStream<'_>, value: &mut ArmEmpty) -> Result {
+    read_arm_empty_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arm_empty_body(stream: &mut ReadStream<'_>, value: &mut ArmEmpty) -> Result {
     let mut c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
@@ -288,6 +309,13 @@ pub fn write_arms_nested(stream: &mut WriteStream<'_>, value: &ArmsNested) -> Re
 
 #[inline]
 pub fn read_arms_nested(stream: &mut ReadStream<'_>, value: &mut ArmsNested) -> Result {
+    read_arms_nested_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arms_nested_body(stream: &mut ReadStream<'_>, value: &mut ArmsNested) -> Result {
     let mut c: u32 = 0;
     // word 0, 4 bits: lead[0..3], outer[0..1]
     stream.serialize_bits(&mut c, 4)?;
@@ -372,6 +400,13 @@ pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result
 
 #[inline]
 pub fn read_arm_align(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Result {
+    read_arm_align_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arm_align_body(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Result {
     let mut c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
@@ -463,6 +498,13 @@ pub fn write_arm_array(stream: &mut WriteStream<'_>, value: &ArmArray) -> Result
 
 #[inline]
 pub fn read_arm_array(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Result {
+    read_arm_array_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arm_array_body(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Result {
     let mut c: u32 = 0;
     // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
@@ -515,6 +557,13 @@ pub fn write_narrow(stream: &mut WriteStream<'_>, value: &Narrow) -> Result {
 
 #[inline]
 pub fn read_narrow(stream: &mut ReadStream<'_>, value: &mut Narrow) -> Result {
+    read_narrow_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_narrow_body(stream: &mut ReadStream<'_>, value: &mut Narrow) -> Result {
     stream.serialize_bits(&mut value.n, 3)?;
     Ok(())
 }
@@ -544,6 +593,13 @@ pub fn write_wide(stream: &mut WriteStream<'_>, value: &Wide) -> Result {
 
 #[inline]
 pub fn read_wide(stream: &mut ReadStream<'_>, value: &mut Wide) -> Result {
+    read_wide_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_wide_body(stream: &mut ReadStream<'_>, value: &mut Wide) -> Result {
     stream.serialize_bits64(&mut value.w, 37)?;
     Ok(())
 }
@@ -617,18 +673,26 @@ pub fn write_uneven(stream: &mut WriteStream<'_>, value: &Uneven) -> Result {
     }
 }
 
+#[inline]
 pub fn read_uneven(stream: &mut ReadStream<'_>, value: &mut Uneven) -> Result {
+    read_uneven_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_uneven_body(stream: &mut ReadStream<'_>, value: &mut Uneven) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
     match tag_value {
         1 => {
             let mut arm = Narrow::default();
-            read_narrow(stream, &mut arm)?;
+            read_narrow_body(stream, &mut arm)?;
             *value = Uneven::Narrow(arm);
         }
         2 => {
             let mut arm = Wide::default();
-            read_wide(stream, &mut arm)?;
+            read_wide_body(stream, &mut arm)?;
             *value = Uneven::Wide(arm);
         }
         _ => *value = Uneven::None,
@@ -669,8 +733,15 @@ pub fn write_holds_uneven(stream: &mut WriteStream<'_>, value: &HoldsUneven) -> 
 
 #[inline]
 pub fn read_holds_uneven(stream: &mut ReadStream<'_>, value: &mut HoldsUneven) -> Result {
+    read_holds_uneven_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_holds_uneven_body(stream: &mut ReadStream<'_>, value: &mut HoldsUneven) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
-    read_uneven(stream, &mut value.u)?;
+    read_uneven_body(stream, &mut value.u)?;
     stream.serialize_bits(&mut value.tail, 11)?;
     Ok(())
 }
@@ -716,10 +787,17 @@ pub fn write_arr_uneven(stream: &mut WriteStream<'_>, value: &ArrUneven) -> Resu
 
 #[inline]
 pub fn read_arr_uneven(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Result {
+    read_arr_uneven_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arr_uneven_body(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
     stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
-        read_uneven(stream, &mut value.items[i])?;
+        read_uneven_body(stream, &mut value.items[i])?;
     }
     stream.serialize_bits(&mut value.tail, 3)?;
     Ok(())
@@ -789,6 +867,13 @@ pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfte
 
 #[inline]
 pub fn read_regain_after_align(stream: &mut ReadStream<'_>, value: &mut RegainAfterAlign) -> Result {
+    read_regain_after_align_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_regain_after_align_body(stream: &mut ReadStream<'_>, value: &mut RegainAfterAlign) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
     stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {

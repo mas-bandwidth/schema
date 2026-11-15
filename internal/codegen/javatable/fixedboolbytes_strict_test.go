@@ -186,7 +186,7 @@ func TestFixedBoolBytesStrict(t *testing.T) {
 	} {
 		zero[at] = 0
 	}
-	for i := int64(0); i < payloadBytes; i++ {
+	for i := range payloadBytes {
 		zero[body0+presentOff+1+i] = 0
 	}
 	if got := load(t, zero); got.n != 2 || got.refused || got.damaged {

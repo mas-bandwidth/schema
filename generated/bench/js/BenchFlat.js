@@ -88,8 +88,7 @@ function validText(bytes, length) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold BenchPacketMaxBytes.
 export function WriteBenchPacketFlat(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+  let v = 0, x = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -100,53 +99,44 @@ export function WriteBenchPacketFlat(view, value) {
     return -1;
   }
   lo = (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((value.b) & 0xffff) << 8));
+  if (!Number.isInteger(value.bits7) || value.bits7 < 0 || value.bits7 > 127) {
+    return -1;
+  }
+  if (!Number.isInteger(value.bits13) || value.bits13 < 0 || value.bits13 > 8191) {
+    return -1;
+  }
   v = (((((value.c >>> 0) - 4293967296) >>> 0) & 0x1fffff) | ((value.bits7 & 0x7f) << 21)) >>> 0;
   view.setUint32(0, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
+  if (!Number.isInteger(value.bits23) || value.bits23 < 0 || value.bits23 > 8388607) {
+    return -1;
+  }
   v = ((value.bits13 & 0x1fff)) >>> 0;
   view.setUint32(4, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
   lo = (lo | (((value.bits23 & 0x7fffff) | ((value.flag ? 1 : 0) << 23)) << 1)) >>> 0;
   x = value.x;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(8, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.y;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.z;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   SC.setBigUint64(0, value.big, true);
@@ -548,17 +538,42 @@ export function ReadBenchIntsFlatBits(view, numBits, value) {
 
 // ---- type BenchBits: the flat codec ----
 
-// WriteBenchBitsFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold BenchBitsMaxBytes.
+// WriteBenchBitsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold BenchBitsMaxBytes.
 export function WriteBenchBitsFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.b7) || value.b7 < 0 || value.b7 > 127) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b13) || value.b13 < 0 || value.b13 > 8191) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b23) || value.b23 < 0 || value.b23 > 8388607) {
+    return -1;
+  }
   lo = ((value.b7 & 0x7f) | ((value.b13 & 0x1fff) << 7));
+  if (!Number.isInteger(value.b3) || value.b3 < 0 || value.b3 > 7) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b32) || value.b32 < 0 || value.b32 > 4294967295) {
+    return -1;
+  }
   v = ((value.b23 & 0x7fffff) | ((value.b3 & 0x7) << 23)) >>> 0;
   view.setUint32(0, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
+  if (!Number.isInteger(value.b11) || value.b11 < 0 || value.b11 > 2047) {
+    return -1;
+  }
   v = ((value.b32 >>> 0)) >>> 0;
   view.setUint32(4, (lo | (v << 14)) >>> 0, true);
   lo = v >>> 18;
+  if (!Number.isInteger(value.b19) || value.b19 < 0 || value.b19 > 524287) {
+    return -1;
+  }
+  if (value.b48 < 0n || value.b48 > 281474976710655n) {
+    return -1;
+  }
   v = ((value.b11 & 0x7ff) | ((value.b19 & 0x7ffff) << 11)) >>> 0;
   view.setUint32(8, (lo | (v << 14)) >>> 0, true);
   lo = v >>> 18;
@@ -661,6 +676,9 @@ export function ReadBenchBitsFlatBits(view, numBits, value) {
 // must hold MixedEntityMaxBytes.
 export function WriteMixedEntityFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.entityId) || value.entityId < 0 || value.entityId > 4095) {
+    return -1;
+  }
   if (!Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) {
     return -1;
   }
@@ -671,9 +689,15 @@ export function WriteMixedEntityFlat(view, value) {
   if (!Number.isInteger(value.posZ) || value.posZ < -16383 || value.posZ > 16383) {
     return -1;
   }
+  if (!Number.isInteger(value.yaw) || value.yaw < 0 || value.yaw > 511) {
+    return -1;
+  }
   v = (((((value.posY >>> 0) - 4294950913) >>> 0) & 0x7fff) | (((((value.posZ >>> 0) - 4294950913) >>> 0) & 0x7fff) << 15)) >>> 0;
   view.setUint32(0, (lo | (v << 27)) >>> 0, true);
   lo = v >>> 5;
+  if (!Number.isInteger(value.pitch) || value.pitch < 0 || value.pitch > 511) {
+    return -1;
+  }
   if (!Number.isInteger(value.velX) || value.velX < -2048 || value.velX > 2047) {
     return -1;
   }
@@ -833,6 +857,9 @@ export function ReadMixedEntityFlatBits(view, numBits, value) {
 // must hold MixedStatMaxBytes.
 export function WriteMixedStatFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.statId) || value.statId < 0 || value.statId > 255) {
+    return -1;
+  }
   if (!Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) {
     return -1;
   }
@@ -886,6 +913,9 @@ export function ReadMixedStatFlatBits(view, numBits, value) {
 // must hold MixedHitEventMaxBytes.
 export function WriteMixedHitEventFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 4095) {
+    return -1;
+  }
   if (!Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) {
     return -1;
   }
@@ -953,6 +983,9 @@ export function WriteMixedChatEventFlat(view, value) {
   if (!Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
     return -1;
   }
+  if (!Number.isInteger(value.speaker) || value.speaker < 0 || value.speaker > 4095) {
+    return -1;
+  }
   lo = (((value.channel) & 0x3) | ((value.speaker & 0xfff) << 2));
   view.setUint32(0, lo, true);
   return 2;
@@ -1003,6 +1036,9 @@ export function ReadMixedChatEventFlatBits(view, numBits, value) {
 // must hold MixedPickupEventMaxBytes.
 export function WriteMixedPickupEventFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.itemId) || value.itemId < 0 || value.itemId > 1023) {
+    return -1;
+  }
   if (!Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) {
     return -1;
   }
@@ -1063,6 +1099,9 @@ export function WriteMixedEventFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
+      if (!Number.isInteger(value.hit.targetId) || value.hit.targetId < 0 || value.hit.targetId > 4095) {
+        return -1;
+      }
       if (!Number.isInteger(value.hit.damage) || value.hit.damage < 0 || value.hit.damage > 4095) {
         return -1;
       }
@@ -1084,6 +1123,9 @@ export function WriteMixedEventFlat(view, value) {
       if (!Number.isInteger(value.chat.channel) || value.chat.channel < 0 || value.chat.channel > 3) {
         return -1;
       }
+      if (!Number.isInteger(value.chat.speaker) || value.chat.speaker < 0 || value.chat.speaker > 4095) {
+        return -1;
+      }
       v = (((value.chat.channel) & 0x3) | ((value.chat.speaker & 0xfff) << 2)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 14;
@@ -1096,6 +1138,9 @@ export function WriteMixedEventFlat(view, value) {
       break;
     }
     case 3: {
+      if (!Number.isInteger(value.pickup.itemId) || value.pickup.itemId < 0 || value.pickup.itemId > 1023) {
+        return -1;
+      }
       if (!Number.isInteger(value.pickup.amount) || value.pickup.amount < 0 || value.pickup.amount > 255) {
         return -1;
       }
@@ -1284,12 +1329,18 @@ export function ReadMixedEventFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold BenchMixedMaxBytes.
 export function WriteBenchMixedFlat(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
+  if (!Number.isInteger(value.sequence) || value.sequence < 0 || value.sequence > 65535) {
+    return -1;
+  }
   if (!Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) {
     return -1;
   }
   view.setUint32(0, (49374 | ((value.sequence & 0xffff) << 16)), true);
+  if (!Number.isInteger(value.ackBits) || value.ackBits < 0 || value.ackBits > 4294967295) {
+    return -1;
+  }
   lo = (((value.ackSequence) & 0xffff));
   v = ((value.ackBits >>> 0)) >>> 0;
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
@@ -1301,6 +1352,9 @@ export function WriteBenchMixedFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(12, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+    return -1;
+  }
   v = (((value.clientId) >>> 0)) >>> 0;
   view.setUint32(16, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
@@ -1320,6 +1374,9 @@ export function WriteBenchMixedFlat(view, value) {
   lo = v >>> 16;
   v = SC.getUint32(4, true) & 0x1ff;
   lo = (lo | (v << 16)) >>> 0;
+  if (value.frameTick < 0n || value.frameTick > 281474976710655n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.frameTick, true);
   v = SC.getUint32(0, true);
   view.setUint32(32, (lo | (v << 25)) >>> 0, true);
@@ -1340,6 +1397,9 @@ export function WriteBenchMixedFlat(view, value) {
   sb = 4;
   for (let i0 = 0; i0 < value.entitiesCount; i0++) {
     const e0 = value.entities[i0];
+    if (!Number.isInteger(e0.entityId) || e0.entityId < 0 || e0.entityId > 4095) {
+      return -1;
+    }
     if (!Number.isInteger(e0.posX) || e0.posX < -16383 || e0.posX > 16383) {
       return -1;
     }
@@ -1358,6 +1418,9 @@ export function WriteBenchMixedFlat(view, value) {
     if (!Number.isInteger(e0.posZ) || e0.posZ < -16383 || e0.posZ > 16383) {
       return -1;
     }
+    if (!Number.isInteger(e0.yaw) || e0.yaw < 0 || e0.yaw > 511) {
+      return -1;
+    }
     v = (((((e0.posY >>> 0) - 4294950913) >>> 0) & 0x7fff) | (((((e0.posZ >>> 0) - 4294950913) >>> 0) & 0x7fff) << 15)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 30;
@@ -1366,6 +1429,9 @@ export function WriteBenchMixedFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (30 - sb);
+    }
+    if (!Number.isInteger(e0.pitch) || e0.pitch < 0 || e0.pitch > 511) {
+      return -1;
     }
     if (!Number.isInteger(e0.velX) || e0.velX < -2048 || e0.velX > 2047) {
       return -1;
@@ -1446,6 +1512,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   for (let i0 = 0; i0 < value.statsCount; i0++) {
     const e0 = value.stats[i0];
+    if (!Number.isInteger(e0.statId) || e0.statId < 0 || e0.statId > 255) {
+      return -1;
+    }
     if (!Number.isInteger(e0.delta) || e0.delta < -512 || e0.delta > 511) {
       return -1;
     }
@@ -1473,6 +1542,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   switch (value.gameEvent.type) {
     case 1: {
+      if (!Number.isInteger(value.gameEvent.hit.targetId) || value.gameEvent.hit.targetId < 0 || value.gameEvent.hit.targetId > 4095) {
+        return -1;
+      }
       if (!Number.isInteger(value.gameEvent.hit.damage) || value.gameEvent.hit.damage < 0 || value.gameEvent.hit.damage > 4095) {
         return -1;
       }
@@ -1494,6 +1566,9 @@ export function WriteBenchMixedFlat(view, value) {
       if (!Number.isInteger(value.gameEvent.chat.channel) || value.gameEvent.chat.channel < 0 || value.gameEvent.chat.channel > 3) {
         return -1;
       }
+      if (!Number.isInteger(value.gameEvent.chat.speaker) || value.gameEvent.chat.speaker < 0 || value.gameEvent.chat.speaker > 4095) {
+        return -1;
+      }
       v = (((value.gameEvent.chat.channel) & 0x3) | ((value.gameEvent.chat.speaker & 0xfff) << 2)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 14;
@@ -1506,6 +1581,9 @@ export function WriteBenchMixedFlat(view, value) {
       break;
     }
     case 3: {
+      if (!Number.isInteger(value.gameEvent.pickup.itemId) || value.gameEvent.pickup.itemId < 0 || value.gameEvent.pickup.itemId > 1023) {
+        return -1;
+      }
       if (!Number.isInteger(value.gameEvent.pickup.amount) || value.gameEvent.pickup.amount < 0 || value.gameEvent.pickup.amount > 255) {
         return -1;
       }
@@ -1627,6 +1705,9 @@ export function WriteBenchMixedFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -1.0 || x > 1.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
@@ -1641,6 +1722,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   x = Math.fround(value.aimY);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -1.0 || x > 1.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
@@ -1659,6 +1743,9 @@ export function WriteBenchMixedFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -1.0 || x > 1.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
@@ -1672,17 +1759,11 @@ export function WriteBenchMixedFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   x = value.recoil;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1690,6 +1771,9 @@ export function WriteBenchMixedFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isFinite(value.drift)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.drift, true);
   v = SC.getUint32(0, true);
@@ -1809,6 +1893,9 @@ export function WriteBenchMixedFlat(view, value) {
     wi += 4;
     lo = 0;
     sb = 0;
+  }
+  if (!Number.isInteger(value.crcHint) || value.crcHint < 0 || value.crcHint > 16777215) {
+    return -1;
   }
   if (!Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) {
     return -1;

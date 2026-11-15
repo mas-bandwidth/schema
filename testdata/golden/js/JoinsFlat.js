@@ -63,15 +63,28 @@ function validText(bytes, length) {
 
 // ---- type ArmsAgree: the flat codec ----
 
-// WriteArmsAgreeFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ArmsAgreeMaxBytes.
+// WriteArmsAgreeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArmsAgreeMaxBytes.
 export function WriteArmsAgreeFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   if (value.flag) {
+    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
+      return -1;
+    }
     lo = (lo | (((value.a & 0x7ff)) << 6)) >>> 0;
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 2047) {
+      return -1;
+    }
     lo = (lo | (((value.b & 0x7ff)) << 6)) >>> 0;
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   lo = (lo | (((value.tail & 0x7f)) << 17)) >>> 0;
   view.setUint32(0, lo, true);
@@ -143,13 +156,20 @@ export function ReadArmsAgreeFlatBits(view, numBits, value) {
 
 // ---- type ArmsDisagree: the flat codec ----
 
-// WriteArmsDisagreeFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ArmsDisagreeMaxBytes.
+// WriteArmsDisagreeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArmsDisagreeMaxBytes.
 export function WriteArmsDisagreeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
+    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
+      return -1;
+    }
     v = ((value.a & 0x7ff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
@@ -160,6 +180,9 @@ export function WriteArmsDisagreeFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 7) {
+      return -1;
+    }
     v = ((value.b & 0x7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
@@ -169,6 +192,9 @@ export function WriteArmsDisagreeFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -304,13 +330,20 @@ export function ReadArmsDisagreeFlatBits(view, numBits, value) {
 
 // ---- type ArmEmpty: the flat codec ----
 
-// WriteArmEmptyFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ArmEmptyMaxBytes.
+// WriteArmEmptyFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArmEmptyMaxBytes.
 export function WriteArmEmptyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
+    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 524287) {
+      return -1;
+    }
     v = ((value.a & 0x7ffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 19;
@@ -320,6 +353,9 @@ export function WriteArmEmptyFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (19 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -431,10 +467,14 @@ export function ReadArmEmptyFlatBits(view, numBits, value) {
 
 // ---- type ArmsNested: the flat codec ----
 
-// WriteArmsNestedFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ArmsNestedMaxBytes.
+// WriteArmsNestedFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArmsNestedMaxBytes.
 export function WriteArmsNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) {
+    return -1;
+  }
   lo = ((value.lead & 0x7) | ((value.outer ? 1 : 0) << 3));
   sb = 4;
   if (value.outer) {
@@ -448,6 +488,9 @@ export function WriteArmsNestedFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
     if (value.inner) {
+      if (!Number.isInteger(value.x) || value.x < 0 || value.x > 536870911) {
+        return -1;
+      }
       v = ((value.x & 0x1fffffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 29;
@@ -458,6 +501,9 @@ export function WriteArmsNestedFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (29 - sb);
       }
     } else {
+      if (!Number.isInteger(value.y) || value.y < 0 || value.y > 31) {
+        return -1;
+      }
       v = ((value.y & 0x1f)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 5;
@@ -469,6 +515,9 @@ export function WriteArmsNestedFlat(view, value) {
       }
     }
   } else {
+    if (!Number.isInteger(value.z) || value.z < 0 || value.z > 8191) {
+      return -1;
+    }
     v = ((value.z & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
@@ -478,6 +527,9 @@ export function WriteArmsNestedFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 63) {
+    return -1;
   }
   v = ((value.tail & 0x3f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -676,6 +728,9 @@ export function ReadArmsNestedFlatBits(view, numBits, value) {
 // must hold ArmAlignMaxBytes.
 export function WriteArmAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
@@ -727,6 +782,9 @@ export function WriteArmAlignFlat(view, value) {
       }
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1023) {
+      return -1;
+    }
     v = ((value.b & 0x3ff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 10;
@@ -736,6 +794,9 @@ export function WriteArmAlignFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -926,6 +987,9 @@ export function ReadArmAlignFlatBits(view, numBits, value) {
 // must hold ArmArrayMaxBytes.
 export function WriteArmArrayFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
@@ -956,6 +1020,9 @@ export function WriteArmArrayFlat(view, value) {
       }
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 511) {
+      return -1;
+    }
     v = ((value.b & 0x1ff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 9;
@@ -965,6 +1032,9 @@ export function WriteArmArrayFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (9 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1128,10 +1198,14 @@ export function ReadArmArrayFlatBits(view, numBits, value) {
 
 // ---- type Narrow: the flat codec ----
 
-// WriteNarrowFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold NarrowMaxBytes.
+// WriteNarrowFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold NarrowMaxBytes.
 export function WriteNarrowFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.n) || value.n < 0 || value.n > 7) {
+    return -1;
+  }
   lo = ((value.n & 0x7));
   view.setUint32(0, lo, true);
   return 1;
@@ -1173,10 +1247,14 @@ export function ReadNarrowFlatBits(view, numBits, value) {
 
 // ---- type Wide: the flat codec ----
 
-// WriteWideFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold WideMaxBytes.
+// WriteWideFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold WideMaxBytes.
 export function WriteWideFlat(view, value) {
   let v = 0, lo = 0;
+  if (value.w < 0n || value.w > 137438953471n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.w, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
@@ -1246,6 +1324,9 @@ export function WriteUnevenFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
+      if (!Number.isInteger(value.narrow.n) || value.narrow.n < 0 || value.narrow.n > 7) {
+        return -1;
+      }
       v = ((value.narrow.n & 0x7)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 3;
@@ -1258,6 +1339,9 @@ export function WriteUnevenFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.wide.w < 0n || value.wide.w > 137438953471n) {
+        return -1;
+      }
       SC.setBigUint64(0, value.wide.w, true);
       v = SC.getUint32(0, true);
       lo = (lo | (v << sb)) >>> 0;
@@ -1422,6 +1506,9 @@ export function ReadUnevenFlatBits(view, numBits, value) {
 // must hold HoldsUnevenMaxBytes.
 export function WriteHoldsUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1429,6 +1516,9 @@ export function WriteHoldsUnevenFlat(view, value) {
   sb = 7;
   switch (value.u.type) {
     case 1: {
+      if (!Number.isInteger(value.u.narrow.n) || value.u.narrow.n < 0 || value.u.narrow.n > 7) {
+        return -1;
+      }
       v = ((value.u.narrow.n & 0x7)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 3;
@@ -1441,6 +1531,9 @@ export function WriteHoldsUnevenFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.u.wide.w < 0n || value.u.wide.w > 137438953471n) {
+        return -1;
+      }
       SC.setBigUint64(0, value.u.wide.w, true);
       v = SC.getUint32(0, true);
       lo = (lo | (v << sb)) >>> 0;
@@ -1462,6 +1555,9 @@ export function WriteHoldsUnevenFlat(view, value) {
       }
       break;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 2047) {
+    return -1;
   }
   v = ((value.tail & 0x7ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1648,6 +1744,9 @@ export function ReadHoldsUnevenFlatBits(view, numBits, value) {
 // must hold ArrUnevenMaxBytes.
 export function WriteArrUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -1669,6 +1768,9 @@ export function WriteArrUnevenFlat(view, value) {
     }
     switch (e0.type) {
       case 1: {
+        if (!Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
+          return -1;
+        }
         v = ((e0.narrow.n & 0x7)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
         sb += 3;
@@ -1681,6 +1783,9 @@ export function WriteArrUnevenFlat(view, value) {
         break;
       }
       case 2: {
+        if (e0.wide.w < 0n || e0.wide.w > 137438953471n) {
+          return -1;
+        }
         SC.setBigUint64(0, e0.wide.w, true);
         v = SC.getUint32(0, true);
         lo = (lo | (v << sb)) >>> 0;
@@ -1703,6 +1808,9 @@ export function WriteArrUnevenFlat(view, value) {
         break;
       }
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+    return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1917,6 +2025,9 @@ export function ReadArrUnevenFlatBits(view, numBits, value) {
 // must hold RegainAfterAlignMaxBytes.
 export function WriteRegainAfterAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -1983,6 +2094,12 @@ export function WriteRegainAfterAlignFlat(view, value) {
       }
     }
   }
+  if (!Number.isInteger(value.p) || value.p < 0 || value.p > 4294967295) {
+    return -1;
+  }
+  if (!Number.isInteger(value.q) || value.q < 0 || value.q > 536870911) {
+    return -1;
+  }
   v = ((value.p >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1992,6 +2109,9 @@ export function WriteRegainAfterAlignFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
+  if (!Number.isInteger(value.r) || value.r < 0 || value.r > 524287) {
+    return -1;
+  }
   v = ((value.q & 0x1fffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
@@ -2000,6 +2120,9 @@ export function WriteRegainAfterAlignFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 15) {
+    return -1;
   }
   v = ((value.r & 0x7ffff) | ((value.tail & 0xf) << 19)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;

@@ -387,9 +387,12 @@ fixed table T
 
 // ---- java/R24 --------------------------------------------------------------
 
-// t04R24 holds java/R24 to all three clauses: ill-formed text in the USED units
-// refuses by name (`textIllFormed`); the length and its clamp are counted in
-// BYTES; and slack is unspecified on read and not a refusal.
+// t04R24 holds java/R24 to the content rule, moved off "slack is unspecified on
+// read and not a refusal". Ill-formed text in the USED units refuses by name
+// (`textIllFormed`); the length and its clamp are counted in BYTES; the content
+// check holds those used units and not the declared bound. Bytes past the used
+// length are dead and a separate zero check refuses them
+// (docs/rulings.json fixed-dead-bytes-are-zero).
 func t04R24(t *testing.T) {
 	runtime := t04Runtime()
 	// (1) the used units alone refuse by name.
@@ -397,8 +400,8 @@ func t04R24(t *testing.T) {
 	t04Has(t, runtime, "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
 	// (2) the length is in bytes and the clamp is the writer's span.
 	t04Has(t, runtime, "final int cap = p.size;", "R24 the clamp is the writer's span")
-	// (3) slack is unspecified: the content check holds the USED bytes (v) and
-	// never the declared bound p.size.
+	// (3) the content check holds the USED bytes (v) and never the declared
+	// bound p.size. The bytes past that length are not this check.
 	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v)) {", "R24 the content check holds the used units and not the slack")
 }
 
