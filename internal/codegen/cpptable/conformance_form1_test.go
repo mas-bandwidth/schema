@@ -41,7 +41,8 @@ import (
 // graph check refuses (§3.1, §6.5), so discarding the walk does not turn it
 // back into a read. Nor are the rows the generated reads refuse themselves:
 // an array, keyed or map body too short for its own header and a repeated
-// field id are damage the declared read discards the load on (§4).
+// field id (a node table riding twice among them) are damage the declared
+// read discards the load on (§4).
 var cppFramingStrictRows = []string{
 	"array_elements_past_count",
 	"frame_unknown_id_length",
@@ -49,7 +50,6 @@ var cppFramingStrictRows = []string{
 	"keyed_slots_past_count",
 	"map_entries_past_count",
 	"node_record_bytes_after_terminator",
-	"node_table_twice",
 	"node_unknown_to_fixed_reader",
 	"frame_unknown_array_count_over_cap",
 	"frame_unknown_keyed_count_over_cap",
