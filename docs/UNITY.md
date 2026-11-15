@@ -152,7 +152,7 @@ public static void ZeroShipCreate(ref ShipCreate value);   // value = default
   `[Preserve]` are needed.
 - **Against serialize.cs's sealed `WriteStream` / `ReadStream`**, which target
   netstandard2.1 at C# 9 themselves. The generated code compiles against
-  serialize.cs v1.9.1, the release the tree pins.
+  serialize.cs v2.1.1, the release the tree pins (SIBLINGS).
 - **The construction form.** C# 9 has no parameterless struct constructor, so a
   type whose closure declares a default or a counted array born above zero gets
   `Schema.New<T>()` and `Schema.Init<T>(ref value)`; for every other type

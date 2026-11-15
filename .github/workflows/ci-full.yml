@@ -2403,6 +2403,71 @@ jobs:
       - name: run the leg
         run: make tables-cs-leg-${{ matrix.config }}
 
+  # THE UNITY PACKET LEG (make/unity.mk, docs/UNITY.md): the generated Unity
+  # code compiled as a netstandard2.1 library at C# 9 (test/unity/
+  # UnityDialect.props) and driven from a .NET host on the pinned SDK. One row
+  # per make target the leg's `test-unity` runs, so a row's cost is its own:
+  # the wire goldens in Debug and Release, the packet-default construction
+  # form, and the packet UTF-8 read against the C++ oracle. The leg's three
+  # negative controls ride the negative-controls matrix (unity-packet,
+  # make/negative-controls.json). It runs on every merge, the nightly and a
+  # dispatch, and on a pull request labelled full-ci.
+  unity:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    name: Unity packet leg (${{ matrix.target }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [unity-wire, packet-defaults-unity, packet-utf8-unity]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # serialize.cs is the runtime the generated code compiles against;
+      # serialize is the C++ runtime the packet UTF-8 oracle builds on.
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          rm -rf "../serialize" "../serialize.cs"
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - name: run the leg's ${{ matrix.target }}
+        run: make ${{ matrix.target }}
+
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in

@@ -4423,8 +4423,15 @@ your own header is needed.
 **C#** — modern .NET: .NET 8 or later and C# 12 or later. Types and unions
 are structs with `[InlineArray]` buffers, taken by `ref`; assigning one
 copies it. Reads scalars without boxing. Unity's runtime (C# 9,
-netstandard2.1) is the job of a separate Unity generator, which is not
-landed yet; this target no longer compiles there.
+netstandard2.1) is the job of the separate Unity generator, `--lang unity`;
+this target no longer compiles there.
+
+**Unity** — `--lang unity`: C# 9 over netstandard2.1, the surface Unity
+2021.2 through Unity 6 compiles, under IL2CPP and AOT. Packet types only.
+Types and unions are unmanaged structs with fixed-size buffers, taken by
+`ref`, against serialize.cs's streams. Writes are checked in debug asserts
+only; a public read checks the whole packet, its end included. See
+[UNITY.md](UNITY.md).
 
 **Dart** — Dart 3, VM and AOT (Flutter release ships AOT — the deployment
 the backend is tuned for). Generated code is **self-contained**: it imports

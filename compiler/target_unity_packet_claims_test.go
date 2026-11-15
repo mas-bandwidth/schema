@@ -10,6 +10,7 @@ func init() {
 	assertsInDebug["unity"] = []string{
 		`Debug.Assert(value.WindowCount >= 2 && value.WindowCount <= 8, "value.WindowCount out of range [2, 8]");`,
 	}
+	goneFromRelease["unity"] = []string{"if (value.WindowCount < 2 || value.WindowCount > 8)"}
 	guardComment["unity"] = " — wire branch"
 	tagEnumSurface["unity"] = tagEnumClaim{
 		noCount:  "WeaponFireTypeCount",
@@ -19,4 +20,5 @@ func init() {
 	tagAssertsInDebug["unity"] = []string{
 		`Debug.Assert(tagValue <= 2, "the union tag is outside [0, 2]");`,
 	}
+	tagGoneFromRelease["unity"] = []string{"if (tagValue > 2)"}
 }
