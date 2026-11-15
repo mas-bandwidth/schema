@@ -893,13 +893,18 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-                if ( TableFixedTagSeen( plan, i, l.guard, guard_pool ) ) { continue; }
-                if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) ) { continue; }
-                if ( !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
+                if ( !TableFixedTagSeen( plan, i, l.guard, guard_pool ) &&
+                     !TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) &&
+                     !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
                 {
                     why = wire_damaged;
                     return true;
                 }
+                // THE CHAIN IS OUTERMOST FIRST: a link that does not hold puts
+                // every deeper tag inside a dead arm, whose bytes this link's
+                // own span has already held to zero. A deeper "tag" there is
+                // the taken arm's data, never a tag, so its span is not read.
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { break; }
             }
         }
         else

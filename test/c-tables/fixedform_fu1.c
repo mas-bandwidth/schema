@@ -53,6 +53,9 @@ void fixed_fu1_read_own( const uint8_t * data, int64_t bytes )
     tblfu1_fu_root_t back[2];
     tblfu1_table_report_t r;
 
+    /* A REFUSED load lands nothing (§6.5), so `back` starts zeroed: a refusal
+       then fails the checks below on zeros, never on uninitialised storage. */
+    memset( back, 0, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
     fixed_check( tblfu1_fu_root_fixed_load( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
                  "C text under an arm: the identity read takes both records" );

@@ -17,6 +17,9 @@ void fixed_fu2_read_fu1( const uint8_t * data, int64_t bytes )
     tblfu2_fu_root_t back[2];
     tblfu2_table_report_t r;
 
+    /* A REFUSED load lands nothing (§6.5), so `back` starts zeroed: a refusal
+       then fails the checks below on zeros, never on uninitialised storage. */
+    memset( back, 0, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
     fixed_check( tblfu2_fu_root_fixed_load( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
                  "C text under an arm: the compiled read takes both records" );

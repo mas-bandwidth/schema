@@ -57,14 +57,18 @@ func TestCJsonNumberAnyLength(t *testing.T) {
 		t.Skipf("cc: %v", err)
 	}
 	rows := []cJsonNumberRow{
-		{"experience-1.509-zeros", `{"experience": 1.`, '0', 509, `}`, "experience=1"},
-		{"experience-1.510-zeros", `{"experience": 1.`, '0', 510, `}`, "experience=1"},
-		{"experience-1.511-zeros", `{"experience": 1.`, '0', 511, `}`, "experience=1"},
-		{"experience-1.600-zeros", `{"experience": 1.`, '0', 600, `}`, "experience=1"},
+		// AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2 Numbers; rulings.json
+		// json-integer-token-only, 2026-11-10): a fraction or an exponent refuses
+		// kind_mismatch at any length, so the integer rows hold both reads to
+		// that refusal and the float and fixed rows below carry the length rule.
+		{"experience-1.509-zeros", `{"experience": 1.`, '0', 509, `}`, "refused"},
+		{"experience-1.510-zeros", `{"experience": 1.`, '0', 510, `}`, "refused"},
+		{"experience-1.511-zeros", `{"experience": 1.`, '0', 511, `}`, "refused"},
+		{"experience-1.600-zeros", `{"experience": 1.`, '0', 600, `}`, "refused"},
 		{"precision-1.600-zeros", `{"precision": 1.`, '0', 600, `}`, "precision=1"},
 		{"unknown-5000-digits", `{"nope": 1`, '0', 4999, `}`, "unknown=1"},
 		{"experience-600-digit-integer", `{"experience": 1`, '0', 599, `}`, "refused"},
-		{"experience-exponent-folds", `{"experience": 100`, '0', 600, `e-600}`, "experience=100"},
+		{"experience-exponent-folds", `{"experience": 100`, '0', 600, `e-600}`, "refused"},
 		{"precision-leading-zeros-fold", `{"precision": 0.`, '0', 1000, `15e1001}`, "precision=1.5"},
 		{"precision-tail-past-halfway", `{"precision": 9007199254740993.`, '0', 1000, `1}`, "precision=9007199254740994"},
 		{"precision-halfway-ties-even", `{"precision": 9007199254740993.`, '0', 1000, `}`, "precision=9007199254740992"},
