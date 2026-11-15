@@ -2564,6 +2564,11 @@ int writeChat(Chat value, ByteData view) {
   var v = 0;
   assert(value.textLength >= 0);
   assert(value.textLength <= 256);
+  assert(Schema.utf8Valid(value.text, value.textLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.textLength; i0++) {
+    assert(value.text[i0] != 0);
+  }
   v = value.textLength & 0x1ff;
   scratch |= v << scratchBits;
   scratchBits += 9;
@@ -3235,6 +3240,11 @@ int writeTestData(TestData value, ByteData view) {
   }
   assert(value.textLength >= 0);
   assert(value.textLength <= 255);
+  assert(Schema.utf8Valid(value.text, value.textLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.textLength; i0++) {
+    assert(value.text[i0] != 0);
+  }
   v = value.fixedBytes[16] | ((value.textLength & 0xff) << 8);
   scratch |= v << scratchBits;
   scratchBits += 16;
