@@ -13,6 +13,7 @@ package benchtable
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 	"unsafe"
 )
 

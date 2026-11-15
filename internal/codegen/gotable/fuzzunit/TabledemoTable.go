@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x41dce6b6d2d9e7ca)
-const _ = uint64(0x41dce6b6d2d9e7ca - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x11536863a144e917)
+const _ = uint64(0x11536863a144e917 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -155,6 +155,8 @@ const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
 
+const tableFixedSlack = goruntime.TableFixedSlack
+
 const tableFixedPresent = goruntime.TableFixedPresent
 
 const tableFixedNoGuard = goruntime.TableFixedNoGuard
@@ -272,6 +274,16 @@ func tableFixedOverlay(a0 unsafe.Pointer, a1 uintptr) []byte {
 const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
+
+func tableMessageSeenOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
+	goruntime.TableMessageSeenOpen(a0, a1, a2)
+}
+
+func tableMessageSeenFirst(a0 *TableVocabulary) { goruntime.TableMessageSeenFirst(a0) }
+
+func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
+	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
+}
 
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 
@@ -2207,6 +2219,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if theirTag >= 1 && theirTag <= 8 {
 			c.argW = uint8(theirTag)
 		}
+		span := te.Size - theirTag
 		myArm := mi + 1
 		for k := range me.Children {
 			ma := tableFixedEntryAt(mine, myArm)
@@ -2224,6 +2237,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 					c.chainLaid = false
 					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
 					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					if ta.Size < span {
+						// THE BYTES PAST A NARROWER TAKEN ARM ARE DEAD.
+						tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag + ta.Size, Size: span - ta.Size, Guard: theirAt, Op: tableFixedSlack})
+					}
 					c.chain = c.chain[:len(c.chain)-1]
 					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
@@ -2231,6 +2248,17 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 				theirArm += tableFixedSubtree(theirs, theirArm)
 			}
 			myArm += tableFixedSubtree(mine, myArm)
+		}
+		// TAG 0 NAMES NO ARM: the whole widest arm's span is dead
+		// (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+		// §3.1, §4.5).
+		if span > 0 {
+			savedAt, savedLaid := c.chainAt, c.chainLaid
+			c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: 0, ArgW: c.argW})
+			c.chainLaid = false
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag, Size: span, Guard: theirAt, Op: tableFixedSlack})
+			c.chain = c.chain[:len(c.chain)-1]
+			c.chainAt, c.chainLaid = savedAt, savedLaid
 		}
 		c.argW = savedW
 	case 30:
