@@ -70,21 +70,30 @@ update-goldens-lobster: ;
 
 # The same two packages' suites as shards, so ci-fast can run each in a row
 # that fits its two-minute cap. Together they run every test
-# test-lobster-packages runs, exactly once: the type surface and the four
-# corpus-reading fixed-form tests, the two forgery fuzz tests, the remaining
-# table tests under TestLobster[A-I], and those outside that range (plus any
-# test not named TestLobster*). Only the corpus-reading shard builds the
-# oracle; the others read committed inputs. test-lobster-packages itself is
-# unchanged and still runs the whole set for make test and ci-full.
-.PHONY: test-lobster-packages-type test-lobster-packages-fixed test-lobster-packages-forgery test-lobster-packages-rest-a test-lobster-packages-rest-b
+# test-lobster-packages runs, exactly once: the type surface, the four
+# corpus-reading fixed-form tests, the forgery fuzz oracle, each of its three
+# reversed witnesses, the cook-write suite, the remaining table tests under
+# TestLobster[A-I], and those outside that range (plus any test not named
+# TestLobster*). Only the corpus-reading shard builds the oracle; the others
+# read committed inputs. test-lobster-packages itself is unchanged and still
+# runs the whole set for make test and ci-full.
+.PHONY: test-lobster-packages-type test-lobster-packages-fixed test-lobster-packages-forgery test-lobster-packages-forgery-block-extent test-lobster-packages-forgery-used-length test-lobster-packages-forgery-cook test-lobster-packages-cook test-lobster-packages-rest-a test-lobster-packages-rest-b
 test-lobster-packages-type: toolchain-lobster
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobster/...
 test-lobster-packages-fixed: toolchain-lobster build/fixedform-corpus/.stamp
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$'
 test-lobster-packages-forgery: toolchain-lobster
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^(TestLobsterForgeryFuzz|TestLobsterForgeryFuzzNegativeControl)$$'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$'
+test-lobster-packages-forgery-block-extent: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed$$'
+test-lobster-packages-forgery-used-length: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzzNegativeControl/block_used_length_unchecked$$'
+test-lobster-packages-forgery-cook: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked$$'
+test-lobster-packages-cook: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterCook'
 test-lobster-packages-rest-a: toolchain-lobster
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[A-I]' -skip '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[A-I]' -skip '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$|^TestLobsterCook'
 test-lobster-packages-rest-b: toolchain-lobster
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -skip '^TestLobster[A-I]|^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$'
 

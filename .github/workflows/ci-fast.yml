@@ -844,23 +844,19 @@ jobs:
   #   wire-fuzz           — tables-lobster-wire-fuzz
   #   packages-type-fixed — the type surface and the four corpus-reading
   #                         fixed-form tests (make/lobster.mk)
-  #   packages-forgery    — the two forgery fuzz tests
+  #   packages-forgery    — the forgery fuzz oracle
+  #   packages-forgery-block-extent / -used-length / -cook
+  #                       — one reversed witness each
+  #   packages-cook       — the cook-write suite
   #   packages-rest-a     — the remaining table tests named TestLobster[A-I]
   #   packages-rest-b     — every remaining table test
-  #                         The four package parts together run every test
+  #                         The package parts together run every test
   #                         test-lobster-packages runs, exactly once, under
   #                         SCHEMA_REQUIRE_CORPUS=1; only the fixed-form part
   #                         builds the byte oracle.
   #   gates               — EVERY OTHER prerequisite of test-lobster, read
   #                         from make itself at run time, so a prerequisite
   #                         added to test-lobster lands here with no edit
-  # THE FORGERY FUZZ PAIR (tables-lobster-fuzz and its control, 133 s and
-  # 145 s alone) is the one thing not on this per-commit lane: a fuzz oracle
-  # over the whole corpus is nightly-class work, and its control is already
-  # the nightly `lobster-forgery` negative-control group. Both still run, and
-  # still go red on their own failure, in `make test-lobster` on ci-full.yml's
-  # go-test unit-codegen row on every merge to main, on the nightly, and on a
-  # pull request labelled full-ci.
   leg-gate-lobster:
     needs: plan
     if: contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
@@ -875,7 +871,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, wire-fuzz, packages-type-fixed, packages-forgery, packages-rest-a, packages-rest-b, gates ]
+        part: [ conformance-a, conformance-b, wire-fuzz, packages-type-fixed, packages-forgery, packages-forgery-block-extent, packages-forgery-used-length, packages-forgery-cook, packages-cook, packages-rest-a, packages-rest-b, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -922,6 +918,10 @@ jobs:
             wire-fuzz)     make toolchain-lobster $w ;;
             packages-type-fixed) make test-lobster-packages-type test-lobster-packages-fixed ;;
             packages-forgery)    make test-lobster-packages-forgery ;;
+            packages-forgery-block-extent) make test-lobster-packages-forgery-block-extent ;;
+            packages-forgery-used-length)  make test-lobster-packages-forgery-used-length ;;
+            packages-forgery-cook)         make test-lobster-packages-forgery-cook ;;
+            packages-cook)       make test-lobster-packages-cook ;;
             packages-rest-a)     make test-lobster-packages-rest-a ;;
             packages-rest-b)     make test-lobster-packages-rest-b ;;
             gates)

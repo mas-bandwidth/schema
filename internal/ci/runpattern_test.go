@@ -259,9 +259,14 @@ type runPatternException struct {
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and two are $(3) templates with no value until the caller
 // expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
-// runs; and slow-gate-coverage's pattern is emitted by tools/slowgatescan
-// when its recipe runs.
+// runs; three select one subtest of the Lobster forgery control, and -list
+// lists top-level tests only and does not split a pattern at a slash, so a
+// subtest pattern cannot be listed; and slow-gate-coverage's pattern is
+// emitted by tools/slowgatescan when its recipe runs.
 var runPatternExceptions = []runPatternException{
+	{"make/lobster.mk:88", "the recipe selects the block extent negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed$"},
+	{"make/lobster.mk:90", "the recipe selects the used-length negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_used_length_unchecked$"},
+	{"make/lobster.mk:92", "the recipe selects the cook negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked$"},
 	{"make/go.mk:323", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
 	{"make/go.mk:459", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
 	{"make/go.mk:531", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},

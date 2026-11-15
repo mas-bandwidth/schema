@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,10 +57,16 @@ const (
 	lobsterForgeryDefaultSeed = uint64(0x4C4F42464F524745)
 	// lobsterForgeryDefaultN is the mutants per image.
 	lobsterForgeryDefaultN = 300
-	// lobsterForgeryResumes is how many VM errors one image may meet before
+	// lobsterForgeryResumes is how many VM errors one job may meet before
 	// the run stops: a correct reader meets none, and a sabotaged one shows
 	// itself in the first few.
 	lobsterForgeryResumes = 8
+	// lobsterForgeryChunks is how many pieces one image's mutants are cut
+	// into. The cost is not spread evenly across images: one block image is
+	// most of the run, so a per-image job would still walk it alone. Each
+	// chunk is a whole, independent mutant range of the same image, and the
+	// chunks run side by side like the images do.
+	lobsterForgeryChunks = 6
 )
 
 func lobsterForgeryKnobs(t *testing.T) (seed uint64, n int) {
@@ -386,52 +393,57 @@ func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit f
 	}
 	type job struct {
 		im      *lobsterForgeryImage
+		start   int // this chunk's first mutant in the image
 		dir     string
 		mutants []lobsterForgeryMutant
 		whole   []bool // a cook the tool's cook-check accepts
 		answers map[int]string
 		threw   map[int]string
 	}
+	chunk := (n + lobsterForgeryChunks - 1) / lobsterForgeryChunks
 	var jobs []*job
 	for _, im := range append(append([]*lobsterForgeryImage{}, blocks...), cooks...) {
 		g := gens[im.unit]
-		j := &job{im: im, dir: t.TempDir(), answers: map[int]string{}, threw: map[int]string{}}
-		entries, err := os.ReadDir(g.dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, e := range entries {
-			data, err := os.ReadFile(filepath.Join(g.dir, e.Name()))
+		for lo := 0; lo < n; lo += chunk {
+			hi := min(lo+chunk, n)
+			j := &job{im: im, start: lo, dir: t.TempDir(), answers: map[int]string{}, threw: map[int]string{}}
+			entries, err := os.ReadDir(g.dir)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(j.dir, e.Name()), data, 0o644); err != nil {
+			for _, e := range entries {
+				data, err := os.ReadFile(filepath.Join(g.dir, e.Name()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(j.dir, e.Name()), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var b strings.Builder
+			for _, mod := range g.mods {
+				fmt.Fprintf(&b, "import .%s\n", mod)
+			}
+			b.WriteString("import .block_form\nimport .cook\n")
+			b.WriteString(lobsterForgeryProbe)
+			if err := os.WriteFile(filepath.Join(j.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
 				t.Fatal(err)
 			}
-		}
-		var b strings.Builder
-		for _, mod := range g.mods {
-			fmt.Fprintf(&b, "import .%s\n", mod)
-		}
-		b.WriteString("import .block_form\nimport .cook\n")
-		b.WriteString(lobsterForgeryProbe)
-		if err := os.WriteFile(filepath.Join(j.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		for i := range n {
-			mu := lobsterForgeryMutate(im.bytes, im.words, seed^forgeryFNV64(im.name)^(uint64(i+1)*0x9E3779B97F4A7C15))
-			j.mutants = append(j.mutants, mu)
-			whole := false
-			if im.m != nil && mu.lead == 0 {
-				_, err := tablecook.Check(im.m, mu.bytes)
-				whole = err == nil
+			for i := lo; i < hi; i++ {
+				mu := lobsterForgeryMutate(im.bytes, im.words, seed^forgeryFNV64(im.name)^(uint64(i+1)*0x9E3779B97F4A7C15))
+				j.mutants = append(j.mutants, mu)
+				whole := false
+				if im.m != nil && mu.lead == 0 {
+					_, err := tablecook.Check(im.m, mu.bytes)
+					whole = err == nil
+				}
+				j.whole = append(j.whole, whole)
 			}
-			j.whole = append(j.whole, whole)
+			jobs = append(jobs, j)
 		}
-		jobs = append(jobs, j)
 	}
 	var wg sync.WaitGroup
-	slots := make(chan struct{}, 6)
+	slots := make(chan struct{}, min(runtime.GOMAXPROCS(0), lobsterForgeryChunks))
 	for _, j := range jobs {
 		wg.Go(func() {
 			slots <- struct{}{}
@@ -482,7 +494,7 @@ func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit f
 	var res lobsterForgeryResult
 	for _, j := range jobs {
 		for i, mu := range j.mutants {
-			where := fmt.Sprintf("%s mutant %d (%s, base +%d)", j.im.name, i, mu.describe, mu.lead)
+			where := fmt.Sprintf("%s mutant %d (%s, base +%d)", j.im.name, j.start+i, mu.describe, mu.lead)
 			if msg, ok := j.threw[i]; ok {
 				res.mutants++
 				res.findings = append(res.findings, fmt.Sprintf("%s: a read of the forgery left the bytes (THREW: %s)", where, msg))
