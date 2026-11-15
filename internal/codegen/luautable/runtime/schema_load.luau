@@ -2513,6 +2513,11 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 			return nil
 		end
 		if _countRefused then
+			-- the wire-alone walk's count refusal (§2.9): name it as the value
+			-- walk does, so a refusal is never silent
+			restoreCount(rep)
+			rep.refused = (rep.refused or 0) + 1
+			rep.reason = "count_over_extent_cap"
 			return nil
 		end
 		if damaged then
