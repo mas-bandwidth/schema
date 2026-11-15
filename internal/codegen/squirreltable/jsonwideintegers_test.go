@@ -72,6 +72,7 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 
 	type vector struct {
 		name, json, verdict string
+		body                []byte
 	}
 	var vectors []vector
 	for i, line := range strings.Split(string(manifest), "\n") {
@@ -95,6 +96,27 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 		t.Fatal("no vector rows read; the gate would pass over an empty set")
 	}
 
+	// A NUMBER TOKEN IS READ AT ANY LENGTH (docs/SPEC-TABLES.md §16.2
+	// Numbers): a wide fixed-point field's long in-range spelling is the same
+	// value as its canonical "0.5", and the writer spells the canonical text.
+	longFrac := "0.5" + strings.Repeat("0", 600)
+	vectors = append(vectors, vector{
+		name:    "long-number",
+		verdict: "read",
+		body: []byte(`{
+  "small": 7,
+  "wide": -42,
+  "uwide": 18446744073709551615,
+  "wide128": 170141183460469231731687303715884105727,
+  "ranged": 9007199254740993,
+  "frac": ` + longFrac + `,
+  "counts": {
+    "0": 1,
+    "9007199254740993": 2
+  }
+}`),
+	})
+
 	unit := loadSource(t, jsonIntegersSchema)
 	out := t.TempDir()
 	mod := emitUnit(t, out, "jsonintegers", unit)
@@ -104,9 +126,12 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 	probe.WriteString(jsonIntegersProbe)
 	inputs := map[string][]byte{}
 	for _, v := range vectors {
-		body, err := os.ReadFile(filepath.Join(dir, v.json))
-		if err != nil {
-			t.Fatalf("%s: %v", v.name, err)
+		body := v.body
+		if body == nil {
+			body, err = os.ReadFile(filepath.Join(dir, v.json))
+			if err != nil {
+				t.Fatalf("%s: %v", v.name, err)
+			}
 		}
 		inputs[v.name+".json"] = body
 	}

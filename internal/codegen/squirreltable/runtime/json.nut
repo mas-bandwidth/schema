@@ -2440,7 +2440,9 @@ readScalar = function(T, d, r, holder, key, depth, where) {
     if (d.kind == 5 || d.kind == 9) x = placeInteger(d, tok, true, r.report);
     else x = placeWide(d, tok, r.report);
   } else {
-    local num = scanNumber(r);
+    // A NUMBER TOKEN IS READ AT ANY LENGTH (docs/SPEC-TABLES.md §16.2
+    // Numbers): the token's length is never why it is refused.
+    local num = scanNumber(r, false);
     if (num == null) { r.bad = true; return false; }
     if (d.shape == "float") x = placeFloat(d, num[0], r.report);
     else if (wideIntegerKind(d.kind)) {
