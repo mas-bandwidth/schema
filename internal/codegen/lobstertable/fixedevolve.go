@@ -950,9 +950,6 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 			g.Pf("%sif not schema_rt.finite_f64(%s):\n%s    return false\n", ind, expr, ind)
 			if f.HasFloatRange {
 				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat(f.FMin), expr, lobster.FormatFloat(f.FMax), ind)
-				if pass == fixedPassRead {
-					g.Pf("%sif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
-				}
 			}
 			return true
 		case ir.TString:
