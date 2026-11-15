@@ -33,8 +33,11 @@ public final class NegZeroProbe {
 
     public static void main(String[] args) throws Exception {
         byte[] data = Files.readAllBytes(Paths.get(args[0]));
-        final int layoutBytes = TableFixed.get32(data, NegZeroFixed.headerBytes);
-        final int valueAt = NegZeroFixed.headerBytes + 4 + layoutBytes + 8 + 4;
+        if (data.length < TableFixed.fileHeaderBytes + 4) {
+            fail("the vector is too short for its header: " + data.length);
+        }
+        final int layoutBytes = TableFixed.get32(data, TableFixed.fileHeaderBytes);
+        final int valueAt = TableFixed.fileHeaderBytes + 4 + layoutBytes + 8 + 4;
         if (valueAt + 4 > data.length) {
             fail("the vector is too short for its value slot: " + data.length);
         }
