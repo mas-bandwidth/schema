@@ -201,6 +201,20 @@ local decimalCompare = function(x, y) {
   return 0;
 };
 
+// integerToken: the one spelling an integer field takes (docs/SPEC-TABLES.md
+// §16.2 Numbers) — digits with an optional minus, no leading zero, no
+// fraction, no exponent, and not -0.
+local integerToken = function(tok) {
+  local i = 0, n = tok.len();
+  local negative = false;
+  if (i < n && tok[i] == '-') { negative = true; i++; }
+  if (i >= n) return false;
+  if (tok[i] == '0') return !negative && i + 1 == n;
+  if (tok[i] < '1' || tok[i] > '9') return false;
+  for (; i < n; i++) if (tok[i] < '0' || tok[i] > '9') return false;
+  return true;
+};
+
 local exactDecimal; // a double's exact decimal, defined with the wide kinds
 
 // THE NEAREST FLOAT32 TO A DECIMAL TOKEN, ROUNDED ONCE (internal/tabletext
@@ -396,6 +410,13 @@ exactDecimal = function(d) {
 
 local wideSigned = function(kind) { return kind == 18 || (kind >= 20 && kind <= 24); };
 local wideKind = function(kind) { return kind >= 18 && kind <= 29; };
+// AN INTEGER KIND WIDER THAN 32 BITS (docs/SPEC-TABLES.md §16.2, W10): int64,
+// uint64, int128, uint128 and the 64- and 128-bit fixed-point kinds. These are
+// the kinds the JSON form writes as a STRING of decimal digits.
+local wideIntegerKind = function(kind) {
+  return kind == 5 || kind == 9 || kind == 18 || kind == 19 ||
+    kind == 23 || kind == 24 || kind == 28 || kind == 29;
+};
 
 // the 128-bit domain of a kind's signedness (wide.go wideLimits)
 local SIGNED_LIMITS = [[true, bnShl([1], 127)],
@@ -578,6 +599,7 @@ local shapeOf = function(T, d) {
     case "bool": return 'b';
   }
   if (d.kind == 36) return 's';
+  if (wideIntegerKind(d.kind)) return 'N';
   return 'n';
 };
 local elemShapeOf = function(T, e) {
@@ -589,7 +611,14 @@ local elemShapeOf = function(T, e) {
     case "bool": return 'b';
   }
   if (e.kind == 36) return 's';
+  if (wideIntegerKind(e.kind)) return 'N';
   return 'n';
+};
+// shapeMatches: a wide integer declares 'N' and takes a string OR a number
+// (§16.2); every other shape is exact.
+local shapeMatches = function(want, got) {
+  if (want == got) return true;
+  return want == 'N' && (got == 's' || got == 'n');
 };
 local takesNull = function(d) {
   return d.optional || d.shape == "ptr" || d.shape == "sblob" || d.shape == "bblob";
@@ -1266,7 +1295,19 @@ writeScalar = function(T, d, val, depth, g, out) {
   }
   if (d.kind == 36) { out.append(jsonString(timestampText(val))); return true; }
   if (!intAdmitted(d, val)) return false;
+  if (wideIntegerKind(d.kind)) {
+    // A KIND WIDER THAN 32 BITS IS A STRING OF DIGITS (W10, W11)
+    local text;
+    if (wideKind(d.kind)) text = formatWide(wideOf(d, val), d.kind, has(d, "frac") ? d.frac : 0);
+    else if (d.kind == 5) text = val.tostring();
+    else text = utoa(val);
+    local s = jsonString(text);
+    if (s == null) return false;
+    out.append(s);
+    return true;
+  }
   if (wideKind(d.kind)) {
+    // a fixed kind of 32 bits or under stays a bare number (W11)
     out.append(formatWide(wideOf(d, val), d.kind, has(d, "frac") ? d.frac : 0));
     return true;
   }
@@ -1723,7 +1764,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
         v[fd.member] = c.make()[fd.member];
         if (fd.optional) v[fd.member + "Present"] = false;
       } else {
-        if (shape != shapeOf(T, fd)) {
+        if (!shapeMatches(shapeOf(T, fd), shape)) {
           r.report.mismatch++;
           if (!skipValue(r, depth + 1)) return false;
         } else if (!readField(T, c, fd, r, v, depth)) {
@@ -1856,7 +1897,7 @@ readArray = function(T, c, fd, r, v, depth) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
-    } else if (vs != shape) {
+    } else if (!shapeMatches(shape, vs)) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
       placed++;
@@ -1993,7 +2034,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
     if (slot < 0) {
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
-    } else if (valueShape(r) != shape) {
+    } else if (!shapeMatches(shape, valueShape(r))) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
@@ -2054,8 +2095,10 @@ readMap = function(T, c, fd, r, v, depth) {
         r.bad = true;
         return false;
       }
+      // THE KEY READS BY THE INTEGER RULE AND BY NOTHING ELSE (§16.2): a
+      // fraction, an exponent or -0 is the wrong shape, never a shorter key.
       local dom = mapKeyInDomain(kd, num);
-      if (!dom[0]) r.report.mismatch++;
+      if (!integerToken(key) || !dom[0]) r.report.mismatch++;
       else { ent[kd.member] = dom[1]; placed = true; }
     }
     local valueOk = false;
@@ -2070,7 +2113,7 @@ readMap = function(T, c, fd, r, v, depth) {
         ent[vd.member] = fresh[vd.member];
         if (vd.optional) ent[vd.member + "Present"] = false;
         valueOk = true;
-      } else if (shape != shapeOf(T, vd)) {
+      } else if (!shapeMatches(shapeOf(T, vd), shape)) {
         r.report.mismatch++;
         if (!skipValue(r, depth + 1)) return false;
       } else if (!readField(T, ed, vd, r, ent, depth)) {
@@ -2206,8 +2249,11 @@ local compareSigned = function(aNeg, aMag, bNeg, bMag) {
 // value is the wrong shape. THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH,
 // the wire's order (§4, read.go placeInteger).
 local placeInteger = function(d, tok, integral, report) {
+  // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2 Numbers): no fraction,
+  // no exponent, no -0, and the value never passes through a double.
+  if (!integral || !integerToken(tok)) { report.mismatch++; return null; }
   local signed = d.kind >= 2 && d.kind <= 5;
-  local num = interpretInteger(tok, integral);
+  local num = interpretInteger(tok, true);
   if (!num.finite || num.fractional) { report.mismatch++; return null; }
   if (num.saturated) report.oor++;
   local mag = num.mag, neg = num.neg;
@@ -2272,6 +2318,9 @@ local placeFloat = function(d, tok, report) {
 // a magnitude past the storage saturates and counts; the declared raw range
 // clamps after it
 local placeWide = function(d, tok, report) {
+  // A 128-BIT INTEGER TAKES AN INTEGER TOKEN ONLY (§16.2 Numbers); a fixed
+  // kind keeps its exact decimal, which its Q I.F spelling admits.
+  if ((d.kind == 18 || d.kind == 19) && !integerToken(tok)) { report.mismatch++; return null; }
   local pw = parseWide(tok, d.kind, has(d, "frac") ? d.frac : 0);
   if (!pw[1]) { report.mismatch++; return null; }
   if (pw[2]) report.oor++;
@@ -2381,13 +2430,27 @@ readScalar = function(T, d, r, holder, key, depth, where) {
     holder[key] = ns;
     return true;
   }
-  local num = scanNumber(r);
-  if (num == null) { r.bad = true; return false; }
   local x;
-  if (d.shape == "float") x = placeFloat(d, num[0], r.report);
-  else if (wideKind(d.kind)) x = placeWide(d, num[0], r.report);
-  else if (d.shape == "int") x = placeInteger(d, num[0], num[1], r.report);
-  else { r.bad = true; return false; }
+  if (wideIntegerKind(d.kind) && valueShape(r) == 's') {
+    // a wide integer reads as a STRING or a number, the same digits (§16.2)
+    local s = scanBytes(r, -1);
+    if (s == null) return false;
+    if (hasZero(s[0])) return textZero(r, where);
+    local tok = bytesToString(s[0]);
+    if (d.kind == 5 || d.kind == 9) x = placeInteger(d, tok, true, r.report);
+    else x = placeWide(d, tok, r.report);
+  } else {
+    local num = scanNumber(r);
+    if (num == null) { r.bad = true; return false; }
+    if (d.shape == "float") x = placeFloat(d, num[0], r.report);
+    else if (wideIntegerKind(d.kind)) {
+      if (d.kind == 5 || d.kind == 9) x = placeInteger(d, num[0], num[1], r.report);
+      else x = placeWide(d, num[0], r.report);
+    }
+    else if (wideKind(d.kind)) x = placeWide(d, num[0], r.report);
+    else if (d.shape == "int") x = placeInteger(d, num[0], num[1], r.report);
+    else { r.bad = true; return false; }
+  }
   if (x != null) holder[key] = x;
   return true;
 };
@@ -2441,7 +2504,7 @@ readUnion = function(T, u, r, holder, key, depth) {
       if (!literal(r, "null")) return false;
       inst.Type = arm.tag;
       inst[p.member] = fresh[p.member];
-    } else if (shape != shapeOf(T, p)) {
+    } else if (!shapeMatches(shapeOf(T, p), shape)) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
