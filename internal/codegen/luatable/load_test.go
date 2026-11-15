@@ -280,11 +280,8 @@ func TestLuaTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = "  if bytes:byte(1) ~= 1 then\n    report.refused = 1\n"
 	const sabotaged = "  if false then\n    report.refused = 1\n"
-	const fixedAnchor = `local function read_impl(T, name, buf, strict)
-  if #buf < 1 then error("malformed") end`
-	const fixedSabotaged = `local function read_impl(T, name, buf, strict)
-  if true then return {} end
-  if #buf < 1 then error("malformed") end`
+	const fixedAnchor = `  local ok, out, h, l = pcall(load_impl, T, name, buf, strict, 1)`
+	const fixedSabotaged = `  local ok, out, h, l = true, { {} }, 0, ""`
 	patched := map[string]int{}
 	patch := func(name string, src []byte) []byte {
 		a, s := anchor, sabotaged

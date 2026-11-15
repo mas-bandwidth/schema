@@ -49,60 +49,71 @@ table T
 }
 `
 
-// toJSONOffContractCase is one value of one field: in Squirrel storage (an
-// expression), and as the JSON value an unchecked writer would spell it.
-// lawful says the declaration admits it: the twin at the boundary.
-type toJSONOffContractCase struct {
+// offContractCase is one value of one field, shared by the text and variable
+// probes. The text form names the value in Squirrel storage (an expression)
+// and as the JSON value an unchecked writer would spell it; lawful says the
+// declaration admits it: the twin at the boundary. The variable form carries
+// the same value in the Go engine's model and in Squirrel: goBad and goGood
+// are the model's bad and good twin, nil where the engine has no way to hold
+// it (a wrong Squirrel type) or where its writer does not refuse it today (a
+// zero byte in a *string), and goGood is nil for the enum-keyed array row,
+// whose twin is held on the Squirrel side. nutBad and nutGood are the
+// Squirrel statements that set each twin.
+type offContractCase struct {
 	name, field, squirrel, text string
 	lawful                      bool
+	goBad                       func(*tabletext.Model, *tabletext.Instance)
+	goGood                      func(*tabletext.Model, *tabletext.Instance)
+	nutBad                      string
+	nutGood                     string
 }
 
-var offContractCases = []toJSONOffContractCase{
-	{"range_high", "r", "101", "101", false},
-	{"range_low", "r", "-6", "-6", false},
-	{"range_high_edge", "r", "100", "100", true},
-	{"range_low_edge", "r", "-5", "-5", true},
-	{"urange_high", "u", "0x8000000000000001", "9223372036854775809", false},
-	{"urange_low", "u", "9", "9", false},
-	{"urange_high_edge", "u", "0x8000000000000000", "9223372036854775808", true},
-	{"urange_low_edge", "u", "10", "10", true},
-	{"wide_high", "q", "[101, 0]", "101", false},
-	{"wide_low", "q", "[-6, -1]", "-6", false},
-	{"wide_high_edge", "q", "[100, 0]", "100", true},
-	{"wide_low_edge", "q", "[-5, -1]", "-5", true},
-	{"bits_wide", "m", "32", "32", false},
-	{"bits_edge", "m", "31", "31", true},
-	{"count_past", "c", "[1, 2, 3, 4]", "[1,2,3,4]", false},
-	{"count_edge", "c", "[1, 2, 3]", "[1,2,3]", true},
-	{"count_past_max", "k", "[1, 2, 3, 4, 5]", "[1,2,3,4,5]", false},
-	{"count_below_min", "k", "[1]", "[1]", false},
-	{"count_min_edge", "k", "[1, 2]", "[1,2]", true},
-	{"text_array_below_min", "tm", `[textEntry("a")]`, `[{"value":"a"}]`, false},
-	{"text_array_min_edge", "tm", `[textEntry("a"), textEntry("b")]`, `[{"value":"a"},{"value":"b"}]`, true},
-	{"count_max_edge", "k", "[1, 2, 3, 4]", "[1,2,3,4]", true},
-	{"elem_high", "e", "[0, 10, 0]", "[0,10,0]", false},
-	{"elem_low", "e", "[0, -1, 0]", "[0,-1,0]", false},
-	{"elem_past_bound", "e", "[0, 0, 0, 0]", "[0,0,0,0]", false},
-	{"elem_edge", "e", "[0, 9, 0]", "[0,9,0]", true},
-	{"string_past", "s", `"abcde"`, `"abcde"`, false},
-	{"string_edge", "s", `"abcd"`, `"abcd"`, true},
-	{"bytes_past", "b", `"\x01\x02\x03\x04"`, `"AQIDBA=="`, false},
-	{"bytes_edge", "b", `"\x01\x02\x03"`, `"AQID"`, true},
-	{"textlist_count_past", "ts", `textList(["a", "b", "c"])`, `["a","b","c"]`, false},
-	{"textlist_elem_past", "ts", `textList(["abcde"])`, `["abcde"]`, false},
-	{"textlist_edge", "ts", `textList(["abcd", "b"])`, `["abcd","b"]`, true},
-	{"float_high", "f", "1.5", "1.5", false},
-	{"float_low", "f", "-1.5", "-1.5", false},
-	{"float_high_edge", "f", "1.0", "1", true},
-	{"float_low_edge", "f", "-1.0", "-1", true},
-	{"map_key_past", "mp", `mapOf("abcde", 1)`, `{"abcde":1}`, false},
-	{"map_key_edge", "mp", `mapOf("abcd", 1)`, `{"abcd":1}`, true},
-	{"float_string", "fl", `"x"`, `"x"`, false},
-	{"float_table", "fl", "{}", "{}", false},
-	{"float_number", "fl", "0.5", "0.5", true},
-	{"bool_string", "bo", `"x"`, `"x"`, false},
-	{"bool_integer", "bo", "1", "1", false},
-	{"bool_edge", "bo", "true", "true", true},
+var offContractCases = []offContractCase{
+	{name: "range_high", field: "r", squirrel: "101", text: "101", lawful: false},
+	{name: "range_low", field: "r", squirrel: "-6", text: "-6", lawful: false},
+	{name: "range_high_edge", field: "r", squirrel: "100", text: "100", lawful: true},
+	{name: "range_low_edge", field: "r", squirrel: "-5", text: "-5", lawful: true},
+	{name: "urange_high", field: "u", squirrel: "0x8000000000000001", text: "9223372036854775809", lawful: false},
+	{name: "urange_low", field: "u", squirrel: "9", text: "9", lawful: false},
+	{name: "urange_high_edge", field: "u", squirrel: "0x8000000000000000", text: "9223372036854775808", lawful: true},
+	{name: "urange_low_edge", field: "u", squirrel: "10", text: "10", lawful: true},
+	{name: "wide_high", field: "q", squirrel: "[101, 0]", text: "101", lawful: false},
+	{name: "wide_low", field: "q", squirrel: "[-6, -1]", text: "-6", lawful: false},
+	{name: "wide_high_edge", field: "q", squirrel: "[100, 0]", text: "100", lawful: true},
+	{name: "wide_low_edge", field: "q", squirrel: "[-5, -1]", text: "-5", lawful: true},
+	{name: "bits_wide", field: "m", squirrel: "32", text: "32", lawful: false},
+	{name: "bits_edge", field: "m", squirrel: "31", text: "31", lawful: true},
+	{name: "count_past", field: "c", squirrel: "[1, 2, 3, 4]", text: "[1,2,3,4]", lawful: false},
+	{name: "count_edge", field: "c", squirrel: "[1, 2, 3]", text: "[1,2,3]", lawful: true},
+	{name: "count_past_max", field: "k", squirrel: "[1, 2, 3, 4, 5]", text: "[1,2,3,4,5]", lawful: false},
+	{name: "count_below_min", field: "k", squirrel: "[1]", text: "[1]", lawful: false},
+	{name: "count_min_edge", field: "k", squirrel: "[1, 2]", text: "[1,2]", lawful: true},
+	{name: "text_array_below_min", field: "tm", squirrel: `[textEntry("a")]`, text: `[{"value":"a"}]`, lawful: false},
+	{name: "text_array_min_edge", field: "tm", squirrel: `[textEntry("a"), textEntry("b")]`, text: `[{"value":"a"},{"value":"b"}]`, lawful: true},
+	{name: "count_max_edge", field: "k", squirrel: "[1, 2, 3, 4]", text: "[1,2,3,4]", lawful: true},
+	{name: "elem_high", field: "e", squirrel: "[0, 10, 0]", text: "[0,10,0]", lawful: false},
+	{name: "elem_low", field: "e", squirrel: "[0, -1, 0]", text: "[0,-1,0]", lawful: false},
+	{name: "elem_past_bound", field: "e", squirrel: "[0, 0, 0, 0]", text: "[0,0,0,0]", lawful: false},
+	{name: "elem_edge", field: "e", squirrel: "[0, 9, 0]", text: "[0,9,0]", lawful: true},
+	{name: "string_past", field: "s", squirrel: `"abcde"`, text: `"abcde"`, lawful: false},
+	{name: "string_edge", field: "s", squirrel: `"abcd"`, text: `"abcd"`, lawful: true},
+	{name: "bytes_past", field: "b", squirrel: `"\x01\x02\x03\x04"`, text: `"AQIDBA=="`, lawful: false},
+	{name: "bytes_edge", field: "b", squirrel: `"\x01\x02\x03"`, text: `"AQID"`, lawful: true},
+	{name: "textlist_count_past", field: "ts", squirrel: `textList(["a", "b", "c"])`, text: `["a","b","c"]`, lawful: false},
+	{name: "textlist_elem_past", field: "ts", squirrel: `textList(["abcde"])`, text: `["abcde"]`, lawful: false},
+	{name: "textlist_edge", field: "ts", squirrel: `textList(["abcd", "b"])`, text: `["abcd","b"]`, lawful: true},
+	{name: "float_high", field: "f", squirrel: "1.5", text: "1.5", lawful: false},
+	{name: "float_low", field: "f", squirrel: "-1.5", text: "-1.5", lawful: false},
+	{name: "float_high_edge", field: "f", squirrel: "1.0", text: "1", lawful: true},
+	{name: "float_low_edge", field: "f", squirrel: "-1.0", text: "-1", lawful: true},
+	{name: "map_key_past", field: "mp", squirrel: `mapOf("abcde", 1)`, text: `{"abcde":1}`, lawful: false},
+	{name: "map_key_edge", field: "mp", squirrel: `mapOf("abcd", 1)`, text: `{"abcd":1}`, lawful: true},
+	{name: "float_string", field: "fl", squirrel: `"x"`, text: `"x"`, lawful: false},
+	{name: "float_table", field: "fl", squirrel: "{}", text: "{}", lawful: false},
+	{name: "float_number", field: "fl", squirrel: "0.5", text: "0.5", lawful: true},
+	{name: "bool_string", field: "bo", squirrel: `"x"`, text: `"x"`, lawful: false},
+	{name: "bool_integer", field: "bo", squirrel: "1", text: "1", lawful: false},
+	{name: "bool_edge", field: "bo", squirrel: "true", text: "true", lawful: true},
 }
 
 // offContractPrelude sets each case's field on an otherwise lawful T (k holds
