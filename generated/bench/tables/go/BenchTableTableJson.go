@@ -1715,14 +1715,14 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if f.HasRange {
 			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, the special values):
-			// it is inside the range, so it does not count, and the sign bit
-			// is a spelling the declaration cannot name. A NaN or an infinity
-			// never reaches this line: the text has no spelling for either
-			// and the walk above refused it as kind_mismatch.
-			if value < f.RangeMin {
+			// it is inside the range, so it does not count, and the sign bit is
+			// a spelling the declaration cannot name. A float32 field's ends are
+			// compared at float32; a NaN or an infinity never reaches this line:
+			// the text has no spelling for either and the walk above refused it.
+			if value < f.RangeMin && (!single || float32(value) < float32(f.RangeMin)) {
 				value = f.RangeMin
 				in.report.Refuse(TableRefuseOutOfRange, "")
-			} else if value > f.RangeMax {
+			} else if value > f.RangeMax && (!single || float32(value) > float32(f.RangeMax)) {
 				value = f.RangeMax
 				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value == 0 {
