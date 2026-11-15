@@ -1529,9 +1529,14 @@ local function resolve(report: any)
 			else
 				local n = _nodes[p.index - 1]
 				-- §3.1: a placeholder is a refused record; every pointer
-				-- naming it reads null, counted once at the node, not here
-				if n ~= nil and n.kind ~= "x" then
-					if p.d.s == "sblob" then
+				-- naming it reads null, counted once at the node, not here.
+				-- A placeholder of a type this reader DECLARES is not a newer
+				-- writer's type: naming it at a slot that is not its target is
+				-- damage, and the whole load refuses.
+				if n ~= nil then
+					if n.kind == "x" then
+						if n.declared then report.kindMismatch = report.kindMismatch + 1 end
+					elseif p.d.s == "sblob" then
 						if n.kind == "s" then
 							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
 							landed[n] = true
@@ -1698,9 +1703,12 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 				local nc = place[tid]
 				if nc == nil then
 					-- §3.1: a type id this reader cannot name is counted once
-					-- here and KEEPS ITS INDEX; the placeholder grows the array
+					-- here and KEEPS ITS INDEX; the placeholder grows the array.
+					-- A type it DECLARES at a slot that is not its target is
+					-- damage, so the placeholder remembers that it was named.
 					report.unknown = report.unknown + 1
-					_nodes[#_nodes + 1] = { kind = "x" }
+					local declared = S.tableId(tid) or tid == StringBlobId or tid == BytesBlobId
+					_nodes[#_nodes + 1] = { kind = "x", declared = declared }
 				else
 					local inst = nc.new()
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = inst, body = rec.body }
