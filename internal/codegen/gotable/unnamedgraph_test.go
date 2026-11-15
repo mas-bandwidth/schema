@@ -113,4 +113,51 @@ func TestUnnamedGraph(t *testing.T) {
 	refuses(t, "a named cycle", file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
 		node(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) })))
 }
+
+func blob(id uint64, data []byte) record { return record{id, data} }
+
+// both reads one input on every path, the retaining load included, and
+// requires the verdict given.
+func both(t *testing.T, what string, wire []byte, want bool) {
+	t.Helper()
+	if want { accepts(t, what, wire) } else { refuses(t, what, wire) }
+	if retainLoad(wire) != want { t.Fatalf("%s: the retaining read answered %v", what, !want) }
+}
+
+// A blob record is a leaf of the graph under every root (docs/SPEC-TABLES.md
+// §2.5, §3.1, §4): Node reaches no *bytes and no *string, so this reader
+// places no blob, yet a blob record's bytes are never read as a body, it is
+// named from exactly one slot, its text is well formed, and a declared slot
+// that names one at another type is damage.
+func TestBlobRecordsAreLeavesUnderEveryRoot(t *testing.T) {
+	var ids TableIds
+	spells := func(index uint64) []byte { return body(&ids, func(w *TableWriter) { ptr(w, unknownField, index); w.Put8(0) }) }
+	both(t, "a bytes blob whose bytes spell a pointer, beside a record no pointer reaches",
+		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableBytesTypeID, spells(3)), stranger(&ids, func(w *TableWriter) {})), false)
+	both(t, "a bytes blob whose bytes spell a pointer to itself",
+		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableBytesTypeID, spells(2))), true)
+	both(t, "a string blob reached by an unknown field",
+		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableStringTypeID, []byte("hello"))), true)
+	both(t, "a bytes blob reached through an unnameable record",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), blob(tableBytesTypeID, []byte{0})), true)
+	both(t, "a string blob reached through a named record's unknown field",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) }, node(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), blob(tableStringTypeID, []byte("hello"))), true)
+	both(t, "a bytes blob named by two unknown fields",
+		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2); ptr(w, unknownField+1, 2) }, blob(tableBytesTypeID, []byte{0})), false)
+	both(t, "a bytes blob named by the root and by an unnameable record",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2); ptr(w, unknownField, 3) }, stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), blob(tableBytesTypeID, []byte{0})), false)
+	both(t, "a bytes blob no pointer reaches",
+		file(&ids, func(w *TableWriter) {}, blob(tableBytesTypeID, []byte{0})), false)
+	both(t, "a string blob that is not well-formed text",
+		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableStringTypeID, []byte{0xff})), false)
+	both(t, "a declared *Node slot naming a bytes blob",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) }, blob(tableBytesTypeID, []byte{0})), false)
+	both(t, "a declared *Leaf slot naming a string blob",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, blob(tableStringTypeID, []byte("hello"))), false)
+	var seen TableReport
+	reached := file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableStringTypeID, []byte("hello")))
+	if NodeLoad(region(max(NodeLoadMeasure(reached), 1)), reached, &seen) == nil || seen.Unknown != 1 {
+		t.Fatalf("a reached blob this root places nowhere did not read as one unknown: %+v", seen)
+	}
+}
 `
