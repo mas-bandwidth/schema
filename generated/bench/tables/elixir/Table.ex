@@ -5921,6 +5921,11 @@ defmodule Benchtable.Table do
     {value, seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
+        if byte_size(k) > 255 do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+
         if Map.get(report, :missing_required, 0) > 0 or
              Process.get(:elixir_json_bad, false) do
           {value, seen, report}
@@ -5982,11 +5987,17 @@ defmodule Benchtable.Table do
       Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
     end
 
-    Enum.each(rest, fn {_k, v} -> json_skip_value(v) end)
+    Enum.each(rest, fn {k, v} ->
+      json_skip_key(k)
+      json_skip_value(v)
+    end)
   end
 
   defp json_skip_value({:obj, pairs}) do
-    Enum.each(pairs, fn {_k, v} -> json_skip_value(v) end)
+    Enum.each(pairs, fn {k, v} ->
+      json_skip_key(k)
+      json_skip_value(v)
+    end)
   end
 
   defp json_skip_value(items) when is_list(items) do
@@ -5994,6 +6005,15 @@ defmodule Benchtable.Table do
   end
 
   defp json_skip_value(_other), do: :ok
+
+  # a skipped object's keys are schema names too: the 255-byte cap reaches
+  # every object, the dropped one included (docs/SPEC-TABLES.md §16.2).
+  defp json_skip_key(k) do
+    if byte_size(k) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+  end
 
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
@@ -6035,6 +6055,11 @@ defmodule Benchtable.Table do
   end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
+    if byte_size(raw) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     # "None" is the reserved nil spelling (docs/SPEC-TABLES.md §16; the Go
     # reference internal/tabletext/value.go EnumValue): it reads the nil variant
     # exactly as value 0 does on the wire, and is never an unknown name.
@@ -6067,6 +6092,11 @@ defmodule Benchtable.Table do
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
+          if byte_size(name) > 255 do
+            Process.put(:elixir_json_bad, true)
+            throw(:wire_damaged)
+          end
+
           # A KEYED OBJECT'S KEYS ARE KEYS: any key named twice refuses the
           # whole read, a known variant, an unknown one or "None" alike
           # (internal/tabletext/read.go readKeyed, docs/SPEC-TABLES.md §16.2).
@@ -6100,6 +6130,11 @@ defmodule Benchtable.Table do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
       if not is_binary(n) do
         json_skip_value(n)
+        throw(:wire_damaged)
+      end
+
+      if byte_size(n) > 255 do
+        Process.put(:elixir_json_bad, true)
         throw(:wire_damaged)
       end
 
@@ -6619,6 +6654,11 @@ defmodule Benchtable.Table do
   end
 
   defp json_read_list_elem(%{elem_kind: 30} = f, e, report) when is_binary(e) do
+    if byte_size(e) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     case e do
       "None" ->
         {nil, report}
@@ -6681,6 +6721,11 @@ defmodule Benchtable.Table do
   defp json_read_arm(_union, {:obj, []}, report), do: {nil, report}
 
   defp json_read_arm(union, {:obj, [{name, input}]}, report) do
+    if byte_size(name) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     un = Map.fetch!(@unions, union)
 
     case Map.fetch(un.by_name, name) do
