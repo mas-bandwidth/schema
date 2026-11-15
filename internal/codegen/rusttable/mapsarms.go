@@ -930,6 +930,11 @@ func (g *gen) emitUnionLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%selse {\n", in)
 	fmt.Fprintf(b, "%s    if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", in, ordinal)
 	g.emitUnionDecode(b, f, field, "end", ordinal, in+"    ", true)
+	if !f.Required {
+		// an empty union elides (§22.2): arm reference 0 at a field is a
+		// spelling no conforming writer produces (§4)
+		fmt.Fprintf(b, "%s    if aref == 0 { report.damaged = true; return false; } // a union written with arm reference 0 (§4)\n", in)
+	}
 	fmt.Fprintf(b, "%s}\n", in)
 }
 

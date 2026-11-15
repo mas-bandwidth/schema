@@ -431,6 +431,53 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("    let mut seen_ids = [0u64; 64];\n")
 	m.pf("    let mut seen_count = 0usize;\n")
 	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
+	// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §3.3, §4;
+	// docs/rulings.json reads-refuse-non-canonical): next_field is one past
+	// the ordinal of the last declared field this body carried.
+	m.pf("    let mut next_field = 0usize;\n")
+	// The arms are generated aside, so the default image is bound only when a
+	// default test reads it.
+	body := &msgGen{u: m.u, slots: m.slots, orig: m.orig, n: m.n}
+	for i, f := range st.Fields {
+		mine := ir.TableFieldEntry(f)
+		ind := "                "
+		body.pf("            0x%016x => {\n", mine.Id)
+		body.pf("%sif next_field > %d %s // out of the writer's order (§3.3)\n", ind, i, msgBad)
+		body.pf("%snext_field = %d;\n", ind, i+1)
+		label := body.tmp("'f")
+		widens := msgCanWiden(f, mine)
+		if widens {
+			body.pf("%slet mut widened = false;\n", ind)
+		}
+		if !f.Type.Optional {
+			body.pf("%slet unknown_before = report.unknown;\n", ind)
+		}
+		body.pf("%s%s: {\n", ind, label)
+		body.compat(f, mine, "entry", "", label, ind+"    ")
+		body.readValue(f, "value."+f.Name, "entry", ind+"    ")
+		if f.Type.Optional {
+			body.pf("%s    value.%s_present = true;\n", ind, f.Name)
+		} else {
+			// A FIELD STORED AT ITS DEFAULT, A UNION WITH ARM REFERENCE 0
+			// INCLUDED (§3.3, §4): the save's own ride test, so a value it
+			// would elide is a spelling no conforming writer produces. A field
+			// whose read met a name this build cannot resolve (an unknown arm,
+			// variant or nested field) reads a default lawfully and is not
+			// held to it.
+			rides := body.rides(f, "value."+f.Name, "dflt."+f.Name, ind+"    ")
+			body.pf("%s    let rides = %s;\n%s    if report.unknown == unknown_before && !rides %s // a field stored at its default (§4)\n", ind, rides, ind, msgBad)
+		}
+		if widens {
+			body.pf("%s    if widened { report.widened += 1; }\n", ind)
+		}
+		body.pf("%s}\n", ind)
+		body.pf("            }\n")
+	}
+	m.n = body.n
+	arms := body.b.String()
+	if strings.Contains(arms, "dflt.") {
+		m.pf("    let dflt = %s_message_default();\n", snake)
+	}
 	m.pf("    loop {\n")
 	m.pf("        let Some(reference) = r.get(v.ref_bits) else %s;\n", msgBad)
 	m.pf("        if reference == 0 { return true; }\n")
@@ -440,27 +487,7 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }\n")
 	m.pf("        seen_count += 1;\n")
 	m.pf("        match entry.id {\n")
-	for _, f := range st.Fields {
-		mine := ir.TableFieldEntry(f)
-		ind := "                "
-		m.pf("            0x%016x => {\n", mine.Id)
-		label := m.tmp("'f")
-		widens := msgCanWiden(f, mine)
-		if widens {
-			m.pf("%slet mut widened = false;\n", ind)
-		}
-		m.pf("%s%s: {\n", ind, label)
-		m.compat(f, mine, "entry", "", label, ind+"    ")
-		m.readValue(f, "value."+f.Name, "entry", ind+"    ")
-		if f.Type.Optional {
-			m.pf("%s    value.%s_present = true;\n", ind, f.Name)
-		}
-		if widens {
-			m.pf("%s    if widened { report.widened += 1; }\n", ind)
-		}
-		m.pf("%s}\n", ind)
-		m.pf("            }\n")
-	}
+	m.pf("%s", arms)
 	m.pf("            _ => {\n                report.unknown += 1;\n                if !table_message_skip(r, v, &entry, 0) %s\n            }\n", msgBad)
 	m.pf("        }\n    }\n}\n\n")
 }

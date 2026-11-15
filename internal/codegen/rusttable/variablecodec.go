@@ -1023,8 +1023,19 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut seen_ids_inline = [0u64; %d];\n", inline)
 	fmt.Fprintf(b, "    let mut seen_ids_len = 0usize;\n")
 	fmt.Fprintf(b, "    let mut seen_ids: Vec<u64> = Vec::new();\n")
+	// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §3, §22.2;
+	// docs/rulings.json reads-refuse-non-canonical): a declared field after
+	// one declared later is a spelling no conforming writer produces, so the
+	// repeat check above also holds the declaration order. `next_field` is one
+	// past the ordinal of the last declared field the body carried.
+	fmt.Fprintf(b, "    let mut next_field = 0usize;\n")
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };\n")
+	if !st.FixedDeclared {
+		// THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1, §22.1): any
+		// field after it, the zero reference aside, is out of its place.
+		fmt.Fprintf(b, "        if r != 0 && seen_node { report.damaged = true; return false; } // a node table out of its place (§3.1)\n")
+	}
 	if hasRequired(st) {
 		fmt.Fprintf(b, "        if r == 0 {\n")
 		fmt.Fprintf(b, "            let missing = %s(v, &seen);\n", fn(st.Name, "required_missing"))
@@ -1156,6 +1167,8 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	in := ind + "    "
 	fmt.Fprintf(b, "%sif seen[%d] { report.damaged = true; return false; }\n", in, ordinal)
 	fmt.Fprintf(b, "%sseen[%d] = true;\n", in, ordinal)
+	fmt.Fprintf(b, "%sif next_field > %d { report.damaged = true; return false; } // out of the writer's order (§22.2)\n", in, ordinal)
+	fmt.Fprintf(b, "%snext_field = %d;\n", in, ordinal+1)
 	if f.Required {
 		fmt.Fprintf(b, "%slet mut field_skipped = false;\n", in)
 	}
@@ -1178,6 +1191,10 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		g.emitArrayLoad(b, f, ordinal, field, in)
 		if f.IsTextList() {
 			fmt.Fprintf(b, "%sif report.damaged && !before_text_clamp && report.oor_field.is_empty() { report.oor_field = %q; }\n", in, f.TextListElem().MapEntryOf)
+		}
+		if !f.Required && (f.Array == ir.ArrayList || f.Array == ir.ArrayCounted) {
+			// an empty array is its declared default, and a writer elides it (§22.2)
+			fmt.Fprintf(b, "%sif kind == %d && %s.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)\n", in, ir.TableKindArray, field)
 		}
 		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
@@ -1203,6 +1220,11 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.damaged = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.damaged = true; return false; }\n", in)
 		fmt.Fprintf(b, "%s    let sub = *off + l as usize;\n", in)
+		if !f.Required {
+			// a body that is its terminator alone is the all-default table a
+			// writer elides (§22.2)
+			fmt.Fprintf(b, "%s    if l == 1 { report.damaged = true; return false; } // a field stored at its default (§4)\n", in)
+		}
 		fmt.Fprintf(b, "%s    if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", in, ordinal)
 		fmt.Fprintf(b, "%s    %s = %s::default();\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    let mut o = *off;\n", in)
@@ -1229,16 +1251,33 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s    else { %s = std::str::from_utf8(b).unwrap().to_string(); }\n", in, field)
 		fmt.Fprintf(b, "%s    *off = s;\n", in)
+		if !f.Required {
+			at := field + ".is_empty()"
+			if len(f.DefBytes) > 0 {
+				at = field + ".as_bytes() == " + rustByteArray(f.DefBytes)
+			}
+			fmt.Fprintf(b, "%s    if %s { report.damaged = true; return false; } // a field stored at its default (§4)\n", in, at)
+		}
 		fmt.Fprintf(b, "%s}\n", in)
 	case vBytes:
 		g.emitArrayLoad(b, f, ordinal, field, in)
 	case vEnum:
 		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
+		if !f.Required {
+			fmt.Fprintf(b, "%s    let unknown_before = report.unknown;\n", in)
+		}
 		emitEnumDecode(b, f, field, "end", "return false;", in+"    ")
+		if !f.Required {
+			fmt.Fprintf(b, "%s    if report.unknown == unknown_before && %s == %s { report.damaged = true; return false; } // a field stored at its default (§4)\n", in, field, enumDefault(f))
+		}
 		fmt.Fprintf(b, "%s}\n", in)
 	case vMap:
 		g.emitMapLoad(b, f, ordinal, field, in)
+		if !f.Required {
+			// an empty map is its declared default, and a writer elides it (§22.2)
+			fmt.Fprintf(b, "%sif kind == %d && %s.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)\n", in, ir.TableKindArray, field)
+		}
 	case vUnion:
 		g.emitUnionLoad(b, f, ordinal, field, in)
 	default:
@@ -1250,6 +1289,18 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 			fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
 		}
 		emitScalarConvert(b, f, g.floatOwner(f), field, "kind", in+"    ")
+		if !f.Required {
+			// the save's own elision test (emitVariableSaveField): a value it
+			// would not write is a spelling no conforming writer produces
+			differs := scalarDiffers(f, field, scalarDefault(f))
+			if f.Type.Kind == ir.TBool {
+				differs = field
+				if f.HasDefault && f.DefBool {
+					differs = "!" + field
+				}
+			}
+			fmt.Fprintf(b, "%s    let rides = %s;\n%s    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)\n", in, differs, in)
+		}
 		fmt.Fprintf(b, "%s} else { %s }\n", in, requiredKindSkip(f))
 	}
 	emitRequiredWireSeen(b, f, ordinal, in)
@@ -1957,7 +2008,12 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); store.nodes.clear(); }\n")
 	fmt.Fprintf(b, "        return None;\n")
 	fmt.Fprintf(b, "    }\n")
-	fmt.Fprintf(b, "    if value.is_none() {\n")
+	// AN ID TABLE OUT OF FIRST-USE ORDER, OR WITH AN ENTRY NO REFERENCE NAMES,
+	// is a spelling no conforming writer produces (§3, §4): the walk that read
+	// a good value hands back nothing, and every other verdict the walk
+	// reached first stands.
+	fmt.Fprintf(b, "    if value.is_none() || !table_ids_first_use(wire, end, ids) {\n")
+	fmt.Fprintf(b, "        if value.is_some() { report.damaged = true; }\n")
 	fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); store.nodes.clear(); }\n")
 	fmt.Fprintf(b, "        return None;\n")
 	fmt.Fprintf(b, "    }\n")
