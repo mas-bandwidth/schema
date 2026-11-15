@@ -6045,7 +6045,8 @@ defmodule Benchtable.Table do
   # no exponent, not -0. A narrow integer is a number only, so a string there
   # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
   # string, and one of 32 bits or under stays a number.
-  defp json_read_field(%{t: :int} = f, raw, report) when is_binary(raw) do
+  defp json_read_field(%{t: :int} = f, raw, report)
+       when is_binary(raw) and not is_map_key(f, :timestamp) do
     cond do
       not json_wide_int?(f) ->
         json_skip_value(raw)
