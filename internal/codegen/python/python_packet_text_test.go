@@ -273,6 +273,21 @@ for name, blob, tail in goods:
         else:
             fail("a trailing byte was accepted")
 
+reference = 0
+with open("reference.txt") as f:
+    lines = f.read().splitlines()
+for line in lines:
+    flag, name, blob, tail, wire = [b"" if f == "-" else bytes.fromhex(f) for f in line.split()]
+    v = Texts()
+    v.flag, v.name, v.blob, v.tail = flag == b"\x01", name.decode("utf-8"), blob, tail.decode("utf-8")
+    if v.write() != wire:
+        fail("the write differs from the Go reference: got " + v.write().hex() + ", want " + wire.hex())
+    if Texts.read(wire) != v:
+        fail("the Go reference wire reads back as " + repr(Texts.read(wire)))
+    reference += 1
+if reference == 0:
+    fail("no Go reference cases")
+
 bads = [
     ("name", 5), ("name", b"ab"), ("name", None), ("name", "abcdef"),
     ("name", "ééé"), ("name", "a\U00010000b"), ("name", "a\x00b"),
@@ -334,7 +349,8 @@ print("ok")
 
 // TestPythonPacketText holds the text kinds, string(N) and bytes(N), under
 // both pinned interpreters: every C++-pinned golden that uses them reads and
-// writes back byte-identical, the shared serialize string corpus (the UTF-8
+// writes back byte-identical, a fixture of its own writes the Go reference
+// writer's bytes and reads them back, the shared serialize string corpus (the UTF-8
 // refusals among it) gets its pinned verdict from the packet-text driver,
 // every out-of-contract write raises InvalidValue, every truncated or
 // hostile input raises Refused, and mypy --strict passes the generated tree.
@@ -448,7 +464,8 @@ func TestPythonPacketText(t *testing.T) {
 				dir := t.TempDir()
 				writeTree(t, dir, files)
 				out, stderr, err := pyrun.Try(t, run.fn(t), dir, "main.py", map[string][]byte{
-					"main.py": []byte(pyrun.ImportPrelude + textContractProbe),
+					"main.py":       []byte(pyrun.ImportPrelude + textContractProbe),
+					"reference.txt": []byte(textReference()),
 				})
 				if err != nil || strings.TrimSpace(out) != "ok" {
 					t.Fatalf("under %s: %v\n%s\n%s", run.name, err, out, stderr)
@@ -510,4 +527,85 @@ func pinFile(root, name string) string {
 		return p
 	}
 	return filepath.Join(root, "testdata", "wire", "packet-defaults", name+".bin")
+}
+
+// refBits is the Go reference writer for the contract fixture: serialize's
+// bit order (the low bit first, bytes in order), the length of a text field
+// over [0, N] in bits_required(0, N) bits, zero padding to the byte, then
+// the used bytes (SPEC §4.7), and the final partial byte flushed.
+type refBits struct {
+	out  []byte
+	bits int
+}
+
+func (w *refBits) put(v uint64, n int) {
+	for i := range n {
+		if w.bits%8 == 0 {
+			w.out = append(w.out, 0)
+		}
+		if v>>i&1 == 1 {
+			w.out[len(w.out)-1] |= 1 << (w.bits % 8)
+		}
+		w.bits++
+	}
+}
+
+func (w *refBits) text(data []byte, bound int64) {
+	w.put(uint64(len(data)), rangeBits(bound))
+	w.put(0, (8-w.bits%8)%8)
+	for _, b := range data {
+		w.put(uint64(b), 8)
+	}
+}
+
+func rangeBits(max int64) int {
+	n := 0
+	for max > 0 {
+		n++
+		max >>= 1
+	}
+	return n
+}
+
+// textReference is the reference.txt the contract probe reads: one case per
+// line, flag, name, blob and tail as hex ("-" for none) and the wire the Go
+// reference writer gives for Texts with greeting and token at their defaults.
+func textReference() string {
+	cases := []struct {
+		flag             bool
+		name, blob, tail string
+	}{
+		{false, "", "", ""},
+		{true, "", "", ""},
+		{true, "abcde", "\x00\xff\x00\xff\x00", "wxyz"},
+		{false, "éé", "\x00", ""},
+		{true, "a\U00010000", "abc", "\U0010ffff"},
+		{true, "éaé", "\x01\x02", "€"},
+	}
+	hexOr := func(s string) string {
+		if s == "" {
+			return "-"
+		}
+		return fmt.Sprintf("%x", s)
+	}
+	var b strings.Builder
+	for _, c := range cases {
+		w := &refBits{}
+		flag := "00"
+		if c.flag {
+			flag = "01"
+			w.put(1, 1)
+		} else {
+			w.put(0, 1)
+		}
+		w.text([]byte(c.name), 5)
+		w.text([]byte(c.blob), 5)
+		w.text([]byte("hé"), 8)
+		w.text([]byte("ab"), 3)
+		if c.flag {
+			w.text([]byte(c.tail), 4)
+		}
+		fmt.Fprintf(&b, "%s %s %s %s %s\n", flag, hexOr(c.name), hexOr(c.blob), hexOr(c.tail), hexOr(string(w.out)))
+	}
+	return b.String()
 }
