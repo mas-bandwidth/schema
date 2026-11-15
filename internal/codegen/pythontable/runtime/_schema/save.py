@@ -10,7 +10,7 @@ from typing import Any
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_blob, kind_bool, kind_bytes, kind_int, kind_pointer, kind_string, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -48,12 +48,13 @@ class Writer:
 
 
 class Ctx:
-    __slots__ = ("ids", "refs", "indices", "order", "onstack", "current")
+    __slots__ = ("ids", "refs", "indices", "blob_index", "order", "onstack", "current")
 
     def __init__(self) -> None:
         self.ids: list[int] = []
         self.refs: dict[int, int] = {}
         self.indices: dict[int, int] = {}
+        self.blob_index: dict[tuple[int, int], int] = {}
         self.order: list[Any] = []
         self.onstack: set[int] = set()
         self.current: Any = None
@@ -123,7 +124,14 @@ def _collect(value: Any, ctx: Ctx) -> None:
     desc: TableDesc = value.descriptor
     for field in desc.fields:
         current = getattr(value, field.name)
-        if field.codec == "pointer":
+        if field.codec == "string_blob" or field.codec == "bytes_blob":
+            if current is None:
+                continue
+            body = kind_blob._encode(field, current, _path(desc.name, field.name))
+            index = len(ctx.order) + 2
+            ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
+            ctx.blob_index[(id(value), field.field_id)] = index
+        elif field.codec == "pointer":
             if current is None:
                 continue
             key = id(current)
@@ -160,6 +168,12 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
         nodes = Writer(payload)
         nodes.varint(len(ctx.order))
         for node in ctx.order:
+            if isinstance(node, kind_blob._BlobNode):
+                type_id = kind_blob._STRING_BLOB_ID if node.string else kind_blob._BYTES_BLOB_ID
+                nodes.varint(ctx.idref(type_id))
+                nodes.varint(len(node.body))
+                nodes.raw(node.body)
+                continue
             nodes.varint(ctx.idref(node.descriptor.type_id))
             body = bytearray()
             write_body(Writer(body), node, ctx, False)

@@ -27,6 +27,7 @@ class FieldDesc:
         "optional",
         "array",
         "bound",
+        "size",
         "key_enum",
         "default",
     )
@@ -44,6 +45,7 @@ class FieldDesc:
     optional: bool
     array: bool
     bound: int
+    size: int
     key_enum: str
     default: Any
 
@@ -62,6 +64,7 @@ class FieldDesc:
         optional: bool = False,
         array: bool = False,
         bound: int = 0,
+        size: int = 0,
         key_enum: str = "",
         default: Any = None,
     ) -> None:
@@ -78,6 +81,7 @@ class FieldDesc:
         self.optional = optional
         self.array = array
         self.bound = bound
+        self.size = size
         self.key_enum = key_enum
         self.default = default
 

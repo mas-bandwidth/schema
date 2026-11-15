@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_blob, kind_bool, kind_bytes, kind_int, kind_pointer, kind_string, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 _T = TypeVar("_T")
@@ -108,12 +108,13 @@ class Reader:
 
 
 class Ctx:
-    __slots__ = ("ids", "unknown", "pending", "current", "root", "nodes", "saw_node")
+    __slots__ = ("ids", "unknown", "pending", "blob_pending", "current", "root", "nodes", "saw_node")
 
     def __init__(self, ids: list[int]) -> None:
         self.ids = ids
         self.unknown = 0
         self.pending: list[tuple[Any, str, int]] = []
+        self.blob_pending: list[tuple[Any, FieldDesc, int]] = []
         self.current: Any = None
         self.root: Any = None
         self.nodes: list[Any] = []
@@ -230,10 +231,25 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
         if type_reference == 0:
             raise Refused("wire_damaged", "a node record has no type id")
         type_id = reader.id_at(type_reference)
+        length = reader.varint()
+        if type_id == kind_blob._STRING_BLOB_ID or type_id == kind_blob._BYTES_BLOB_ID:
+            if length > kind_blob._BLOB_CAP:
+                raise Refused("blob_over_size_cap", "a byte buffer record is past the storage cap")
+            body = reader.take(length)
+            if type_id == kind_blob._STRING_BLOB_ID:
+                try:
+                    text = bytes(body).decode("utf-8")
+                except UnicodeDecodeError:
+                    raise Refused("wire_damaged", "a string byte buffer is not well-formed UTF-8")
+                if "\x00" in text:
+                    raise Refused("wire_damaged", "a string byte buffer carries a zero byte")
+                nodes.append(kind_blob._BlobValue(True, text))
+            else:
+                nodes.append(kind_blob._BlobValue(False, bytes(body)))
+            continue
         cls = descriptor.by_id(type_id)
         if cls is None:
             raise Refused("wire_damaged", f"a node names the unknown type id {type_id:#x}")
-        length = reader.varint()
         body = reader.take(length)
         node = cls()
         nodes.append(node)
@@ -254,7 +270,25 @@ def _resolve(ctx: Ctx) -> None:
             value = ctx.nodes[index - 2]
         else:
             raise Refused("wire_damaged", "a node index is past the node table")
+        if isinstance(value, kind_blob._BlobValue):
+            raise Refused("wire_damaged", "a table pointer slot names a byte buffer")
         setattr(owner, name, value)
+    seen_blob: set[int] = set()
+    for owner, field, index in ctx.blob_pending:
+        if index == 0:
+            setattr(owner, field.name, None)
+            continue
+        if index == 1 or index > len(ctx.nodes) + 1:
+            raise Refused("wire_damaged", "a node index is past the node table")
+        value = ctx.nodes[index - 2]
+        if not isinstance(value, kind_blob._BlobValue):
+            raise Refused("wire_damaged", "a byte buffer slot names a table record")
+        if index in seen_blob:
+            raise Refused("blob_shared", "one byte buffer is named from two slots")
+        seen_blob.add(index)
+        if value.string != (field.codec == "string_blob"):
+            raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
+        setattr(owner, field.name, value.value)
 
 
 def _skip(reader: Reader, kind: int) -> None:

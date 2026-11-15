@@ -289,16 +289,30 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_table.py`, `kind_pointer.py` and
+  `kind_blob.py` register the kinds this cut carries. A later card adds its
+  module and one registration line, never an edit to the body walk.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
-  and raise `InvalidValue`, write the flat node table for `*T`, and fill a
-  `LoadReport` on success only. `Measure` runs the same walk into a counting
-  sink, so measure and save agree by construction.
+  and raise `InvalidValue`, write the flat node table for `*T` and the two
+  reserved blob records, and fill a `LoadReport` on success only. `Measure`
+  runs the same walk into a counting sink, so measure and save agree by
+  construction.
+- **A buffer is written by value, never by identity.** `*bytes` and `*string`
+  are `kind_blob.py`'s two kinds: the wire carries kind 17 with a node index,
+  and the record's body is the bytes themselves. A Python `bytes` or `str` is
+  a value, not a boxed node, so the save gives every non-null slot its OWN
+  record: a caller's equal strings in two slots are two records with equal
+  bodies, exactly the wire the Go engine writes for `blob_equal_bytes`. There
+  is nothing to share, so there is no save-side `blob_shared`. The read keeps
+  the wire's indices: one blob record named from two slots refuses the whole
+  read as `blob_shared`, a `*bytes` slot naming a `*string` record (or a
+  table) refuses `wire_damaged`, a `*string` record whose bytes are not
+  well-formed UTF-8 or carry a zero byte refuses `wire_damaged`, and a record
+  past the `2^32 - 1` storage cap refuses `blob_over_size_cap`.
 - **The shape is measured.** A table whose fields are all bools and integers
   gets the straight-line generated save/load pair, unrolled with each field
   descriptor bound to a local; every table, and every construct a later card
@@ -308,10 +322,10 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  by-value tables, `*T` pointers to tables and the `*bytes` and `*string`
+  buffers, for both the fixed and the variable class. `?T`, `[]T`, `[E]T`,
+  maps and unions with table arms have descriptors in this cut and refuse by
+  name through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
