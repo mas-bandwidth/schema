@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package pythontable_test
 
 import (
@@ -15,6 +13,9 @@ import (
 // frame instead of the shared table-arm refusal.
 func TestPythonVtUnionsThroughTheDriver(t *testing.T) {
 	t.Parallel()
+	if _, ok := compiler.Carried("python"); !ok {
+		t.Skip("the python target is behind the schema_leg_python build tag")
+	}
 	const src = `package unions
 
 table Leaf { value int32 }
