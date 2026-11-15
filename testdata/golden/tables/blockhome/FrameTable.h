@@ -1448,7 +1448,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -6739,7 +6739,7 @@ inline int64_t PartFrameMeasureBody( TableIds & ids, const PartFrame & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
-    if ( value.parts_count < 0 || value.parts_count > 32 ) { return -1; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
@@ -6771,7 +6771,7 @@ BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, TableIds & ids, 
         w.header( ids.ref_at( 21, 0xbb62c62c9808ea37ull ), 9 ); // version
         w.put64( uint64_t( value.version ) );
     }
-    if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
@@ -7125,7 +7125,7 @@ inline int64_t PartFrameMeasureMessageBody( int64_t at, const PartFrame & value 
         bits += kTableMessageRefBitsHere;
         bits += 64;
     }
-    if ( value.parts_count < 0 || value.parts_count > 32 ) { return -1; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -7152,7 +7152,7 @@ inline bool PartFrameSaveMessageBody( TableBitWriter & w, const PartFrame & valu
         w.put( 14, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.version ), 64 );
     }
-    if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; } // storage invariant
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.parts_count > 0 )
     {
         w.put( 15, kTableMessageRefBitsHere );
