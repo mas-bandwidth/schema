@@ -1,7 +1,7 @@
 package luautable_test
 
-// THE ANNOUNCEMENT'S SHAPES ARE BOUNDED AS THE WIRE HOLDS THEM (docs/SPEC-
-// TABLES.md §3.3, SECURITY): a packed width above what its kind can carry, a
+// THE ANNOUNCEMENT'S SHAPES ARE BOUNDED AS THE WIRE HOLDS THEM
+// (docs/SPEC-TABLES.md §3.3, SECURITY): a packed width above what its kind can carry, a
 // max above what its kind can carry, a reserved id as an entry's id, an id
 // table carrying one id twice, and bytes left between the body's terminator
 // and the id table are each malformed, and AnnounceRead refuses them whole.

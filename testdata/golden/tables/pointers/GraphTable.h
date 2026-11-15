@@ -1491,7 +1491,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -9715,7 +9715,7 @@ inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     return bytes;
 }
@@ -9737,7 +9737,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
         w.put32( uint32_t( value.build ) );
     }
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -10040,7 +10040,7 @@ inline int64_t MetaMeasureMessageBody( int64_t at, const Meta & value )
         bits += kTableMessageRefBitsHere;
         bits += 10;
     }
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -10063,7 +10063,7 @@ inline bool MetaSaveMessageBody( TableBitWriter & w, const Meta & value )
         w.put( 1, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.build ), 10 );
     }
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
@@ -10352,7 +10352,7 @@ inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
-    if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     return bytes;
 }
@@ -10374,7 +10374,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
         w.put32( uint32_t( value.quality ) );
     }
-    if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -10677,7 +10677,7 @@ inline int64_t SettingsMeasureMessageBody( int64_t at, const Settings & value )
         bits += kTableMessageRefBitsHere;
         bits += 3;
     }
-    if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -10700,7 +10700,7 @@ inline bool SettingsSaveMessageBody( TableBitWriter & w, const Settings & value 
         w.put( 3, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.quality ), 3 );
     }
-    if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
@@ -10992,7 +10992,7 @@ inline int64_t ListNodeMeasureBody( const Ctx & ctx, const TableNumbering & numb
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.value != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ) + 1 + 4; } // value
-    if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const ListNode * pointee_next = ListNodeAt( ctx, value.next ); // *ListNode
@@ -11021,7 +11021,7 @@ inline bool ListNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
         w.header( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ), 4 ); // value
         w.put32( uint32_t( value.value ) );
     }
-    if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11231,7 +11231,7 @@ inline int64_t TreeNodeMeasureBody( const Ctx & ctx, const TableNumbering & numb
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const TreeNode * pointee_left = TreeNodeAt( ctx, value.left ); // *TreeNode
@@ -11269,7 +11269,7 @@ inline bool TreeNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
 {
     (void) ctx;
     (void) numbering;
-    if ( value.label_length < 0 || value.label_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -11690,7 +11690,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 24 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
@@ -11757,7 +11757,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( body_ground > 1 ) { bytes += TableLebBytes( ref_ground ) + 1 + TableLebBytes( (uint64_t) ( body_ground ) ) + ( body_ground ); } // ground
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.layers_count < 0 || value.layers_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
@@ -11787,7 +11787,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 24 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11852,7 +11852,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         }
         else { ids.truncate( mark_ground ); }
     }
-    if ( value.layers_count < 0 || value.layers_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
@@ -12361,7 +12361,7 @@ inline int64_t DepotMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_banks = ids.count;
@@ -12418,7 +12418,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12782,7 +12782,7 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_tint = ids.count;
@@ -12844,7 +12844,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -20962,7 +20962,7 @@ inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, 
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -20975,7 +20975,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
         w.put32( uint32_t( value.build ) );
     }
-    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -21157,7 +21157,7 @@ inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
-    if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -21170,7 +21170,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
         w.put32( uint32_t( value.quality ) );
     }
-    if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -21355,7 +21355,7 @@ inline int64_t ListNodeMeasureBodyRetain( const Ctx & ctx, const TableNumbering 
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.value != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ) + 1 + 4; } // value
-    if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const ListNode * pointee_next = ListNodeAt( ctx, value.next ); // *ListNode
@@ -21385,7 +21385,7 @@ inline bool ListNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
         w.header( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ), 4 ); // value
         w.put32( uint32_t( value.value ) );
     }
-    if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -21601,7 +21601,7 @@ inline int64_t TreeNodeMeasureBodyRetain( const Ctx & ctx, const TableNumbering 
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const TreeNode * pointee_left = TreeNodeAt( ctx, value.left ); // *TreeNode
@@ -21640,7 +21640,7 @@ inline bool TreeNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
 {
     (void) ctx;
     (void) numbering;
-    if ( value.label_length < 0 || value.label_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -22074,7 +22074,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 24 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
@@ -22141,7 +22141,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_ground > 1 ) { bytes += TableLebBytes( ref_ground ) + 1 + TableLebBytes( (uint64_t) ( body_ground ) ) + ( body_ground ); } // ground
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.layers_count < 0 || value.layers_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
@@ -22172,7 +22172,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 24 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -22237,7 +22237,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         }
         else { ids.truncate( mark_ground ); }
     }
-    if ( value.layers_count < 0 || value.layers_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
@@ -22752,7 +22752,7 @@ inline int64_t DepotMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_banks = ids.count;
@@ -22810,7 +22810,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -23181,7 +23181,7 @@ inline int64_t AlbumMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_tint = ids.count;
@@ -23244,7 +23244,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name

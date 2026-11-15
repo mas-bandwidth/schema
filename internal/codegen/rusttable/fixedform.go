@@ -546,6 +546,9 @@ func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 	g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 	g.pf("%s{\n", ind)
 	g.pf("%s    let n = value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
+	if f.Type.Kind == ir.TString {
+		g.pf("%s    debug_assert!(table_utf8_valid(&value.%s[..n]), \"%s is ill-formed text\");\n", ind, f.Name, f.Name)
+	}
 	g.pf("%s    b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", ind, base+4, base+4, f.Name)
 	g.pf("%s}\n", ind)
 }
@@ -563,6 +566,65 @@ func (g *gen) fixedWriteBound(member string, bound int64, what, ind string) {
 	g.pf("%s    value.%s >= 0 && value.%s <= %d,\n", ind, member, member, bound)
 	g.pf("%s    \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n", ind, what)
 	g.pf("%s);\n", ind)
+}
+
+// fixedScalarWriteCheck is the debug-only write contract over one fixed-form
+// scalar slot (docs/SPEC.md §5.1 rows 1, 2 and 5): a ranged integer or a
+// fixed/ufixed raw value off its raw min/max, a bits(N) value wider than N, and
+// an enum ordinal past the enum's top wire value. It is emitted before the
+// store, so a debug build refuses the value at the call site.
+func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind string) {
+	if f.Type.Kind == ir.TNamed {
+		if extent, ranged := fixedEnumExtent(f, width); ranged {
+			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
+		}
+		return
+	}
+	at := expr
+	if _, wide := fixedWide128(f); wide {
+		// a 128-bit slot IS the aligned wrapper; `.0` is the integer
+		at += ".0"
+	}
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		minBits, maxBits := fixedStorageLimits(width, f.Type.Signed)
+		var conds []string
+		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
+		if low {
+			conds = append(conds, fmt.Sprintf("%s >= %s", at, lo.String()))
+		}
+		if high {
+			conds = append(conds, fmt.Sprintf("%s <= %s", at, hi.String()))
+		}
+		if len(conds) > 0 {
+			what := f.Name + " out of range"
+			if f.Type.Kind == ir.TFixed {
+				what = f.Name + " raw value out of range"
+			}
+			span := fmt.Sprintf("[%s, %s]", lo.String(), hi.String())
+			switch {
+			case low && !high:
+				span = ">= " + lo.String()
+			case high && !low:
+				span = "<= " + hi.String()
+			}
+			g.pf("%sdebug_assert!(%s, \"%s %s\");\n", ind, strings.Join(conds, " && "), what, span)
+		}
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < width*8 {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		g.pf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, at, maxv, f.Name, f.Type.Width)
+	}
+}
+
+// fixedStorageLimits is the few representable value of a fixed-form store of
+// `width` bytes and the given signedness.
+func fixedStorageLimits(width int64, signed bool) (min, max *big.Int) {
+	one := new(big.Int).Lsh(big.NewInt(1), uint(width*8))
+	if signed {
+		half := new(big.Int).Rsh(one, 1)
+		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1))
+	}
+	return big.NewInt(0), new(big.Int).Sub(one, big.NewInt(1))
 }
 
 func (g *gen) emitFixedWriteSlots(f *ir.Field, base int64, count string, indent int) {
@@ -583,6 +645,7 @@ func (g *gen) emitFixedWriteElementAt(f *ir.Field, at, expr string, indent int) 
 		return
 	}
 	width := ir.TableFixedElementBytes(f)
+	g.fixedScalarWriteCheck(f, expr, width, ind)
 	g.pf("%slet at = %s;\n", ind, at)
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1056,6 +1119,9 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 	g.pf("/// they stay the template's zeros, which this function reaches by not\n")
 	g.pf("/// touching them (§3.4).\n")
 	g.pf("pub fn %s(b: &mut [u8], value: &%sRow) {\n", fn(un.Name, "fixed_write_body"), un.Name)
+	if int64(len(un.Variants)) < tagMax(tagw) {
+		g.pf("    debug_assert!(value.tag <= %d, \"%s tag outside its arm set\");\n", len(un.Variants), un.Name)
+	}
 	if tagw == 1 {
 		g.pf("    b[0] = value.tag;\n")
 	} else {
@@ -1115,6 +1181,9 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 			ind, ind, armExpr, armExpr, f.Type.Size, ind, ind)
 		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
 		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%s    debug_assert!(table_utf8_valid(&%s.value[..n]), \"%s is ill-formed text\");\n", ind, armExpr, f.Name)
+		}
 		g.pf("%s    b[%d..%d + n].copy_from_slice(&%s.value[..n]);\n%s}\n", ind, base+4, base+4, armExpr, ind)
 	default:
 		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), armExpr, indent)
@@ -2139,12 +2208,15 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	if f.HasFloatRange {
 		// A FLOAT RANGE IS ALWAYS BOTH ENDS: there is no storage limit to fold
-		// either of them into the way an integer's has.
+		// either of them into the way an integer's has. A compressed float's -0
+		// lands as +0, uncounted (docs/SPEC-TABLES.md §3.3,
+		// docs/rulings.json fixed-compressed-negzero).
 		suffix := "_f64"
 		if f.Type.Kind == ir.TFloat32 {
 			suffix = "_f32"
 		}
 		g.emitFixedClampSelect(lhs, fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix, true, true, ind, "")
+		g.pf("%sif %s == 0.0%s {\n%s    %s = 0.0%s;\n%s}\n", ind, lhs, suffix, ind, lhs, suffix, ind)
 		return
 	}
 	if low, high := fixedClampEnds(f); low || high {
