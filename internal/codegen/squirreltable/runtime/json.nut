@@ -1489,10 +1489,13 @@ local scanBytes = function(r, capacity) {
   return [out, oor, zero];
 };
 
-// a key, compared as a string
+// a schema-name string — an object key, an enum or flag name, a union arm —
+// compared as a string. A name past MAX_KEY bytes refuses the whole read
+// (docs/SPEC-TABLES.md §16.2, §16.12); it is never a shorter name.
 local scanKey = function(r) {
   local s = scanBytes(r, MAX_KEY);
   if (s == null) return null;
+  if (s[1]) { r.bad = true; return null; }
   return bytesToString(s[0]);
 };
 
@@ -1517,14 +1520,15 @@ local textZero = function(r, name) {
 
 // an object key, or a string the walk only SKIPS (the value of an unknown
 // key), is held to a placed string's rule (docs/SPEC-TABLES.md §16.2, §16.3;
-// read.go scanKey): a U+0000 refuses the read. No field holds it, so the
-// refusal is plain malformed, with no reason.
+// read.go scanKey): a U+0000 refuses the read, and so does a name past
+// MAX_KEY bytes (§16.12), in every object of the text, a skipped one included.
+// No field holds it, so the refusal is plain malformed, with no reason.
 local scanHeldKey = function(r) {
   local s = scanBytes(r, MAX_KEY);
   if (s == null) {
     return null;
   }
-  if (s[2]) {
+  if (s[1] || s[2]) {
     r.bad = true;
     return null;
   }
