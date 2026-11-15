@@ -488,7 +488,11 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("    }\n")
 		g.bpf("  }\n")
 	}
-	g.bpf("  var bitsRead = bitOffset;\n")
+	// an empty body reads nothing and returns 0, so it declares no cursor
+	// (the strict analyze gate refuses an unused local)
+	if g.usesRead || strings.Contains(body, "bitsRead") {
+		g.bpf("  var bitsRead = bitOffset;\n")
+	}
 	if g.usesRead {
 		g.bpf("  var window = 0;\n")
 	}
