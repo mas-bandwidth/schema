@@ -731,7 +731,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 // WideBlobTableFields is WideBlob's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WideBlobTableFields = []TableFieldInfo{
 	{Name: "label", JSON: "label", TypeName: "string", DeclaredTypeName: "string", ID: 0x39f7fcec8fcb623d, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Label)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Label)), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.LabelLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Label)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Label)), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.LabelLength)), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 70004, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -743,7 +743,7 @@ var WideBlobTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "payload", JSON: "payload", TypeName: "bytes", DeclaredTypeName: "bytes", ID: 0xcfb8a9d063b5e9e5, Kind: 6, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Payload)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.PayloadLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Payload)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.PayloadLength)), PresentOffset: 0xffffffff,
 		CookOffset: 70008, CookElemSize: 1, CookCountOffset: 140008, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -755,7 +755,7 @@ var WideBlobTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "samples", JSON: "samples", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0xe3b1ca6a3b48dddc, Kind: 7, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Samples)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Samples[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.SamplesCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Samples)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Samples[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.SamplesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 140012, CookElemSize: 2, CookCountOffset: 280012, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

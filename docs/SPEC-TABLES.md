@@ -16210,9 +16210,10 @@ written as something else.
 - **A ranged integer, or a `fixed`/`ufixed` raw value, off its `min`/`max`** —
   `invalid_value` (docs/SPEC.md §5.1 row 1).
 - **A `bits(N)` value wider than `N` bits** — `invalid_value` (§5.1 row 2).
-- **A counted array's count past its `Max` or negative** — refused per leg
-  as docs/SPEC.md §5.1 row 3 and docs/rulings.json `write-refusal` list: the
-  verdict is the contract, the reason name per language.
+- **A counted array's count past its `Max` or below its `Min` (or
+  negative)** — refused per leg as docs/SPEC.md §5.1 row 3 and
+  docs/rulings.json `write-refusal` list: the verdict is the contract, the
+  reason name per language.
 - **A `string(N)` or `bytes(N)` length past `N` or negative** — refused per
   leg as docs/SPEC.md §5.1 row 4 and docs/rulings.json `write-refusal` list:
   the verdict is the contract, the reason name per language.
