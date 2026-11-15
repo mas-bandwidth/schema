@@ -3692,7 +3692,7 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
     {
         case '{': return TableJsonSkipContainer( in, '}', depth );
         case '[': return TableJsonSkipContainer( in, ']', depth );
-        case '"': return TableJsonScanString( in, NULL, 0, NULL );
+        case '"': return TableJsonScanString( in, NULL, 0, NULL, NULL, true );
         case 't': return TableJsonLiteral( in, "true" );
         case 'f': return TableJsonLiteral( in, "false" );
         case 'n': return TableJsonLiteral( in, "null" );

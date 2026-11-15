@@ -19,6 +19,14 @@ func TestCPPJsonRepeatedKeyEveryObject(t *testing.T) {
 	t.Parallel()
 	u := loadHeldUnitPaths(t, "../../..", []string{"tables/examples/Tables.schema"})
 	model := tabletext.NewModel(u)
+	// An object's key set spans its whole text, not a fixed number of keys: a
+	// repeat past many distinct keys still refuses.
+	var many strings.Builder
+	many.WriteByte('{')
+	for i := 0; i < 513; i++ {
+		fmt.Fprintf(&many, `"zz%d":1,`, i)
+	}
+	many.WriteString(`"zz512":2}`)
 	cases := []struct {
 		name string
 		text string
@@ -31,6 +39,7 @@ func TestCPPJsonRepeatedKeyEveryObject(t *testing.T) {
 		{name: "nested-value-repeated", text: `{"zz":{"a":1,"a":2}}`, want: false},
 		{name: "escaped-spelling-repeated", text: `{"zz":1,"\u007a\u007a":2}`, want: false},
 		{name: "array-object-repeated", text: `{"zz":[{"a":1,"a":2}]}`, want: false},
+		{name: "unknown-repeated-past-many-distinct-keys", text: many.String(), want: false},
 		{name: "distinct-unknown-keys", text: `{"zz":1,"yy":2}`, want: true},
 		{name: "same-key-two-objects", text: `{"zz":{"a":1},"yy":{"a":2}}`, want: true},
 		{name: "same-key-outer-and-nested", text: `{"zz":{"zz":{"zz":1}}}`, want: true},

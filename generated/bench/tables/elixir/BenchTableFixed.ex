@@ -1180,6 +1180,10 @@ defmodule Benchtable.BenchTableFixed do
     table_entity_fixed_write_into(value, <<@table_entity_hash::little-unsigned-64>>)
   end
 
+  # A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: an empty batch is refused
+  # before a byte is written, by value and in every build.
+  def table_entity_fixed_save([]), do: {:error, :invalid_value}
+
   def table_entity_fixed_save(values) when is_list(values) do
     head =
       <<R.file_header(@table_entity_hash, byte_size(@table_entity_layout))::binary,
@@ -1430,6 +1434,10 @@ defmodule Benchtable.BenchTableFixed do
   def table_stat_fixed_record(value) do
     table_stat_fixed_write_into(value, <<@table_stat_hash::little-unsigned-64>>)
   end
+
+  # A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: an empty batch is refused
+  # before a byte is written, by value and in every build.
+  def table_stat_fixed_save([]), do: {:error, :invalid_value}
 
   def table_stat_fixed_save(values) when is_list(values) do
     head =
@@ -1750,6 +1758,10 @@ defmodule Benchtable.BenchTableFixed do
   def table_mixed_fixed_record(value) do
     table_mixed_fixed_write_into(value, <<@table_mixed_hash::little-unsigned-64>>)
   end
+
+  # A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: an empty batch is refused
+  # before a byte is written, by value and in every build.
+  def table_mixed_fixed_save([]), do: {:error, :invalid_value}
 
   def table_mixed_fixed_save(values) when is_list(values) do
     head =
