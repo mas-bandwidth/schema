@@ -119,7 +119,6 @@ Probe.run()
 func TestElixirMessageSignedFixedPointUnranged(t *testing.T) {
 	t.Parallel()
 	for _, tc := range fixedPointUnrangedKinds {
-		tc := tc
 		t.Run(fmt.Sprintf("kind-%d", tc.kind), func(t *testing.T) {
 			t.Parallel()
 			u, wire := fixedPointUnrangedUnit(t, tc)
@@ -150,7 +149,6 @@ func TestElixirMessageSignedFixedPointUnrangedNegativeControl(t *testing.T) {
     do: raw`
 
 	for _, tc := range fixedPointUnrangedKinds {
-		tc := tc
 		t.Run(fmt.Sprintf("kind-%d", tc.kind), func(t *testing.T) {
 			t.Parallel()
 			u, wire := fixedPointUnrangedUnit(t, tc)
