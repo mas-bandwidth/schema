@@ -612,6 +612,14 @@ fn json_peek(jr: JsonIn&) -> u8 {
     return 0;
 }
 
+// json_shape_takes reports whether a value of the given JSON shape satisfies
+// the shape a declaration takes: a wide integer declares 'N' and takes a
+// string or a number (docs/SPEC-TABLES.md §16.2), every other shape is exact.
+fn json_shape_takes(want: u8, got: u8) -> bool {
+    if want == got { return true; }
+    return want == 'N' && (got == 's' || got == 'n');
+}
+
 // json_shape is the JSON type at the cursor, unconsumed: o a s b z (null) n.
 fn json_shape(jr: JsonIn&) -> u8 {
     let c = json_peek(jr);
@@ -1060,113 +1068,87 @@ fn json_token_int(tok: const u8[:]) -> bool, u64, bool {
     return neg, mag, over;
 }
 
-// json_read_int places a number in an integer field: any token whose VALUE
-// is integral (2.0 and 1e3 are integers), a fraction is kind_mismatch, and a
-// value past the field's domain, its declared range or bits(N), and its
-// storage width clamps and counts at each (docs/SPEC-TABLES.md §16.2).
-fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
-    let start, end, whole, ok = json_number(jr);
-    if !ok { return false; }
-    let tok = jr.text[start..end];
-    var sat = false;
+// json_integer_token is the integer token rule (docs/SPEC-TABLES.md §16.2):
+// digits with an optional minus, no leading zero, no fraction, no exponent,
+// no plus, and not -0. It holds a number token and the text inside a wide
+// integer's string alike.
+fn json_integer_token(tok: const u8[:]) -> bool {
+    var i: i64 = 0;
+    var neg = false;
+    if i < tok.len && tok[i] == '-' {
+        neg = true;
+        i += 1;
+    }
+    if i >= tok.len { return false; }
+    if tok[i] == '0' { return !neg && i + 1 == tok.len; }
+    if tok[i] < '1' || tok[i] > '9' { return false; }
+    while i < tok.len {
+        if tok[i] < '0' || tok[i] > '9' { return false; }
+        i += 1;
+    }
+    return true;
+}
+
+// json_scan_all decodes one JSON string into a fresh buffer: a wide integer's
+// string is digits, and its length is the token's, never a reason to refuse a
+// value on its own (§16.2).
+fn json_scan_all(jr: JsonIn&) -> u8[>..], bool {
+    var buf: u8[>..] = [];
+    let ok = json_scan(jr, false) { unit, n =>
+        for i in n { buf.push(unit[i]); }
+    };
+    return buf, ok;
+}
+
+// json_place_int places an integer field from one token (docs/SPEC-TABLES.md
+// §16.2): an integer token only — no fraction, no exponent, not -0. The value
+// never passes through a double, and its range is tested on the exact value; a
+// value outside it refuses the read.
+fn json_place_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&, tok: const u8[:]) -> bool {
+    if !json_integer_token(tok) {
+        jr.rep.mismatch += 1;
+        return true;
+    }
+    let neg, mag, over = json_token_int(tok);
     if f.signed {
         var v: i64 = 0;
-        if whole {
-            let neg, mag, over = json_token_int(tok);
-            if neg {
-                if over || mag > 0x8000000000000000 {
-                    v = -9223372036854775807 - 1;
-                    sat = true;
-                } else {
-                    v = (0 - mag) as! i64;
-                }
-            } else if over || mag > 0x7FFFFFFFFFFFFFFF {
-                v = 9223372036854775807;
-                sat = true;
-            } else {
-                v = mag as! i64;
+        if neg {
+            if over || mag > 0x8000000000000000 {
+                jr.rep.oor += 1;
+                return true;
             }
+            v = (0 - mag) as! i64;
+        } else if over || mag > 0x7FFFFFFFFFFFFFFF {
+            jr.rep.oor += 1;
+            return true;
         } else {
-            let d, fin = json_token_f64(tok);
-            if !fin {
-                jr.rep.mismatch += 1;
-                return true;
-            }
-            if d >= 9223372036854775808.0 {
-                v = 9223372036854775807;
-                sat = true;
-            } else if d < -9223372036854775808.0 {
-                v = -9223372036854775807 - 1;
-                sat = true;
-            } else if d != ((d as! i64) as f64) {
-                jr.rep.mismatch += 1;
-                return true;
-            } else {
-                v = d as! i64;
-            }
+            v = mag as! i64;
         }
-        if sat { jr.rep.oor += 1; }
         if f.ranged {
             let lo = f.lo.lo as! i64;
             let hi = f.hi.lo as! i64;
-            if v < lo {
-                v = lo;
+            if v < lo || v > hi {
                 jr.rep.oor += 1;
-            } else if v > hi {
-                v = hi;
-                jr.rep.oor += 1;
+                return true;
             }
         }
         if f.kw < 8 {
             let high: i64 = ((1 as i64) << ((f.kw * 8 - 1) as i64)) - 1;
             let low = -high - 1;
-            if v > high {
-                v = high;
+            if v > high || v < low {
                 jr.rep.oor += 1;
-            } else if v < low {
-                v = low;
-                jr.rep.oor += 1;
+                return true;
             }
         }
         slot = v as! T;
         return true;
     }
-    var u: u64 = 0;
-    if whole {
-        let neg, mag, over = json_token_int(tok);
-        if neg {
-            u = 0;
-            sat = mag != 0;
-        } else if over {
-            u = 0xFFFFFFFFFFFFFFFF;
-            sat = true;
-        } else {
-            u = mag;
-        }
-    } else {
-        let d, fin = json_token_f64(tok);
-        if !fin {
-            jr.rep.mismatch += 1;
-            return true;
-        }
-        if d < 0.0 {
-            if d != ((d as! i64) as f64) {
-                jr.rep.mismatch += 1;
-                return true;
-            }
-            u = 0;
-            sat = true;
-        } else if d >= 18446744073709551616.0 {
-            u = 0xFFFFFFFFFFFFFFFF;
-            sat = true;
-        } else if d != ((d as! u64) as f64) {
-            jr.rep.mismatch += 1;
-            return true;
-        } else {
-            u = d as! u64;
-        }
+    if neg || over {
+        // a negative into an unsigned field, or a magnitude its lane cannot hold
+        jr.rep.oor += 1;
+        return true;
     }
-    if sat { jr.rep.oor += 1; }
+    var u = mag;
     var ranged = f.ranged;
     var lo: u64 = f.lo.lo;
     var hi: u64 = f.hi.lo;
@@ -1175,24 +1157,37 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
         lo = 0;
         hi = ((1 as u64) << (f.bits as! u64)) - 1;
     }
-    if ranged {
-        if u < lo {
-            u = lo;
-            jr.rep.oor += 1;
-        } else if u > hi {
-            u = hi;
-            jr.rep.oor += 1;
-        }
+    if ranged && (u < lo || u > hi) {
+        jr.rep.oor += 1;
+        return true;
     }
     if f.kw < 8 {
         let high: u64 = ((1 as u64) << ((f.kw * 8) as! u64)) - 1;
         if u > high {
-            u = high;
             jr.rep.oor += 1;
+            return true;
         }
     }
     slot = u as! T;
     return true;
+}
+
+// json_read_int reads an integer field: a wide kind (wider than 32 bits)
+// takes the same digits inside a JSON string too (docs/SPEC-TABLES.md §16.2).
+fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
+    if f.kw > 4 && json_peek(jr) == '"' {
+        let buf, ok = json_scan_all(jr);
+        if !ok { return false; }
+        return json_place_int(jr, slot, f, buf);
+    }
+    let start, end, whole, ok = json_number(jr);
+    if !ok { return false; }
+    if !whole {
+        // a fraction or an exponent is the wrong shape for an integer field
+        jr.rep.mismatch += 1;
+        return true;
+    }
+    return json_place_int(jr, slot, f, jr.text[start..end]);
 }
 
 // json_read_float places a number in a float field: a magnitude its width
@@ -1459,7 +1454,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
         if placed >= bound {
             jr.rep.oor += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
-        } else if json_shape(jr) != shape {
+        } else if !json_shape_takes(shape, json_shape(jr)) {
             jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
             placed += 1;
@@ -1514,7 +1509,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         if slot < 0 {
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
-        } else if json_shape(jr) != shape {
+        } else if !json_shape_takes(shape, json_shape(jr)) {
             jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if !F(jr, slot, depth + 1) {
@@ -1555,7 +1550,7 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
     if tag == 0 {
         jr.rep.unknown += 1;
         if !json_skip_value(jr, depth + 1) { return false; }
-    } else if json_shape(jr) != shapes[a] {
+    } else if !json_shape_takes(shapes[a], json_shape(jr)) {
         jr.rep.mismatch += 1;
         if !json_skip_value(jr, depth + 1) { return false; }
     } else {
@@ -1639,7 +1634,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
             if optional && got == 'z' {
                 if !json_literal(jr, "null") { return false; }
                 if !F(jr, rec, index, JsonOpAbsent, depth) { return false; }
-            } else if got != shapes[index] {
+            } else if !json_shape_takes(shapes[index], got) {
                 // the wrong JSON type for the kind: skipped and counted, and
                 // the KEY is still presence (§16.2), so an optional field is
                 // present at the value it already held
@@ -1803,7 +1798,13 @@ fn json_write_bool(out: u8[>..]&, v: bool) -> bool {
 }
 
 fn json_write_int<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
+    // a kind wider than 32 bits is written as a STRING of decimal digits
+    // (docs/SPEC-TABLES.md §16.2, §16.14 W10); a kind of 32 bits and under is
+    // a bare number.
+    let wide = f.kw > 4;
+    if wide { out.push('"'); }
     if f.signed { json_put_int(out, v as! i64); } else { json_put_uint(out, v as! u64); }
+    if wide { out.push('"'); }
     return true;
 }
 
