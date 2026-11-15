@@ -31,20 +31,6 @@ relaxed cell whose slug has no entry here.
   `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
   then drop the flag. WIP: `fix/main-red/dead-bytes`.
-- `relax/unknown-arm-text-c`: the C wire fuzz (`make tables-c-wire-fuzz`,
-  `tables-c-retain`, and the release gate's C runs) passes
-  `--relax-vector unknown_arm_text_nul` (`C_RELAX_VECTORS` in `make/c.mk`).
-  The pinned vector (testdata/wire/tables/fuzz-vectors/INDEX.txt) is an arm
-  that streamdemo.Feed's union cannot name, of the text kind, whose text holds
-  a NUL. Every read must refuse it (docs/SPEC-TABLES.md §6.5: the strict rules
-  apply to every byte, in fields a reader does not declare too). The C read
-  skips an unknown arm by its L without walking it, and loads. Its divergence
-  is counted, not failed, and if it ever agrees with the oracle the run fails
-  until the flag is dropped. Files: `test/conformance/harness/main.go`,
-  `test/conformance/harness/wirefuzz.go`, `make/c.mk`,
-  `make/wire-fuzz-release.mk`. Real fix: the C read walks an unknown arm's
-  payload by its framing, as Elixir's does since PR 3290; then drop
-  `C_RELAX_VECTORS`. WIP: none.
 - `relax/unknown-arm-text-cpp`: the same vector and the same skip on the C++
   wire fuzz (`make tables-wire-fuzz`, `tables-wire-fuzz-retain`, and the
   release gate's C++ runs), through `CPP_RELAX_VECTORS` in the `Makefile`.
@@ -86,7 +72,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
   - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
-  - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
+  - `relax/hostile-rows-js`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried finding); jref_zero_byte and str-zero-escape-unknown-key are gated again: the JS text writer refuses a zero byte, and the JS reader validates a skipped value. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
@@ -156,7 +142,11 @@ listed case that passes fails the leg until its line is removed.
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
   of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau
+<<<<<<< HEAD
   and squirrel in `test/conformance/relaxed.txt`: each still writes
+=======
+  and moo in `test/conformance/relaxed.txt`: each still writes
+>>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15) and the tool are
   right. WIP: none.
@@ -245,19 +235,6 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
-- `relax/dart-announce-refuses-nested-element`:
-  `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
-  cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
-  now refuses an announced list or keyed array whose element is itself a
-  list or keyed array (90b679296); the Dart announceRead still accepts it.
-  Real fix: the Dart announceRead refuses those shapes as the engine does,
-  the two cases want false, and the test's negative control is reworked.
-- `relax/dart-skip-progress-text-list-fixture`:
-  `internal/codegen/darttable` TestDartMessageSkipMakesProgress is skipped.
-  Its zero-progress fixture is a list of lists, which the engine now refuses
-  at announce time. Real fix: a fixture shape the engine admits, following
-  TestMessageSkipRefusesElementWithNoProgress (a text-list element with
-  length bound 0).
 - `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
   TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
   hold (count and log, not compare) the inputs the generated Go fixed read
@@ -285,7 +262,6 @@ PR 3290. WIP for every proof slug: none unless named here.
   answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
   on the Rust side).
 
-- `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
 - `relax/proof-i3-moo`: 1 cell(s): `porting I3 / moo` (❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two block...). Real fix: the porting register's I3 cell for moo is proven (docs/PORTING.md).

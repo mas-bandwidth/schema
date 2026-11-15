@@ -49,14 +49,14 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
     if (count >= bound || dropped) {
       // an element past [..N] counts, the total having dropped it or not (§2.13)
       if (count >= bound) { TableVariableTextListClamp(fd, report); }
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       const record = fd.e.c.make(), shape = inp.shape();
       if (shape === "z" && vf.opt) {
         if (!inp.literal("null")) { return false; }
       } else if (shape !== "s") {
         report.mismatch++;
-        if (!inp.skip(depth + 1, graph)) { return false; }
+        if (!inp.skip(depth + 1, graph, report)) { return false; }
       } else {
         const before = report.oor;
         if (!TableVariableTextField(vf, inp, record, depth + 1, graph, report)) { return false; }
