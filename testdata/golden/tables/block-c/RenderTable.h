@@ -4399,11 +4399,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_save_messages(const blockde
 }
 static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_camera_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_camera_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -5174,11 +5180,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo
 }
 static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_ship_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_ship_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -5989,11 +6001,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockde
 }
 static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_turret_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_turret_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xb51afb05cd34709f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -6662,11 +6680,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockd
 }
 static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_missile_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_missile_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -7305,11 +7329,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const b
 }
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_dynamic_prop_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_dynamic_prop_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -7982,11 +8012,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const bl
 }
 static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_static_prop_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_static_prop_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -8693,11 +8729,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const 
 }
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_cosmetic_prop_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_cosmetic_prop_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -9322,11 +9364,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdem
 }
 static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_laser_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_laser_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xee5d97ad45ad251f): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -9978,11 +10026,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const bloc
 }
 static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_explosion_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_explosion_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -11385,11 +11439,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages(const blockdem
 }
 static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_frame_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_frame_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xbb62c62c9808ea37): {
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
@@ -11973,11 +12033,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save_messages(const blockd
 }
 static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_vector3_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_vector3_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xaf63f54c86021707): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
@@ -12488,11 +12554,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save_messages(const blo
 }
 static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_render_quaternion_t * value)
 {
+ uint8_t seen[512];
  blockdemo_render_quaternion_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xaf63f54c86021707): {
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;

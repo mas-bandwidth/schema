@@ -5893,11 +5893,17 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save_messages(const tabledemo_w
 }
 static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_wide_blob_t * value)
 {
+ uint8_t seen[512];
  tabledemo_wide_blob_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x39f7fcec8fcb623d): {
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;

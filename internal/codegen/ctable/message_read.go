@@ -411,7 +411,9 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
-	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;switch(entry->id){\n", g.api(st.Name, "reset"))
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the
+	// named read keeps the same one-bit-a-reference set the skip walk keeps.
+	g.pf(" uint8_t seen[512];\n %s(value);memset(seen,0,sizeof(seen));for(;;){const TableMessageEntry * entry;int64_t ref;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;\n ref=entry-r->vocabulary->entries+1;if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));\n switch(entry->id){\n", g.api(st.Name, "reset"))
 	for _, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")

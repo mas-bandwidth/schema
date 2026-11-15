@@ -5852,11 +5852,17 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_save_messages(const graphdemo_tally
 }
 static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_message_reader_t * r,graphdemo_tally_t * value)
 {
+ uint8_t seen[512];
  graphdemo_tally_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const graphdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!graphdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x732dfbcc9b0cf0bb): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,4)){r->report->widened++;

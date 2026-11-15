@@ -3929,11 +3929,17 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_t
 }
 static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message_reader_t * r,bench_fixed_table_t * value)
 {
+ uint8_t seen[512];
  bench_fixed_table_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x7ce4fd9430e80cea): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,13)){r->report->widened++;

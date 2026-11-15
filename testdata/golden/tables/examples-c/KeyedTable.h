@@ -5905,11 +5905,17 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_save_messages(const tabledemo
 }
 static SCHEMA_UNUSED int tabledemo_team_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_team_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_team_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xceec99e2d65db674): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,4)){r->report->widened++;
@@ -6189,11 +6195,17 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_config_save_messages(const tablede
 }
 static SCHEMA_UNUSED int tabledemo_gunner_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_gunner_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_gunner_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xb75aa3662201646a): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -6503,11 +6515,17 @@ static SCHEMA_UNUSED int64_t tabledemo_turret_config_save_messages(const tablede
 }
 static SCHEMA_UNUSED int tabledemo_turret_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_turret_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_turret_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x7f6308be8ab37fc0): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -6966,11 +6984,17 @@ static SCHEMA_UNUSED int64_t tabledemo_hull_config_save_messages(const tabledemo
 }
 static SCHEMA_UNUSED int tabledemo_hull_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_hull_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_hull_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x7f69d4b5288ba9cf): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -7600,11 +7624,17 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_save_messages(const tabledem
 }
 static SCHEMA_UNUSED int tabledemo_keyed_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_keyed_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_keyed_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xbaaeb048a5a8fa6d): {
  if(!(entry->kind==16 && entry->elem_kind==13)){if(0){r->report->widened++;
@@ -8009,11 +8039,17 @@ static SCHEMA_UNUSED int64_t tabledemo_score_board_save_messages(const tabledemo
 }
 static SCHEMA_UNUSED int tabledemo_score_board_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_score_board_t * value)
 {
+ uint8_t seen[512];
  tabledemo_score_board_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096||(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7))))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xf10fad739a0e1660): {
  if(!(entry->kind==16 && entry->elem_kind==4)){if(0){r->report->widened++;
