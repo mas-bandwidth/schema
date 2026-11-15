@@ -2470,8 +2470,24 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 			if bit == nil then
 				r.report.unknown += 1
 			elseif bit <= 32 then
+				if bit32.btest(low, POW2[bit - 1]) then
+					-- A KNOWN VARIANT NAMED TWICE REFUSES (§16.2)
+					r.bad = true
+					if r.report.reason == nil then
+						r.report.reason = "a repeated key"
+					end
+					return false
+				end
 				low = bit32.bor(low, POW2[bit - 1])
 			else
+				if bit32.btest(high, POW2[bit - 33]) then
+					-- A KNOWN VARIANT NAMED TWICE REFUSES (§16.2)
+					r.bad = true
+					if r.report.reason == nil then
+						r.report.reason = "a repeated key"
+					end
+					return false
+				end
 				high = bit32.bor(high, POW2[bit - 33])
 			end
 		end
