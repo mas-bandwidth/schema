@@ -114,12 +114,8 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
   if c.mark!=nil { c.mark(index) }
  case 30:
   ref,ok:=r.Leb()
-<<<<<<< HEAD
-  if !ok || ref>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
-  if ref!=0 { r.meetFirstUse(ref) }
-=======
   if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
->>>>>>> 5c85a01fef0bcf09e3ca1dad78e679af0cd9b1c7
+  if ref!=0 { r.meetFirstUse(ref) }
  case 15:
   return c.union(r)
  case 12, 13, 14, 16, 31, 32:
