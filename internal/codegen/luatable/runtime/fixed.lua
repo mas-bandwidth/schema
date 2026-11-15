@@ -757,94 +757,6 @@ local function strict_value(T, d, v, ranges, wr)
   end
 end
 
--- F.read parses the file framing (docs/FIXED-FORM-ALGORITHM.md §2): the form
--- byte, the reserved zeroes, the hash, the layout and one record. A fixed
--- table reads BACKWARD (§5.2): the header's hash selects a layout the BUILD
--- laid down, and an older writer's records are read under ITS layout bytes.
--- `strict` is the plain name's read (docs/SPEC-TABLES.md §6.5).
-local function read_impl(T, name, buf, strict)
-  if #buf < 1 then error("malformed") end
-  local form = buf:byte(1)
-  if form ~= formByte then
-    if form == 1 then error("previous_form") end
-    error("malformed")
-  end
-  local desc = T.Tables[name]
-  if desc ~= nil and desc.integrity ~= nil then
-    if #buf < 5 or string.unpack("<I4", buf, #buf - 3) ~= L.crc32c(buf, #buf - 4) then error("integrity_mismatch") end
-    buf = buf:sub(1, #buf - 4)
-  end
-  if #buf < 20 then error("malformed") end
-  for i = 2, 8 do
-    if buf:byte(i) ~= 0 then error("malformed") end
-  end
-  local hash = string.unpack("<I8", buf, 9)
-  local layoutLen = string.unpack("<I4", buf, 17)
-  if layoutLen < 4 or 20 + layoutLen > #buf then error("layout_malformed") end
-  local layout = string.sub(buf, 21, 20 + layoutLen)
-  local fixed = T.Fixed[name]
-  if fixed == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
-  local known, entry, pick = fixed.known, nil, nil
-  if known ~= nil then
-    for i, k in ipairs(known) do
-      if k.hash == hash then
-        pick, entry = i, k
-        break
-      end
-    end
-    if entry == nil then error("no_layout") end
-    if fixed.floor and pick <= fixed.floor then error("layout_unsupported") end
-    -- under a KNOWN hash the bytes are only COMPARED to the lock's layout,
-    -- never walked: every §1.1 malformation is one name, layout_malformed
-    -- (docs/FIXED-FORM-ALGORITHM.md §1.1, §2 step 5, §5.3).
-    if #layout ~= #entry.layout or layout ~= entry.layout then error("layout_malformed") end
-    -- the tree was built when the module was sealed (F.prepare): a lock's own
-    -- layout that does not parse is false there
-    if not entry.tree then error("layout_malformed") end
-    if entry.tree.refusal then error(entry.tree.refusal) end
-    layout = entry.layout
-  end
-  local count = string.unpack("<I4", layout, 1)
-  if count == 0 or #layout ~= 4 + 17 * count then error("layout_malformed") end
-  local rootKind, rootSize
-  if entry ~= nil then
-    rootKind, rootSize = entry.tree.kind, entry.tree.size
-  else
-    rootKind = layout:byte(5 + 8)
-    rootSize = string.unpack("<I4", layout, 5 + 9)
-  end
-  if rootKind ~= 13 then error("layout_malformed") end
-  if rootSize > maxRecordBytes then error("layout_record_too_large") end
-  local recSize
-  if entry ~= nil then
-    recSize = entry.record
-  else
-    recSize = 8 + rootSize
-  end
-  local rest = #buf - 20 - layoutLen
-  if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("malformed") end
-  if rest / recSize > maxRecords then error("plan_too_large") end
-  local at = 21 + layoutLen
-  if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
-  local value
-  if entry ~= nil and entry.hash ~= fixed.hash then
-    value = decode_old_table(T, name, entry.tree, buf, at + 8)
-    -- the identity walk refuses its bounds as it decodes; an older writer's
-    -- plan is held to them after (§4.6)
-    if strict then strict_value(T, { shape = "table", target = name }, value, entry.ranges) end
-  else
-    value = decode_table(T, name, buf, at + 8, rootSize)
-  end
-  return value, hash, layout
-end
-
--- F.read is one record's read: the value and its layout hash and bytes.
-function F.read(T, name, buf, strict)
-  local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
-  if not ok then error(v, 0) end
-  return v, h, l
-end
-
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
 -- §3.1): the template is the hash and a zeroed body, and each field lands at
 -- its constant offset, little-endian, at its declared width.
@@ -956,6 +868,9 @@ local function load_impl(T, name, buf, strict, cap)
   -- omitted (or nil) capacity is the default, never an unbounded read, while
   -- a caller that sets 4,097 or more may read that many records.
   cap = cap or maxRecords
+  -- a read into ONE value holds no value to read from a file of none (§5.3
+  -- step 9), as the Go engine refuses it at a capacity of one
+  if nRec == 0 and cap == 1 then error("truncated", 0) end
   if nRec > cap then error("batch_too_large", 0) end
   local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
   local unknown = rep ~= nil and entry.unknown or 0
@@ -983,6 +898,15 @@ function F.load(T, name, buf, strict, cap)
   local ok, out, h, l, w, u = pcall(load_impl, T, name, buf, strict, cap)
   if not ok then error(out, 0) end
   return out, h, l, w, u
+end
+
+-- F.read is one record's read, and it is the load at a capacity of one
+-- (docs/FIXED-FORM-ALGORITHM.md §4, ONE path): every file gets the load's
+-- verdict, and the value, its layout hash and bytes come back.
+function F.read(T, name, buf, strict)
+  local ok, out, h, l = pcall(load_impl, T, name, buf, strict, 1)
+  if not ok then error(out, 0) end
+  return out[1], h, l
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a
