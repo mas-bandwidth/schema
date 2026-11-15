@@ -44,7 +44,9 @@ static class Program
     {
         ReadStream stream = new ReadStream(bytes);
         Check(decode(stream, ref initial) && stream.Ok, "read");
-        Check(stream.BitsProcessed == bits, "read consumed bits");
+        // The one-packet read ends after the object: it consumes the object's
+        // bits and the final byte's unused bits (SPEC §5).
+        Check(stream.BitsProcessed == (bits + 7) / 8 * 8, "read consumed bits");
         Check(Equal(initial, want), "read values and backing storage");
     }
     static void Golden<T>(string dir, string name, T value, T initial, T want,
