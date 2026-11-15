@@ -4604,14 +4604,16 @@ namespace Blockdemo
                         bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
                         Span<ulong> few = stackalloc ulong[16];
                         int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                        // a walked element of no fixed width that consumes no bits
+                        // refuses the read (docs/SPEC-TABLES.md §3.3), as the
+                        // reference's walk does: a count alone never buys the walk
+                        bool walked = shape.Elem != 0 && shape.Elem != 32 && Width(shape.Elem) == 0;
                         for (ulong i = 0; i < n; i++)
                         {
-                            long at = r.At;
                             if (kind == 16 && (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id))) { return false; }
+                            long at = r.At;
                             if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, nested ? depth + 1 : depth)) { return false; }
-                            // an element that consumed no bits is the rest of the run
-                            // too: a remaining count the bits left cannot back is damage
-                            if (r.At == at) { return n - i - 1 <= (ulong)(r.End - r.At); }
+                            if (walked && r.At == at) { return false; }
                         }
                         return true;
                     case 10:
