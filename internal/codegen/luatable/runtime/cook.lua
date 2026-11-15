@@ -137,8 +137,9 @@ end
 
 -- PASS TWO's state (§7.4). There is none per node: an entry's type id says
 -- which walk to run. base and extent are the holder's own bounds for the
--- element-array and map-slot clauses; arrays remembers what is already placed
--- in that node so no two overlap. All reset per node.
+-- element-array and map-slot clauses; arrays gathers every array and blob
+-- placed in that node, which node tests for overlap once at its end. All reset
+-- per node.
 local function new_scan(h, dir)
   return {
     h = h,
@@ -178,9 +179,6 @@ local function placed_array(s, at, size, align)
   local start, finish = array_extent(at, delta, count, size, s.base, s.extent)
   if start == nil then return nil end
   if start % align ~= 0 then return nil end
-  for _, other in ipairs(s.arrays) do
-    if start < other.finish and other.start < finish then return nil end
-  end
   s.arrays[#s.arrays + 1] = { start = start, finish = finish }
   return start, count
 end
@@ -208,9 +206,6 @@ local function text_slot(s, at)
   if start == nil then return false end
   if length == 0 then return true end
   if s.data:byte(start + BLOB_HEADER + length + 1) ~= 0 then return false end
-  for _, other in ipairs(s.arrays) do
-    if start < other.finish and other.start < finish then return false end
-  end
   s.arrays[#s.arrays + 1] = { start = start, finish = finish }
   return true
 end
@@ -437,6 +432,25 @@ record = function(s, base, st)
   return true
 end
 
+-- NO TWO ARRAYS IN A NODE OVERLAP (§7.4 clauses 4 and 5, §2.13.1): the lists,
+-- maps and unbounded-text blobs a node places are tested once, sorted by
+-- start, against the furthest finish before them, so the test costs n log n
+-- in the node's arrays and never a compare of every pair. Every placed array
+-- is non-empty, so a start before that finish overlaps an array before it.
+local function by_start(a, b)
+  return a.start < b.start
+end
+
+local function overlapping(arrays)
+  table.sort(arrays, by_start)
+  local reach = math.mininteger
+  for _, a in ipairs(arrays) do
+    if a.start < reach then return true end
+    if a.finish > reach then reach = a.finish end
+  end
+  return false
+end
+
 -- one NODE. A BYTE BUFFER's node has one count companion — its length — which
 -- with the header (and a string's terminator) must fit its own extent (§7.4
 -- clause 2).
@@ -448,7 +462,14 @@ local function node(s, base, extent, type_id, st)
     return need <= extent
   end
   s.base, s.extent, s.arrays = base, base + extent, {}
-  return record(s, base, st)
+  local ok = record(s, base, st)
+  -- An overlap among the arrays placed before a failing clause is the refusal
+  -- a walk that tested each placement would have met first: bad_layout.
+  if overlapping(s.arrays) then
+    s.nonFinite = false
+    return false
+  end
+  return ok
 end
 
 -- PASS TWO (§7.4): every node, in directory order, and no reference is
