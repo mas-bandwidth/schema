@@ -69,6 +69,42 @@ listed case that passes fails the leg until its line is removed.
   Files: `test/conformance/relaxed.txt`. Real fix: debug asserts of the write
   contract in `internal/codegen/rusttable/fixedform.go` and the message
   writer. WIP: none.
+- The hostile rows, one slug per leg. #3486 brought the corpus up to three
+  landed rulings: json-hostile `base64-unpadded` is refused
+  (json-base64-canonical), `str-zero-escape-unknown-key` is refused (the
+  skipped value is validated), and write-refusal-json `jref_zero_byte` is
+  refused (the text writer refuses a zero byte, docs/SPEC.md §5.1 row 8). The
+  Go engine and the Go JSON walk carry all three; the other legs still read
+  the two hostile rows (and some write the zero byte), so their cases are in
+  `test/conformance/relaxed.txt`. The table-base64 harness
+  (`test/table-base64/harness`) expects the canonical rule too, and its C, C++
+  and C# runs pass `-relax <slug>`, which keeps the old accept for the
+  non-canonical cases only (`make/checks/table-base64.mk`). Real fix, per
+  leg: its JSON read refuses unpadded Base64 and set pad bits, and validates a
+  skipped value; its text writer refuses a zero byte (a debug assert in C,
+  C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
+  leg's lines go. WIP: none.
+  - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64.
+  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64.
+  - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64.
+  - `relax/hostile-rows-dart`: both hostile rows.
+  - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-goose`: both hostile rows.
+  - `relax/hostile-rows-java`: both hostile rows.
+  - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-lobster`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-lua`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-luau`: both hostile rows.
+  - `relax/hostile-rows-moo`: both hostile rows.
+  - `relax/hostile-rows-rust`: both hostile rows.
+  - `relax/hostile-rows-squirrel`: both hostile rows.
+- `relax/rust-json-fixed-rows`: five json-hostile cases of the Rust leg
+  (fixed-at-bound, fixed-exact-fraction and fixed-integral-token write 8
+  bytes, a refusal, where the corpus has the canonical text; fixed-fraction-too-fine
+  and int128-fractional read where the corpus refuses), red at CI full
+  43656719730. Files: `test/conformance/relaxed.txt`. Real fix: the Rust JSON
+  read of fixed-point and int128 text follows docs/SPEC-TABLES.md §16 as the
+  engine does. WIP: none.
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
   maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
@@ -147,7 +183,11 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). The five fixtures were regenerated
   on main by #3486. Real fix: every cook writer zeroes the dead slots, and the
   rows go back into the control and the Go case runs again.
-  WIP: none.
+  The same slug relaxes the ten cook-write cases (the five rows, both orders)
+  of the conformance legs cpp, cs, dart, elixir, goose, js, lobster, lua,
+  luau, moo and squirrel in `test/conformance/relaxed.txt`: each still writes
+  the element defaults into dead counted slots (CI full 43656719730). C and the
+  tool are right. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 
