@@ -11305,7 +11305,10 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(graphdemo_table_
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
             unknown++;
         }
         else if (sink->region!=NULL) {
@@ -11565,7 +11568,10 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(graphdemo_table_
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
             unknown++;
         }
         else if (sink->region!=NULL) {
@@ -11828,7 +11834,10 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(graphdemo_table_read
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
             unknown++;
         }
         else if (sink->region!=NULL) {
@@ -12099,7 +12108,10 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(graphdemo_table_read
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
             unknown++;
         }
         else if (sink->region!=NULL) {
@@ -12364,7 +12376,10 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(graphdemo_table_read
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
             unknown++;
         }
         else if (sink->region!=NULL) {
@@ -12635,7 +12650,10 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(graphdemo_table_read
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
             unknown++;
         }
         else if (sink->region!=NULL) {
@@ -12765,7 +12783,14 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
         continue;
         }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+                return 0;
+                }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+                }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
             unknown++;
@@ -12992,7 +13017,14 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
         continue;
         }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+                return 0;
+                }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+                }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
             unknown++;
@@ -13219,7 +13251,14 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
         continue;
         }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+                return 0;
+                }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+                }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
             unknown++;
@@ -13447,7 +13486,14 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
         continue;
         }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+                return 0;
+                }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+                }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
             unknown++;
@@ -13685,7 +13731,14 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
         continue;
         }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+                return 0;
+                }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+                }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
             unknown++;
@@ -13913,7 +13966,14 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
         continue;
         }
         if (type==NULL) {
-            if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            if(id==UINT64_C(0x2f2ec0474f1c4fe4) || id==UINT64_C(0x704be0d8faaffc58)) {
+                if(body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+                return 0;
+                }
+                if(id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+                }
+            } else if(graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
             unknown++;

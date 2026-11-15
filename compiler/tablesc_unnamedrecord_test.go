@@ -30,42 +30,57 @@ table Extra {
 table Root {
  value uint32
  extra *Extra
+ data *bytes
+ title *string
 }
 `
 	writer := unitFromSource(t, newer)
 	wm := tabletext.NewModel(writer)
-	value := wm.New(wm.Lookup("Root"))
-	var report tabletext.Report
-	fixture := `{"value":7,"extra":{"items":[201],"name":"QZQ","flag":true}}`
-	if !wm.Read(value, []byte(fixture), &report) || !report.Silent() {
-		t.Fatalf("fixture: %+v", report)
+	encode := func(fixture string) []byte {
+		value := wm.New(wm.Lookup("Root"))
+		var report tabletext.Report
+		if !wm.Read(value, []byte(fixture), &report) || !report.Silent() {
+			t.Fatalf("fixture: %+v", report)
+		}
+		wire, err := tablewire.Encode(wm, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wire
 	}
-	clean, err := tablewire.Encode(wm, value)
-	if err != nil {
-		t.Fatal(err)
-	}
+	clean := encode(`{"value":7,"extra":{"items":[201],"name":"QZQ","flag":true}}`)
 	if records, whole := tablewire.FileNodeRecords(clean); !whole || len(records) != 1 {
 		t.Fatalf("the fixture must carry one node record: %v %v", records, whole)
 	}
-	// Each damage rewrites bytes in place inside the Extra record's body, so
-	// every frame length around it stays true.
-	damage := func(name string, from, to []byte) []byte {
-		if bytes.Count(clean, from) != 1 || len(from) != len(to) {
-			t.Fatalf("%s: the marker %x must occur once in %x", name, from, clean)
+	// Each damage rewrites bytes in place inside a record body, so every frame
+	// length around it stays true.
+	damage := func(name string, wire, from, to []byte) []byte {
+		if bytes.Count(wire, from) != 1 || len(from) != len(to) {
+			t.Fatalf("%s: the marker %x must occur once in %x", name, from, wire)
 		}
-		wire := bytes.Clone(clean)
-		at := bytes.Index(wire, from)
-		copy(wire[at:], to)
-		return wire
+		damaged := bytes.Clone(wire)
+		at := bytes.Index(damaged, from)
+		copy(damaged[at:], to)
+		return damaged
+	}
+	// A blob record is raw bytes, not a table body (§2.5, §3.1): the reader
+	// skips it by its length and counts it unknown, and a *string blob's
+	// content is still judged by the text rule.
+	blobs := encode(`{"value":7,"extra":{"items":[201],"name":"QZQ","flag":true},"data":"3q2+7w==","title":"RXR"}`)
+	if records, whole := tablewire.FileNodeRecords(blobs); !whole || len(records) != 3 {
+		t.Fatalf("the blob fixture must carry three node records: %v %v", records, whole)
 	}
 	cases := []struct {
-		name string
-		wire []byte
+		name  string
+		wire  []byte
+		clean bool
 	}{
-		{"clean", clean},
-		{"count with no elements", damage("count", []byte{0x01, 201}, []byte{0x03, 201})},
-		{"ill-formed UTF-8", damage("utf8", []byte("QZQ"), []byte{0xff, 0xfe, 'Q'})},
-		{"bool byte 2", damage("bool", []byte{0x01, 0x01, 0x00}, []byte{0x01, 0x02, 0x00})},
+		{"clean", clean, true},
+		{"count with no elements", damage("count", clean, []byte{0x01, 201}, []byte{0x03, 201}), false},
+		{"ill-formed UTF-8", damage("utf8", clean, []byte("QZQ"), []byte{0xff, 0xfe, 'Q'}), false},
+		{"bool byte 2", damage("bool", clean, []byte{0x01, 0x01, 0x00}, []byte{0x01, 0x02, 0x00}), false},
+		{"clean blob records", blobs, true},
+		{"zero byte in a string blob", damage("blob text", blobs, []byte("RXR"), []byte{0x00, 'R', 'X'}), false},
 	}
 	reader := unitFromSource(t, older)
 	rm := tabletext.NewModel(reader)
@@ -73,10 +88,10 @@ table Root {
 	for i, tc := range cases {
 		var r tabletext.Report
 		ok, _ := tablewire.Decode(rm, rm.New(rm.Lookup("Root")), tc.wire, &r)
-		if i == 0 && (!ok || r.Unknown == 0) {
-			t.Fatalf("the clean file must load with the record unknown: %v %+v", ok, r)
+		if tc.clean && (!ok || r.Unknown == 0) {
+			t.Fatalf("%s: the engine must load it with the record unknown: %v %+v", tc.name, ok, r)
 		}
-		if i > 0 && ok {
+		if !tc.clean && ok {
 			t.Fatalf("%s: the engine must refuse the damage", tc.name)
 		}
 		fmt.Fprintf(&wires, "static const uint8_t wire%d[]={", i)
