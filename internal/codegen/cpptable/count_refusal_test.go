@@ -408,7 +408,11 @@ int main(void) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	return exec.CommandContext(ctx, exePath).CombinedOutput()
+	cmd := exec.CommandContext(ctx, exePath)
+	// The probe links AddressSanitizer; leak detection is unavailable under
+	// some sandboxes' ptrace and is not part of any rule the probe checks.
+	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	return cmd.CombinedOutput()
 }
 
 const cppBomBoundarySchema = `package countcheck

@@ -2736,6 +2736,7 @@ inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool *
 {
     int64_t symbols = 0;
     int64_t pad = 0;
+    int32_t last = -1;
     bool shape = true;
     for ( ;; )
     {
@@ -2754,23 +2755,33 @@ inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool *
             shape = false;
             continue;
         }
-        if ( TableJsonBase64Value( (uint8_t) c ) < 0 )
+        const int32_t value = TableJsonBase64Value( (uint8_t) c );
+        if ( value < 0 )
         {
             shape = false;
             continue;
         }
+        last = value;
         symbols++;
     }
     if ( shape )
     {
+        // CANONICAL base64 (docs/SPEC-TABLES.md §16.2, §16.8): the standard
+        // alphabet, padded, pad bits zero, and exactly the spelling the writer
+        // writes. A body that decodes but is unpadded, or whose final symbol
+        // leaves pad bits set, is not that spelling.
+        bool canonical = false;
         if ( pad > 0 )
         {
             if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { shape = false; }
+            const int32_t mask = pad == 1 ? 0x03 : 0x0f;
+            canonical = last >= 0 && ( last & mask ) == 0;
         }
-        else if ( symbols % 4 == 1 )
+        else
         {
-            shape = false;
+            canonical = symbols % 4 == 0;
         }
+        if ( !canonical ) { shape = false; }
     }
     *symbols_out = symbols;
     *base64 = shape;
