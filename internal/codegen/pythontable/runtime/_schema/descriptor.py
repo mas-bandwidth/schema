@@ -13,7 +13,7 @@ import struct
 from typing import Any
 
 # An array element is born at its kind's zero: an element carries no
-# specified default (docs/SPEC-TABLES.md §4.6).
+# specified default (docs/SPEC.md §4.6).
 _ELEMENT_ZERO: dict[str, Any] = {
     "bool": False,
     "int": 0,
