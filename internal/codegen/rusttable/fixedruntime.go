@@ -95,8 +95,10 @@ impl<T> TableCookSpan<T> {
     /// The array, in place: one add and no copy.
     ///
     /// # Safety
-    /// The slot must sit in a cook whose region holds the array its delta
-    /// names (a cook is trusted input, §7).
+    /// The slot must sit in a genuine cook of this build: every bool byte 0 or
+    /// 1, every self-relative offset a slot inside the region, and every count
+    /// within its declared bound. A non-zero delta must name an array the region
+    /// holds, and the region must not be written while the returned slice lives.
     pub unsafe fn as_slice(&self) -> &[T] {
         if self.reference == 0 || self.count <= 0 {
             return &[];

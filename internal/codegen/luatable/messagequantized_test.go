@@ -55,7 +55,7 @@ func mqBatch(vocab []ir.TableVocabularyEntry, slot, index uint64, width int) []b
 	var bytes []byte
 	bits := 0
 	put := func(v uint64, n int) {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if bits>>3 == len(bytes) {
 				bytes = append(bytes, 0)
 			}

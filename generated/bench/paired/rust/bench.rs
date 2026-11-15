@@ -95,6 +95,13 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
 
 #[inline]
 pub fn read_bench_packet(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -> Result {
+    read_bench_packet_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_bench_packet_body(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: a[0..8], b[0..16], c[0..8]
     stream.serialize_bits(&mut c, 32)?;
@@ -222,6 +229,13 @@ pub fn write_bench_ints(stream: &mut WriteStream<'_>, value: &BenchInts) -> Resu
 
 #[inline]
 pub fn read_bench_ints(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Result {
+    read_bench_ints_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_bench_ints_body(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: f0[0..8], f1[0..16], f2[0..8]
     stream.serialize_bits(&mut c, 32)?;
@@ -328,6 +342,13 @@ pub fn write_bench_bits(stream: &mut WriteStream<'_>, value: &BenchBits) -> Resu
 
 #[inline]
 pub fn read_bench_bits(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Result {
+    read_bench_bits_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_bench_bits_body(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: b7[0..7], b13[0..13], b23[0..12]
     stream.serialize_bits(&mut c, 32)?;
@@ -585,6 +606,13 @@ pub fn write_mixed_entity(stream: &mut WriteStream<'_>, value: &MixedEntity) -> 
 
 #[inline]
 pub fn read_mixed_entity(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -> Result {
+    read_mixed_entity_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_mixed_entity_body(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: entity_id[0..12], pos_x[0..15], pos_y[0..5]
     stream.serialize_bits(&mut c, 32)?;
@@ -671,6 +699,13 @@ pub fn write_mixed_stat(stream: &mut WriteStream<'_>, value: &MixedStat) -> Resu
 
 #[inline]
 pub fn read_mixed_stat(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Result {
+    read_mixed_stat_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_mixed_stat_body(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Result {
     let mut c: u32 = 0;
     // word 0, 18 bits: stat_id[0..8], delta[0..10]
     stream.serialize_bits(&mut c, 18)?;
@@ -714,6 +749,13 @@ pub fn write_mixed_hit_event(stream: &mut WriteStream<'_>, value: &MixedHitEvent
 
 #[inline]
 pub fn read_mixed_hit_event(stream: &mut ReadStream<'_>, value: &mut MixedHitEvent) -> Result {
+    read_mixed_hit_event_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_mixed_hit_event_body(stream: &mut ReadStream<'_>, value: &mut MixedHitEvent) -> Result {
     let mut c: u32 = 0;
     // word 0, 28 bits: target_id[0..12], damage[0..12], hit_kind[0..3], crit[0..1]
     stream.serialize_bits(&mut c, 28)?;
@@ -756,6 +798,13 @@ pub fn write_mixed_chat_event(stream: &mut WriteStream<'_>, value: &MixedChatEve
 
 #[inline]
 pub fn read_mixed_chat_event(stream: &mut ReadStream<'_>, value: &mut MixedChatEvent) -> Result {
+    read_mixed_chat_event_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_mixed_chat_event_body(stream: &mut ReadStream<'_>, value: &mut MixedChatEvent) -> Result {
     let mut c: u32 = 0;
     // word 0, 14 bits: channel[0..2], speaker[0..12]
     stream.serialize_bits(&mut c, 14)?;
@@ -794,6 +843,13 @@ pub fn write_mixed_pickup_event(stream: &mut WriteStream<'_>, value: &MixedPicku
 
 #[inline]
 pub fn read_mixed_pickup_event(stream: &mut ReadStream<'_>, value: &mut MixedPickupEvent) -> Result {
+    read_mixed_pickup_event_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_mixed_pickup_event_body(stream: &mut ReadStream<'_>, value: &mut MixedPickupEvent) -> Result {
     let mut c: u32 = 0;
     // word 0, 18 bits: item_id[0..10], amount[0..8]
     stream.serialize_bits(&mut c, 18)?;
@@ -882,23 +938,31 @@ pub fn write_mixed_event(stream: &mut WriteStream<'_>, value: &MixedEvent) -> Re
     }
 }
 
+#[inline]
 pub fn read_mixed_event(stream: &mut ReadStream<'_>, value: &mut MixedEvent) -> Result {
+    read_mixed_event_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_mixed_event_body(stream: &mut ReadStream<'_>, value: &mut MixedEvent) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 3)?; // rejects a tag above the count (SPEC §4.8)
     match tag_value {
         1 => {
             let mut arm = MixedHitEvent::default();
-            read_mixed_hit_event(stream, &mut arm)?;
+            read_mixed_hit_event_body(stream, &mut arm)?;
             *value = MixedEvent::Hit(arm);
         }
         2 => {
             let mut arm = MixedChatEvent::default();
-            read_mixed_chat_event(stream, &mut arm)?;
+            read_mixed_chat_event_body(stream, &mut arm)?;
             *value = MixedEvent::Chat(arm);
         }
         3 => {
             let mut arm = MixedPickupEvent::default();
-            read_mixed_pickup_event(stream, &mut arm)?;
+            read_mixed_pickup_event_body(stream, &mut arm)?;
             *value = MixedEvent::Pickup(arm);
         }
         _ => *value = MixedEvent::None,
@@ -1137,6 +1201,13 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
 
 #[inline]
 pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
+    read_bench_mixed_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_bench_mixed_body(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: const(49374)[0..16], sequence[0..16]
     stream.serialize_bits(&mut c, 32)?;
@@ -1199,13 +1270,13 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     stream.serialize_fixed(&mut value.server_time, 24, 8, 0, 65535)?;
     stream.serialize_int(&mut value.entities_count, 1, 8)?; // the count guards the loop (§6.3)
     for i in 0..value.entities_count as usize {
-        read_mixed_entity(stream, &mut value.entities[i])?;
+        read_mixed_entity_body(stream, &mut value.entities[i])?;
     }
     stream.serialize_int(&mut value.stats_count, 0, 80)?; // the count guards the loop (§6.3)
     for i in 0..value.stats_count as usize {
-        read_mixed_stat(stream, &mut value.stats[i])?;
+        read_mixed_stat_body(stream, &mut value.stats[i])?;
     }
-    read_mixed_event(stream, &mut value.game_event)?;
+    read_mixed_event_body(stream, &mut value.game_event)?;
     for i in 0..4 {
         {
             let mut raw_value: u32 = 0;

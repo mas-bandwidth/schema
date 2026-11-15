@@ -186,8 +186,17 @@ defmodule Example.Render do
           {:ok, Example.RenderSprite.t()} | :error
   def read_render_sprite(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_render_sprite_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -311,8 +320,17 @@ defmodule Example.Render do
   @spec read_render_block(binary(), non_neg_integer()) :: {:ok, Example.RenderBlock.t()} | :error
   def read_render_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_render_block_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
