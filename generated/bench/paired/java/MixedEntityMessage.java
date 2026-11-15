@@ -254,6 +254,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.entityId != 0)) {
                     r.report.refuse("non_canonical");
@@ -293,6 +294,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.posX != 0)) {
                     r.report.refuse("non_canonical");
@@ -332,6 +334,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.posY != 0)) {
                     r.report.refuse("non_canonical");
@@ -371,6 +374,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.posZ != 0)) {
                     r.report.refuse("non_canonical");
@@ -410,6 +414,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.yaw != 0)) {
                     r.report.refuse("non_canonical");
@@ -449,6 +454,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.pitch != 0)) {
                     r.report.refuse("non_canonical");
@@ -488,6 +494,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.velX != 0)) {
                     r.report.refuse("non_canonical");
@@ -527,6 +534,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.velY != 0)) {
                     r.report.refuse("non_canonical");
@@ -566,6 +574,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.velZ != 0)) {
                     r.report.refuse("non_canonical");
@@ -605,6 +614,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.health != 0)) {
                     r.report.refuse("non_canonical");
@@ -692,6 +702,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.weapon != (byte) 0)) {
                     r.report.refuse("non_canonical");
@@ -731,6 +742,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.damage != 0L)) {
                     r.report.refuse("non_canonical");
@@ -770,6 +782,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.moving != false)) {
                     r.report.refuse("non_canonical");
@@ -809,6 +822,7 @@ public final class MixedEntityMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.firing != false)) {
                     r.report.refuse("non_canonical");

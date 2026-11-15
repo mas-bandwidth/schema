@@ -96,6 +96,7 @@ public final class FixedTableMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.at - canonAt == (long) r.vocab.refBits) {
                     r.report.refuse("non_canonical");
                     return false;

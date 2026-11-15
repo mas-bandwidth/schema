@@ -121,6 +121,7 @@ public final class MixedHitEventMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.targetId != 0)) {
                     r.report.refuse("non_canonical");
@@ -160,6 +161,7 @@ public final class MixedHitEventMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.damage != 0)) {
                     r.report.refuse("non_canonical");
@@ -199,6 +201,7 @@ public final class MixedHitEventMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.hitKind != 0)) {
                     r.report.refuse("non_canonical");
@@ -238,6 +241,7 @@ public final class MixedHitEventMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.crit != false)) {
                     r.report.refuse("non_canonical");

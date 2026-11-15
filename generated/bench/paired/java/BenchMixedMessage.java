@@ -413,6 +413,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.sequence != 0)) {
                     r.report.refuse("non_canonical");
@@ -452,6 +453,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.ackSequence != 0)) {
                     r.report.refuse("non_canonical");
@@ -491,6 +493,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.ackBits != 0)) {
                     r.report.refuse("non_canonical");
@@ -530,6 +533,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.sessionId != 0L)) {
                     r.report.refuse("non_canonical");
@@ -569,6 +573,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.clientId != 0)) {
                     r.report.refuse("non_canonical");
@@ -610,6 +615,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.nonce != 0L)) {
                     r.report.refuse("non_canonical");
@@ -651,6 +657,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.worldTime != 0L)) {
                     r.report.refuse("non_canonical");
@@ -690,6 +697,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.frameTick != 0L)) {
                     r.report.refuse("non_canonical");
@@ -729,6 +737,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.serverTime != 0)) {
                     r.report.refuse("non_canonical");
@@ -795,6 +804,7 @@ public final class BenchMixedMessage {
                 v.entitiesCount = (int) keep19;
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.entitiesCount > 0)) {
                     r.report.refuse("non_canonical");
@@ -861,6 +871,7 @@ public final class BenchMixedMessage {
                 v.statsCount = (int) keep26;
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.statsCount > 0)) {
                     r.report.refuse("non_canonical");
@@ -1087,6 +1098,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(!allDef50)) {
                     r.report.refuse("non_canonical");
@@ -1140,6 +1152,7 @@ public final class BenchMixedMessage {
                 v.playerNameLength = kept54;
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.playerNameLength > 0)) {
                     r.report.refuse("non_canonical");
@@ -1188,6 +1201,7 @@ public final class BenchMixedMessage {
                 v.payloadLength = kept57;
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.payloadLength > 0)) {
                     r.report.refuse("non_canonical");
@@ -1234,6 +1248,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
@@ -1280,6 +1295,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
@@ -1326,6 +1342,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
@@ -1367,6 +1384,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
@@ -1406,7 +1424,7 @@ public final class BenchMixedMessage {
                     }
                     v.drift = v62;
                 }
-                if (!r.report.refused && !r.report.damaged && r.report.unknown == canonUnk && !(Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0))) {
+                if (!r.report.refused && !r.report.damaged && r.vocab.ownBuild() && r.report.unknown == canonUnk && !(Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1445,6 +1463,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !((v.wideKey.lo != 0L || v.wideKey.hi != 0L))) {
                     r.report.refuse("non_canonical");
@@ -1497,6 +1516,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !((v.flux.lo != 0L || v.flux.hi != 0L))) {
                     r.report.refuse("non_canonical");
@@ -1536,6 +1556,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.ping != (short) 0)) {
                     r.report.refuse("non_canonical");
@@ -1575,6 +1596,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.crcHint != 0)) {
                     r.report.refuse("non_canonical");
@@ -1614,6 +1636,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.hasExtra != true)) {
                     r.report.refuse("non_canonical");
@@ -1653,6 +1676,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.extra != 0)) {
                     r.report.refuse("non_canonical");
@@ -1692,6 +1716,7 @@ public final class BenchMixedMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.idleTicks != 0)) {
                     r.report.refuse("non_canonical");

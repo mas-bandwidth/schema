@@ -105,6 +105,7 @@ public final class MixedStatMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.statId != 0)) {
                     r.report.refuse("non_canonical");
@@ -144,6 +145,7 @@ public final class MixedStatMessage {
                 }
                 if (!r.report.refused
                         && !r.report.damaged
+                        && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
                         && !(v.delta != 0)) {
                     r.report.refuse("non_canonical");

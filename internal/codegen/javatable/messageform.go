@@ -213,6 +213,15 @@ public final class TableVocabulary {
         this.maxBytes = 65536;
     }
 
+    // ownBuild answers whether the sender announced this unit's own build
+    // version: the one case where a reader knows the sender's declared
+    // defaults exactly, so a field written at the default it elides is not the
+    // one encoding (§3.3 (a)). Under another build version the sender's
+    // default is not this reader's to know, and the field reads as today.
+    boolean ownBuild() {
+        return announced && buildVersion == tableBuildVersion;
+    }
+
     // NO RE-ANNOUNCEMENT, EVER, and REFUSAL IS TERMINAL (§3.3): a first
     // announcement sets the vocabulary or is refused, and every announcement
     // after it — refused or not — is ` + "`" + `second_announcement` + "`" + `.
@@ -2356,7 +2365,7 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%s}\n", ind)
 		g.pf("%sr.seenRollback(seenSlotMark);\n", ind)
 		if canonical {
-			g.pf("%sif (%s == 0L) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, nVar)
+			g.pf("%sif (%s == 0L && r.vocab.ownBuild()) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, nVar)
 		}
 
 	case f.Array != ir.ArrayNone:
