@@ -25,5 +25,8 @@ class _Unsupported:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         raise InvalidValue(fd.name, _RULE)
 
+    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        raise InvalidValue(fd.name, _RULE)
+
 
 kinds.register("unsupported", _Unsupported())

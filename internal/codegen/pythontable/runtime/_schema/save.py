@@ -10,7 +10,7 @@ from typing import Any
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_array, kind_bool, kind_bytes, kind_enum, kind_float, kind_int, kind_pointer, kind_string, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -142,6 +142,11 @@ def _collect(value: Any, ctx: Ctx) -> None:
             if field.is_default(current):
                 continue
             _collect(current, ctx)
+        elif field.codec == "array":
+            elem = field.elem
+            if elem is not None and elem.codec == "table":
+                for item in current:
+                    _collect(item, ctx)
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:

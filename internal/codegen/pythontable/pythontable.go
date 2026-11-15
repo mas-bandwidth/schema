@@ -364,9 +364,17 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
-		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
+		fmt.Fprintf(b, "            bound=%d,\n", fieldBound(f))
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		fmt.Fprintf(b, "            elem=%s,\n", elemDescriptor(f))
+		fmt.Fprintf(b, "            variants=%s,\n", fieldVariants(f))
+		fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
+		fmt.Fprintf(b, "            fmin=%s,\n", floatBound(f, f.FMin))
+		fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
+		fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
+		fmt.Fprintf(b, "            array_kind=%s,\n", strconv.Quote(arrayKind(f)))
+		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 		fmt.Fprintf(b, "        ),\n")
 	}
 	if len(st.Fields) == 1 {
@@ -599,7 +607,7 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	names := []string{"InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, base := range bases {
 		fmt.Fprintf(&b, "from . import %s\n", base)
 		names = append(names, base)
@@ -631,7 +639,8 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 			fmt.Fprintf(&b, "from .%s import %s\n", base, strings.Join(classes, ", "))
 		}
 	}
-	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n\n", u.ProtocolId)
+	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
+	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))
 	sort.Strings(names)
 	b.WriteString("__all__ = [\n")
 	for _, n := range names {
@@ -643,7 +652,7 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 
 func codecOf(f *ir.Field) string {
 	if f.Type.Pointer {
-		if f.Type.Blob() {
+		if f.Array != ir.ArrayNone || f.Type.Blob() {
 			return "unsupported"
 		}
 		if _, ok := f.Type.Ref.(*ir.Struct); ok {
@@ -651,7 +660,25 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.IsMap() || f.KeyEnum != "" || f.Type.Optional || f.IsTextList() {
+		return "unsupported"
+	}
+	if f.Array != ir.ArrayNone {
+		if f.Array == ir.ArrayList {
+			return "unsupported"
+		}
+		switch scalarCodec(f) {
+		case "bool", "int", "float32", "float64", "string", "enum", "table":
+			return "array"
+		}
+		return "unsupported"
+	}
+	return scalarCodec(f)
+}
+
+// scalarCodec names the codec of one value, without the array wrapper.
+func scalarCodec(f *ir.Field) string {
+	if f.Type.Pointer {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -659,12 +686,118 @@ func codecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
 		}
 	}
 	return "unsupported"
+}
+
+// arrayKind is the descriptor's array class: "fixed" for [N]T, "counted" for
+// [A..N]T and [..N]T, and "" on a field that is not an array.
+func arrayKind(f *ir.Field) string {
+	switch f.Array {
+	case ir.ArrayFixed:
+		return "fixed"
+	case ir.ArrayCounted:
+		return "counted"
+	}
+	return ""
+}
+
+// compressedFloat reports a float32 with a declared min, max and resolution.
+func compressedFloat(f *ir.Field) bool {
+	return f.Type.Kind == ir.TFloat32 && f.HasFloatRange
+}
+
+// floatBound is a compressed float's range end, and 0.0 on every other field.
+func floatBound(f *ir.Field, v float64) string {
+	if !compressedFloat(f) {
+		return "0.0"
+	}
+	return pyFloatLiteral(v)
+}
+
+// fieldVariants is a scalar enum's (name, wire id) pairs, and () otherwise.
+func fieldVariants(f *ir.Field) string {
+	if f.Array != ir.ArrayNone || f.Type.Kind != ir.TNamed {
+		return "()"
+	}
+	if ref, ok := f.Type.Ref.(*ir.Enum); ok {
+		return enumVariants(ref)
+	}
+	return "()"
+}
+
+func enumVariants(ref *ir.Enum) string {
+	parts := make([]string, 0, len(ref.Variants))
+	for i := range ref.Variants {
+		parts = append(parts, fmt.Sprintf("(%s, %s)", strconv.Quote(ref.Variants[i]), hex64(ir.TableWireId(ref.VariantWireName(i)))))
+	}
+	if len(parts) == 1 {
+		return "(" + parts[0] + ",)"
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+// elemDescriptor is an array field's element descriptor, and None on every
+// other field: the same facts a scalar field carries, at the element's zero.
+func elemDescriptor(f *ir.Field) string {
+	if f.Array == ir.ArrayNone || codecOf(f) != "array" {
+		return "None"
+	}
+	e := *f
+	e.Array = ir.ArrayNone
+	e.ArrayBound = 0
+	e.ArrayMin = 0
+	e.KeyEnum = ""
+	e.KeyEnumRef = nil
+	e.Type.Optional = false
+	lo, hi := intRange(&e)
+	return fmt.Sprintf("FieldDesc(name=%s, field_id=0, kind=%d, codec=%s, lo=%s, hi=%s, target=%s, bound=%d, default=%s, variants=%s, f32=%s, fmin=%s, fmax=%s, float_range=%s)",
+		strconv.Quote(e.Name), ir.TableWireElemKind(f), strconv.Quote(scalarCodec(&e)), lo, hi,
+		strconv.Quote(targetName(&e)), elemBound(&e), zeroValue(&e), fieldVariants(&e),
+		pyBool(e.Type.Kind == ir.TFloat32), floatBound(&e, e.FMin), floatBound(&e, e.FMax), pyBool(compressedFloat(&e)))
+}
+
+func elemBound(f *ir.Field) int64 {
+	if f.Type.Kind == ir.TString {
+		return f.Type.Size
+	}
+	return 0
+}
+
+// fieldBound is a string's or byte buffer's capacity, an array's declared
+// extent, and 0 on every other field.
+func fieldBound(f *ir.Field) int64 {
+	if f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
+		return f.Type.Size
+	}
+	return f.ArrayBound
+}
+
+func pyFloatLiteral(v float64) string {
+	s := strconv.FormatFloat(v, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
 }
 
 func targetName(f *ir.Field) string {
@@ -749,32 +882,73 @@ func defaultExpr(owner string, f *ir.Field) string {
 }
 
 // elementDefault is one array element at its own zero value: an element
-// carries no container shape of the field that holds it.
+// carries no container shape and no specified default (SPEC §4.6).
 func elementDefault(owner string, f *ir.Field) string {
 	if f.Type.Pointer || f.Type.Optional {
 		return "None"
 	}
-	return valueDefault(f)
+	return zeroValue(f)
 }
 
+// valueDefault is a field's declared default, or its zero value (SPEC §5).
 func valueDefault(f *ir.Field) string {
+	if !f.HasDefault {
+		return zeroValue(f)
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		return pyBool(f.HasDefault && f.DefBool)
+		return pyBool(f.DefBool)
 	case ir.TInt, ir.TFixed, ir.TBits:
-		if f.HasDefault && f.DefInt != nil {
+		if f.DefInt != nil {
 			return f.DefInt.String()
 		}
 		return "0"
-	case ir.TFloat32, ir.TFloat64:
-		if f.HasDefault {
-			return strconv.FormatFloat(f.DefFloat, 'g', -1, 64)
-		}
-		return "0.0"
+	case ir.TFloat32:
+		return pyFloatLiteral(float64(float32(f.DefFloat)))
+	case ir.TFloat64:
+		return pyFloatLiteral(f.DefFloat)
 	case ir.TString:
 		return strconv.Quote(string(f.DefBytes))
 	case ir.TBytes:
 		return "b" + goBytesLiteral(f.DefBytes)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			return enumDefaultValue(f, ref)
+		case *ir.Flags:
+			if f.DefInt != nil {
+				return f.DefInt.String()
+			}
+			return "0"
+		case *ir.Struct:
+			return fmt.Sprintf("new_by_name(%q)", ref.Name)
+		case *ir.Union:
+			return fmt.Sprintf("new_union_by_name(%q)", ref.Name)
+		}
+	}
+	return zeroValue(f)
+}
+
+// zeroValue is the SPEC §5 zero of a field's value, ignoring a specified
+// default: what an array element is born with.
+func zeroValue(f *ir.Field) string {
+	if f.Type.Pointer || f.Type.Optional {
+		return "None"
+	}
+	if f.IsMap() {
+		return "{}"
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "False"
+	case ir.TInt, ir.TFixed, ir.TBits:
+		return "0"
+	case ir.TFloat32, ir.TFloat64:
+		return "0.0"
+	case ir.TString:
+		return "\"\""
+	case ir.TBytes:
+		return "b\"\""
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -790,17 +964,27 @@ func valueDefault(f *ir.Field) string {
 	return "None"
 }
 
-func descriptorDefault(f *ir.Field) string {
-	switch codecOf(f) {
-	case "bool":
-		return pyBool(f.HasDefault && f.DefBool)
-	case "int":
-		if f.HasDefault && f.DefInt != nil {
-			return f.DefInt.String()
-		}
+// enumDefaultValue is a defaulted variant's ordinal; the implicit None is 0.
+func enumDefaultValue(f *ir.Field, ref *ir.Enum) string {
+	if f.DefVariant == "" || f.DefVariant == "None" {
 		return "0"
 	}
-	return "None"
+	for i, name := range ref.Variants {
+		if name == f.DefVariant {
+			return strconv.Itoa(i + 1)
+		}
+	}
+	return "0"
+}
+
+func descriptorDefault(f *ir.Field) string {
+	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone {
+		return "None"
+	}
+	if codecOf(f) == "table" {
+		return "None"
+	}
+	return valueDefault(f)
 }
 
 func intRange(f *ir.Field) (lo, hi string) {
@@ -815,6 +999,10 @@ func intRange(f *ir.Field) (lo, hi string) {
 		}
 	case ir.TBits:
 		return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)).String()
+	case ir.TNamed:
+		if ref, ok := f.Type.Ref.(*ir.Enum); ok {
+			return "0", strconv.FormatInt(ref.Max, 10)
+		}
 	}
 	return widthRange(f.Type.Width, f.Type.Signed)
 }

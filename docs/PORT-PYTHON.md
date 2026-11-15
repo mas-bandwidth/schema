@@ -289,11 +289,13 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_float.py`, `kind_enum.py`,
+  `kind_string.py`, `kind_bytes.py`, `kind_array.py`, `kind_table.py` and
+  `kind_pointer.py` register the kinds the leg carries. A later card adds its
+  module and one registration line, never an edit to the body walk.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -302,16 +304,26 @@ generated class per table and per map entry, each with its descriptor
 - **The shape is measured.** A table whose fields are all bools and integers
   gets the straight-line generated save/load pair, unrolled with each field
   descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
+  adds, keeps the descriptor walk over `_schema/kinds.py`. The fixed-class
+  kind card adds no second shape: its kinds (floats, enums, text, buffers and
+  arrays) keep the descriptor walk, and the measured straight-line pair above
+  stays the scalar hot path. The two shapes run
   on the same table, under both pinned interpreters, in
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
-- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+- **Scope.** The runtime carries bool, the full-width integers (8 to 128
+  bits), bits, ranged integers, plain and compressed floats (finite only),
+  enums, flags masks, strings, byte buffers, by-value tables, `*T` pointers to
+  tables, and fixed `[N]T` and counted `[..N]T` arrays of those kinds, for both
+  the fixed and the variable class. A compressed float rides as its float32
+  bits on this form, held to its declared range on read and write, and lands
+  `-0` as `+0`. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps, unions with
+  table arms, text lists and pointer arrays have descriptors in this cut and
+  refuse by name through `kind_unsupported.py` until their cards land.
+- **The build version is beside the protocol id.** Each generated package's
+  `__init__.py` carries `BUILD_VERSION`, SPEC-TABLES §20's compiler-settled id,
+  as a literal beside `PROTOCOL_ID`; the table wire never writes it.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.

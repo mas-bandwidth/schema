@@ -19,6 +19,8 @@ class FieldKind(Protocol):
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None: ...
 
+    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None: ...
+
 
 _REGISTRY: dict[str, FieldKind] = {}
 

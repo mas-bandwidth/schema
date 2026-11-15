@@ -347,7 +347,7 @@ print("OK")
 			if target == "" {
 				target = "-"
 			}
-			fmt.Fprintf(&want, "field %s %s %d %s %t %d %s %t %t %s\n", st.Name, f.Name, ir.TableWireFieldKind(f), codecOf(f), f.Array != ir.ArrayNone, f.ArrayBound, key, f.Type.Pointer, f.Type.Optional, target)
+			fmt.Fprintf(&want, "field %s %s %d %s %t %d %s %t %t %s\n", st.Name, f.Name, ir.TableWireFieldKind(f), codecOf(f), f.Array != ir.ArrayNone, fieldBound(f), key, f.Type.Pointer, f.Type.Optional, target)
 		}
 	}
 	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {

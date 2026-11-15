@@ -29,11 +29,14 @@ class _Pointer:
         return None
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        w.varint(ctx.idref(fd.field_id))
+        w.byte(fd.kind)
+        self.write_value(w, fd, value, ctx)
+
+    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         index = ctx.indices.get(id(value))
         if index is None:
             raise InvalidValue(fd.name, "the pointer target has no node index")
-        w.varint(ctx.idref(fd.field_id))
-        w.byte(fd.kind)
         w.varint(index)
 
 

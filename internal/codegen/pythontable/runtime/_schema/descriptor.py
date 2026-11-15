@@ -2,11 +2,16 @@
 
 A field's descriptor names what a generic walk needs: its schema name, its
 table-wire id and kind, the codec that carries it, its declared range, and the
-table (or union) whose value it holds. A table's descriptor holds its own type
-id and its fields by declaration order and by wire id. The values are DATA,
-built once at import, so the codec modules only ever read them.
+table (or union) whose value it holds. An ARRAY carries its element's own
+descriptor under ``elem``, and an ENUM carries its variant names and wire ids.
+A table's descriptor holds its own type id and its fields by declaration order
+and by wire id. The values are DATA, built once at import, so the codec
+modules only ever read them.
 """
 
+from __future__ import annotations
+
+import struct
 from typing import Any
 
 
@@ -29,6 +34,14 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "elem",
+        "variants",
+        "f32",
+        "fmin",
+        "fmax",
+        "float_range",
+        "array_kind",
+        "array_min",
     )
 
     name: str
@@ -46,6 +59,14 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    elem: FieldDesc | None
+    variants: tuple[tuple[str, int], ...]
+    f32: bool
+    fmin: float
+    fmax: float
+    float_range: bool
+    array_kind: str
+    array_min: int
 
     def __init__(
         self,
@@ -64,6 +85,14 @@ class FieldDesc:
         bound: int = 0,
         key_enum: str = "",
         default: Any = None,
+        elem: FieldDesc | None = None,
+        variants: tuple[tuple[str, int], ...] = (),
+        f32: bool = False,
+        fmin: float = 0.0,
+        fmax: float = 0.0,
+        float_range: bool = False,
+        array_kind: str = "",
+        array_min: int = 0,
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -80,13 +109,31 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.elem = elem
+        self.variants = variants
+        self.f32 = f32
+        self.fmin = fmin
+        self.fmax = fmax
+        self.float_range = float_range
+        self.array_kind = array_kind
+        self.array_min = array_min
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
         if self.pointer or self.optional:
             return value is None
-        if self.codec in ("bool", "int", "unsupported"):
+        if self.codec == "array":
+            return _array_is_default(self, value)
+        if self.codec == "bytes":
+            return _bytes_equal(value, self.default)
+        if self.codec == "string":
             return bool(value == self.default)
+        if self.codec in ("bool", "int", "enum", "unsupported"):
+            return bool(value == self.default)
+        if self.codec == "float32":
+            return _float32_is_default(self, value)
+        if self.codec == "float64":
+            return _float64_is_default(self, value)
         if self.codec == "table":
             if value is None:
                 return True
@@ -94,6 +141,69 @@ class FieldDesc:
                 return False
             return bool(value == new_by_name(self.target))
         return bool(value == self.default)
+
+
+def _bytes_equal(value: Any, default: Any) -> bool:
+    try:
+        return bytes(value) == bytes(default)
+    except (TypeError, ValueError):
+        return False
+
+
+def _float32_bits(value: float) -> bytes:
+    return struct.pack("<f", value)
+
+
+def _float64_bits(value: float) -> bytes:
+    return struct.pack("<d", value)
+
+
+def _float32_is_default(fd: FieldDesc, value: Any) -> bool:
+    if type(value) is not float:
+        return False
+    if fd.float_range:
+        return float(struct.unpack("<f", _float32_bits(value))[0]) == float(
+            struct.unpack("<f", _float32_bits(fd.default))[0]
+        )
+    return _float32_bits(value) == _float32_bits(fd.default)
+
+
+def _float64_is_default(fd: FieldDesc, value: Any) -> bool:
+    if type(value) is not float:
+        return False
+    if fd.float_range:
+        return bool(value == fd.default)
+    return _float64_bits(value) == _float64_bits(fd.default)
+
+
+def _elem_is_default(fd: FieldDesc, value: Any) -> bool:
+    if fd.codec == "table":
+        return False
+    if fd.codec == "bytes":
+        return _bytes_equal(value, fd.default)
+    if fd.codec == "string":
+        return bool(value == fd.default)
+    if fd.codec in ("bool", "int", "enum"):
+        return bool(value == fd.default)
+    if fd.codec == "float32":
+        return _float32_is_default(fd, value)
+    if fd.codec == "float64":
+        return _float64_is_default(fd, value)
+    return False
+
+
+def _array_is_default(fd: FieldDesc, value: Any) -> bool:
+    if not isinstance(value, list):
+        return False
+    if fd.array_kind != "fixed":
+        return len(value) == 0
+    elem = fd.elem
+    if elem is None:
+        return False
+    for item in value:
+        if not _elem_is_default(elem, item):
+            return False
+    return True
 
 
 class TableDesc:

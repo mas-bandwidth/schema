@@ -15,8 +15,8 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-vt-fixed-class-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control python-vt-fixed-class-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -60,6 +60,12 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 # make/negative-controls.json as a gate test-python runs.
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
+
+# The fixed-class kind control: one array body's count is moved in a copy of
+# the generated runtime, and TestPythonVtFixedClassNegativeControl must go red
+# by name.
+python-vt-fixed-class-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtFixedClassNegativeControl' ./internal/codegen/pythontable/
 
 generated/bench/tables/python/.stamp: ;
 

@@ -21,6 +21,9 @@ class _Bool:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
+        self.write_value(w, fd, value, ctx)
+
+    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.byte(1 if value else 0)
 
 

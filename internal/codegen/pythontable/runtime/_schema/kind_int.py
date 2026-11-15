@@ -58,9 +58,12 @@ class _Int:
         return raw
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        width = _width(fd)
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
+        self.write_value(w, fd, value, ctx)
+
+    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        width = _width(fd)
         w.raw(int(value).to_bytes(width, "little", signed=fd.lo < 0))
 
 
