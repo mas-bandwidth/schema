@@ -78,7 +78,7 @@ print("zero " .. verdict(okZ) .. " " .. verdict(okLZ))
 `, ModuleName(unit)))
 	out := string(luarun.Run(t, dir, "main.lua", nil))
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		key, _, _ := strings.Cut(line, " ")
 		got[key] = line
 	}
