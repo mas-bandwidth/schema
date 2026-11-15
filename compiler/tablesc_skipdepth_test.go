@@ -20,13 +20,13 @@ func cTableKeyedSlot(elemKind byte, elem []byte) []byte {
 	return append(out, elem...)
 }
 
-// cTableKeyedChain is a keyed body that counts one level and, when deeper,
-// holds a keyed element that counts the rest.
+// cTableKeyedChain nests keyed bodies through table elements (§3 makes a
+// direct keyed element damage), one structural payload per level.
 func cTableKeyedChain(levels int) []byte {
 	if levels <= 1 {
 		return []byte{byte(ir.TableKindKeyed), 0}
 	}
-	return cTableKeyedSlot(byte(ir.TableKindKeyed), cTableKeyedChain(levels-1))
+	return cTableKeyedSlot(byte(ir.TableKindTable), cTableBodyWithKeyed(levels-1))
 }
 
 // cTableBodyWithKeyed is a table body that counts one level and, when deeper,
@@ -35,20 +35,33 @@ func cTableBodyWithKeyed(levels int) []byte {
 	if levels <= 1 {
 		return []byte{0}
 	}
-	keyed := cTableKeyedTableChain(levels - 1)
+	keyed := cTableKeyedChain(levels - 1)
 	out := []byte{1, byte(ir.TableKindKeyed)}
 	out = binary.AppendUvarint(out, uint64(len(keyed)))
 	out = append(out, keyed...)
 	return append(out, 0)
 }
 
-// cTableKeyedTableChain alternates a keyed body with a table element, so each
-// structural payload costs one level.
+// cTableKeyedTableChain is a keyed body of table elements whose table bodies
+// carry table fields, so each keyed body and each table body costs one level.
 func cTableKeyedTableChain(levels int) []byte {
 	if levels <= 1 {
-		return []byte{byte(ir.TableKindTable), 0}
+		return []byte{byte(ir.TableKindKeyed), 0}
 	}
-	return cTableKeyedSlot(byte(ir.TableKindTable), cTableBodyWithKeyed(levels-1))
+	return cTableKeyedSlot(byte(ir.TableKindTable), cTableBodyWithTable(levels-1))
+}
+
+// cTableBodyWithTable is a table body that counts one level and, when deeper,
+// holds an unknown table field whose table body counts the rest.
+func cTableBodyWithTable(levels int) []byte {
+	if levels <= 1 {
+		return []byte{0}
+	}
+	table := cTableBodyWithTable(levels - 1)
+	out := []byte{1, byte(ir.TableKindTable)}
+	out = binary.AppendUvarint(out, uint64(len(table)))
+	out = append(out, table...)
+	return append(out, 0)
 }
 
 // cTableKeyedFile frames a keyed body as the root's one unknown field.
