@@ -2282,6 +2282,20 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			in.report.Refuse(TableRefuseKindMismatch, "")
 			return true
 		}
+		// the canonical spelling only, the text the writer writes (§16.8):
+		// padded, and the pad bits zero. A body that decodes but is spelled
+		// any other way keeps the field's default and is counted, as
+		// tabletext refuses it base64_not_canonical.
+		canonical := symbols%4 == 0
+		if pad == 1 {
+			canonical = tableJSONBase64Decode[raw[len(raw)-2]]&0x03 == 0
+		} else if pad == 2 {
+			canonical = tableJSONBase64Decode[raw[len(raw)-3]]&0x0f == 0
+		}
+		if !canonical {
+			in.report.Refuse(TableRefuseBase64NotCanonical, "")
+			return true
+		}
 		buffer := tableJSONBytes(storage, f.ArrayBound)
 		clear(buffer)
 		tableJSONSetCount(base, f, 0)
