@@ -1990,7 +1990,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	// gathered whole first, then the body read decodes and resolves.
 	if st.FixedDeclared {
 		fmt.Fprintf(b, "    // A fixed-class root does not own the node table: §4 reads it as an unknown field.\n")
-		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
+		// It holds no pointer, so no edge is ever noted: wire_edges stays empty
+		// and the load allocates nothing (make/rust.mk tables-rust-alloc).
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
 		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
