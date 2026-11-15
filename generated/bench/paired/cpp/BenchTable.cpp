@@ -100,9 +100,12 @@ static const int32_t kTableJsonMaxDepth = 128;
 // A key longer than this cannot name a field, so it is skipped as unknown.
 static const int32_t kTableJsonMaxKey = 256;
 
-// The longest numeric token the walk will convert. Anything longer is a
-// value no field can hold and counts as a kind mismatch.
-static const int32_t kTableJsonMaxNumber = 512;
+// The conversion's working buffer. A number's value does not depend on how
+// many bytes spell its mantissa (§16.2), so a token of any length is read
+// from the document's own extent; a long mantissa keeps its significant
+// digits and folds the rest into the exponent. This bounds the KEPT digits,
+// never the token.
+static const int32_t kTableJsonMaxNumber = 1024;
 
 // The decimal point the C runtime is CURRENTLY using. Number conversion is
 // the one locale-sensitive corner of the grammar — JSON's point is always
@@ -2078,32 +2081,125 @@ inline bool TableJsonWalkNumber( TableJsonIn & in, bool * integral )
     return true;
 }
 
-// the same production, with the token kept for conversion
-inline bool TableJsonScanNumber( TableJsonIn & in, char * token, int32_t capacity, int32_t * length, bool * integral )
+// the same production, with the token kept for conversion. The token is a
+// VIEW of the document: its length is bounded by the input, never by a
+// conversion buffer (§16.2).
+inline bool TableJsonScanNumber( TableJsonIn & in, const char ** token, int32_t * length, bool * integral )
 {
     TableJsonSpace( in );
     int64_t start = in.pos;
     if ( !TableJsonWalkNumber( in, integral ) ) { return false; }
     int64_t count = in.pos - start;
-    if ( count <= 0 || count >= capacity ) { return false; }
-    memcpy( token, in.text + start, (size_t) count );
-    token[count] = 0;
+    if ( count <= 0 ) { return false; }
+    *token = in.text + start;
     *length = (int32_t) count;
     return true;
 }
 
 // the token's exact double, through the runtime's own converter — which
 // speaks the LOCALE's decimal point, so the token crosses back over that
-// character on its way in
+// character on its way in.
+//
+// A MANTISSA LONGER THAN THE WORKING BUFFER IS NORMALIZED, not refused: the
+// value does not depend on how many bytes spell it (§16.2), so the significant
+// digits are kept and the digits dropped (trailing zeros, and a sticky digit
+// past the limit) fold into the exponent. What reaches strtod is the same
+// value the whole token spells.
 inline double TableJsonTokenDouble( const char * token, int32_t length, bool single )
 {
     char work[kTableJsonMaxNumber];
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
+    int32_t n = 0;
+    if ( length < kTableJsonMaxNumber )
+    {
+        memcpy( work, token, (size_t) length );
+        n = length;
+    }
+    else
+    {
+        const int32_t limit = kTableJsonMaxNumber - 32;
+        char kept[kTableJsonMaxNumber - 32];
+        int32_t kept_len = 0;
+        int32_t i = 0;
+        bool negative = false;
+        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        int32_t fraction = 0;
+        bool after_point = false;
+        int32_t digits = 0;
+        int32_t trailing = 0;
+        bool nonzero = false;
+        for ( ; i < length; i++ )
+        {
+            char c = token[i];
+            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == 'e' || c == 'E' ) { break; }
+            if ( after_point ) { fraction++; }
+            if ( !nonzero )
+            {
+                if ( c == '0' ) { continue; }
+                nonzero = true;
+            }
+            digits++;
+            if ( c == '0' ) { trailing++; }
+            else { trailing = 0; }
+            if ( kept_len < limit ) { kept[kept_len++] = c; }
+        }
+        int64_t exponent = 0;
+        if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+        {
+            i++;
+            bool exp_negative = false;
+            if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+            {
+                exp_negative = token[i] == '-';
+                i++;
+            }
+            while ( i < length && token[i] >= '0' && token[i] <= '9' )
+            {
+                if ( exponent < 1000000 ) { exponent = exponent * 10 + ( token[i] - '0' ); }
+                i++;
+            }
+            if ( exp_negative ) { exponent = -exponent; }
+        }
+        if ( !nonzero )
+        {
+            work[n++] = '0';
+        }
+        else
+        {
+            const int32_t significant = digits - trailing;
+            int64_t scale = exponent - fraction + trailing;
+            int32_t sig = significant;
+            const bool sticky = significant > limit;
+            if ( sticky )
+            {
+                scale += significant - limit;
+                sig = limit;
+            }
+            if ( negative ) { work[n++] = '-'; }
+            for ( int32_t k = 0; k < sig; k++ ) { work[n++] = kept[k]; }
+            if ( sticky )
+            {
+                work[n++] = '1';
+                scale--;
+            }
+            work[n++] = 'e';
+            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            char reversed[24];
+            int32_t rn = 0;
+            if ( scale == 0 ) { reversed[rn++] = '0'; }
+            while ( scale > 0 )
+            {
+                reversed[rn++] = (char) ( '0' + (int32_t) ( scale % 10 ) );
+                scale /= 10;
+            }
+            while ( rn > 0 ) { work[n++] = reversed[--rn]; }
+        }
+    }
+    work[n] = 0;
     char point = TableJsonDecimalPoint();
     if ( point != '.' )
     {
-        for ( int32_t i = 0; i < length; i++ )
+        for ( int32_t i = 0; i < n; i++ )
         {
             if ( work[i] == '.' ) { work[i] = point; }
         }
@@ -2478,9 +2574,25 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         char fd[kTableJsonMaxNumber + 48];
         int32_t fn = 0;
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        // A digit below 10^-40 is finer than any F can spell, and cannot carry
+        // into a fraction bit however many doublings follow. Only the digits
+        // inside the band are kept; a nonzero digit past it is the same
+        // kind_mismatch the exact arithmetic would reach, without walking a
+        // token of any length into a fixed buffer.
+        const int64_t first = ( point > 0 ? point : 0 ) + start;
+        const int64_t last = (int64_t) start + point + 39;
+        for ( int64_t k = first; k < end && k <= last; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        }
+        for ( int64_t k = ( last + 1 > first ? last + 1 : first ); k < end; k++ )
+        {
+            if ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) != '0' )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = kind_mismatch;
+                return true;
+            }
         }
         TableJsonWide fraction = { 0, 0 };
         for ( int b = 0; b < frac; b++ )
@@ -3157,10 +3269,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         TableJsonSetRaw( storage, f->elem_size, (uint64_t) nanos );
         return true;
     }
-    char token[kTableJsonMaxNumber];
+    const char * token = NULL;
     int32_t length = 0;
     bool integral = false;
-    if ( !TableJsonScanNumber( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !TableJsonScanNumber( in, &token, &length, &integral ) )
     {
         in.bad = true;
         return false;
