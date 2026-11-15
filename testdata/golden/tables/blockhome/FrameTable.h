@@ -6543,6 +6543,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
 {
     PartRowReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -6581,12 +6582,13 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
         {
             case 0xd19988b67e699194ull: // armor
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 13 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6601,6 +6603,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     }
                     break;
                 }
+                if ( same_shape )
                 {
                     TableBitReader peek_body = r;
                     uint64_t peek_ref = 0;
@@ -6615,12 +6618,13 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
             }
             case 0x40dbb648c0cd44aaull: // gunner
             {
-                if ( 2 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 13 && entry.elem_kind == 0;
+                if ( same_shape && 2 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 2;
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6635,6 +6639,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     }
                     break;
                 }
+                if ( same_shape )
                 {
                     TableBitReader peek_body = r;
                     uint64_t peek_ref = 0;
@@ -6649,12 +6654,13 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
             }
             case 0x04d6206b33415104ull: // part_id
             {
-                if ( 3 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 8 && entry.elem_kind == 0;
+                if ( same_shape && 3 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 3;
+                if ( same_shape ) { last_field_ord = 3; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6672,7 +6678,6 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                             }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            const int64_t pre_clamp = decoded_wide;
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -6680,11 +6685,6 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                 report->refuse_reason = out_of_range;
                             }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
-                            if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
-                            {
-                                report->damaged = true;
-                                return false;
-                            }
                             value.part_id = decoded_v;
                         }
                         report->widened++;
@@ -6717,7 +6717,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -6728,12 +6728,13 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
             }
             case 0x6a771618f6fe31d1ull: // slot
             {
-                if ( 4 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 6 && entry.elem_kind == 0;
+                if ( same_shape && 4 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 4;
+                if ( same_shape ) { last_field_ord = 4; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6766,7 +6767,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -7345,6 +7346,7 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
 {
     PartFrameReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -7383,12 +7385,13 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
         {
             case 0xbb62c62c9808ea37ull: // version
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 9 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -7406,13 +7409,7 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                             }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            const int64_t pre_clamp = decoded_wide;
                             uint64_t decoded_v = (uint64_t) decoded_wide;
-                            if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
-                            {
-                                report->damaged = true;
-                                return false;
-                            }
                             value.version = decoded_v;
                         }
                         report->widened++;
@@ -7439,7 +7436,7 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -7450,12 +7447,13 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
             }
             case 0x0c519da7a1f958c5ull: // parts
             {
-                if ( 2 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 14 && entry.elem_kind == 13;
+                if ( same_shape && 2 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 2;
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -7479,7 +7477,7 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( n == 0 )
+                    if ( same_shape && n == 0 )
                     {
                         report->damaged = true;
                         return false;

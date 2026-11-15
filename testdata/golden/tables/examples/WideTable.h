@@ -11282,6 +11282,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
 {
     WideBlobReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -11320,12 +11321,13 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 12 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11353,7 +11355,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         report->damaged = true;
                         return false;
                     }
-                    if ( n == 0 )
+                    if ( same_shape && n == 0 )
                     {
                         report->damaged = true;
                         return false;
@@ -11373,12 +11375,13 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
             }
             case 0xcfb8a9d063b5e9e5ull: // payload
             {
-                if ( 2 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 14 && entry.elem_kind == 6;
+                if ( same_shape && 2 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 2;
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11400,7 +11403,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         report->damaged = true;
                         return false;
                     }
-                    if ( n == 0 )
+                    if ( same_shape && n == 0 )
                     {
                         report->damaged = true;
                         return false;
@@ -11425,12 +11428,13 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
             }
             case 0xe3b1ca6a3b48dddcull: // samples
             {
-                if ( 3 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 14 && entry.elem_kind == 7;
+                if ( same_shape && 3 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 3;
+                if ( same_shape ) { last_field_ord = 3; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11446,11 +11450,6 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                                 uint64_t raw = 0;
                                 if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                                 n = raw + (uint64_t) entry.min;
-                            }
-                            if ( n == 0 )
-                            {
-                                report->damaged = true;
-                                return false;
                             }
                             if ( entry.elem_kind == 6 && !r.align() )
                             {
@@ -11521,7 +11520,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( n == 0 )
+                    if ( same_shape && n == 0 )
                     {
                         report->damaged = true;
                         return false;

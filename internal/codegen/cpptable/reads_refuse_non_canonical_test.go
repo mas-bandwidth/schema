@@ -583,6 +583,38 @@ table EvolReader {
 		t.Fatalf("sender message one encode: %v", err)
 	}
 
+	// The reader's OWN announcement and build version, with b written at a
+	// non-zero value in one message and its bitwise complement in another.
+	// The XOR of the two batches is exactly b's 64-bit payload, so clearing
+	// those bits leaves b explicitly at its declared default under the same
+	// announced shape and build version.
+	instSameA := mClauses.New(mClauses.Lookup("EvolMsgReader"))
+	rep = tabletext.Report{}
+	if !mClauses.Read(instSameA, []byte(`{"a": 5, "b": 257}`), &rep) {
+		t.Fatalf("same-build message read: %+v", rep)
+	}
+	sameA, err := tablewire.EncodeMessage(mClauses, instSameA)
+	if err != nil {
+		t.Fatalf("same-build message encode: %v", err)
+	}
+	instSameB := mClauses.New(mClauses.Lookup("EvolMsgReader"))
+	rep = tabletext.Report{}
+	if !mClauses.Read(instSameB, []byte(`{"a": 5, "b": -258}`), &rep) {
+		t.Fatalf("same-build complement read: %+v", rep)
+	}
+	sameB, err := tablewire.EncodeMessage(mClauses, instSameB)
+	if err != nil {
+		t.Fatalf("same-build complement encode: %v", err)
+	}
+	if len(sameA) != len(sameB) {
+		t.Fatalf("same-build messages differ in length: %d != %d", len(sameA), len(sameB))
+	}
+	sameBuildDefault := make([]byte, len(sameA))
+	copy(sameBuildDefault, sameA)
+	for i := range sameA {
+		sameBuildDefault[i] = sameA[i] &^ (sameA[i] ^ sameB[i])
+	}
+
 	probe := fmt.Sprintf(`
     auto check_var = []( const char * label, const uint8_t * buf, int64_t n, auto measure_fn, auto load_fn, auto builder_fn, auto strict_fn, auto retain_fn, auto save_fn, auto save_retain_fn, bool want_read, bool check_resave ) -> bool {
         int64_t attr = 0;
@@ -815,7 +847,9 @@ table EvolReader {
         }
     }
 
-    // 6. Form 2 unknown + widened batch reads; widened-at-default refuses.
+    // 6. Form 2 below this reader's build version: a widened field at the
+    // reader's declared default READS, because the sender's default is not
+    // this reader's to know. The same shape at the same build version refuses.
     {
         static const uint8_t sann[] = { %s };
         static const uint8_t sgood[] = { %s };
@@ -838,9 +872,9 @@ table EvolReader {
             return 1;
         }
 
-        // Mutate b's non-zero int16 payload (0x0101) in sone to 0x0000 (widened field at declared default).
-        // Find the bit offset by replacing the two 0x0101 payload bytes or scanning 16-bit windows:
-        // sone encodes count=1 (8 bits), slot(a)=1 (2 bits), a=5 (32 bits), slot(b)=3 (2 bits), b=0x0101 (16 bits), term=0 (2 bits).
+        // sone encodes b at 0x0101 under the sender's int16 shape. Zeroing
+        // that 16-bit payload makes b explicit at the reader's declared
+        // default, but under a DIFFERENT build version, so it must read.
         uint8_t sbad[sizeof( sone )];
         memcpy( sbad, sone, sizeof( sone ) );
         // Clear bits [44..59] of payload (after byte 0 = 0x02, bit 0 is byte 1):
@@ -848,7 +882,7 @@ table EvolReader {
         // bit 8..9: slot(a)
         // bit 10..41: a=5
         // bit 42..43: slot(b)
-        // bit 44..59: b (16 bits) -> zero all 16 bits!
+        // bit 44..59: b (16 bits) -> zero all 16 bits
         for ( int bit = 44; bit < 60; bit++ )
         {
             sbad[1 + ( bit >> 3 )] &= uint8_t( ~( 1u << ( bit & 7 ) ) );
@@ -856,10 +890,33 @@ table EvolReader {
         EvolMsgReader bad_val; EvolMsgReaderReset( bad_val );
         int64_t bad_cnt = 1;
         TableReport rbad;
-        if ( EvolMsgReaderLoadMessages( &bad_val, &bad_cnt, svocab, sbad, (int64_t) sizeof( sbad ), &rbad ) &&
-             !rbad.damaged && !rbad.refused && bad_cnt == 1 )
+        if ( !EvolMsgReaderLoadMessages( &bad_val, &bad_cnt, svocab, sbad, (int64_t) sizeof( sbad ), &rbad ) ||
+             rbad.damaged || rbad.refused || bad_cnt != 1 || bad_val.a != 5 || bad_val.b != 0 )
         {
-            printf( "FAIL evol_msg_widened_default accepted\n" );
+            printf( "FAIL evol_msg_widened_default did not read\n" );
+            return 1;
+        }
+
+        // Under the reader's OWN announcement the same field at the same
+        // declared default is non-canonical and refuses the batch.
+        static const uint8_t sdef_same[] = { %s };
+        uint8_t ownann[4096];
+        const int64_t ownann_n = Announce( ownann, (int64_t) sizeof( ownann ) );
+        TableMessageEntry own_entries[kTableMessageEntriesHere + 16];
+        TableVocabulary ownvocab( own_entries, kTableMessageEntriesHere + 16 );
+        TableReport ownarep;
+        if ( ownann_n <= 0 || !AnnounceRead( ownvocab, ownann, ownann_n, &ownarep ) )
+        {
+            printf( "FAIL own_announce_read\n" );
+            return 1;
+        }
+        EvolMsgReader same_val; EvolMsgReaderReset( same_val );
+        int64_t same_cnt = 1;
+        TableReport rsame;
+        if ( EvolMsgReaderLoadMessages( &same_val, &same_cnt, ownvocab, sdef_same, (int64_t) sizeof( sdef_same ), &rsame ) &&
+             !rsame.damaged && !rsame.refused && same_cnt == 1 )
+        {
+            printf( "FAIL evol_msg_same_build_default accepted\n" );
             return 1;
         }
     }
@@ -876,6 +933,7 @@ table EvolReader {
 		cppBytes(v2MsgAnn),
 		cppBytes(v2MsgGood),
 		cppBytes(v2MsgOne),
+		cppBytes(sameBuildDefault),
 	)
 
 	out, err := cppHeldRun(t, u, probe)

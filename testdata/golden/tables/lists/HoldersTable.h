@@ -11701,6 +11701,7 @@ inline bool SampleLoadMessageBody( TableBitReader & r, const TableVocabulary & v
 {
     SampleReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -11739,12 +11740,13 @@ inline bool SampleLoadMessageBody( TableBitReader & r, const TableVocabulary & v
         {
             case 0xaf63eb4c86020609ull: // v
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 4 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11767,7 +11769,6 @@ inline bool SampleLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            const int64_t pre_clamp = decoded_wide;
                             if ( decoded_wide < -2147483648ll )
                             {
                                 decoded_wide = -2147483648ll;
@@ -11781,11 +11782,6 @@ inline bool SampleLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                                 report->refuse_reason = out_of_range;
                             }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
-                            {
-                                report->damaged = true;
-                                return false;
-                            }
                             value.v = decoded_v;
                         }
                         report->widened++;
@@ -11829,7 +11825,7 @@ inline bool SampleLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12913,6 +12909,7 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
 {
     ItemReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -12951,12 +12948,13 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
         {
             case 0xb1e5e28e4479a274ull: // count
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 4 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -12979,7 +12977,6 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            const int64_t pre_clamp = decoded_wide;
                             if ( decoded_wide < -2147483648ll )
                             {
                                 decoded_wide = -2147483648ll;
@@ -12993,11 +12990,6 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                 report->refuse_reason = out_of_range;
                             }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
-                            {
-                                report->damaged = true;
-                                return false;
-                            }
                             value.count = decoded_v;
                         }
                         report->widened++;
@@ -13041,7 +13033,7 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;

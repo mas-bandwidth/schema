@@ -11077,6 +11077,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
 {
     ArchiveConfigReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -11115,12 +11116,13 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
         {
             case 0xa354fd1ff0c467c5ull: // root
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 13 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11135,6 +11137,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
+                if ( same_shape )
                 {
                     TableBitReader peek_body = r;
                     uint64_t peek_ref = 0;
@@ -11149,12 +11152,13 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
             }
             case 0xb1e5e28e4479a274ull: // count
             {
-                if ( 2 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 4 && entry.elem_kind == 0;
+                if ( same_shape && 2 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 2;
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11177,7 +11181,6 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            const int64_t pre_clamp = decoded_wide;
                             if ( decoded_wide < 0ll )
                             {
                                 decoded_wide = 0ll;
@@ -11191,11 +11194,6 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->refuse_reason = out_of_range;
                             }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            if ( decoded_wide == pre_clamp && ( decoded_v == 1 ) )
-                            {
-                                report->damaged = true;
-                                return false;
-                            }
                             value.count = decoded_v;
                         }
                         report->widened++;
@@ -11239,7 +11237,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( decoded_wide == pre_clamp && ( decoded_v == 1 ) )
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 1 ) )
                     {
                         report->damaged = true;
                         return false;

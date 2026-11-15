@@ -7001,6 +7001,7 @@ inline bool FixedTableLoadMessageBody( TableBitReader & r, const TableVocabulary
 {
     FixedTableReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
     {
@@ -7039,12 +7040,13 @@ inline bool FixedTableLoadMessageBody( TableBitReader & r, const TableVocabulary
         {
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 1 <= last_field_ord )
+                const bool same_shape = same_build && entry.kind == 13 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
                 {
                     report->damaged = true;
                     return false;
                 }
-                last_field_ord = 1;
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -7059,6 +7061,7 @@ inline bool FixedTableLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     break;
                 }
+                if ( same_shape )
                 {
                     TableBitReader peek_body = r;
                     uint64_t peek_ref = 0;
