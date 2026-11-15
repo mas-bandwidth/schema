@@ -32,7 +32,7 @@ const tableVariableJsonSource = `
             object empty = f.Table.Create(); f.SetChild(owner, index, empty);
             return ReadTable(text, ref input, empty, f.Table, depth + 1);
         }
-        Span<byte> key = stackalloc byte[MaxKey];
+        Span<byte> key = stackalloc byte[MaxName];
         if (!ScanString(text, ref input, key, true, out int used)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
         input.Pos++;
