@@ -1465,8 +1465,14 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		return ok
 	elseif kind == 12 then
 		local n, ok = get(r, bitsReq(0, shape.max))
-		if not ok or not ralign(r) then
+		if not ok or not ralign(r) or not has(r, n * 8) then
 			return false
+		end
+		-- ILL-FORMED TEXT IS DAMAGE ON THE SKIP PATH TOO (§3.3, §4): a string
+		-- this reader does not keep is held to the content rule a named read
+		-- holds it to (decodeText), as the Go engine's skip holds it
+		if not V.utf8(r.b, r.base + r.off // 8, n) then
+			return dmal(t)
 		end
 		return skipBits(r, n * 8)
 	elseif kind == 31 then
@@ -1493,6 +1499,11 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 			if kind == 14 then
 				n += shape.min
 			end
+		end
+		-- THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
+		-- announced maximum refuses here as it does at a named field
+		if n > shape.max then
+			return refuseRead(t, "count_over_bound")
 		end
 		if aligns(kind, shape) and not ralign(r) then
 			return false
@@ -1620,7 +1631,8 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 end
 
 -- one float32 at the announced shape: a quantized index dequantized, or the
--- raw bits (refused when not finite); landed in fd (widened into f64, or
+-- raw bits; refused when not finite, whatever the packing (a dequantized
+-- value is a float read like any other); landed in fd (widened into f64, or
 -- refused out_of_range outside fd's range, with -0 as +0)
 local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
 	local bits: number
@@ -1636,14 +1648,14 @@ local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boo
 		if not ok then
 			return nil, dmal(t)
 		end
-		if not V.finite32(raw) then
-			t.report.nonFinite += 1
-			if t.report.nonFiniteField == nil then
-				t.report.nonFiniteField = ownerName(named)
-			end
-			return fd.def, true
-		end
 		bits = raw
+	end
+	if not V.finite32(bits) then
+		t.report.nonFinite += 1
+		if t.report.nonFiniteField == nil then
+			t.report.nonFiniteField = ownerName(named)
+		end
+		return fd.def, true
 	end
 	if fd.f32 == false then
 		local lo, hi = V.f32to64(bits)

@@ -143,8 +143,16 @@ static class Runner
 
     static string RunOne(string corpus, string carrier, string schema, string table, string input)
     {
+        string inputs = Path.GetFullPath(Path.Combine(corpus, "inputs")) + Path.DirectorySeparatorChar;
+        string path;
+        try { path = Path.GetFullPath(Path.Combine(corpus, input)); }
+        catch (Exception) { return "runner error: " + input + ": outside the corpus inputs directory"; }
+        if (!path.StartsWith(inputs, StringComparison.Ordinal))
+        {
+            return "runner error: " + input + ": outside the corpus inputs directory";
+        }
         byte[] payload;
-        try { payload = File.ReadAllBytes(Path.Combine(corpus, input)); }
+        try { payload = File.ReadAllBytes(path); }
         catch (Exception e) { return "runner error: " + e.Message; }
         string got = null;
         var thread = new Thread(() =>

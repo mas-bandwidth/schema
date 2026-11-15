@@ -51,6 +51,34 @@ const lowPinned = %q
 const highPinned = %q
 
 
+func loadoutForm1Measure(value *LoadoutConfig) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !LoadoutConfigSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func loadoutForm1Save(value *LoadoutConfig, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !LoadoutConfigSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func loadoutForm1(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -93,8 +121,8 @@ func refSortBuild(t *testing.T, text string) []byte {
 	if !LoadoutConfigFromJSON(&v, []byte(text), &r) || r != (TableReport{}) {
 		t.Fatalf("sample text: %%+v", r)
 	}
-	w := make([]byte, max(LoadoutConfigMeasure(&v), 0))
-	if LoadoutConfigSave(&v, w) != int64(len(w)) || len(w) == 0 {
+	w := make([]byte, max(loadoutForm1Measure(&v), 0))
+	if loadoutForm1Save(&v, w) != int64(len(w)) || len(w) == 0 {
 		t.Fatal("sample save")
 	}
 	return w
@@ -102,8 +130,8 @@ func refSortBuild(t *testing.T, text string) []byte {
 
 func refSortSave(t *testing.T, v *LoadoutConfig) []byte {
 	t.Helper()
-	w := make([]byte, max(LoadoutConfigMeasure(v), 0))
-	if LoadoutConfigSave(v, w) != int64(len(w)) {
+	w := make([]byte, max(loadoutForm1Measure(v), 0))
+	if loadoutForm1Save(v, w) != int64(len(w)) {
 		t.Fatal("save of the loaded value")
 	}
 	return w

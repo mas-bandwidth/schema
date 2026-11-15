@@ -1797,8 +1797,9 @@ conformance-dart-text-boundary: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control-text-boundary positive "$(DART)"
 
 conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary
-	sh test/conformance/dart/negative-control-text-boundary replacement "$(DART)"
-	sh test/conformance/dart/negative-control-text-boundary reader "$(DART)"
+	sh test/conformance/dart/negative-control-text-boundary replacement "$(DART)" & r=$$!; \
+	sh test/conformance/dart/negative-control-text-boundary reader "$(DART)" || s=1; \
+	wait $$r || s=1; exit $${s:-0}
 
 test-dart: conformance-dart-text-boundary
 

@@ -761,11 +761,10 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 	}
 }
 
-// TestForm1OfFixedTableReadsAndFixedLoadRefuses is the runtime half: a
-// DECLARED fixed table's Load refuses a form-1 file as previous_form, and
-// FixedLoad names that same file previous_form. The value is readable through
-// FixedLoad of the form-3 file.
-func TestForm1OfFixedTableReadsAndFixedLoadRefuses(t *testing.T) {
+// TestFixedTableSaveAndLoadAreFormThree is the runtime half: a DECLARED fixed
+// table's plain Save writes form 3 and its plain Load reads it, so the value
+// round-trips; a form-1 file is previous_form at both Load and FixedLoad.
+func TestFixedTableSaveAndLoadAreFormThree(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -774,30 +773,31 @@ fixed table Point {
 `, `package probe
 import ("testing")
 
-func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
+func TestFixedTableSaveAndLoadAreFormThree(t *testing.T) {
 	one := Point{X: 4242, Y: -7}
 	need := PointMeasure(&one)
-	if need < 0 {
-		t.Fatal("measure")
+	if need != PointFixedMeasure(1) {
+		t.Fatalf("measure %d, FixedMeasure %d", need, PointFixedMeasure(1))
 	}
-	form1 := make([]byte, need)
-	if n := PointSave(&one, form1); n != need {
-		t.Fatalf("form-1 save %d", n)
+	form3 := make([]byte, need)
+	if n := PointSave(&one, form3); n != need {
+		t.Fatalf("save %d", n)
 	}
-	if form1[0] != 1 {
-		t.Fatalf("form-1 save wrote %d", form1[0])
+	if form3[0] != TableFixedForm {
+		t.Fatalf("Save of a fixed table wrote form %d", form3[0])
 	}
 	var got Point
 	var r TableReport
-	if PointLoad(&got, form1, &r) || r.Reason != "previous_form" {
-		t.Fatalf("form-1 Load of a DECLARED fixed table: want previous_form, got %+v value %+v", r, got)
+	if !PointLoad(&got, form3, &r) || r != (TableReport{}) || got != one {
+		t.Fatalf("Load of Save's file: %+v value %+v", r, got)
 	}
-	if got.X == 4242 && got.Y == -7 {
-		t.Fatalf("form-1 Load of a DECLARED fixed table decoded the record: %+v", got)
+	var form1 Point
+	r = TableReport{}
+	if PointLoad(&form1, []byte{1}, &r) || r.Reason != "previous_form" {
+		t.Fatalf("form-1 Load of a DECLARED fixed table: want previous_form, got %+v value %+v", r, form1)
 	}
 	need3 := PointFixedMeasure(1)
-	form3 := make([]byte, need3)
-	if n := PointFixedSave([]Point{one}, form3); n != need3 || form3[0] != 3 {
+	if n := PointFixedSave([]Point{one}, make([]byte, need3)); n != need3 {
 		t.Fatalf("form-3 save %d", n)
 	}
 	batch3 := make([]Point, 1)
@@ -808,7 +808,7 @@ func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	}
 	batch := make([]Point, 1)
 	r = TableReport{}
-	n := PointFixedLoad(batch, form1, plan, &r)
+	n := PointFixedLoad(batch, []byte{1}, plan, &r)
 	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
 		t.Fatalf("FixedLoad(form1): n=%d %+v", n, r)
 	}
@@ -833,15 +833,7 @@ import (
 )
 
 func TestFixedFormRefuseIsTotal(t *testing.T) {
-	one := Point{X: 4242, Y: -7}
-	need := PointMeasure(&one)
-	form1 := make([]byte, need)
-	if n := PointSave(&one, form1); n != need {
-		t.Fatalf("form-1 save %d", n)
-	}
-	if form1[0] != 1 {
-		t.Fatalf("form-1 save wrote form %d", form1[0])
-	}
+	form1 := []byte{1}
 	batch := make([]Point, 1)
 	const poison = 0x5A
 	dst := (*[8]byte)(unsafe.Pointer(&batch[0]))

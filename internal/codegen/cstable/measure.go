@@ -2,18 +2,34 @@ package cstable
 
 const tableLoadMeasureSource = `
     static long Align(long value, int alignment) { return (value + alignment - 1) & -(long)alignment; }
+    // ExtentTargets is the node table's record types by index: 1 is the root,
+    // 2 and up the records. A zero entry is a type this reader cannot name, so
+    // a pointer naming it is lawful and reads null; any other must be the
+    // pointer slot's own target type (docs/SPEC-TABLES.md §3.1).
+    struct ExtentTargets
+    {
+        public ulong[] Ids;
+        public bool Wrong(ulong index, TableFieldInfo f)
+        {
+            if (Ids == null || index == 0 || index >= (ulong)Ids.Length) { return false; }
+            ulong id = Ids[(int)index];
+            return id != 0 && id != f.PointerTypeId;
+        }
+    }
     static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason)
+    { return ExtentBody(r, type, ref at, ref reason, default); }
+    static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason, ExtentTargets targets)
     {
         while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
         {
             byte kind = r.Byte(); TableFieldInfo field = FindField(type, id);
             if (field != null && Kind(field) != kind) { field = null; }
             if (field == null) { if (!r.Skip(kind)) { break; } continue; }
-            if (!ExtentField(ref r, field, true, ref at, ref reason)) { return false; }
+            if (!ExtentField(ref r, field, true, ref at, ref reason, targets)) { return false; }
         }
         return true;
     }
-    static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
+    static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason, ExtentTargets targets)
     {
         if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
         if (f.IsArray)
@@ -40,12 +56,19 @@ const tableLoadMeasureSource = `
                 {
                     Reader element = source;
                     if (f.KeyId == null && !a.Slice(out element)) { break; }
-                    if (!ExtentBody(element, f.Table, ref at, ref reason)) { return false; }
+                    if (!ExtentBody(element, f.Table, ref at, ref reason, targets)) { return false; }
                 }
                 else if (f.Kind == 15)
                 {
-                    if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason)) { return false; } }
-                    else if (!ExtentUnion(ref a, f, ref at, ref reason)) { return false; }
+                    if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason, targets)) { return false; } }
+                    else if (!ExtentUnion(ref a, f, ref at, ref reason, targets)) { return false; }
+                }
+                else if (f.Kind == 17)
+                {
+                    Reader p = f.KeyId != null ? source : a;
+                    if (!p.Var(out ulong index)) { break; }
+                    if (f.KeyId == null) { a = p; }
+                    if (targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
                 }
                 else { break; }
             }
@@ -56,15 +79,20 @@ const tableLoadMeasureSource = `
         {
             Reader body = r;
             if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
-            return ExtentBody(body, f.Table, ref at, ref reason);
+            return ExtentBody(body, f.Table, ref at, ref reason, targets);
         }
-        if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
+        if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason, targets); }
+        if (f.Kind == 17)
+        {
+            Reader p = r;
+            if (p.Var(out ulong index) && targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
+        }
         // A value the skip cannot honour ENDS the record's scan, as the reference scan's
         // does: the reader goes to its end rather than resuming at the bytes after it.
         if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
         return true;
     }
-    static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
+    static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason, ExtentTargets targets)
     {
         // A frame that does not parse ENDS the record's scan, as the reference
         // scan's does (internal/tablewire/extent.go): the reader goes to its
@@ -80,7 +108,7 @@ const tableLoadMeasureSource = `
         if (tag == 0) { return true; }
         TableFieldInfo arm = f.Arms.Arms[tag].Field;
         if (arm == null) { return true; }
-        return ExtentField(ref body, arm, false, ref at, ref reason);
+        return ExtentField(ref body, arm, false, ref at, ref reason, targets);
     }
     // Locate the winning node table and validate its framing with no objects or
     // node list. The returned reader starts at the first record, after count.
@@ -136,21 +164,40 @@ const tableLoadMeasureSource = `
         // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
         if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
         long extent = 0;
-        if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
-        long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-        if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
-        Reader scan = payload;
-        for (int i = 0; i < nodes; i++)
+        bool framed = NodeFrames(root, out Reader payload, out int nodes);
+        ulong[] targets = null;
+        try
         {
-            scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-            if ((type.BytesEdge && id == BytesTypeId) || (type.StringEdge && id == StringTypeId))
-            { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
-            TableTypeInfo candidate = type.PointerType(id);
-            if (candidate == null) { continue; }
-            extent = 0;
-            if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
-            size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+            ExtentTargets targetIds = default;
+            if (framed)
+            {
+                targets = System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
+                targets[0] = 0; targets[1] = type.Id;
+                Reader map = payload;
+                for (int i = 0; i < nodes; i++)
+                {
+                    map.Ref(out _, out ulong id); map.Slice(out _);
+                    targets[i + 2] = id == BytesTypeId || id == StringTypeId || type.DeclaredType(id) != null ? id : 0;
+                }
+                targetIds.Ids = targets;
+            }
+            if (!ExtentBody(root, type, ref extent, ref reason, targetIds)) { return -1; }
+            long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+            if (!framed) { return size + 16; }
+            Reader scan = payload;
+            for (int i = 0; i < nodes; i++)
+            {
+                scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
+                if (id == BytesTypeId || id == StringTypeId)
+                { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
+                TableTypeInfo candidate = type.PointerType(id);
+                if (candidate == null) { continue; }
+                extent = 0;
+                if (!ExtentBody(body, candidate, ref extent, ref reason, targetIds)) { return -1; }
+                size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+            }
+            return size + (nodes + 1L) * 16;
         }
-        return size + (nodes + 1L) * 16;
+        finally { if (targets != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
     }
 `

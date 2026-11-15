@@ -582,11 +582,11 @@ static SCHEMA_UNUSED int graphdemo_table_skip_framed( graphdemo_table_reader_t s
         case 12: return graphdemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return graphdemo_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && graphdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             graphdemo_table_reader_t rr = sub;
-            return graphdemo_table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && graphdemo_table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -676,14 +676,17 @@ static SCHEMA_UNUSED int graphdemo_table_skip_value( graphdemo_table_reader_t * 
             if ( !graphdemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = graphdemo_table_reader_get8( r );
             if ( !graphdemo_table_reader_span( r, &arm ) ) { return 0; }
-            return graphdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && graphdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return graphdemo_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             graphdemo_table_reader_t sub;
             if ( !graphdemo_table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && graphdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && graphdemo_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return graphdemo_table_skip_framed( sub, kind, nodes, depth );
         }
         default:
@@ -869,7 +872,8 @@ enum
     GRAPHDEMO_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     GRAPHDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     GRAPHDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    GRAPHDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    GRAPHDEMO_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1301,7 +1305,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_store_native( uint8_t * dst, uin
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_apply( const graphdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
     switch ( p->op )
     {
@@ -1312,16 +1316,15 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
         }
         case GRAPHDEMO_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
-               value out of range: no writer emits one, so it is neither
-               stored verbatim nor normalised to 1
-               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
-               lands normalised here; table_fixed_run turns damaged into
-               the wire_damaged refusal and the load resets every record. */
+            /* A BOOL LANDS AS byte != 0. A BOOL OR PRESENT BYTE OTHER THAN 0
+               OR 1 IS WIRE DAMAGE, and it never reaches this loop: the load's
+               check pass refuses it wire_damaged before the first destination
+               byte is written (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), the
+               same pass the C++ reference runs. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case GRAPHDEMO_K_TABLE_FIXED_COUNT:
@@ -1429,6 +1432,22 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
             dst[p->dst] = 1;
             break;
         }
+        case GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
+        {
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+               the payload copy above laid the wire's bytes down; when the flag
+               is 0 those bytes are slack and never a value, so the reader
+               overwrites them with the caller's own Reset image. Aux is the
+               payload's storage offset and Size its storage bytes. A plain
+               memcpy and not the run mover: the mover's 32-byte moves let
+               GCC's array-bounds pass form offsets past a small Reset image
+               on a size branch no entry of this op reaches, and an absent
+               payload is the cold path. */
+            const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
+            dst[p->dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -1441,14 +1460,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
 static SCHEMA_UNUSED void graphdemo_table_fixed_run( const graphdemo_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           graphdemo_table_report_t * report, const graphdemo_table_fixed_guard_link_t * guard_pool )
+                                           graphdemo_table_report_t * report, const graphdemo_table_fixed_guard_link_t * guard_pool,
+                                           const uint8_t * defaults )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
-    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1457,7 +1476,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_run( const graphdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        graphdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        graphdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1480,13 +1499,17 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_run( const graphdemo_table_fixed
         }
         else
         {
-            if ( graphdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+               the deferred present-defaults entry must follow the guarded
+               payload it overwrites, so it rides after the split although
+               it answers to no tag. Its guard lane is SCHEMA_TABLE_FIXED_NO_GUARD
+               and must never be read as an offset. */
+            if ( p->guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        graphdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        graphdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
-    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1575,6 +1598,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_entry_lands( const graphdemo_tab
         case GRAPHDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
         case GRAPHDEMO_K_TABLE_FIXED_WIDEN:
         case GRAPHDEMO_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
+        case GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS: lands[1] = e->dst + 1u; break; /* the flag; the payload's own entries land it */
         default: lands[1] = e->dst + e->size; break; /* copy, const */
     }
 }
@@ -2024,8 +2048,14 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compiler_init( graphdemo_table_f
 static SCHEMA_UNUSED void graphdemo_table_fixed_push( graphdemo_table_fixed_compiler_t * c, graphdemo_table_fixed_entry_t e )
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
-       plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+       plan comes out partitioned without a second array to partition it in.
+       THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       no tag: it must run AFTER the guarded payload entries it overwrites, or
+       an absent optional whose payload holds a union would read the wire's
+       residue back over the defaults (§3.4). The run loop applies a guardless
+       entry in the second half unconditionally. */
+    const int second_half = ( e.guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD ) || e.op == GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS;
+    if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2201,10 +2231,18 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
         {
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
-                graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = GRAPHDEMO_K_TABLE_FIXED_BOOL; e.arg = arg;
-                graphdemo_table_fixed_push( c, e );
+                /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+                   when it is 0, the DECLARED DEFAULTS over the payload's slack
+                   (§3.4: an absent optional's payload is IGNORED on read). The
+                   payload's storage starts at the child's own destination and
+                   runs to the present companion, which the reader's layout puts
+                   after it. */
+                const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+                const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 graphdemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
+                e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                graphdemo_table_fixed_push( c, e );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -3452,6 +3490,7 @@ typedef struct graphdemo_table_node_map_t
     int good, arena, refused, cycle_indices;
     graphdemo_table_sink_t * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
+    int ( *declared )( uint64_t type_id ); /* a type this reader declares (§3.1) */
 } graphdemo_table_node_map_t;
 
 static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_node_map_t * nodes, graphdemo_table_ref_t * slot,
@@ -3462,7 +3501,14 @@ static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_no
     if ( index == 0 || nodes == NULL || !nodes->good ) { return; }
     if ( index > nodes->count ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return; }
     entry = &nodes->entries[index-1];
-    if ( entry->offset == UINT64_MAX ) { return; }
+    /* a node this root does not place reads null when its type is one this
+       reader cannot name; naming a type it DOES declare that is not the
+       slot's target is damage (docs/SPEC-TABLES.md §3.1) */
+    if ( entry->offset == UINT64_MAX )
+    {
+        if ( nodes->declared != NULL && nodes->declared( entry->type_id ) ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        return;
+    }
     if ( entry->type_id != target ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return; }
     if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
     {
@@ -3534,6 +3580,12 @@ static SCHEMA_UNUSED int graphdemo_table_node_scan_next( graphdemo_table_node_sc
     if ( !graphdemo_table_reader_leb(&scan->payload,&ref) || ref == 0 || ref > scan->payload.id_count ||
          !graphdemo_table_reader_span(&scan->payload,body) ) { scan->damaged = 1; return 0; }
     *type_id = graphdemo_table_reader_id_at(&scan->payload,ref); scan->records++;
+    /* A RECORD'S TYPE MAY NOT NAME A RESERVED ID (docs/SPEC-TABLES.md §3.1,
+       §3.3): the node table, build version and vocabulary ids are transport,
+       never a record's type, so a reserved id in the TYPE position is
+       damage and the whole load refuses. The two blob type ids are a blob
+       record's lawful type (§2.5). */
+    if ( *type_id == UINT64_MAX || *type_id == UINT64_MAX - 1 || *type_id == UINT64_MAX - 2 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -3561,6 +3613,7 @@ static SCHEMA_UNUSED void graphdemo_table_mark_body( graphdemo_table_reader_t r,
 static SCHEMA_UNUSED void graphdemo_table_mark_framed( graphdemo_table_reader_t sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
 {
     uint8_t elem_kind; uint64_t count, i;
+    if ( depth > 128 ) { return; }
     switch ( kind )
     {
         case 13: graphdemo_table_mark_body( sub, named, records, depth ); return;
@@ -3568,13 +3621,18 @@ static SCHEMA_UNUSED void graphdemo_table_mark_framed( graphdemo_table_reader_t 
             if ( sub.size < 2 ) { return; }
             elem_kind = graphdemo_table_reader_get8( &sub );
             if ( !graphdemo_table_reader_leb( &sub, &count ) ) { return; }
+            if ( count > 2147483647ull ) { return; }
+            if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
             for ( i = 0; i < count; i++ )
             {
+                int64_t before = sub.offset;
                 if ( kind == 14 ) { graphdemo_table_mark_value( &sub, elem_kind, named, records, depth ); }
-                else { uint64_t key; graphdemo_table_reader_t elem; if ( !graphdemo_table_reader_leb( &sub, &key ) || !graphdemo_table_reader_span( &sub, &elem ) ) { return; } graphdemo_table_mark_framed( elem, elem_kind, named, records, depth ); }
+                else { uint64_t key; graphdemo_table_reader_t elem; if ( !graphdemo_table_reader_leb( &sub, &key ) || !graphdemo_table_reader_span( &sub, &elem ) ) { return; } graphdemo_table_mark_framed( elem, elem_kind, named, records, depth + 1 ); }
+                if ( sub.offset == before ) { return; }
             }
             return;
         case 15: { graphdemo_table_reader_t rr = sub; graphdemo_table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: graphdemo_table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }
@@ -3615,6 +3673,7 @@ static SCHEMA_UNUSED void graphdemo_table_mark_value( graphdemo_table_reader_t *
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: return;
             }
+            if ( !graphdemo_table_reader_has( r, width ) ) { r->offset = r->size; return; }
             r->offset += width;
             return;
         }
@@ -4465,10 +4524,20 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int graphdemo_table_message_skip_body(graphdemo_table_message_reader_t * r)
 {
+ uint8_t seen[512];
+ /* one bit a reference, as the file form's body skip keeps */
  if(r->skip_depth>128)return 0;
+ memset(seen,0,sizeof(seen));
  for(;;) {const graphdemo_table_message_entry_t * entry;
+ int64_t ref;
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
+     reference is bounded where the file form bounds it, so the bitset fits. */
+  ref=entry-r->vocabulary->entries+1;
+  if(ref<1||ref>4096)return 0;
+  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
   if(!graphdemo_table_message_skip(r,entry))return 0;
  }
 }
@@ -4484,6 +4553,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
 {
  uint64_t n,i;
  const graphdemo_table_message_entry_t * entry;
+ const uint8_t * text;
  int saved,ok;
  if(r->skip_depth>128)return 0;
  switch(e->kind) {
@@ -4500,23 +4570,68 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && graphdemo_table_message_skip_deeper(r,entry));
  case 12:
+  /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
+     is inside the announced bound and its bytes are well-formed UTF-8 with no
+     zero byte. table_wire_utf8 is the check a named read applies. */
   if(!graphdemo_table_bit_get(&r->bits,&n,graphdemo_table_bits_required(0,e->max))||!graphdemo_table_bit_align_read(&r->bits))return 0;
-  return graphdemo_table_message_skip_run(r,n,8);
+  if(n>(uint64_t)e->max || n>INT64_MAX/8 || !graphdemo_table_bit_has(&r->bits,(int64_t)n*8))return 0;
+  text=r->bits.buffer+(r->bits.offset>>3);
+  if(!graphdemo_table_wire_utf8(text,n))return 0;
+  r->bits.offset+=(int64_t)n*8;
+  return 1;
  case 31:
   if(!graphdemo_table_bit_align_read(&r->bits)||!graphdemo_table_bit_get(&r->bits,&n,32))return 0;
   return graphdemo_table_message_skip_run(r,n,8);
+ case 10:
+  /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+     (§3.3): the same raw-bits rule a named float read applies. */
+  if(!graphdemo_table_bit_get(&r->bits,&n,e->value_bits))return 0;
+  if(e->packing==2)return n<=(uint64_t)e->qcount;
+  return graphdemo_table_bits_finite32((uint32_t)n);
+ case 11:
+  if(!graphdemo_table_bit_get(&r->bits,&n,64))return 0;
+  return graphdemo_table_bits_finite64(n);
  case 14:case 16: {
   graphdemo_table_message_entry_t elem=graphdemo_table_message_element(e);
   if(!graphdemo_table_message_count(r,e,&n))return 0;
-  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
-   int64_t width=elem.value_bits>0?elem.value_bits:0;
-   if(e->kind==16)width+=r->vocabulary->ref_bits;
-   return graphdemo_table_message_skip_run(r,n,width);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
+  if(n>(uint64_t)e->max)return 0;
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
+     a quantized element carries a value condition, so it is walked; a keyed
+     entry carries a key reference, so it is walked too. */
+  if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
+   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
+    return graphdemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
-  for(i=0;i<n;i++) {
-   if(e->kind==16 && !graphdemo_table_message_ref(r,&entry,1))return 0;
-   if(!graphdemo_table_message_skip_deeper(r,&elem))return 0;
-  }return 1;
+  {
+   uint8_t seen[512];
+   int64_t before;
+   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
+   if(e->kind==16)memset(seen,0,sizeof(seen));
+   for(i=0;i<n;i++) {
+    before=r->bits.offset;
+    if(e->kind==16) {
+     int64_t key;
+     if(!graphdemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
+     key=entry-r->vocabulary->entries+1;
+     if(key<1||key>4096)return 0;
+     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
+     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+    }
+    /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
+       its own value conditions at the array body's level; only a string, a
+       table, a nested array or keyed body, a union or an enum is walked one
+       level deeper. */
+    if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
+     if(!graphdemo_table_message_skip(r,&elem))return 0;
+    } else if(!graphdemo_table_message_skip_deeper(r,&elem))return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
+    if(r->bits.offset==before)return 0;
+   }
+   return 1;
+  }
  }
  default:return e->value_bits>=0 && graphdemo_table_bit_skip(&r->bits,e->value_bits);
  }
@@ -4566,6 +4681,7 @@ static SCHEMA_UNUSED int64_t graphdemo_table_message_open(graphdemo_table_messag
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
@@ -4676,7 +4792,11 @@ static SCHEMA_UNUSED int schema_graphdemo_table_cook_text_(graphdemo_table_numbe
 #ifndef SCHEMA_GRAPHDEMO_TABLE_RETAIN_RUNTIME
 #define SCHEMA_GRAPHDEMO_TABLE_RETAIN_RUNTIME
 #define SCHEMA_GRAPHDEMO_TABLE_RETAIN_DEPTH_MAX 1
-#define SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX 64
+/* THE RESOLVING WALK HOLDS §4's ONE NESTING BOUND (docs/SPEC-TABLES.md §4,
+   §6.6 retain_walk_depth): the depth a walk passes is the level of the
+   payload holding a frame; a table, array or keyed body is one level deeper,
+   and a union is a level when its arm is structural. 128 levels pass. */
+#define SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX 128
 #define SCHEMA_GRAPHDEMO_TABLE_RETAIN_HEADER 26
 
 typedef struct graphdemo_table_retain_id_t { uint64_t id; int32_t slot; } graphdemo_table_retain_id_t;
@@ -4888,8 +5008,11 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_content(graphdemo_table_retai
 {
  int64_t end;
  graphdemo_table_reader_t * r=&s->input;
- if(depth>SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX||!graphdemo_table_reader_has(r,length))return 0;
+ if(!graphdemo_table_reader_has(r,length))return 0;
  end=r->offset+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+ }depth++;
+ }
  switch(kind){
  case 13:for(;;){uint64_t ref;
  int64_t mark=r->offset;
@@ -4908,7 +5031,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_content(graphdemo_table_retai
  elem=graphdemo_table_reader_get8(r);
  if(!graphdemo_table_retain_raw(s,&elem,1)||!graphdemo_table_reader_leb(r,&n)||!graphdemo_table_retain_leb(s,n))return 0;
  for(i=0;i<n;i++){if(kind==16){uint64_t bytes;
- if(!graphdemo_table_retain_in_ref(s,0)||!graphdemo_table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!graphdemo_table_retain_in_frame(s,elem,(int64_t)bytes,depth+1))return 0;
+ if(!graphdemo_table_retain_in_ref(s,0)||!graphdemo_table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!graphdemo_table_retain_in_frame(s,elem,(int64_t)bytes,depth))return 0;
  }else if(!graphdemo_table_retain_in_payload(s,elem,depth))return 0;
  if(r->offset>end)return 0;
  }break;
@@ -4943,7 +5066,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_payload(graphdemo_table_retai
  r->offset+=(int64_t)length;
  return 1;
  case 13:case 14:case 16:if(!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length))return 0;
- return graphdemo_table_retain_in_frame(s,kind,(int64_t)length,depth+1);
+ return graphdemo_table_retain_in_frame(s,kind,(int64_t)length,depth);
  case 15:{uint64_t arm;
  uint8_t k;
  int64_t mark=r->offset;
@@ -4954,8 +5077,10 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_payload(graphdemo_table_retai
  if(!graphdemo_table_reader_has(r,1))return 0;
  k=graphdemo_table_reader_get8(r);
  if(!graphdemo_table_retain_raw(s,&k,1)||!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length))return 0;
- return graphdemo_table_retain_in_frame(s,k,(int64_t)length,depth+1);
- }
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+  }depth++;
+  }return graphdemo_table_retain_in_frame(s,k,(int64_t)length,depth);
+  }
  case 30:return graphdemo_table_retain_in_ref(s,1);
  default:return 0;
  }
@@ -4997,16 +5122,22 @@ report->retained++;
 static SCHEMA_UNUSED int graphdemo_table_retain_capture(graphdemo_table_reader_t * r,uint64_t id,uint8_t kind,graphdemo_table_retain_walk_t keep)
 {
  graphdemo_table_retain_in_t s;
- graphdemo_table_reader_t source=*r;
+ graphdemo_table_reader_t source=*r,check;
  uint8_t * record;
+ int64_t nodes;
  if(!graphdemo_table_reader_skip(r,kind))return 0;
- if(!keep.retain)return 1;
  if(kind==10||kind==11){uint64_t raw=0;
  int64_t i;
  for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
   if(kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw)){graphdemo_table_non_finite_float(r->report);
   return 1;
   }}
+ /* AN UNKNOWN FIELD IS VALIDATED BEFORE IT IS KEPT, exactly as the plain
+    read validates one it skips (docs/SPEC-TABLES.md §4, §6.6). */
+ nodes=(r->nodes!=NULL?(int64_t)r->nodes->count-1:0);
+ check=source;
+ if(!graphdemo_table_skip_value(&check,kind,nodes,0)||check.offset!=r->offset)return 0;
+ if(!keep.retain)return 1;
  record=graphdemo_table_retain_begin(keep,id,kind,&s);
  if(!record){r->report->retain_lost++;
  return 1;
@@ -5075,8 +5206,11 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_frame(graphdemo_table_retain
 static SCHEMA_UNUSED int graphdemo_table_retain_out_content(graphdemo_table_retain_out_t * s,uint8_t kind,int64_t length,int32_t depth)
 {
  int64_t end;
- if(depth>SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX||length<0||length>s->size-s->at)return 0;
+ if(length<0||length>s->size-s->at)return 0;
  end=s->at+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+ }depth++;
+ }
  switch(kind){
  case 13:for(;;){uint64_t id;
  uint8_t k;
@@ -5093,7 +5227,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_content(graphdemo_table_reta
  if(s->at>=end)return 0;
  elem=s->input[s->at++];
  if(!graphdemo_table_retain_out_raw(s,&elem,1)||!graphdemo_table_retain_out_leb_read(s,&n)||!graphdemo_table_retain_out_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){if(!graphdemo_table_retain_out_ref(s)||!graphdemo_table_retain_out_frame(s,elem,depth+1))return 0;
+ for(i=0;i<n;i++){if(kind==16){if(!graphdemo_table_retain_out_ref(s)||!graphdemo_table_retain_out_frame(s,elem,depth))return 0;
  }else if(!graphdemo_table_retain_out_payload(s,elem,depth))return 0;
  }break;
  }
@@ -5117,7 +5251,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_payload(graphdemo_table_reta
  case 12:case 31:case 32:if(!graphdemo_table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!graphdemo_table_retain_out_leb(s,length)||!graphdemo_table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;
  s->at+=(int64_t)length;
  return 1;
- case 13:case 14:case 16:return graphdemo_table_retain_out_frame(s,kind,depth+1);
+ case 13:case 14:case 16:return graphdemo_table_retain_out_frame(s,kind,depth);
  case 15:{uint64_t arm;
  uint8_t k;
  if(s->size-s->at<8)return 0;
@@ -5126,8 +5260,10 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_payload(graphdemo_table_reta
  if(!arm)return 1;
  if(s->at>=s->size)return 0;
  k=s->input[s->at++];
- return graphdemo_table_retain_out_raw(s,&k,1)&&graphdemo_table_retain_out_frame(s,k,depth+1);
- }
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+  }depth++;
+  }return graphdemo_table_retain_out_raw(s,&k,1)&&graphdemo_table_retain_out_frame(s,k,depth);
+  }
  case 30:return graphdemo_table_retain_out_ref(s);
  default:return 0;
  }
@@ -5313,7 +5449,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_w
 static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_message_reader_t *,graphdemo_stamp_t *);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_stamp_t * value )
 {
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -5322,7 +5458,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* tag */
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -5354,6 +5490,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body( graphdemo_table_writer_t * w
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_graphdemo_stamp_write_admits_( const graphdemo_stamp_t * value );
 static SCHEMA_UNUSED int64_t graphdemo_stamp_measure( const graphdemo_stamp_t * value )
 {
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5497,13 +5634,13 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_w
 {
  (void)value;
  { /* tag */
- if(value->tag_length<0 || value->tag_length>8) return 0;
+ schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
  if(value->tag_length != 0) {
   if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   graphdemo_table_bit_put(w,2,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->tag_length<0 || value->tag_length>8) return 0;
+  schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -5533,7 +5670,11 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_measure_messages(const graphdemo_st
  w=graphdemo_table_bit_writer(NULL,INT64_MAX);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_stamp_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5550,7 +5691,11 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_save_messages(const graphdemo_stamp
  w=graphdemo_table_bit_writer(buffer,capacity);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_stamp_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_stamp_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5852,6 +5997,28 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
     (*out_of_range) += (int) ( value->seq < 0 ) | (int) ( value->seq > 1000 );
 }
 
+/* Stamp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_fixed_write_check_body_( const graphdemo_stamp_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->tag_length >= 0 && value->tag_length <= 8 && !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) )
+    {
+        (*damaged)++;
+    }
+    (*out_of_range) += (int) ( value->seq < 0 ) | (int) ( value->seq > 1000 );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Stamp holds is
+   one its declaration admits. Every writer of Stamp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_graphdemo_stamp_write_admits_( const graphdemo_stamp_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_graphdemo_stamp_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -5908,8 +6075,9 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_dst_t graphdemo_stamp_fixed_dst
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const graphdemo_table_fixed_entry_t graphdemo_stamp_fixed_plan[] = {
     { 0u, 12u, 8u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tag */
     { 12u, 16u, 4u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* seq */
@@ -5963,6 +6131,14 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_save( const graphdemo_stamp_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_graphdemo_stamp_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_stamp_fixed_hash );
@@ -6069,10 +6245,11 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
     { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = graphdemo_stamp_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -6080,6 +6257,8 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -6089,8 +6268,50 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
     {
         int32_t rec_widened = report->widened;
         if ( graphdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const graphdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != GRAPHDEMO_K_TABLE_FIXED_BOOL && p->op != GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const graphdemo_table_fixed_guard_link_t * l = ( const graphdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( graphdemo_table_fixed_guard_link_t ) );
+                            if ( graphdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == GRAPHDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { graphdemo_stamp_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_stamp_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -6119,8 +6340,7 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( graphdemo_tabl
 {
     (void)retention;
 
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -6133,8 +6353,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* tag */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;
