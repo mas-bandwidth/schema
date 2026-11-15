@@ -229,7 +229,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
 		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value, true)
+    validate_record(desc, value)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
@@ -3126,22 +3126,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp field_active?(_f, _desc, _value), do: true
 
-  # zero_ok is THE TEXT WRITER'S CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md
-  # §5.1): well-formed text, a zero byte included, which the text spells
-  # \u0000. The binary writers refuse a zero byte, because their readers do.
-  defp validate_record(desc, value), do: validate_record(desc, value, false)
-
-  defp validate_record(desc, value, zero_ok) do
+  # A WRITER'S TEXT CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md §5.1 row 8):
+  # well-formed text with no zero byte. The text writer refuses a zero too,
+  # because its reader refuses the \u0000 text a writer would otherwise spell.
+  defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default), zero_ok)
+        validate_text_list(f, Map.get(value, f.name, f.default))
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
         end
       end
 
@@ -3149,7 +3147,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
         end
       end
 
@@ -3493,7 +3491,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements, zero_ok) do
+  defp validate_text_list(f, elements) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -3504,7 +3502,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not text_valid?(value, zero_ok) or
+        if not is_binary(value) or not utf8_valid?(value) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -3535,9 +3533,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
-
-  defp text_valid?(raw, true), do: String.valid?(raw)
-  defp text_valid?(raw, false), do: utf8_valid?(raw)
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
@@ -3762,12 +3757,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value, true)
+    validate_record(desc, value)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value, true)
+    validate_record(desc, value)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -3863,7 +3858,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1, true))
+    Enum.each(pairs, &validate_record(entry_desc, &1))
 
     if pairs == [] do
       "{}"
@@ -4257,12 +4252,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
-  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
-  # well-formed sequence is not text: no read puts it into storage, so a
-  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
-  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
-  # (its generalized encoding, ED A0 80 for D800) refuses here too.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the controls from 0x01
+  # through 0x1F, and a well-formed multibyte UTF-8 sequence rides raw. A zero
+  # byte is not text for this writer either: its reader refuses the \u0000 text
+  # a writer would otherwise spell, so the whole write REFUSES (invalid_value,
+  # §16.14 W0) with nothing replaced. A byte that opens no well-formed sequence
+  # is not text: no read puts it into storage, so a program did, and the whole
+  # write refuses the same way. A wide string is held as UTF-8, so an unpaired
+  # surrogate (its generalized encoding, ED A0 80 for D800) refuses here too.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
@@ -4277,6 +4274,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =
       case c do
+        0 -> throw(:invalid_value)
         ?" -> "\\\""
         ?\\ -> "\\\\"
         ?\b -> "\\b"
