@@ -238,7 +238,8 @@
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
         "packet-end-lua-negative-control",
-        "packet-write-cfloat-lua-negative-control"
+        "packet-write-cfloat-lua-negative-control",
+        "packet-write-bareint-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1515,7 +1516,8 @@
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
-        "packet-end-rust-negative-control"
+        "packet-end-rust-negative-control",
+        "packet-write-text-rust-negative-control"
       ],
       "rust": "stable"
     },
