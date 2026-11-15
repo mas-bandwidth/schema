@@ -375,6 +375,21 @@ together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
 
+Both saves now first check that the root is exactly its generated class (a
+subclass could carry another descriptor). Re-measured on a SHARED fleet bench
+under other load, so the figures are slower than the table above throughout
+and compare only with each other; the left of each pair is the runtime
+before the check, the right after it, on the same host minutes apart:
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 19,541 / 20,480 | 21,508 / 23,281 | 18,990 / 19,733 | 20,555 / 21,206 |
+| load | 21,538 / 22,086 | 22,729 / 23,014 | 24,440 / 24,646 | 24,726 / 23,960 |
+
+The check costs the save under 5% on this host (the loads, which it does not
+touch, moved by up to 3% in the same runs, which is the noise), and the
+generated save stays the faster shape on both pins, so the pair is kept.
+
 ### Maps bench
 
 A table that holds a map is variable, so it never takes the straight-line
