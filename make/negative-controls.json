@@ -2773,7 +2773,8 @@
         "packet-finite-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
         "packet-defaults-squirrel-negative-control",
-        "packet-end-squirrel-negative-control"
+        "packet-end-squirrel-negative-control",
+        "packet-write-text-squirrel-negative-control"
       ],
       "squirrel": "3.2"
     },
