@@ -284,13 +284,13 @@ func TestPythonVtUnbounded(t *testing.T) {
 // InvalidValue before a byte is written and leaves the caller's list as it
 // was. "long" is a list that reports a length past the int32 storage cap, so
 // the write refuses the count its own read would refuse, without building two
-// billion elements; check_count is also held directly to a small cap.
+// billion elements; _check_count is also held directly to a small cap.
 const vtUnboundedWriteProbe = pyrun.ImportPrelude + `from unbounded import InvalidValue, Save
 from unbounded._schema import kind_array
 
 class Long(list):
     def __len__(self):
-        return kind_array.MAX_COUNT + 1
+        return kind_array._MAX_COUNT + 1
 
 def check(label, value):
     r = Save()
@@ -309,12 +309,12 @@ check("bool", [True])
 check("tuple", (1, 2))
 check("long", Long())
 try:
-    kind_array.check_count("x", 4, 3)
+    kind_array._check_count("x", 4, 3)
     print("cap passed")
 except InvalidValue:
     print("cap refused")
 try:
-    kind_array.check_count("x", 3, 3)
+    kind_array._check_count("x", 3, 3)
     print("cap at", "ok")
 except InvalidValue:
     print("cap at", "refused")
@@ -390,23 +390,23 @@ def run(fn):
 
 for name, (element, values) in cases.items():
     walked = bytearray()
-    kind_array.write_walk(Writer(walked), element, values, None)
+    kind_array._write_walk(Writer(walked), element, values, None)
     bulked = bytearray()
-    if not kind_array.write_bulk(Writer(bulked), element, values, None):
+    if not kind_array._write_bulk(Writer(bulked), element, values, None):
         raise SystemExit(name + ": the bulk shape does not carry the element")
     if walked != bulked:
         raise SystemExit(name + ": the bulk write differs from the walk")
     body = memoryview(bytes(walked))
     def reader():
         return Reader(body, 0, len(body), [])
-    if kind_array.read_walk(reader(), element, COUNT, None) != values:
+    if kind_array._read_walk(reader(), element, COUNT, None) != values:
         raise SystemExit(name + ": the walk read differs from the value")
-    if kind_array.read_bulk(reader(), element, COUNT, None) != values:
+    if kind_array._read_bulk(reader(), element, COUNT, None) != values:
         raise SystemExit(name + ": the bulk read differs from the value")
-    print("read_walk_" + name, round(run(lambda: kind_array.read_walk(reader(), element, COUNT, None)), 1))
-    print("read_bulk_" + name, round(run(lambda: kind_array.read_bulk(reader(), element, COUNT, None)), 1))
-    print("write_walk_" + name, round(run(lambda: kind_array.write_walk(Writer(bytearray()), element, values, None)), 1))
-    print("write_bulk_" + name, round(run(lambda: kind_array.write_bulk(Writer(bytearray()), element, values, None)), 1))
+    print("read_walk_" + name, round(run(lambda: kind_array._read_walk(reader(), element, COUNT, None)), 1))
+    print("read_bulk_" + name, round(run(lambda: kind_array._read_bulk(reader(), element, COUNT, None)), 1))
+    print("write_walk_" + name, round(run(lambda: kind_array._write_walk(Writer(bytearray()), element, values, None)), 1))
+    print("write_bulk_" + name, round(run(lambda: kind_array._write_bulk(Writer(bytearray()), element, values, None)), 1))
 print("OK")
 `
 	var keys []string
@@ -496,7 +496,7 @@ var vtUnboundedControls = []vtUnboundedControl{
 	{"wrong_element_kind", "unbounded/_schema/kind_array.py", "        if ek != fd.elem_kind:\n", "        if False:\n"},
 	{"short_header", "unbounded/_schema/kind_array.py", "        if length < 2:\n", "        if False:\n"},
 	{"unknown_element_kind", "unbounded/_schema/kind_array.py", "        if not _element_kind_allowed(ek):\n", "        if False:\n"},
-	{"count_over_cap", "unbounded/_schema/kind_array.py", "        if count > MAX_COUNT:\n", "        if False:\n"},
+	{"count_over_cap", "unbounded/_schema/kind_array.py", "        if count > _MAX_COUNT:\n", "        if False:\n"},
 	{"count_past_body", "unbounded/_schema/kind_array.py", "        if count > remaining:\n", "        if False:\n"},
 	{"trailing_bytes", "unbounded/_schema/kind_array.py", "        if sub.pos != length:\n", "        if False:\n"},
 	{"element_range", "unbounded/_schema/kind_array.py", "    if values and (min(values) < lo or max(values) > hi):\n", "    if False:\n"},
@@ -505,7 +505,7 @@ var vtUnboundedControls = []vtUnboundedControl{
 	// The write side: the element validation in the save walk, and the
 	// length cap. Each must leave the write probe without its line.
 	{"write:range True", "unbounded/_schema/save.py", "                    kinds._REGISTRY[element.codec].validate(element, item, cell)\n", "                    pass\n"},
-	{"write:long True", "unbounded/_schema/save.py", "            kind_array.check_count(where, len(current))\n", "            pass\n"},
+	{"write:long True", "unbounded/_schema/save.py", "            kind_array._check_count(where, len(current))\n", "            pass\n"},
 	{"write:cap refused", "unbounded/_schema/kind_array.py", "    if count > cap:\n", "    if False:\n"},
 }
 

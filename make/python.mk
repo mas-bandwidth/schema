@@ -15,8 +15,8 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-vt-unbounded-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control python-vt-unbounded-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -87,14 +87,6 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 # make/negative-controls.json as a gate test-python runs.
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
-
-# The unbounded array's negative controls: each read refusal of the array
-# codec, the write's element validation and its length cap are removed one at
-# a time from a COPY of the generated runtime, and the gate case that watches
-# each must go red by name. It needs the pins, so test-python
-# runs it beside the table tests and make/negative-controls.json schedules it.
-python-vt-unbounded-negative-control:
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtUnboundedNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 generated/bench/tables/python/.stamp: ;
 

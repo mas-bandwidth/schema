@@ -31,7 +31,7 @@ from . import InvalidValue, Refused
 from . import kinds
 from .descriptor import FieldDesc
 
-MAX_COUNT = 0x7FFFFFFF
+_MAX_COUNT = 0x7FFFFFFF
 
 _INT_WIDTH = {
     2: 1,
@@ -62,7 +62,7 @@ def _element_kind_allowed(kind: int) -> bool:
     return 1 <= kind <= 13 or kind == 15 or kind == 17 or 18 <= kind <= 30
 
 
-def check_count(path: str, count: int, cap: int = MAX_COUNT) -> None:
+def _check_count(path: str, count: int, cap: int = _MAX_COUNT) -> None:
     """Refuse a list the int32 storage cap cannot count (§2.9).
 
     The cap is an argument so a test can hold the check to a small cap without
@@ -81,7 +81,7 @@ def _int_code(element: FieldDesc) -> str | None:
     return _SIGNED_CODE[width] if element.lo < 0 else _UNSIGNED_CODE[width]
 
 
-def read_walk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any]:
+def _read_walk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any]:
     """The per-element shape: each element through its own kind module."""
     codec = kinds._REGISTRY[element.codec]
     items: list[Any] = []
@@ -91,7 +91,7 @@ def read_walk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any]:
     return items
 
 
-def read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] | None:
+def _read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] | None:
     """The bulk shape, or None for an element it does not carry."""
     if element.codec == "bool":
         raw = bytes(sub.take(count))
@@ -112,14 +112,14 @@ def read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] |
     return list(values)
 
 
-def write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
+def _write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
     """The per-element shape: each element through its own kind module."""
     codec = kinds._REGISTRY[element.codec]
     for item in value:
         codec.write_element(w, element, item, ctx)
 
 
-def write_bulk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> bool:
+def _write_bulk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> bool:
     """The bulk shape; False for an element it does not carry."""
     if element.codec == "bool":
         w.raw(bytes(value))
@@ -135,7 +135,7 @@ class _Array:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
         if not isinstance(value, list):
             raise InvalidValue(path, "not a list")
-        check_count(path, len(value))
+        _check_count(path, len(value))
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         from .load import Reader
@@ -154,7 +154,7 @@ class _Array:
                 f"{fd.name} rides as an array of kind {ek}, not {fd.elem_kind}",
             )
         count = sub.varint()
-        if count > MAX_COUNT:
+        if count > _MAX_COUNT:
             raise Refused(
                 "count_over_extent_cap",
                 f"an array count of {count} is past the int32 storage cap",
@@ -165,9 +165,9 @@ class _Array:
         element = fd.element
         if element is None:
             raise Refused("unsupported_kind", "an array carries no element descriptor")
-        items = read_bulk(sub, element, count, ctx)
+        items = _read_bulk(sub, element, count, ctx)
         if items is None:
-            items = read_walk(sub, element, count, ctx)
+            items = _read_walk(sub, element, count, ctx)
         if sub.pos != length:
             raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
         if count == 0 and not fd.optional:
@@ -190,8 +190,8 @@ class _Array:
         writer = _writer(body)
         writer.byte(fd.elem_kind)
         writer.varint(len(value))
-        if not write_bulk(writer, element, value, ctx):
-            write_walk(writer, element, value, ctx)
+        if not _write_bulk(writer, element, value, ctx):
+            _write_walk(writer, element, value, ctx)
         w.varint(len(body))
         w.raw(body)
 

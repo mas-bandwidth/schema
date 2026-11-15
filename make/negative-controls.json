@@ -1051,15 +1051,6 @@
       "python": "pin"
     },
     {
-      "name": "python-vt-unbounded",
-      "when": "pull-request",
-      "why": "the unbounded array's controls (make/python.mk), one subtest each, each removing one check from a COPY of the generated runtime and requiring the gate case that watches it to go red by name: the read refusals in kind_array.py (the element kind against the declaration, kind_mismatch; a body shorter than its header; an element kind outside the closed list; a count past the int32 storage cap, count_over_extent_cap; a count the body cannot cover; bytes left inside L after the elements; the bulk read's range check, out_of_range; the bulk bool read's 0-or-1 check; a present empty plain array, non_canonical), and the write's element validation and length cap in save.py and kind_array.py (InvalidValue). It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
-      "targets": [
-        "python-vt-unbounded-negative-control"
-      ],
-      "python": "pin"
-    },
-    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

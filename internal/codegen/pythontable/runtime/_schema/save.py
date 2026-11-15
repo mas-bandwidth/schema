@@ -118,7 +118,7 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
         elif field.codec == "array":
             if not isinstance(current, list):
                 raise InvalidValue(where, "not a list")
-            kind_array.check_count(where, len(current))
+            kind_array._check_count(where, len(current))
             element = field.element
             if element is None:
                 raise InvalidValue(where, "an array carries no element descriptor")
