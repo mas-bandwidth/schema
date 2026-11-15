@@ -37,9 +37,9 @@ type Outer {
     }
 }
 `)
-	readAt := strings.Index(w, "bool ReadOuter(")
+	readAt := strings.Index(w, "bool ReadOuterBody(")
 	if readAt < 0 {
-		t.Fatal("NestWire.h carries no ReadOuter")
+		t.Fatal("NestWire.h carries no ReadOuterBody")
 	}
 	read := w[readAt:]
 	for _, want := range []string{
@@ -85,8 +85,8 @@ type Holder {
 		"#define schema_read_object( stream, function, value )",
 		"    schema_write_object( stream, WriteLeaf, value.leaf );\n",
 		"    schema_write_object( stream, WritePick, value.pick );\n",
-		"    schema_read_object( stream, ReadLeaf, value.leaf );\n",
-		"    schema_read_object( stream, ReadPick, value.pick );\n",
+		"    schema_read_object( stream, ReadLeafBody, value.leaf );\n",
+		"    schema_read_object( stream, ReadPickBody, value.pick );\n",
 	} {
 		if !strings.Contains(w, want) {
 			t.Errorf("CallsWire.h: want %q in\n%s", want, w)
