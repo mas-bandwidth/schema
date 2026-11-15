@@ -109,7 +109,8 @@ const (
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +9: the JSON writer refuses a zero byte in text, and the plain and regional writers measure before they write so a refusal writes nothing (SPEC-TABLES §16.14 W0, W8)
-	goExamplesLineBudget = 60114
+	// +8: a string-blob node write refuses a zero byte and ill-formed UTF-8 before it copies the bytes (SPEC-TABLES §16.14 W0, W8)
+	goExamplesLineBudget = 60122
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

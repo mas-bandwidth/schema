@@ -323,7 +323,7 @@ func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit func(*TableR
  if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),visit)}
  if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j := range count {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
 }
-func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow }
+func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));text:=unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length));if e.id==tableStringTypeID&&!tableUTF8Valid(text){return false};w.Raw(text);return !w.Overflow }
 func tableNodeMeasure(w *TableWriter,ids *TableIds,e *tableNodeEntry)int64 {*w=TableWriter{Measuring:true,Ids:ids};if !tableNodeWrite(w,e){return -1};return w.Offset}
 // A typed frame keeps its pointers visible to Go's collector. The descriptor
 // callbacks make it escape once per call; node-proportional storage uses the pair.
