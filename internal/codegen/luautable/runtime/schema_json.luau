@@ -295,11 +295,14 @@ local function scan_label(inp: Input): number?
   return v
 end
 
-local skip_value: (Input, number, any) -> boolean
+local skip_value: (Input, number, any, boolean?) -> boolean
 
 -- a skipped OBJECT may still be a pointer's: `&node` opening it takes its
--- label with no node, so a later reference reads null (§16.7)
-local function skip_container(inp: Input, close: string, depth: number, graph: any): boolean
+-- label with no node, so a later reference reads null (§16.7). text says the
+-- walk is the TABLE walk, where a skipped string or object key is held to the
+-- text rules of a placed one (docs/SPEC-TABLES.md §16.3); the JSON layer's
+-- own grammar probe passes it false.
+local function skip_container(inp: Input, close: string, depth: number, graph: any, text: boolean?): boolean
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
@@ -313,7 +316,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
     if c == nil then inp.bad = true; return false end
     local labelled = false
     if close == '}' then
-      local scanned, _, ok = scan_string(inp, MAX_KEY)
+      local scanned, _, ok = scan_string(inp, MAX_KEY, text)
       if not ok then return false end
       local key = scanned :: string -- an ok scan returns its string
       if keys[key] then inp.bad = true; return false end
@@ -335,7 +338,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
     end
     if not labelled then
       first = false
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, text) then return false end
       c = peek(inp)
       if c == ',' then
         inp.p = inp.p + 1
@@ -350,11 +353,13 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   end
 end
 
-skip_value = function(inp: Input, depth: number, graph: any): boolean
+skip_value = function(inp: Input, depth: number, graph: any, text: boolean?): boolean
   local c = peek(inp)
-  if c == '{' then return skip_container(inp, '}', depth, graph) end
-  if c == '[' then return skip_container(inp, ']', depth, graph) end
-  if c == '"' then local _, _, ok = scan_string(inp, -1); return ok end
+  if c == '{' then return skip_container(inp, '}', depth, graph, text) end
+  if c == '[' then return skip_container(inp, ']', depth, graph, text) end
+  -- A SKIPPED STRING IS HELD TO THE TEXT RULES OF A PLACED ONE
+  -- (docs/SPEC-TABLES.md §16.3): a string that decodes to U+0000 refuses.
+  if c == '"' then local _, _, ok = scan_string(inp, -1, text); return ok end
   if c == 't' then return literal(inp, "true") end
   if c == 'f' then return literal(inp, "false") end
   if c == 'n' then return literal(inp, "null") end
@@ -976,7 +981,9 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
       if c == '}' then inp.p = inp.p + 1; return required_seen(desc, v, seen, report) end
       if c == nil then inp.bad = true; return false end
       local start = inp.p
-      local _, _, ok = scan_string(inp, MAX_KEY)
+      -- every object key is held to the text rules of a placed string
+      -- (docs/SPEC-TABLES.md §16.3): a key that decodes to U+0000 refuses.
+      local _, _, ok = scan_string(inp, MAX_KEY, true)
       if not ok then return false end
       key = inp.t:sub(start + 1, inp.p - 2)
       if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -986,7 +993,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
     local fd = find_key(desc, key)
     if fd == nil then
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     else
       if seen[fd.name] then report.duplicate = report.duplicate + 1 end
       seen[fd.name] = true
@@ -1006,7 +1013,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
         local want = shape_of(T, fd)
         if shape ~= want then
           report.kindMismatch = report.kindMismatch + 1
-          if not skip_value(inp, depth + 1, graph) then return false end
+          if not skip_value(inp, depth + 1, graph, true) then return false end
           -- §16.2 optional row: the KEY is presence whatever its value, and
           -- §4's declared default fills it, so a wrong-shaped present value
           -- is the default and PRESENT (Go writes the default object/array).
@@ -1065,7 +1072,7 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   end
   if c == nil then inp.bad = true; return false end
   local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local _, _, ok = scan_string(inp, MAX_KEY, true)
   if not ok then return false end
   local k = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1181,10 +1188,10 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
     local before = placed
     if full then
       if seen > bound then report.clamped = report.clamped + 1 end
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     elseif placed >= bound then
       report.clamped = report.clamped + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     elseif fd.elem.shape == "pointer" and vs == 'z' then
       literal(inp, "null")
       placed = placed + 1
@@ -1205,7 +1212,7 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       end
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
     else
@@ -1302,7 +1309,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
       seen[kval] = true
       out[kval] = false
     elseif skip then
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
@@ -1341,7 +1348,7 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
     local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    local _, _, ok = scan_string(inp, MAX_KEY, true)
     if not ok then return false end
     local name = inp.t:sub(start + 1, inp.p - 2)
     if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1352,13 +1359,13 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
       if seen_unknown[name] then dup_unknown = true end
       seen_unknown[name] = true
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     else
       if seen[slot] then report.duplicate = report.duplicate + 1 end
       seen[slot] = true
       if value_shape(inp) ~= eshape then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 1, graph, true) then return false end
       else
         if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true) then
           return false
@@ -1389,7 +1396,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
   local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local _, _, ok = scan_string(inp, MAX_KEY, true)
   if not ok then return nil end
   local name = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ':' then inp.bad = true; return nil end
@@ -1399,11 +1406,11 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 1, graph, true) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= 'z' then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return nil end
+      if not skip_value(inp, depth + 1, graph, true) then return nil end
     else
       literal(inp, "null")
       out.tag = tag
@@ -1416,7 +1423,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     out.tag = tag
   elseif value_shape(inp) ~= shape_of(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 1, graph, true) then return nil end
   else
     out.tag = tag
     if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false) then
@@ -1580,7 +1587,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       if c == nil then inp.bad = true; return false end
       if c ~= '"' then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 1, graph, true) then return false end
       else
         local st = inp.p
         local _, _, ok = scan_string(inp, MAX_KEY)

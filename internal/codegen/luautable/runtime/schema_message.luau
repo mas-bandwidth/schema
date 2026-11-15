@@ -118,14 +118,45 @@ local function floatStep(r: any, st: any, kind: number, fd: any): boolean
 		finite = bit32.band(hi, 0x7FF00000) ~= 0x7FF00000
 	end
 	if not finite and st.nonFinite == nil then
-		st.nonFinite = (st.owner or "?") .. "." .. (fd.name or "?")
+		st.nonFinite = (st.owner or "?") .. "." .. (if fd ~= nil then fd.name or "?" else "?")
 	end
 	return true
 end
 
 -- whether a shape is a plain float the walk must test: kind 10 unpacked, or 11
-local function plainFloat(shape: any, fd: any): boolean
-	return fd ~= nil and fd.s == "float" and ((shape.kind == 10 and shape.packing == 0) or shape.kind == 11)
+local function plainFloat(shape: any): boolean
+	return (shape.kind == 10 and shape.packing == 0) or shape.kind == 11
+end
+
+-- A SKIPPED STRING'S BYTES ARE TEXT (docs/SPEC-TABLES.md §3, §4): a string
+-- the walk does not keep is held to what a read of it holds — well-formed
+-- UTF-8 with no zero byte — exactly as schema_load.luau's utf8_ok holds a
+-- named field's bytes.
+local function textOk(b: buffer, at: number, n: number): boolean
+	local i = at
+	local e = at + n
+	while i < e do
+		local b0 = buffer.readu8(b, i)
+		if b0 == 0 then return false end
+		if b0 < 0x80 then i = i + 1
+		else
+			local need, cp
+			if b0 >= 0xC2 and b0 <= 0xDF then need, cp = 1, b0 - 0xC0
+			elseif b0 >= 0xE0 and b0 <= 0xEF then need, cp = 2, b0 - 0xE0
+			elseif b0 >= 0xF0 and b0 <= 0xF4 then need, cp = 3, b0 - 0xF0
+			else return false end
+			if i + need >= e then return false end
+			for k = 1, need do
+				local x = buffer.readu8(b, i + k)
+				if x < 0x80 or x > 0xBF then return false end
+				cp = cp * 64 + (x - 0x80)
+			end
+			local min = need == 1 and 0x80 or (need == 2 and 0x800 or 0x10000)
+			if cp < min or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return false end
+			i = i + 1 + need
+		end
+	end
+	return true
 end
 
 -- put writes a reference back at a bit offset already read: only a deprecated
@@ -203,6 +234,24 @@ local function kindBits(k: number): number
 end
 
 
+-- bitsLen32 is bits.Len32: the bits a step count's largest index needs.
+local function bitsLen32(n: number): number
+	local b = 0
+	while n > 0 do
+		b = b + 1
+		n = math.floor(n / 2)
+	end
+	return b
+end
+
+-- asF32 rounds one arithmetic result to float32, which is the precision the
+-- announced quantized triple is derived in (ir.TableMessageQuantization).
+local f32scratch = buffer.create(4)
+local function asF32(x: number): number
+	buffer.writef32(f32scratch, 0, x)
+	return buffer.readf32(f32scratch, 0)
+end
+
 local function newShape(): any
 	return { kind = 0, packing = 0, bits = 0, min = 0, max = 0, elem = 0, inner = nil }
 end
@@ -228,7 +277,23 @@ local function shapeRead(r: any, k: number): any
 			return s
 		elseif packing == 2 and k == 10 then
 			if r.at + 12 > r.e then r.bad = true; return s end
+			local qmin = buffer.readf32(r.b, r.at)
+			local qmax = buffer.readf32(r.b, r.at + 4)
+			local qres = buffer.readf32(r.b, r.at + 8)
 			r.at = r.at + 12
+			-- the triple's derivation is ir.TableMessageQuantization's, in
+			-- float32: the step count and therefore the index width
+			if not (qmin < qmax) or not (qres > 0) then r.bad = true; return s end
+			local delta = asF32(qmax - qmin)
+			local values = asF32(delta / qres)
+			if delta - delta ~= 0 or values - values ~= 0 then r.bad = true; return s end
+			if not (values >= 1) then values = 1
+			elseif values > 4294967040 then values = 4294967040 end
+			s.qmin = qmin
+			s.qmax = qmax
+			s.qres = qres
+			s.count = math.ceil(values)
+			s.bits = bitsLen32(s.count)
 			return s
 		else
 			r.bad = true
@@ -452,12 +517,16 @@ local function countOf(r: any, s: any): (number, boolean)
 end
 
 skipBody = function(r: any, st: any, desc: any, dep: any): boolean
+	-- AN ID TWICE IN ONE BODY IS DAMAGE, whether this reader can name it or
+	-- not (docs/SPEC-TABLES.md §3.1, §3.3).
+	local seen: { [integer]: boolean } = {}
 	while true do
 		local ref, ok = get(r, st.refBits)
 			if not ok then return false end
 		if ref == 0 then return true end
 		local e = entryOf(st.v, ref)
-		if e == nil or reserved(e.id) then return false end
+		if e == nil or reserved(e.id) or seen[e.id] then return false end
+		seen[e.id] = true
 		if dep ~= nil and desc ~= nil then dep.table = desc.name end
 		if desc ~= nil then st.owner = desc.name end
 		if not skipShape(r, st, e, fieldById(desc, e.id), dep) then return false end
@@ -467,6 +536,14 @@ end
 skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 	local k = e.shape.kind
 	if k == 0 or k == 32 then return true end
+	if plainFloat(e.shape) then return floatStep(r, st, k, fd) end
+	if k == 10 and e.shape.packing == 2 then
+		-- A QUANTIZED FLOAT RIDES ITS STEP INDEX, and an index above the
+		-- announced count is damage (docs/SPEC-TABLES.md §3.3).
+		local idx, ok = get(r, e.shape.bits)
+		if not ok then return false end
+		return idx <= (e.shape.count or 0)
+	end
 	if k == 30 then
 		local at = r.off
 		local ref, ok = get(r, st.refBits)
@@ -516,23 +593,34 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		return skipShape(r, st, arm, armFd, dep)
 	elseif k == 12 then
 		local n, ok = countOf(r, e.shape)
-		if not ok then return false end
-		if k == 12 and not align(r) then return false end
-		return skip(r, n * (if k == 12 then 8 else 16))
+		if not ok or not align(r) then return false end
+		if r.off + n * 8 > r.n then return false end
+		-- SKIPPED IS NOT UNREAD: a string's bytes are held to what a read of
+		-- them holds (docs/SPEC-TABLES.md §3, §4).
+		if not textOk(r.b, math.floor(r.off / 8), n) then return false end
+		return skip(r, n * 8)
 	elseif k == 14 or k == 16 then
 		local n, ok = countOf(r, e.shape)
 		if not ok then return false end
+		-- THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above
+		-- the announced maximum is damage here as it is at a named field.
+		if n > e.shape.max then return false end
 		local ef = nil
 		if fd ~= nil then
 			if fd.e ~= nil then ef = named(fd.e, fd.name)
 			elseif fd.s == "map" then ef = { s = "tab", t = fd.t, name = fd.name } end
 		end
 		if k == 16 then
+			local seen: { [integer]: boolean } = {}
 			for _ = 1, n do
 				local key, kok = get(r, st.refBits)
 				if not kok then return false end
 				local ken = entryOf(st.v, key)
 				if ken == nil or reserved(ken.id) or ken.shape.kind ~= 0 then return false end
+				-- A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE, a key this reader
+				-- cannot name included (docs/SPEC-TABLES.md §3.2, §3.3).
+				if seen[ken.id] then return false end
+				seen[ken.id] = true
 				-- A KEYED ARRAY's key is a slot, not a caller value: the key
 				-- may name a retired variant and the element is what is read
 				-- and written (Go's variantWireId key=true, §2.15).
@@ -542,13 +630,15 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		end
 		if e.shape.elem == 6 and not align(r) then return false end
 		local ik = e.element.kind
-		if plainFloat(e.element, ef) then
+		if plainFloat(e.element) then
 			for _ = 1, n do
 				if not floatStep(r, st, ik, ef) then return false end
 			end
 			return true
 		end
-		if ik ~= 12 and ik ~= 13 and ik ~= 14 and ik ~= 15 and ik ~= 16 and ik ~= 17 and ik ~= 30 and ik ~= 31 then
+		-- kind 10 is also the quantized float, whose index is checked, so it
+		-- is walked element by element rather than skipped as a run.
+		if ik ~= 10 and ik ~= 12 and ik ~= 13 and ik ~= 14 and ik ~= 15 and ik ~= 16 and ik ~= 17 and ik ~= 30 and ik ~= 31 then
 			return skip(r, n * e.element.bits)
 		end
 		for _ = 1, n do
@@ -560,7 +650,6 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		local n, ok = get(r, 32)
 		return ok and skip(r, n * 8)
 	end
-	if plainFloat(e.shape, fd) then return floatStep(r, st, k, fd) end
 	return skip(r, e.shape.bits)
 end
 
