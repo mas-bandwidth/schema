@@ -623,11 +623,25 @@ local mapKeyOrder = function(kd, a, b) {
   return ult(a, b) ? -1 : 1;
 };
 
-// ONE INTEGER KEY TOKEN, read by its OWN digits (§2.8, §16.2): a key is an
-// identity, so 1.0 and 1e0 are the key 1, and a fractional value or a
-// magnitude past 64 bits is not the key kind's identity. This is the exact
-// interpretation internal/tabletext's interpretIntegerExact carries; no
-// double decides a key.
+// digits and an optional minus, no fraction, no exponent, no leading zero,
+// not -0 (read.go integerToken). The token's length is not part of the test.
+local integerToken = function(tok) {
+  local i = 0;
+  local neg = false;
+  if (i < tok.len() && tok[i] == '-') { neg = true; i++; }
+  if (i >= tok.len()) return false;
+  if (tok[i] == '0') return !neg && (i + 1 == tok.len());
+  if (tok[i] < '1' || tok[i] > '9') return false;
+  for (i = i + 1; i < tok.len(); i++) {
+    if (tok[i] < '0' || tok[i] > '9') return false;
+  }
+  return true;
+};
+
+// ONE INTEGER KEY TOKEN, read by its OWN digits (§2.8, §16.2): a key takes
+// the integer-token rule, so a fraction, an exponent or -0 is not a key, and
+// neither is a magnitude past 64 bits. This is the exact interpretation
+// internal/tabletext's interpretIntegerExact carries; no double decides a key.
 local mapKeyNumber = function(tok) {
   local n = tok.len(), i = 0;
   if (i < n && tok[i] == '-') i++;
@@ -1279,7 +1293,19 @@ writeScalar = function(T, d, val, depth, g, out) {
   }
   if (d.kind == 36) { out.append(jsonString(timestampText(val))); return true; }
   if (!intAdmitted(d, val)) return false;
+  if (jsonWideInteger(d.kind)) {
+    // A KIND WIDER THAN 32 BITS IS A STRING OF DIGITS (W10, W11)
+    local text;
+    if (wideKind(d.kind)) text = formatWide(wideOf(d, val), d.kind, has(d, "frac") ? d.frac : 0);
+    else if (d.kind == 5) text = val.tostring();
+    else text = utoa(val);
+    local s = jsonString(text);
+    if (s == null) return false;
+    out.append(s);
+    return true;
+  }
   if (wideKind(d.kind)) {
+    // a fixed kind of 32 bits or under stays a bare number (W11)
     out.append(formatWide(wideOf(d, val), d.kind, has(d, "frac") ? d.frac : 0));
     return true;
   }
@@ -2119,8 +2145,10 @@ readMap = function(T, c, fd, r, v, depth) {
         r.bad = true;
         return false;
       }
+      // THE KEY READS BY THE INTEGER RULE AND BY NOTHING ELSE (§16.2): a
+      // fraction, an exponent or -0 is the wrong shape, never a shorter key.
       local dom = mapKeyInDomain(kd, num);
-      if (!dom[0]) r.report.mismatch++;
+      if (!integerToken(key) || !dom[0]) r.report.mismatch++;
       else { ent[kd.member] = dom[1]; placed = true; }
     }
     local valueOk = false;
@@ -2265,21 +2293,6 @@ local compareSigned = function(aNeg, aMag, bNeg, bMag) {
   if (aMag == bMag) return 0;
   local less = ult(aMag, bMag);
   return aNeg ? (less ? 1 : -1) : (less ? -1 : 1);
-};
-
-// digits and an optional minus, no fraction, no exponent, no leading zero,
-// not -0 (read.go integerToken). The token's length is not part of the test.
-local integerToken = function(tok) {
-  local i = 0;
-  local neg = false;
-  if (i < tok.len() && tok[i] == '-') { neg = true; i++; }
-  if (i >= tok.len()) return false;
-  if (tok[i] == '0') return !neg && (i + 1 == tok.len());
-  if (tok[i] < '1' || tok[i] > '9') return false;
-  for (i = i + 1; i < tok.len(); i++) {
-    if (tok[i] < '0' || tok[i] > '9') return false;
-  }
-  return true;
 };
 
 // an integer field takes an INTEGER TOKEN only (docs/SPEC-TABLES.md §16.2):

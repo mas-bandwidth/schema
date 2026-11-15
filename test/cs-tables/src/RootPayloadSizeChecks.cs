@@ -141,16 +141,20 @@ static partial class Program
                 }
             }
 
+            // A count or a length off its storage is a write check: a debug
+            // assert on this leg (docs/SPEC.md §5.1), nothing in Release. A
+            // buffer one byte short, an empty buffer and a vocabulary too small
+            // for the ids are size results and stay refusals in every build.
             byte[] refused = new byte[1024];
             value.ItemsCount = -1;
-            CheckPayloadRootRefusal(value, type, refused, ids);
+            CheckAsserts(() => V1.Schema.TableWire.Save(value, type, refused, ids, false), "payload root: a negative count asserts");
             value.ItemsCount = 4;
-            CheckPayloadRootRefusal(value, type, refused, ids);
+            CheckAsserts(() => V1.Schema.TableWire.Save(value, type, refused, ids, false), "payload root: a count past its bound asserts");
             value.ItemsCount = 2;
             value.TextLength = -1;
-            CheckPayloadRootRefusal(value, type, refused, ids);
+            CheckAsserts(() => V1.Schema.TableWire.Save(value, type, refused, ids, false), "payload root: a negative text length asserts");
             value.TextLength = value.Text.Length + 1;
-            CheckPayloadRootRefusal(value, type, refused, ids);
+            CheckAsserts(() => V1.Schema.TableWire.Save(value, type, refused, ids, false), "payload root: a text length past its storage asserts");
             value.TextLength = 0;
             CheckPayloadRootRefusal(value, type, refused, new ulong[6]);
         }
