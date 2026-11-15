@@ -9,6 +9,7 @@ variable-empty-node-table.bin	variable	empty-node-table	refused
 variable-node-table-out-of-place.bin	variable	node-table-out-of-place	refused
 variable-union-arm-zero.bin	variable	union-arm-zero	refused
 message-canonical.bin	message	canonical	read
+message-omits-declared-field.bin	message	omits-declared-field	refused
 announcement.bin	announcement	announcement	read
 ../message-one-encoding/explicit-default.bin	message	field-at-default	refused
 ../message-one-encoding/fields-reordered.bin	message	fields-out-of-order	refused

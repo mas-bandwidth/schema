@@ -13,7 +13,11 @@
 //
 // The three message-form spellings the message-one-encoding fixture already
 // carries (a default written, fields reordered, arm 0) are referenced from
-// MANIFEST.tsv rather than copied here.
+// MANIFEST.tsv rather than copied here. The one message-form spelling that
+// fixture does not carry, a body that omits a field its announcement declares,
+// is derived here from the canonical batch by parsing the bit stream back into
+// its fields and writing it again with that field dropped, the body count,
+// terminator and pad recomputed.
 //
 //	go run ./test/non-canonical/gen -out testdata/wire/non-canonical
 package main
@@ -66,6 +70,9 @@ func main() {
 		"announcement.bin":       announcement,
 	}
 	for name, wire := range variableCases(u, m, canonical) {
+		files[name] = wire
+	}
+	for name, wire := range messageCases(u, message) {
 		files[name] = wire
 	}
 	manifest := manifestText()
@@ -193,6 +200,173 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	return cases
 }
 
+func messageCases(u *ir.Unit, canonical []byte) map[string][]byte {
+	msg := u.Tables["Message"]
+	if msg == nil {
+		fatal("the unit declares no table Message")
+	}
+	var countID uint64
+	found := false
+	for _, f := range msg.Fields {
+		if f.Name == "count" {
+			countID = ir.TableFieldWireId(f)
+			found = true
+		}
+	}
+	if !found {
+		fatal("Message has no declared field count")
+	}
+	return map[string][]byte{
+		"message-omits-declared-field.bin": omitMessageField(canonical, tablewire.MessageVocabulary(u), countID),
+	}
+}
+
+// omitMessageField parses the canonical batch's bit stream back into its
+// bodies and their fields, then writes the batch again without the field the
+// case names. The body count, every reference, the terminator and the final
+// pad are recomputed; nothing is a hand-edited byte.
+func omitMessageField(canonical []byte, vocab []ir.TableVocabularyEntry, dropID uint64) []byte {
+	if len(canonical) < 2 || canonical[0] != byte(ir.TableWireMessageForm) {
+		fatal("the canonical message batch is not a form-2 file")
+	}
+	refBits := ir.TableMessageRefBits(len(vocab))
+	slots := make(map[string]uint64, len(vocab))
+	for i, e := range vocab {
+		slots[e.Key()] = uint64(i + 1)
+	}
+	src := &bitSource{b: canonical[1:]}
+	count := int(src.get(8)) + 1
+	bodies := make([][]messageField, 0, count)
+	for range count {
+		bodies = append(bodies, parseMessageBody(src, vocab, refBits))
+	}
+	if !src.align() || src.off != len(canonical[1:])*8 {
+		fatal("the canonical message batch carries bytes this generator does not parse")
+	}
+
+	w := &bitSink{}
+	w.put(uint64(count-1), 8)
+	for _, fields := range bodies {
+		for _, f := range fields {
+			if f.entry.Id == dropID {
+				continue
+			}
+			w.put(slots[f.entry.Key()], refBits)
+			for i := f.start; i < f.end; i++ {
+				w.put(src.bit(i), 1)
+			}
+		}
+		w.put(0, refBits)
+	}
+	w.align()
+	return append([]byte{byte(ir.TableWireMessageForm)}, w.b...)
+}
+
+// messageField is one field's announced entry and the bit range its payload
+// occupies in the batch.
+type messageField struct {
+	entry ir.TableVocabularyEntry
+	start int
+	end   int
+}
+
+func parseMessageBody(src *bitSource, vocab []ir.TableVocabularyEntry, refBits int) []messageField {
+	var fields []messageField
+	for {
+		ref := src.get(refBits)
+		if ref == 0 {
+			return fields
+		}
+		if ref > uint64(len(vocab)) {
+			fatal("a message reference %d is outside the %d-entry vocabulary", ref, len(vocab))
+		}
+		entry := vocab[ref-1]
+		start := src.off
+		skipMessagePayload(src, vocab, refBits, entry)
+		fields = append(fields, messageField{entry: entry, start: start, end: src.off})
+	}
+}
+
+// skipMessagePayload steps over one field's payload at the widths the message
+// form gives its announced entry.
+func skipMessagePayload(src *bitSource, vocab []ir.TableVocabularyEntry, refBits int, entry ir.TableVocabularyEntry) {
+	switch int(entry.Kind) {
+	case ir.TableKindTable:
+		parseMessageBody(src, vocab, refBits)
+	case ir.TableKindUnion:
+		arm := src.get(refBits)
+		if arm == 0 {
+			return
+		}
+		if arm > uint64(len(vocab)) {
+			fatal("a message union arm %d is outside the %d-entry vocabulary", arm, len(vocab))
+		}
+		skipMessagePayload(src, vocab, refBits, vocab[arm-1])
+	case ir.TableKindEnum:
+		src.get(refBits)
+	default:
+		bits := ir.TableMessageValueBits(entry.Kind, entry.Shape)
+		if bits < 0 {
+			fatal("the canonical message carries kind %d, which this generator does not re-encode", entry.Kind)
+		}
+		src.get(int(bits))
+	}
+}
+
+type bitSource struct {
+	b   []byte
+	off int
+}
+
+func (r *bitSource) bit(i int) uint64 { return uint64(r.b[i/8] >> uint(i%8) & 1) }
+
+func (r *bitSource) get(n int) uint64 {
+	var v uint64
+	for i := range n {
+		if r.off >= len(r.b)*8 {
+			fatal("the canonical message batch ends inside a field")
+		}
+		if r.bit(r.off) == 1 {
+			v |= 1 << uint(i)
+		}
+		r.off++
+	}
+	return v
+}
+
+func (r *bitSource) align() bool {
+	for r.off%8 != 0 {
+		if r.bit(r.off) != 0 {
+			return false
+		}
+		r.off++
+	}
+	return true
+}
+
+type bitSink struct {
+	b []byte
+	n int
+}
+
+func (w *bitSink) put(v uint64, n int) {
+	for i := range n {
+		if w.n%8 == 0 {
+			w.b = append(w.b, 0)
+		}
+		if v>>uint(i)&1 == 1 {
+			w.b[w.n/8] |= 1 << uint(w.n%8)
+		}
+		w.n++
+	}
+}
+
+func (w *bitSink) align() {
+	for w.n%8 != 0 {
+		w.put(0, 1)
+	}
+}
+
 // manifestText is the vector directory's manifest: file, form, case, verdict.
 // The three message-form spellings that already have a home are referenced
 // there rather than copied here.
@@ -208,6 +382,7 @@ func manifestText() string {
 		"variable-node-table-out-of-place.bin\tvariable\tnode-table-out-of-place\trefused\n" +
 		"variable-union-arm-zero.bin\tvariable\tunion-arm-zero\trefused\n" +
 		"message-canonical.bin\tmessage\tcanonical\tread\n" +
+		"message-omits-declared-field.bin\tmessage\tomits-declared-field\trefused\n" +
 		"announcement.bin\tannouncement\tannouncement\tread\n" +
 		"../message-one-encoding/explicit-default.bin\tmessage\tfield-at-default\trefused\n" +
 		"../message-one-encoding/fields-reordered.bin\tmessage\tfields-out-of-order\trefused\n" +
