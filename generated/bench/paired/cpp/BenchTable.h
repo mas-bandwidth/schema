@@ -16428,8 +16428,11 @@ TABLE_FIXED_INLINE bool BenchMixedFixedInRange( const BenchMixed & value )
     }
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length );
     bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    bad |= (int) ( table_float_to_bits( value.aim_x ) == 0x80000000u );
     bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    bad |= (int) ( table_float_to_bits( value.aim_y ) == 0x80000000u );
     bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    bad |= (int) ( table_float_to_bits( value.aim_z ) == 0x80000000u );
     bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     bad |= (int) ( value.ping > 64000 );
     // bits(24) width clamp
@@ -16542,10 +16545,13 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & TABLE_CLAMP_
     }
     oor_count += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
     value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    if ( !( value.aim_x < 0.0f ) && !( value.aim_x > 0.0f ) ) { value.aim_x = 0.0f; }
     oor_count += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
     value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    if ( !( value.aim_y < 0.0f ) && !( value.aim_y > 0.0f ) ) { value.aim_y = 0.0f; }
     oor_count += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    if ( !( value.aim_z < 0.0f ) && !( value.aim_z > 0.0f ) ) { value.aim_z = 0.0f; }
     oor_count += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     value.flux = ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : ( ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : value.flux );
     oor_count += ( value.ping > 64000 );
