@@ -1288,9 +1288,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	cls := classOf(f)
 	widens := cls == vScalar
 	if widens {
-		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	} else {
-		fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
 	}
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "

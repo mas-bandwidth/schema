@@ -707,7 +707,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s    None => { report.damaged = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
+	fmt.Fprintf(b, "%sif !table_keyed_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i4, ek)
@@ -811,7 +811,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s    None => { report.damaged = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
+	fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || ek != %d { %sreport.damaged = true; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse if count > 0x7fffffff { return nodes.refuse_count(report); }\n", i3)
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1073,7 +1073,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	}
 	fmt.Fprintf(b, "%s    Some(count) => {\n", in)
 	i2 := in + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.damaged = true; %s = false; }\n", i2, ek, ek, okVar)
+	fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { report.damaged = true; %s = false; }\n", i2, ek, ek, okVar)
 	fmt.Fprintf(b, "%selse {\n", i2)
 	i3 := i2 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i3, ek)
