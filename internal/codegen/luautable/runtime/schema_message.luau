@@ -56,6 +56,7 @@ local function integrityOpen(data: buffer): buffer?
 end
 
 local function bitsReq(lo: number, hi: number): number
+	if hi <= lo then return 0 end
 	local n = hi - lo
 	local bits = 0
 	while n ~= 0 do
@@ -240,6 +241,7 @@ local function shapeRead(r: any, k: number): any
 	elseif k == 14 then
 		s.min = rLeb(r)
 		s.max = rLeb(r)
+		if s.max < s.min then r.bad = true; return s end
 	elseif k == 16 then
 		s.max = rLeb(r)
 	end
