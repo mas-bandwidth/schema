@@ -295,6 +295,23 @@ func TestPythonIdentifierRules(t *testing.T) {
 	}
 }
 
+// TestCheckModuleRefusesPackageExports: a schema file named for a binding
+// __init__.py always exports becomes <pkg>/<Name>.py, and importing that
+// module rebinds the package attribute. Generate refuses those bases.
+func TestCheckModuleRefusesPackageExports(t *testing.T) {
+	t.Parallel()
+	for _, base := range []string{"Refused", "InvalidValue", "PROTOCOL_ID"} {
+		u := emptyUnit("game", base)
+		files, err := Generate(u)
+		if err == nil || !strings.Contains(err.Error(), base) || !strings.Contains(err.Error(), "exports") {
+			t.Errorf("%s.schema: got %v (%d files), want a refusal naming %s as an export", base, err, len(files), base)
+		}
+	}
+	if _, err := Generate(emptyUnit("game", "Wire")); err != nil {
+		t.Fatalf("Wire.schema: %v", err)
+	}
+}
+
 const namesProbe = `import builtins, keyword, sys
 print(" ".join(sorted(sys.stdlib_module_names)))
 print(" ".join(sorted(n for n in dir(builtins) if not n.startswith("__"))))

@@ -151,6 +151,16 @@ func emitModuleMode(u *ir.Unit, f *ir.File, surfaceOnly bool) string {
 	return m.assemble()
 }
 
+// packageInitExports are the names __init__.py always exports, before
+// declaration re-exports. packageInit seeds its export set from this map.
+// checkModule refuses a module base equal to one of them: importing
+// <package>.<name> rebinds that package attribute to the module.
+var packageInitExports = map[string]bool{
+	"InvalidValue": true,
+	"PROTOCOL_ID":  true,
+	"Refused":      true,
+}
+
 // packageInit is the unit's __init__.py: the protocol id, the errors every
 // read and write raises, every declaration re-exported, and one import per
 // module so `import <package>` loads the whole unit without redefining a
@@ -160,14 +170,14 @@ func packageInit(u *ir.Unit, bases []string) string {
 	for _, f := range u.Files {
 		byBase[f.Base] = f
 	}
-	exportedSet := map[string]bool{
-		"InvalidValue": true,
-		"PROTOCOL_ID":  true,
-		"Refused":      true,
+	exportedSet := make(map[string]bool, len(packageInitExports))
+	exported := make([]string, 0, len(packageInitExports))
+	for name := range packageInitExports {
+		exportedSet[name] = true
+		exported = append(exported, name)
 	}
 	importedFrom := map[string]bool{}
 	var declImports strings.Builder
-	exported := []string{"InvalidValue", "PROTOCOL_ID", "Refused"}
 	for _, base := range bases {
 		f := byBase[base]
 		if f == nil {
