@@ -45,6 +45,10 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s}\n", ind, stop)
 	i := ind + "\t"
 	g.pf("%selemKind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};if elemKind!=%d&&!tableKindWidens(elemKind,%d) {%s}\n", i, stop, kind, kind, refuse("TableRefuseKindMismatch", owner, "return false"))
+	if g.takeElides() {
+		// an empty list field is elided by its writer (docs/SPEC-TABLES.md §2.9, §3)
+		g.pf("%sif count==0 {%s}\n", i, stop)
+	}
 	g.retainDiscard("r")
 	// a widened element kind counts once the count is known to land: the
 	// builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
@@ -143,7 +147,7 @@ func tableExtentContainer(p,q unsafe.Pointer,f *TableFieldInfo,a *TableArena,reg
 
 func tableExtentValue(p,q unsafe.Pointer,f *TableFieldInfo,a *TableArena,region unsafe.Pointer,at *int64) bool {if f.Pointer{return true};if f.Kind==13&&f.Table!=nil{return tableExtentWalk(p,q,f.Table(),a,region,at)};if f.Kind==15&&f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};if tag==0||u.Arms[tag].Void{return true};arm:=&u.Arms[tag].Field;var placed unsafe.Pointer;if q!=nil{placed=unsafe.Add(q,arm.Offset)};count:=int32(1);if arm.IsArray {count=tableRegionCount(p,arm);if count<0||count>arm.ArrayBound{return false}};for j := range count {var out unsafe.Pointer;if placed!=nil{out=unsafe.Add(placed,uintptr(j)*uintptr(arm.ElemSize))};if !tableExtentValue(unsafe.Add(p,uintptr(arm.Offset)+uintptr(j)*uintptr(arm.ElemSize)),out,arm,a,region,at){return false}};return true};return true}
 func tableWireNodeBytes(r TableReader,t *TableTypeInfo)int64{n,_:=tableWireNodeBytesReason(r,t);return n}
-func tableWireNodeBytesReason(r TableReader,t *TableTypeInfo)(int64,TableRefuseReason){at:=int64(0);if reason:=tableWireExtent(&r,t,&at,-1);reason!=TableRefuseOk{return -2,reason};return tableRegionRound(tableRegionRound(int64(t.Size))+at),TableRefuseOk}
+func tableWireNodeBytesReason(r TableReader,t *TableTypeInfo)(int64,TableRefuseReason){at:=int64(0);r.Report=nil;if reason:=tableWireExtent(&r,t,&at,-1);reason!=TableRefuseOk{return -2,reason};return tableRegionRound(tableRegionRound(int64(t.Size))+at),TableRefuseOk}
 `
 
 // tableWireExtentSource is the one wire walk under a variable root, in two
