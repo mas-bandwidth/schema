@@ -505,6 +505,85 @@ func fixedLoopVar(depth int) string {
 	return fmt.Sprintf("i%d", depth)
 }
 
+// fixedPlanWireSpans maps a counted array's wire offset — the count word a
+// count op names — to its element width in bytes, and an optional's wire offset
+// to its payload's WIRE bytes (the wrapper's size less the present byte). The
+// layout walk carries both children; the plan's count entry carries the bound
+// in ELEMENTS and its present-defaults entry carries the payload's STORAGE
+// bytes, so the dead-byte scan needs the wire spans from here.
+func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map[int64]int64) {
+	elems = map[int64]int64{}
+	payloads = map[int64]int64{}
+	var next func(i int) int
+	next = func(i int) int {
+		n := i + 1
+		for c := 0; c < entries[i].Children; c++ {
+			n = next(n)
+		}
+		return n
+	}
+	var walk func(i int, src int64)
+	walk = func(i int, src int64) {
+		e := entries[i]
+		switch {
+		case e.Kind == ir.TableKindEnum || e.Children == 0:
+			return
+		case e.Kind == ir.TableKindTable:
+			n, at := i+1, src
+			for c := 0; c < e.Children; c++ {
+				size := entries[n].Size
+				walk(n, at)
+				at += size
+				n = next(n)
+			}
+		case e.Kind == ir.TableKindOptional:
+			payloads[src] = e.Size - 1
+			walk(i+1, src+1)
+		case e.Kind == ir.TableKindArray:
+			child := i + 1
+			base := src
+			if e.Dst.Counted != 0 {
+				base += 4
+			}
+			elem := entries[child].Size
+			elems[src] = elem
+			if elem > 0 {
+				for k := int64(0); k < (e.Size-(base-src))/elem; k++ {
+					walk(child, base+k*elem)
+				}
+			}
+		case e.Kind == ir.TableKindKeyed:
+			// The slots are the storage's first member; the key enum rides no
+			// bytes, so the element begins at the field's own offset.
+			n := i + 1
+			walk(n, src)
+			n = next(n)
+			walk(n, src)
+		case e.Kind == ir.TableKindUnion:
+			// Every arm begins after the tag: the union's size minus its widest
+			// arm's size is the tag's width.
+			widest := int64(0)
+			n := i + 1
+			for c := 0; c < e.Children; c++ {
+				if entries[n].Size > widest {
+					widest = entries[n].Size
+				}
+				n = next(n)
+			}
+			tag := e.Size - widest
+			n = i + 1
+			for c := 0; c < e.Children; c++ {
+				walk(n, src+tag)
+				n = next(n)
+			}
+		}
+	}
+	if len(entries) > 0 {
+		walk(0, 0)
+	}
+	return elems, payloads
+}
+
 // ---- the root's surface ----------------------------------------------------
 
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
@@ -560,6 +639,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
 	// width (ir.TableFixedSplitByWidth, the same split the C leg lays down).
 	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
+	elemBytes, optionalPayload := fixedPlanWireSpans(entries)
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
 	for i, e := range split.Plan {
 		guard := "kTableFixedNoGuard"
@@ -587,8 +667,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.GuardCount > 0 {
 			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+		// A COUNT'S AUX IS ITS ELEMENT WIDTH IN BYTES: its Size is the bound in
+		// ELEMENTS, and the dead-byte scan needs the byte span of one slot. A
+		// PRESENT-DEFAULTS ENTRY'S META AND DSTSIZE ARE ITS PAYLOAD'S WIRE BYTES:
+		// its Size is the payload's STORAGE bytes, which can be wider than the
+		// record's field, and the check pass holds the WIRE bytes to zero.
+		aux := e.Aux
+		meta := e.Meta
+		dstsize := 0
+		if e.Op == ir.TableFixedOpCount {
+			aux = elemBytes[e.Src]
+		}
+		if e.Op == ir.TableFixedOpPresentDefaults {
+			wire := optionalPayload[e.Src]
+			meta = int(wire & 0xff)
+			dstsize = int((wire >> 8) & 0xff)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, %d, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
+			e.Src, e.Dst, e.Size, aux, guard, fixedOpName(e.Op), e.Arg, meta, dstsize, argw, guard2, e.Arg2, argw2,
 			e.GuardCount, guardIndex, split.Elems[i], e.Note)
 	}
 	g.pf("};\n")
@@ -822,7 +918,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        TableMessageReason why = newer_form;\n")
 	g.pf("        for ( int64_t k = 0; k < n; ++k )\n        {\n")
 	g.pf("            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, %sFixedGuards, why ) )\n", st.Name)
-	g.pf("            {\n                report->refused = true;\n                report->reason = why;\n                return -1;\n            }\n")
+	g.pf("            {\n                report->refused = true;\n                report->reason = why;\n                if ( why == wire_damaged ) { report->refuse_reason = wire_damaged; }\n                return -1;\n            }\n")
 	g.pf("            scan += record_bytes;\n        }\n    }\n")
 	g.pf("    %s defaults;\n", st.Name)
 	g.pf("    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):\n")
@@ -1216,9 +1312,9 @@ func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
 	}
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Optional {
-		// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
-		// held to a bound either: what rides there is zero from the template
-		// and nobody wrote it.
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (§3.4, §4.5): its bytes must be
+		// zero, so it is not held to a value bound — what rides there is zero
+		// from the template and nobody wrote it as a value.
 		g.pf("%sif ( %s.%s_present )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampPayload(f, val, indent+4)
 		g.pf("%s}\n", ind)
@@ -1270,7 +1366,8 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // nothing decoded and no counter moved. It is the verdict the packet reader
 // gives (SPEC.md §4.7), where the whole read refuses; the clamp this file emits
 // is where that verdict lands on the fixed form (docs/FIXED-FORM-ALGORITHM.md
-// §4.5, fix 11). The slack is unspecified on read and never judged.
+// §4.5, fix 11). The slack is DEAD and must be zero (§4.5, §5.3 step 11);
+// the content rule itself runs over the used units only.
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	if g.fixedWriteCheck {
