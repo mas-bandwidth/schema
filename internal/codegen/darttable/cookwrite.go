@@ -160,11 +160,19 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		if bound > 0 {
 			stride = pieces[0].Size / bound
 		}
+		// A counted array cooks its LIVE elements only; the slots past the
+		// count are dead storage and stay the zero the output fill wrote,
+		// as the engine writes a dead slot (docs/SPEC-TABLES.md §7.2, §7.6;
+		// docs/rulings.json fixed-dead-bytes-are-zero).
+		limit := fmt.Sprintf("%d", bound)
+		if f.Array == ir.ArrayCounted {
+			limit = expr + "Count"
+		}
 		// Typed float arrays already hold the transmitted 32-bit cells, and
 		// each is held finite first (docs/SPEC-TABLES.md §3.3): a NaN or an
 		// infinity refuses the cook, measure and write alike.
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 			g.cookRefuseUnless(ind+"  ", expr+"[i].isFinite", "false")
 			g.pf("%s}\n", ind)
 			g.pf("%sif (out != null) {\n", ind)
@@ -174,7 +182,7 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 			} else {
 				g.pf("%s  final raw = ByteData.view(\n%s    %s.buffer,\n%s    %s.offsetInBytes,\n%s    %s.lengthInBytes,\n%s  );\n", ind, ind, expr, ind, expr, ind, expr, ind)
 			}
-			g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, limit)
 			setLine := fmt.Sprintf("%s    out.setUint32(at + %d + i * %d, raw.getUint32(i * 4, Endian.host), order);", ind, offset, stride)
 			if len(setLine) <= 80 {
 				g.pf("%s\n", setLine)
@@ -184,7 +192,7 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 			g.pf("%s  }\n%s}\n", ind, ind)
 			return
 		}
-		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 		g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		g.pf("%s}\n", ind)
 		return
