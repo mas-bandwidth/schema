@@ -53,7 +53,7 @@ func luaSkipBatch(refs []uint64, refBits int) []byte {
 	out[1] = 0
 	at := 16
 	for _, ref := range refs {
-		for b := 0; b < refBits; b++ {
+		for b := range refBits {
 			if (ref>>uint(b))&1 != 0 {
 				out[at>>3] |= 1 << uint(at&7)
 			}
@@ -71,7 +71,7 @@ func luaSkipDeepBatch(size, refBits int, slot uint64) []byte {
 	out[1] = 0
 	at := 16
 	for at+refBits <= size*8 {
-		for b := 0; b < refBits; b++ {
+		for b := range refBits {
 			if (slot>>uint(b))&1 != 0 {
 				out[at>>3] |= 1 << uint(at&7)
 			}
