@@ -16,8 +16,8 @@ import (
 // The embedded runtime carries none of the tolerant read's repair arms, and a
 // wire carrying each fault kind is refused by the one strict read.
 func TestMooLoadBuildsNoRepairedValue(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
+	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 
 	src := string(mootable.Runtime()["table_load.moo"])
 	if src == "" {
