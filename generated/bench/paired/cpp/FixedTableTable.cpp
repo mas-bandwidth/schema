@@ -4788,6 +4788,84 @@ inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
     return true;
 }
 
+// A FIXED-POINT TOKEN IS EXACT FOR ITS DECLARED FRACTION exactly when its
+// fractional digits, doubled F times, leave nothing behind (docs/SPEC-TABLES.md
+// §16.9.2). The token's own decimal digits decide it, so no binary float and no
+// shift wider than the storage sits in the path. A multiple of 2^-F is a decimal
+// with at most F places after the point, so a token needing more places has no
+// exact spelling.
+inline bool tableTextFormFixedExact( const std::string & token, int frac )
+{
+    const char * s = token.c_str();
+    const int32_t length = (int32_t) token.size();
+    int32_t i = 0;
+    if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { i++; }
+    const int32_t int_start = i;
+    while ( i < length && s[i] >= '0' && s[i] <= '9' ) { i++; }
+    const int32_t int_len = i - int_start;
+    int32_t frac_start = i;
+    int32_t frac_len = 0;
+    if ( i < length && s[i] == '.' )
+    {
+        i++;
+        frac_start = i;
+        while ( i < length && s[i] >= '0' && s[i] <= '9' ) { i++; }
+        frac_len = i - frac_start;
+    }
+    if ( int_len + frac_len == 0 ) { return false; }
+    int64_t exp = 0;
+    if ( i < length && ( s[i] == 'e' || s[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { exp_negative = s[i] == '-'; i++; }
+        int64_t e = 0;
+        while ( i < length && s[i] >= '0' && s[i] <= '9' )
+        {
+            if ( e < 100000 ) { e = e * 10 + ( s[i] - '0' ); }
+            i++;
+        }
+        exp = exp_negative ? -e : e;
+    }
+    if ( i != length ) { return false; }
+    const int32_t total = int_len + frac_len;
+    const auto digit = [&]( int32_t k ) -> int {
+        return k < int_len ? s[int_start + k] - '0' : s[frac_start + ( k - int_len )] - '0';
+    };
+    int32_t start = 0;
+    int64_t point = int_len + exp;
+    while ( start < total && digit( start ) == 0 ) { start++; point--; }
+    int32_t end = total;
+    while ( end > start && digit( end - 1 ) == 0 ) { end--; }
+    if ( start == end ) { return true; }
+    // point is relative to start once the leading zeros are gone: a point at or
+    // past the last digit leaves no fraction, and the fractional digits number
+    // len - point, so a token finer than F decimal places has no exact spelling.
+    const int64_t len = (int64_t) ( end - start );
+    if ( point >= len ) { return true; }
+    const int64_t fractional = len - point;
+    if ( fractional > frac ) { return false; }
+    char fd[256];
+    int32_t fn = 0;
+    for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
+    for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ ) { fd[fn++] = (char) digit( (int32_t) k ); }
+    for ( int b = 0; b < frac; b++ )
+    {
+        int carry = 0;
+        for ( int32_t k = fn - 1; k >= 0; k-- )
+        {
+            const int d = fd[k] * 2 + carry;
+            fd[k] = (char) ( d % 10 );
+            carry = d / 10;
+        }
+    }
+    for ( int32_t k = 0; k < fn; k++ )
+    {
+        if ( fd[k] != 0 ) { return false; }
+    }
+    return true;
+}
+
 inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
     if ( f->text_list != 0 )
@@ -5194,14 +5272,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     // A FIXED-POINT TOKEN IS EXACT (docs/SPEC-TABLES.md §16.9.2, Go
     // internal/codegen/gotable/textform.go integer): scaled by 2^F it must be
     // an integer, so 0.1 is text_kind_mismatch and never a out_of_range raw unit.
-    if ( f->frac_bits != 0 )
+    if ( f->frac_bits != 0 && !tableTextFormFixedExact( n.text, f->frac_bits ) )
     {
-        const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
-        if ( scaled != (double) (int64_t) scaled )
-        {
-            *why = "text_kind_mismatch";
-            return false;
-        }
+        *why = "text_kind_mismatch";
+        return false;
     }
     // THE TYPED CANON (docs/SPEC-TABLES.md §16.9.3, Go
     // internal/codegen/gotable/textform.go float and integer): a float kind
