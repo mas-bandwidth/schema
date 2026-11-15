@@ -30,6 +30,9 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "elem",
+        "array_kind",
+        "array_min",
     )
 
     name: str
@@ -48,6 +51,9 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    elem: "FieldDesc | None"
+    array_kind: str
+    array_min: int
 
     def __init__(
         self,
@@ -67,6 +73,9 @@ class FieldDesc:
         key_enum: str = "",
         default: Any = None,
         inner: str = "",
+        elem: "FieldDesc | None" = None,
+        array_kind: str = "",
+        array_min: int = 0,
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -84,6 +93,9 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.elem = elem
+        self.array_kind = array_kind
+        self.array_min = array_min
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""

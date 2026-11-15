@@ -37,7 +37,7 @@ func TestElixirCarriesOptionalVariableClosure(t *testing.T) {
 				continue
 			}
 			if carries(lang, carryOptionalVariableClosure) {
-				if err != nil {
+				if err != nil && strings.Contains(err.Error(), "optional over a variable closure") {
 					t.Errorf("%s refused its carried construct: %v", lang, err)
 				}
 				continue

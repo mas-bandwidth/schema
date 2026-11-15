@@ -347,3 +347,318 @@ func TestPythonVtOptionalNegativeControl(t *testing.T) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not by name %q:\n%s", named, stderr)
 	}
 }
+
+// optionalArraysSchema is the second half of the kind's surface: the optional
+// arrays ?[N]T and ?[..N]T (and a ranged count, ?[1..4]T) over the base's
+// kinds, and ?T and the by-value ?[N]T over a VARIABLE closure, a by-value
+// Guard that holds a *Leaf pointer (docs/SPEC-TABLES.md §2.3, the
+// optional-variable-closure construct the compiler registers for python).
+const optionalArraysSchema = `package optarrays
+
+table Pair
+{
+    a int32
+    b bool
+}
+
+table Inner
+{
+    n int32
+}
+
+table Leaf
+{
+    value int32
+    next  *Leaf
+}
+
+table Guard
+{
+    tag  int32
+    leaf *Leaf
+}
+
+table Root
+{
+    whole  ?[3]int32
+    flags  ?[..4]bool
+    pairs  ?[2]Pair
+    inners ?[..3]Inner
+    ranged ?[1..4]int16
+    cover  ?Guard
+    covers ?[2]Guard
+    total  int32
+}
+`
+
+// optionalArraysOlder is an older or foreign writer of the same Root: the same
+// table and field names (so the same wire ids), a shorter fixed bound and a
+// wider counted one. Its wires are what this reader must pad or refuse.
+const optionalArraysOlder = `package optarrays
+
+table Root
+{
+    whole  ?[2]int32
+    flags  ?[..8]bool
+    total  int32
+}
+`
+
+// optionalArraysForeign rides fixed under a different element kind.
+const optionalArraysForeign = `package optarrays
+
+table Root
+{
+    whole  ?[3]int64
+    total  int32
+}
+`
+
+func optionalArraysInputs(t *testing.T, u *ir.Unit) map[string][]byte {
+	t.Helper()
+	cases := map[string]string{
+		"absent":  `{"total":5}`,
+		"present": `{"whole":[1,-2,3],"flags":[true,false,true],"pairs":[{"a":4,"b":true},{"a":0,"b":false}],"inners":[{"n":7}],"ranged":[-3,9],"total":5}`,
+		// Present at the empty end: a counted array at count zero (or at its
+		// minimum) and a fixed array all at default still ride.
+		"empty": `{"whole":[0,0,0],"flags":[],"pairs":[{"a":0,"b":false},{"a":0,"b":false}],"inners":[],"ranged":[0],"total":5}`,
+		// One Leaf named twice, from ?Guard and from ?[2]Guard's first slot,
+		// with a chain behind it: the node rides once and both read back as
+		// the same object.
+		"shared": `{"cover":{"tag":1,"leaf":{"&node":1,"value":10,"next":{"value":11}}},"covers":[{"tag":2,"leaf":{"&node":1}},{"tag":3}],"total":5}`,
+		"chain":  `{"covers":[{"tag":2},{"tag":3,"leaf":{"value":4,"next":{"value":5}}}],"total":5}`,
+		// The variable-closure ?Guard present at its default: it rides, so
+		// it is neither the absent wire nor a value with a node.
+		"cover_default": `{"cover":{"tag":0},"total":5}`,
+	}
+	inputs := map[string][]byte{}
+	for name, text := range cases {
+		inputs[name+".wire"] = optionalEngineWire(t, u, "Root", text)
+	}
+	if string(inputs["absent.wire"]) == string(inputs["empty.wire"]) || string(inputs["absent.wire"]) == string(inputs["cover_default.wire"]) {
+		t.Fatalf("the engine's absent wire is not distinct from its present-empty array or present-default ?Guard wire")
+	}
+	inputs["older.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysOlder), "Root", `{"whole":[6,7],"total":5}`)
+	inputs["over.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysOlder), "Root", `{"flags":[true,true,true,true,true],"total":5}`)
+	inputs["foreign.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysForeign), "Root", `{"whole":[1,2,3],"total":5}`)
+	present := inputs["present.wire"]
+	inputs["damaged.wire"] = append([]byte(nil), present[:len(present)-3]...)
+	inputs["main.py"] = []byte(pyrun.ImportPrelude + optionalArraysProbe)
+	return inputs
+}
+
+const optionalArraysProbe = `from optarrays import Guard, Inner, InvalidValue, Leaf, Pair, Refused, Root
+
+def wire(name):
+    with open(name, "rb") as f:
+        return f.read()
+
+def roundtrip(name):
+    data = wire(name + ".wire")
+    value = Root.load(data)
+    saved = value.save()
+    if saved != data:
+        raise SystemExit("optional_roundtrip arrays_" + name)
+    if value.measure() != len(saved):
+        raise SystemExit("optional_measure arrays_" + name)
+    return value, data
+
+def pairs(items):
+    return None if items is None else [(p.a, p.b) for p in items]
+
+def inners(items):
+    return None if items is None else [i.n for i in items]
+
+absent, absent_wire = roundtrip("absent")
+present, _ = roundtrip("present")
+empty, _ = roundtrip("empty")
+print("arrays_absent", absent.whole, absent.flags, absent.pairs, absent.inners, absent.ranged, absent.total)
+print("arrays_present", present.whole, present.flags, pairs(present.pairs), inners(present.inners), present.ranged)
+print("arrays_empty", empty.whole, empty.flags, pairs(empty.pairs), inners(empty.inners), empty.ranged)
+
+for name in ("whole", "flags", "pairs", "inners", "ranged"):
+    setattr(present, name, None)
+print("arrays_cleared", present.save() == absent_wire)
+
+shared, _ = roundtrip("shared")
+print("shared", shared.cover.tag, shared.cover.leaf.value, shared.cover.leaf.next.value,
+      shared.covers[0].tag, shared.covers[1].tag, shared.covers[1].leaf is None)
+print("shared_once", shared.cover.leaf is shared.covers[0].leaf)
+fresh = Root()
+leaf = Leaf()
+leaf.value = 10
+leaf.next = Leaf()
+leaf.next.value = 11
+fresh.cover = Guard()
+fresh.cover.tag = 1
+fresh.cover.leaf = leaf
+fresh.covers = [Guard(), Guard()]
+fresh.covers[0].tag = 2
+fresh.covers[0].leaf = leaf
+fresh.covers[1].tag = 3
+fresh.total = 5
+print("shared_built", fresh.save() == wire("shared.wire"))
+
+cover_default, _ = roundtrip("cover_default")
+print("cover_default", cover_default.cover is None, cover_default.cover.tag, cover_default.cover.leaf is None, cover_default.covers)
+
+chain, _ = roundtrip("chain")
+print("chain", chain.cover is None, chain.covers[0].leaf is None,
+      chain.covers[1].leaf.value, chain.covers[1].leaf.next.value)
+# Presence gates the edges: a Guard made absent while it still holds its
+# Leaf writes no stale node.
+shared.cover = None
+shared.covers = None
+print("closure_cleared", shared.save() == absent_wire)
+
+older = Root.load(wire("older.wire"))
+print("older", older.whole)
+
+def refused(name):
+    try:
+        Root.load(wire(name + ".wire"))
+        print("refused", name, "read")
+    except Refused as err:
+        print("refused", name, err.reason)
+
+refused("over")
+refused("foreign")
+refused("damaged")
+
+def refuse(label, build):
+    value = build()
+    try:
+        value.save()
+        print("invalid", label, "wrote")
+    except InvalidValue as err:
+        print("invalid", label, "|" + err.path + "|" + err.rule + "|")
+
+def with_root(**fields):
+    def build():
+        value = Root()
+        for name, item in fields.items():
+            setattr(value, name, item)
+        return value
+    return build
+
+def bad_pair():
+    value = Root()
+    first = Pair()
+    first.a = 2**31
+    value.pairs = [first, Pair()]
+    return value
+
+def bad_guard():
+    value = Root()
+    value.covers = [Guard(), Guard()]
+    value.covers[1].tag = -2**31 - 1
+    return value
+
+refuse("fixed_list", with_root(whole=(1, 2, 3)))
+refuse("fixed_short", with_root(whole=[1, 2]))
+refuse("fixed_elem", with_root(whole=[1, 2**31, 3]))
+refuse("flags_long", with_root(flags=[True] * 5))
+refuse("flags_elem", with_root(flags=[1]))
+refuse("ranged_short", with_root(ranged=[]))
+refuse("pairs_kind", with_root(pairs=[Pair(), Inner()]))
+refuse("pairs_field", bad_pair)
+refuse("guards_field", bad_guard)
+
+print("OK")
+`
+
+// TestPythonVtOptionalArrays holds the optional arrays and ?T over a variable
+// closure to the Go engine's wire under both pinned interpreters: absent,
+// present and present-at-the-empty-end are three values; a shared node behind
+// the optional closure rides once; a value made absent writes no stale node;
+// a shorter older fixed bound pads, and a count past the bound, a foreign
+// element kind and a truncated file refuse by name.
+//
+// Functional (python pins): run with SCHEMA_SLOW=1; make/test-python does.
+func TestPythonVtOptionalArrays(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, optionalArraysSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("the table emitter refused the optional arrays: %v", err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	inputs := optionalArraysInputs(t, u)
+	got := string(pyrun.Run(t, dir, "main.py", inputs))
+	floor := string(pyrun.RunFloor(t, dir, "main.py", inputs))
+	if got != floor {
+		t.Fatalf("the two pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", got, floor)
+	}
+	for _, line := range []string{
+		"arrays_absent None None None None None 5",
+		"arrays_present [1, -2, 3] [True, False, True] [(4, True), (0, False)] [7] [-3, 9]",
+		"arrays_empty [0, 0, 0] [] [(0, False), (0, False)] [] [0]",
+		"arrays_cleared True",
+		"shared 1 10 11 2 3 True",
+		"shared_once True",
+		"shared_built True",
+		"cover_default False 0 True None",
+		"chain True True 4 5",
+		"closure_cleared True",
+		"older [6, 7, 0]",
+		"refused over count_over_bound",
+		"refused foreign kind_mismatch",
+		"refused damaged wire_damaged",
+		"invalid fixed_list |whole|not a list|",
+		"invalid fixed_short |whole|a fixed array holds exactly 3 elements, not 2|",
+		"invalid fixed_elem |whole[1]|2147483648 is outside [-2147483648, 2147483647]|",
+		"invalid flags_long |flags|5 elements is outside [0, 4]|",
+		"invalid flags_elem |flags[0]|not a bool|",
+		"invalid ranged_short |ranged|0 elements is outside [1, 4]|",
+		"invalid pairs_kind |pairs[1]|not a Pair|",
+		"invalid pairs_field |pairs[0].a|2147483648 is outside [-2147483648, 2147483647]|",
+		"invalid guards_field |covers[1].tag|-2147483649 is outside [-2147483648, 2147483647]|",
+		"OK",
+	} {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("probe output lacks %q:\n%s", line, got)
+		}
+	}
+	if out, err := pyrun.Analyze(t, dir, "optarrays"); err != nil {
+		t.Fatalf("mypy --strict over the generated package:\n%s", out)
+	}
+	if out, err := pyrun.Analyze(t, dir, "optarrays/_schema"); err != nil {
+		t.Fatalf("mypy --strict over the runtime:\n%s", out)
+	}
+}
+
+// TestPythonVtOptionalArraysNegativeControl plants the optional array's fault
+// in a copy of the runtime: a present EMPTY array is written as absent, the
+// one thing the presence bit buys (docs/SPEC-TABLES.md §2.3). The probe's
+// read-then-write of the present-empty wire must go red by its own name.
+func TestPythonVtOptionalArraysNegativeControl(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, optionalArraysSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sabotaged := make(map[string][]byte, len(files))
+	for name, data := range files {
+		sabotaged[name] = data
+	}
+	const path = "optarrays/_schema/kind_optional.py"
+	const anchor = "            _write_array(w, fd, value, ctx)\n"
+	text := string(sabotaged[path])
+	if strings.Count(text, anchor) != 1 {
+		t.Fatalf("the negative control's anchor %q is not once in %s", anchor, path)
+	}
+	sabotaged[path] = []byte(strings.Replace(text, anchor, "            if value:\n                _write_array(w, fd, value, ctx)\n", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, sabotaged)
+	inputs := optionalArraysInputs(t, u)
+	_, stderr, runErr := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
+	if runErr == nil {
+		t.Fatal("NEGATIVE CONTROL FAILED: writing a present empty array as absent left the probe green")
+	}
+	const named = "optional_roundtrip arrays_empty"
+	if !strings.Contains(stderr, named) {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not by name %q:\n%s", named, stderr)
+	}
+}

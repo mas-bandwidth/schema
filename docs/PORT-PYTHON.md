@@ -310,10 +310,27 @@ generated class per table and per map entry, each with its descriptor
   A present value ALWAYS rides, its default included, through the inner kind
   the descriptor names; a read sets the field only when it rode and leaves it
   `None` otherwise, so "absent" and "present and default" stay two values.
-  Optional arrays (`?[N]T`, `?[..N]T`) are not carried in this cut: the array
-  kind their present framing shares is a later layer, and the target keeps
-  refusing them by name until that layer registers; the optional module already
-  delegates through `inner`, so no second optional path is owed.
+  `?T` over a VARIABLE closure (a by-value T that holds a `*T`, SPEC-TABLES
+  §2.3's optional-variable-closure) is carried and registered at the compiler
+  (`compiler/carries_python_optional.go`): T's pointers are numbered only when
+  T is present, so a node one present T and another field both name rides
+  once, and a T made absent while it still holds a pointer writes no stale
+  node.
+- **Optional arrays are the array framing behind presence.** `?[N]T`,
+  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits and by-value tables
+  (the by-value `?[N]T` of a T that holds a pointer included) are carried by
+  `kind_optional.py`, with `inner` "array" and the element's own descriptor in
+  `elem`: an absent array (`None`) writes no field; a present list ALWAYS rides
+  as the kind-14 body (element kind, count, elements), a counted array at count
+  zero and a fixed array whole, so "present and empty" and "absent" stay two
+  values. A read refuses a foreign element kind (`kind_mismatch`), a count past
+  the bound (`count_over_bound`) and a damaged body (`wire_damaged`), and pads
+  a shorter fixed array with the element's defaults; a write refuses a value
+  that is not a list, a fixed array of the wrong length, a count outside
+  [Min, N] and an invalid element, by its path (`pairs[0].a`). The target
+  joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
+  optional array of an element kind this cut does not carry keeps
+  `inner` "unsupported" and refuses by name.
 - **The shape is measured.** A table whose fields are all bools and integers
   gets the straight-line generated save/load pair, unrolled with each field
   descriptor bound to a local; every table, and every construct a later card
@@ -323,8 +340,9 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  bits, by-value tables, `*T` pointers to tables and `?T` over those, for both
-  the fixed and the variable class. `*bytes`, `*string`, `[]T`, `[E]T`, maps
+  bits, by-value tables, `*T` pointers to tables, `?T` over those (over a
+  variable closure included) and the optional arrays `?[N]T` and `?[..N]T` of
+  them, for both the fixed and the variable class. `*bytes`, `*string`, `[]T`, `[E]T`, maps
   and unions with table arms have descriptors in this cut and refuse by name
   through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a

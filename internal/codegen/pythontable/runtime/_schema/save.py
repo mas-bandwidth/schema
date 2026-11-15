@@ -106,7 +106,12 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
         if field.codec == "optional":
             if current is None:
                 continue
-            if field.inner == "table":
+            if field.inner == "array":
+                kind_optional._validate_array(field, current, where)
+                if field.elem is not None and field.elem.codec == "table":
+                    for index, item in enumerate(current):
+                        _validate(item, item.descriptor, f"{where}[{index}]", seen)
+            elif field.inner == "table":
                 target = descriptor.by_name(field.target)
                 if target is None or not isinstance(current, target):
                     raise InvalidValue(where, f"not a {field.target}")
@@ -138,6 +143,11 @@ def _collect(value: Any, ctx: Ctx) -> None:
                 continue
             if field.inner == "table":
                 _collect(current, ctx)
+            elif field.inner == "array" and field.elem is not None and field.elem.codec == "table":
+                # A present array's elements own their edges, in slot order;
+                # an absent one owns none (docs/SPEC-TABLES.md §2.3).
+                for item in current:
+                    _collect(item, ctx)
             continue
         if field.codec == "pointer":
             if current is None:

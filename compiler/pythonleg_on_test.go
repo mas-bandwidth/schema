@@ -29,7 +29,9 @@ func writeSchemas(t *testing.T, files map[string]string) []string {
 }
 
 // TestPythonTargetIsRegistered: the tagged build carries the python target,
-// registered from its own init, with its carries set registered empty.
+// registered from its own init, with its carries set exactly the constructs
+// its layers' own files register (each beside a test file that appends the
+// same key to nonGoCarriers["python"]).
 func TestPythonTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "python") {
@@ -39,8 +41,13 @@ func TestPythonTargetIsRegistered(t *testing.T) {
 	if !ok {
 		t.Fatal("the python target registered no carries set (compiler/carries_python.go)")
 	}
-	if len(got) != 0 {
-		t.Fatalf("the python skeleton carries %v; it carries nothing until a layer registers a construct", got)
+	for _, construct := range got {
+		if !slices.Contains(nonGoCarriers["python"], construct) {
+			t.Errorf("the python target carries %q, and no layer's test registers it", construct)
+		}
+	}
+	if len(got) != len(nonGoCarriers["python"]) {
+		t.Fatalf("the python target carries %v; its layers register %v", got, nonGoCarriers["python"])
 	}
 }
 
