@@ -2244,6 +2244,10 @@ local function read_json(T, name, text, report)
     return nil
   end
   local inp = new_in(text)
+  -- ONE LEADING UTF-8 BYTE-ORDER MARK (EF BB BF) is skipped and the text
+  -- after it reads as if it were absent (RFC 8259 §8.1); a mark anywhere else
+  -- is not whitespace and is refused.
+  if text:sub(1, 3) == "\239\187\191" then inp.p = 4 end
   local graph = nil
   if desc.variable then graph = {} end
   local v = fresh(T, desc)
