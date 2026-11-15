@@ -18,8 +18,9 @@ package elixirtable
 //   - MESSAGE: the batch read refuses one wherever it sits in the bit stream,
 //     and save_messages/measure_messages refuse to write one.
 //   - FIXED: the load refuses one in every float slot, a compressed float
-//     before its bounds; an ABSENT optional's unspecified payload is not
-//     refused; the writer raises ArgumentError non_finite_float.
+//     before its bounds; an ABSENT optional's payload is DEAD, so a non-zero
+//     byte there refuses the whole load as wire_damaged; the writer raises
+//     ArgumentError non_finite_float.
 //
 // The probe saves finite SENTINELS, patches each one's bits into a NaN or an
 // infinity (five patterns per width: quiet, signalling, both infinities and a
@@ -428,11 +429,11 @@ defmodule FiniteProbe do
       end)
     end
 
-    row("fixed absent optional payload is not refused", fn ->
+    row("fixed absent optional payload dead bytes refuse", fn ->
       wire = patch(file, <<1>> <> bits(2.25, 4), <<0>> <> raw(0x7FC00000, 4))
 
       case F.rec_fixed_load(wire) do
-        {:ok, [%{o_present: false}], _} -> :ok
+        {:error, :wire_damaged, _} -> :ok
         other -> {:fail, inspect(other)}
       end
     end)

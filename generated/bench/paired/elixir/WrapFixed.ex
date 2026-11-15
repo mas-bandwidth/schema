@@ -291,6 +291,8 @@ defmodule Bench.WrapFixed do
   # nothing on it can fail for want of a plan: an entry whose plan would not
   # build carries its own refusal reason, and this is where it is read.
   defp fixed_table_fixed_lane(i, records, hash, report, cap, bcap, copy) do
+    dead = R.dead_lane(__MODULE__, :fixed_table, i)
+
     case R.lineage_lane(__MODULE__, :fixed_table, i) do
       :identity ->
         fixed_table_fixed_run(
@@ -301,7 +303,8 @@ defmodule Bench.WrapFixed do
           report,
           copy,
           bcap,
-          {0, 0}
+          {0, 0},
+          dead
         )
 
       {:ok, _plan, _size, made, _u, _k} when made > cap ->
@@ -310,7 +313,7 @@ defmodule Bench.WrapFixed do
         {:error, :plan_too_large, report}
 
       {:ok, plan, size, _made, u, k} ->
-        fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})
+        fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k}, dead)
 
       {:error, why} ->
         {:error, why, report}
@@ -320,7 +323,7 @@ defmodule Bench.WrapFixed do
   # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
   # a byte is landed. Neither plan clamps a ranged integer: the generated
   # projection holds the bound after the loop, the same pass for either plan.
-  defp fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
+  defp fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, census, dead) do
     {census_u, census_k} = census
 
     # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
@@ -335,6 +338,12 @@ defmodule Bench.WrapFixed do
     try do
       with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
            {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
+        # THE CHECK PASS: every dead byte in every record is held to zero
+        # BEFORE the first record lands (docs/FIXED-FORM-ALGORITHM.md §5.3
+        # step 11, docs/SPEC-TABLES.md §3.4, §13.10). A non-zero one refuses
+        # the whole load as wire_damaged and leaves the caller holding nothing.
+        Enum.each(bodies, fn body -> R.dead_check(body, dead) end)
+
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
