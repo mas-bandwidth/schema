@@ -49,15 +49,15 @@ table T
 }
 `
 
-// offContractCase is one value of one field: in Squirrel storage (an
+// offContractTextCase is one value of one field: in Squirrel storage (an
 // expression), and as the JSON value an unchecked writer would spell it.
 // lawful says the declaration admits it: the twin at the boundary.
-type offContractCase struct {
+type offContractTextCase struct {
 	name, field, squirrel, text string
 	lawful                      bool
 }
 
-var offContractCases = []offContractCase{
+var offContractTextCases = []offContractTextCase{
 	{"range_high", "r", "101", "101", false},
 	{"range_low", "r", "-6", "-6", false},
 	{"range_high_edge", "r", "100", "100", true},
@@ -201,7 +201,7 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 		t.Parallel()
 		model := tabletext.NewModel(unit)
 		st := model.Lookup("T")
-		for _, c := range offContractCases {
+		for _, c := range offContractTextCases {
 			prefix := `{"k":[0,0],"tm":[{"value":"a"},{"value":"b"}],`
 			switch c.field {
 			case "k":
@@ -241,8 +241,8 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 	for name, data := range tables {
 		writeFile(t, filepath.Join(out, name), data)
 	}
-	rows := make([]string, len(offContractCases))
-	for i, c := range offContractCases {
+	rows := make([]string, len(offContractTextCases))
+	for i, c := range offContractTextCases {
 		rows[i] = "[" + strconv.Quote(c.name) + ", " + strconv.Quote(c.field) + ", " + c.squirrel + "]"
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"),
@@ -255,7 +255,7 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 		}
 		got[name] = rest
 	}
-	for _, c := range offContractCases {
+	for _, c := range offContractTextCases {
 		g, ok := got[c.name]
 		switch {
 		case !ok:
@@ -266,5 +266,5 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 			t.Errorf("%s: ToJson of %s = %s answered %q, want refused with ToJsonMeasure -1", c.name, c.field, c.squirrel, g)
 		}
 	}
-	t.Logf("compared %d values against the write contract", len(offContractCases))
+	t.Logf("compared %d values against the write contract", len(offContractTextCases))
 }

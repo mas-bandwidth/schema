@@ -285,7 +285,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
 	// an empty batch is refused in every build before any byte is written, and
 	// raises nothing (docs/rulings.json write-refusal).
-	m.Printf("  if (recs.len() == 0) { _M.FixedReason = \"empty_batch\"; return -1; }\n")
+	m.Printf("  if (recs.len() == 0) { _M.FixedReason = \"invalid_value\"; return -1; }\n")
 	// CHECK THE WHOLE BATCH BEFORE SEEKING OR WRITING THE CALLER'S BUFFER
 	// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1). FixedCheckBody
 	// reuses the body writer's guards against one private record buffer, so the
