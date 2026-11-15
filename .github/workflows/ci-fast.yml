@@ -265,6 +265,7 @@ jobs:
           done <<EOF
           $files
           EOF
+          touched_legs=$legs
           if [ "$broad" = yes ]; then
             legs="cpp go c rust js cs java dart elixir goose lobster luau squirrel"
           fi
@@ -281,9 +282,15 @@ jobs:
           # directory here fails by name — #958 and #960, go-test-touched:
           #   main module (github.com/mas-bandwidth/schema/v2) does not
           #   contain package .../generated/go
-          if [ "$broad" = yes ]; then
-            packages="./..."
-          else
+          #
+          # A BROAD DIFF TOO (the owner, 2026-11-15: "you have 2m max per-CI to
+          # test and verify code. that's it. never any more. never."). The
+          # broad rule once selected `./...`, and the rows step cut that into
+          # 42 go-test-touched jobs for a diff that touched one package (#3723:
+          # a workflow edit). The packages follow the diff alone, the legs the
+          # diff touched and not the broad rule's every leg, and the whole
+          # suite runs nightly in ci-full.yml.
+          {
             packages=""
             for f in $files; do
               case "$f" in
@@ -317,7 +324,7 @@ jobs:
                 case " $packages " in *" ./internal/codegen/$p "*) ;; *) packages="$packages ./internal/codegen/$p" ;; esac
               done
             done
-            for leg in $legs; do
+            for leg in $touched_legs; do
               case "$leg" in
                 cpp)     ps=./internal/codegen/cpptable ;;
                 # the Lobster leg is two packages: the type surface and the
@@ -358,7 +365,7 @@ jobs:
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
             packages=$(echo "$packages" | xargs || true)
-          fi
+          }
 
           # THE LANGUAGE LINTS (the owner, 2026-11-15: "run only the fastest
           # unit tests as verification, on a per-language basis"). The
