@@ -75,7 +75,7 @@ func TestElixirJsonBase64Canonical(t *testing.T) {
 	}
 	rows = append(rows,
 		row{"escaped-solidus-read", `{ "data": "\/\/\/\/" }`, "read", []byte{0xff, 0xff, 0xff}},
-		row{"escaped-letter-read", `{ "data": "AQ==" }`, "read", []byte{0x01}},
+		row{"escaped-letter-read", `{ "data": "\u0041Q==" }`, "read", []byte{0x01}},
 	)
 
 	var probe strings.Builder
