@@ -111,6 +111,17 @@ local function boolByte(buf: buffer, at: number): boolean
 	return b == 1
 end
 
+-- A DEAD SPAN IS THE WRITER'S IMAGE (docs/FIXED-FORM-ALGORITHM.md §3.1, §5.3
+-- step 11): every byte zero, or the whole load refuses wire_damaged. A span
+-- of nothing is already zero. The bytes are not read as values.
+local function deadZero(buf: buffer, at: number, n: number)
+	for i = 0, n - 1 do
+		if buffer.readu8(buf, at + i) ~= 0 then
+			error({ name = "wire_damaged", field = _owner .. "." .. _field }, 0)
+		end
+	end
+end
+
 local function asInt(v: any): integer
 	if typeof(v) == "integer" then return v end
 	return integer.create(v)
@@ -498,6 +509,10 @@ local function readTable(d: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 					v[f.present] = present
 					if present then
 						got, companion = readPair(f, wc.children[1], rc.children[1], buf, at, cx, v[slot])
+					elseif wc.size > PRESENT then
+						-- an absent optional's payload is dead whole, nested
+						-- types included; it is not read as values
+						deadZero(buf, wc.off + at + PRESENT, wc.size - PRESENT)
 					end
 				elseif rc.kind == 35 then
 					-- T INTO ?T (bill §12.8): the writer always carried the
@@ -533,6 +548,9 @@ local function readText(f: any, w: Node, buf: buffer, at: number): (any, any)
 	elseif utf8IllFormed(buf, w.off + at + COUNT, length) then
 		error(refuse("text_ill_formed"), 0)
 	end
+	-- the bytes past the used length are dead, the remainder inside the
+	-- field included; the content rule already held the used units
+	deadZero(buf, w.off + at + COUNT + length * unit, w.size - COUNT - length * unit)
 	local bound = f.bound or length
 	if length > bound then length = bound end
 	local b = buffer.create(bound * unit)
@@ -568,14 +586,23 @@ end
 local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx): any
 	local d = S.lookup(f.t)
 	local v = d.new()
-	local tag = leU(buf, w.off + at, tagWidth(w))
+	local tagw = tagWidth(w)
+	local tag = leU(buf, w.off + at, tagw)
+	local span = w.size - tagw
 	if tag == 0 then
+		-- tag 0 names no arm: the arm bytes are dead, and are not read
+		deadZero(buf, w.off + at + tagw, span)
 		v.Type = 0
 		return v
 	end
 	if tag > #w.children then
 		-- a tag past the WRITER's arm count names no arm: out_of_range (§4.6)
 		error(outOfRange(f), 0)
+	end
+	-- the bytes past a narrower taken arm, inside the widest arm's span, are dead
+	local armNode = w.children[tag]
+	if span > armNode.size then
+		deadZero(buf, w.off + at + tagw + armNode.size, span - armNode.size)
 	end
 	local k = if w == r then tag else childIndexById(r.children, w.children[tag].id)
 	v.Type = k
@@ -633,6 +660,7 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local length = buffer.readu32(buf, w.off + at)
 		local cap = w.size - COUNT
 		if length > cap then error(refuse("length_over_bound"), 0) end
+		deadZero(buf, w.off + at + COUNT + length, w.size - COUNT - length)
 		local bound = f.bound or length
 		if length > bound then length = bound end
 		local b = buffer.create(bound)
@@ -647,6 +675,11 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local count = buffer.readu32(buf, w.off + at)
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
+		-- slots past the live count are dead, up to the writer's bound; the
+		-- remainder past floor(capacity) is not part of that span
+		if we.size > 0 then
+			deadZero(buf, w.off + at + head + count * we.size, (theirs - count) * we.size)
+		end
 		if count > mine then count = mine end
 		local out = slots(def, mine)
 		for i = 1, count do
