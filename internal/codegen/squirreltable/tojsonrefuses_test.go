@@ -49,15 +49,15 @@ table T
 }
 `
 
-// offContractCase is one value of one field: in Squirrel storage (an
+// toJSONOffContractCase is one value of one field: in Squirrel storage (an
 // expression), and as the JSON value an unchecked writer would spell it.
 // lawful says the declaration admits it: the twin at the boundary.
-type offContractCase struct {
+type toJSONOffContractCase struct {
 	name, field, squirrel, text string
 	lawful                      bool
 }
 
-var offContractCases = []offContractCase{
+var offContractCases = []toJSONOffContractCase{
 	{"range_high", "r", "101", "101", false},
 	{"range_low", "r", "-6", "-6", false},
 	{"range_high_edge", "r", "100", "100", true},
