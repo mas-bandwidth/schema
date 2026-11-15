@@ -1,6 +1,7 @@
 package python
 
 import (
+	"maps"
 	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -72,9 +73,7 @@ func (h *Host) Imports() HostImports {
 		Serialize: sortedKeys(h.m.serial),
 		Siblings:  make(map[string]string, len(h.m.sibling)),
 	}
-	for base, alias := range h.m.sibling {
-		out.Siblings[base] = alias
-	}
+	maps.Copy(out.Siblings, h.m.sibling)
 	return out
 }
 

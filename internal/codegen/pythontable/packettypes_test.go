@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -201,9 +202,7 @@ func TestPythonTablePacketTypesNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	sabotaged := make(map[string][]byte, len(files))
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	maps.Copy(sabotaged, files)
 	const path = "packetvalues/_schema/kind_table.py"
 	text := string(sabotaged[path])
 	const anchor = "w.varint(len(body))"
