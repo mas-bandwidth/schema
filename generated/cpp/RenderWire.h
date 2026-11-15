@@ -91,7 +91,7 @@ SCHEMA_WRITE_INLINE bool WriteRenderSprite( serialize::WriteStream & stream, con
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadRenderSprite( serialize::ReadStream & stream, RenderSprite & value )
+SCHEMA_READ_INLINE bool ReadRenderSpriteBody( serialize::ReadStream & stream, RenderSprite & value )
 {
     read_bits( stream, value.sort_key, 64 );
     read_bits( stream, value.mesh_id, 32 );
@@ -109,6 +109,17 @@ SCHEMA_READ_INLINE bool ReadRenderSprite( serialize::ReadStream & stream, Render
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadRenderSprite( serialize::ReadStream & stream, RenderSprite & value )
+{
+    if ( !ReadRenderSpriteBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteRenderBlock( serialize::WriteStream & stream, const RenderBlock & value )
 {
     write_bits( stream, value.worker_index, 32 );
@@ -122,15 +133,26 @@ SCHEMA_WRITE_INLINE bool WriteRenderBlock( serialize::WriteStream & stream, cons
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadRenderBlock( serialize::ReadStream & stream, RenderBlock & value )
+SCHEMA_READ_INLINE bool ReadRenderBlockBody( serialize::ReadStream & stream, RenderBlock & value )
 {
     read_bits( stream, value.worker_index, 32 );
     read_bits( stream, value.sprite_count_hint, 32 );
     read_int( stream, value.sprites_count, 0, RenderBlockMaxSprites );
     for ( int32_t i = 0; i < value.sprites_count; i++ )
     {
-        schema_read_object( stream, ReadRenderSprite, value.sprites[i] );
+        schema_read_object( stream, ReadRenderSpriteBody, value.sprites[i] );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadRenderBlock( serialize::ReadStream & stream, RenderBlock & value )
+{
+    if ( !ReadRenderBlockBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 

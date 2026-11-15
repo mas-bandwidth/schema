@@ -11,8 +11,9 @@
 // Per schema file Base.schema, BaseFlat.js is emitted beside Base.js
 // whenever the file declares types. Per struct Name:
 //
-//	Write<Name>Flat(view, value)          -> bytes written | -1 (checked refusal)
+//	Write<Name>Flat(view, value)          -> bytes written | -1 (refusal)
 //	Read<Name>Flat(view, numBits, value)  -> bool
+//	Read<Name>FlatBits(view, numBits, value) -> bits consumed | false
 //
 // Target first, value last — the runtime tier's Write<Name>(stream, value)
 // order, with the view (and, reading, its bit count) in the stream's place.
@@ -23,13 +24,12 @@
 //     not fill the width, const/reserved verification, interior-null refusal
 //     on strings, align padding verified zero, untaken branch sides zeroed
 //     inline — C's release read semantics, emitted once.
-//   - The WRITE side forks at module load exactly as serialize.js src/mode.js
-//     does: NODE_ENV read once, whole variants selected at export. The
-//     production writer is the trusted-writer release shape (zero caller
-//     validation; width masks stay — wire arithmetic). The checked writer
-//     carries the runtime tier's fold-guard set verbatim in meaning and
-//     refuses out-of-contract values with -1, writing byte-identical wire
-//     for every in-contract value.
+//   - The WRITE side is not configurable either. JavaScript has no assert
+//     idiom, so it is a refusal leg (SPEC §5.1): one writer per type, the
+//     same in every build whatever NODE_ENV says. It carries the runtime
+//     tier's fold-guard set verbatim in meaning and refuses out-of-contract
+//     values with -1, writing byte-identical wire for every in-contract
+//     value.
 //
 // Allocation contract (the C++ buffer stance):
 //   - Write: the buffer behind view must hold at least <Name>MaxBytes
@@ -72,7 +72,7 @@ type fgen struct {
 
 	// per-function emission state
 	fn        strings.Builder
-	checked   bool // write side: emit the fold-guard set
+	guards    int // write side: the writer contracts the current body refuses
 	loopDepth int
 
 	// THE STATIC CURSOR. From a function's first field until the first
@@ -213,7 +213,7 @@ var brToken = regexp.MustCompile(`\bbr\b`)
 // The value-refusal guards are the deliberate exception — they carry braces
 // but only ever test v or bg and only ever `return false`, so they neither
 // read the cursor nor let control fall past them with the window stale; they
-// emit through rawf and keep the chunk alive across a checked field.
+// emit through rawf and keep the chunk alive across a guarded field.
 func closesReadWindow(s string) bool {
 	return strings.ContainsAny(s, "{}") || brToken.MatchString(s)
 }
@@ -266,11 +266,13 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// remains the diagnostic and reference surface — re-read a failing buffer\n")
 		h.WriteString("// through it to learn WHICH operation failed and why.\n")
 		h.WriteString("//\n")
-		h.WriteString("// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked\n")
-		h.WriteString("// writer refuses an out-of-contract value (the production writer trusts\n")
-		h.WriteString("// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at\n")
-		h.WriteString("// module load). Read<Name>Flat(view, numBits, value) -> bool, the family\n")
-		h.WriteString("// read verdict; reader obligations ride in every mode.\n")
+		h.WriteString("// Write<Name>Flat(view, value) -> bytes written, or -1 when the writer\n")
+		h.WriteString("// refuses an out-of-contract value — in every build, production\n")
+		h.WriteString("// included. Read<Name>Flat(view, numBits, value) -> bool, the family read\n")
+		h.WriteString("// verdict; reader obligations ride in every build too.\n")
+		h.WriteString("// Read<Name>FlatBits(view, numBits, value) -> the bits that read consumed,\n")
+		h.WriteString("// or false. The framing entry: the same refusals, and not the end-of-packet\n")
+		h.WriteString("// check, so a later object may follow in the same buffer (SPEC §5, §6.3).\n")
 		h.WriteString("//\n")
 		h.WriteString("// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes\n")
 		h.WriteString("// (the constants live in the runtime-tier module). Read buffers: at least\n")
@@ -307,14 +309,6 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// fills it.\n")
 		h.WriteString("const SC = new DataView(new ArrayBuffer(8));\n\n")
 	}
-	// the build switch is declared only where some writer forks on it: a
-	// module whose every writer holds no contract shares one writer per type
-	if used["PRODUCTION"] {
-		h.WriteString("// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):\n")
-		h.WriteString("// bundlers statically replace NODE_ENV, so production bundles tree-shake\n")
-		h.WriteString("// the checked writers out. Existence-guarded for browsers without process.\n")
-		h.WriteString("const PRODUCTION = typeof process !== \"undefined\" && !!process.env && process.env.NODE_ENV === \"production\";\n\n")
-	}
 	h.WriteString("// Read buffers must extend at least this many bytes past the payload.\n")
 	h.WriteString("export const FlatReadSlack = 8;\n\n")
 	if g.needText {
@@ -343,6 +337,7 @@ func (g *fgen) emitUnionFlat(u *ir.Union) {
 	g.bpf("// ---- union %s: the flat codec ----\n\n", u.Name)
 	g.emitWriteFlat(u.Name, func() { g.emitWriteUnionFlat(u, "value", "  ") })
 	g.emitReadFlatBody(u.Name, func() { g.emitReadUnionFlat(u, "value", "  ", false) })
+	g.emitReadFlatBits(u.Name, func() { g.emitReadUnionFlat(u, "value", "  ", false) })
 }
 
 // ---- shared kernel text (the probe's gen_flat.mjs, transliterated) ----
@@ -509,9 +504,10 @@ func (g *fgen) readClose() {
 }
 
 // readDrop abandons a window's pending advance instead of emitting it. Legal
-// at exactly one place — the end of a read function, where the only
-// statement left is `return true`: the flat reader answers a verdict, not a
-// length, so nothing downstream can observe the cursor.
+// at exactly one place — the end of Read<name>Flat, where the only statement
+// left is `return true`: that entry answers a verdict, not a length, so
+// nothing downstream can observe the cursor. Read<name>FlatBits settles the
+// window and returns the position.
 func (g *fgen) readDrop() {
 	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
 }
@@ -526,11 +522,9 @@ func (g *fgen) readRefuse(cond, comment, ind string) {
 	g.rawf("%sif (%s) {%s\n%s  return false;\n%s}\n", ind, cond, comment, ind, ind)
 }
 
-// guard emits a checked-writer refusal; a no-op in the production variant.
+// guard emits a writer refusal, held in every build (SPEC §5.1).
 func (g *fgen) guard(cond, comment, ind string) {
-	if !g.checked {
-		return
-	}
+	g.guards++
 	g.pf("%sif (%s) {%s\n%s  return -1;\n%s}\n", ind, cond, comment, ind, ind)
 }
 
@@ -630,28 +624,22 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 	g.bpf("// ---- type %s: the flat codec ----\n\n", st.Name)
 	g.emitWriteFlat(st.Name, func() { g.emitWriteItems(st.Items, "value", "  ") })
 	g.emitReadFlatBody(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
+	g.emitReadFlatBits(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
 }
 
-// emitWriteFlat emits Write<name>Flat from a body emitter run once per build.
+// emitWriteFlat emits Write<name>Flat: one writer, the same in every build.
 func (g *fgen) emitWriteFlat(name string, emit func()) {
-	production := g.writeVariantBody(emit, false)
-	checked := g.writeVariantBody(emit, true)
-	if production == checked {
-		// NOTHING TO CHECK: the value holds no writer contract the checked
-		// build would refuse, so the two variants are the same text and one
-		// function serves both builds.
+	body := g.writeBody(emit)
+	if g.guards == 0 {
+		// NOTHING TO CHECK: the value holds no writer contract to refuse
 		g.bpf("// Write%sFlat(view, value) -> bytes written (>= 0). Nothing here is a\n", name)
-		g.bpf("// writer contract, so the checked and production builds share this one\n")
-		g.bpf("// writer. The buffer behind view must hold %sMaxBytes.\n", name)
-		g.bpf("export function Write%sFlat(%s) {\n%s}\n\n", name, usedParams(production, "view", "value"), production)
-		return
+		g.bpf("// writer contract. The buffer behind view must hold %sMaxBytes.\n", name)
+	} else {
+		g.bpf("// Write%sFlat(view, value) -> bytes written (>= 0), or -1 on a refused\n", name)
+		g.bpf("// writer contract, in every build (SPEC §5.1). The buffer behind view\n")
+		g.bpf("// must hold %sMaxBytes.\n", name)
 	}
-	g.bpf("function write%sFlatProduction(%s) {\n%s}\n\n", name, usedParams(production, "view", "value"), production)
-	g.bpf("function write%sFlatChecked(%s) {\n%s}\n\n", name, usedParams(checked, "view", "value"), checked)
-	g.bpf("// Write%sFlat(view, value) -> bytes written (>= 0), or -1 on a refused\n", name)
-	g.bpf("// writer contract in the checked build — the production writer holds none\n")
-	g.bpf("// of them (SPEC §5). The buffer behind view must hold %sMaxBytes.\n", name)
-	g.bpf("export const Write%sFlat = PRODUCTION ? write%sFlatProduction : write%sFlatChecked;\n\n", name, name, name)
+	g.bpf("export function Write%sFlat(%s) {\n%s}\n\n", name, usedParams(body, "view", "value"), body)
 }
 
 func (g *fgen) resetNeeds() {
@@ -690,12 +678,12 @@ func declareLocals(body, ind string, locals ...string) string {
 	return b.String()
 }
 
-// writeVariantBody renders one write variant's function body (the text between
-// the braces), so the caller can see whether the two builds differ at all.
-func (g *fgen) writeVariantBody(emit func(), checked bool) string {
+// writeBody renders a writer's function body (the text between the braces),
+// counting the writer contracts it refuses in g.guards.
+func (g *fgen) writeBody(emit func()) string {
 	g.fn.Reset()
 	g.resetNeeds()
-	g.checked = checked
+	g.guards = 0
 	emit()
 	g.chunkFlush("  ")
 	body := g.fn.String()
@@ -726,8 +714,7 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	g.fn.Reset()
 	g.resetNeeds()
 	emit()
-	// the last window's advance is dead: `return true` is all that follows
-	g.readDrop()
+	g.emitReadEnd("  ")
 	body := g.readBody(g.fn.String())
 	g.fn.Reset()
 
@@ -736,6 +723,56 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	// a parameter nothing reads is not declared (eslint no-unused-vars) — an
 	// empty type reads none; a caller's arguments are accepted and ignored
 	g.bpf("export function Read%sFlat(%s) {\n%s  return true;\n}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
+}
+
+// emitReadEnd appends the packet's one end check (SPEC §5, "Read termination"):
+// the bits consumed, rounded up to a whole byte, must be the packet's length in
+// bytes as numBits gives it, and the final byte's unused bits must be zero. It
+// settles the read window first, so the cursor names the true position.
+func (g *fgen) emitReadEnd(ind string) {
+	g.readClose()
+	if g.rKnown {
+		consumed := g.rBr
+		g.rawf("%sif (((%d + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes\n", ind, consumed)
+		g.rawf("%s  return false;\n%s}\n", ind, ind)
+		if sh := consumed & 7; sh != 0 {
+			mask := (0xff << uint(sh)) & 0xff
+			g.rawf("%sif ((view.getUint8(%d) & 0x%02x) !== 0) { // nonzero unused bits in the final byte\n", ind, consumed>>3, mask)
+			g.rawf("%s  return false;\n%s}\n", ind, ind)
+		}
+		return
+	}
+	g.rawf("%ss2 = (br + 7) >> 3;\n", ind)
+	g.rawf("%sif (s2 !== ((numBits + 7) >> 3)) { // trailing bytes\n", ind)
+	g.rawf("%s  return false;\n%s}\n", ind, ind)
+	g.rawf("%sif ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte\n", ind)
+	g.rawf("%s  return false;\n%s}\n", ind, ind)
+}
+
+// emitReadFlatBits emits Read<name>FlatBits beside Read<name>Flat (SPEC §5,
+// §6.3). The body is the same read, so a refusal is the same `return false`.
+// The success value is the bits consumed. This entry does not run the
+// end-of-packet check: it is what frames a second object behind the first.
+func (g *fgen) emitReadFlatBits(name string, emit func()) {
+	g.fn.Reset()
+	g.resetNeeds()
+	emit()
+	// the verdict entry drops the last window's advance, because nothing
+	// there observes the cursor. This entry returns it, so the window settles.
+	g.readClose()
+	if g.rKnown {
+		g.rawf("  return %d;\n", g.rBr)
+	} else {
+		g.rawf("  return br;\n")
+	}
+	body := g.readBody(g.fn.String())
+	g.fn.Reset()
+
+	g.bpf("// Read%sFlatBits(view, numBits, value) -> bits consumed, or false\n", name)
+	g.bpf("// (SPEC §5, §6.3). The same refusals as Read%sFlat, without the\n", name)
+	g.bpf("// end-of-packet check, so a later object may follow in the buffer.\n")
+	g.bpf("// The buffer behind view must extend FlatReadSlack bytes past the payload.\n")
+	g.bpf("export function Read%sFlatBits(%s) {\n%s}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
 }
 
 // deadCursorStore matches a read cursor materialization line.
@@ -887,9 +924,8 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 	case ir.ArrayCounted:
 		count := name + "Count"
 		// the count guards the loop; its range is a writer contract like any
-		// other, held by the CHECKED writer and gone from the production one
-		// (SPEC §4.6, §5). The checked writer also holds the count to an
-		// integer, its contract on every number.
+		// other, refused in every build (SPEC §4.6, §5.1). The writer also holds
+		// the count to an integer, its contract on every number.
 		cond := fmt.Sprintf("!Number.isInteger(%s) || %s < %d || %s > %d", count, count, f.ArrayMin, count, f.ArrayBound)
 		g.guard(cond, " // the count guards the loop; its range is a writer contract (SPEC §4.6)", ind)
 		g.emitWriteRangedNum(count, f.ArrayMin, f.ArrayBound, ind)
@@ -1017,7 +1053,9 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
 		w := int64(f.Type.Width)
+		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
 		if w <= 32 {
+			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %s", name, name, name, max.String()), "", ind)
 			if w == 32 {
 				g.chunkAdd(fmt.Sprintf("(%s >>> 0)", name), w, ind)
 			} else {
@@ -1025,6 +1063,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			return
 		}
+		g.guard(fmt.Sprintf("%s < 0n || %s > %sn", name, name, max.String()), "", ind)
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
@@ -1036,6 +1075,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
 		g.chunkFlush(ind)
+		g.guard(fmt.Sprintf("!Number.isFinite(%s)", name), " // a bare float must be finite", ind)
 		if g.wKnown && g.wSb == 0 {
 			// word-aligned at a static offset: the double's two little-endian
 			// words, low first, are exactly one little-endian 8-byte store
@@ -1064,23 +1104,14 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 	}
 }
 
-// emitWriteF32 is serialize.js float32BitsFromNumber inlined: hardware
-// conversion for non-NaN, software payload narrowing for NaN (quiet bit not
-// forced except the all-low-payload case).
+// emitWriteF32 refuses a value whose float32 rounding is not finite, then
+// writes the hardware-converted 32-bit pattern (SPEC §4.3, §5.1).
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sx = %s;\n", ind, name)
-	g.pf("%sif (x === x) {\n", ind)
-	g.pf("%s  SC.setFloat32(0, x, true);\n", ind)
-	g.pf("%s  v = SC.getUint32(0, true);\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  SC.setFloat64(0, x, true);\n", ind)
-	g.pf("%s  bg = SC.getBigUint64(0, true);\n", ind)
-	g.pf("%s  t0 = Number(bg >> 63n) << 31;\n", ind)
-	g.pf("%s  t1 = Number((bg >> 29n) & 0x7fffffn);\n", ind)
-	g.pf("%s  if (t1 === 0) { t1 = 0x400000; }\n", ind)
-	g.pf("%s  v = (t0 | 0x7f800000 | t1) >>> 0;\n", ind)
-	g.pf("%s}\n", ind)
+	g.guard("!Number.isFinite(Math.fround(x))", " // a bare float must be finite", ind)
+	g.pf("%sSC.setFloat32(0, x, true);\n", ind)
+	g.pf("%sv = SC.getUint32(0, true);\n", ind)
 	g.mergeW(32, ind)
 }
 
@@ -1091,16 +1122,18 @@ func f32lit(v float64) string {
 }
 
 // emitWriteCompressedFloat is the runtime's two-rounding float32
-// quantization with the declaration folded: value32 non-finite refused in
-// checked mode (the runtime's always-on assert), clamp, quantize.
+// quantization with the declaration folded: value32 non-finite or off
+// [min, max] refused in every build (SPEC §5.1 row 10), then quantize.
 func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
-	deltaF := float32(f.FMax) - minF
+	maxF := float32(f.FMax)
+	deltaF := maxF - minF
 	mivF := float32(maxInt)
 	g.pf("%sx = Math.fround(%s);\n", ind, name)
 	g.guard("!Number.isFinite(x)", "", ind)
+	g.guard(fmt.Sprintf("x < %s || x > %s", f32lit(float64(minF)), f32lit(float64(maxF))), "", ind)
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
@@ -1121,7 +1154,7 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 	rawRange := new(big.Int).Sub(rawMax, rawMin)
 	bits := int64(rawRange.BitLen())
 	if f.IntMin.Cmp(f.IntMax) == 0 {
-		// degenerate: zero bits — the checked refusal is the whole write
+		// degenerate: zero bits — the refusal is the whole write
 		if f.Type.Width > 32 {
 			g.guard(fmt.Sprintf("%s !== %sn", name, rawMin.String()), "", ind)
 		} else {
@@ -1244,21 +1277,11 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 }
 
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and
-// full-range unsigned): vacuous guard halves elided per the storage bounds
-// (the C# discipline), offset via asUintN.
+// full-range unsigned): BigInt has no storage bound, so both halves of the
+// declared range test are always live; offset via asUintN.
 func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
-	sMin, sMax := storageBoundsBig(f.Type)
-	guardLo := f.IntMin.Cmp(sMin) > 0
-	guardHi := f.IntMax.Cmp(sMax) < 0
-	switch {
-	case guardLo && guardHi:
-		g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
-	case guardLo:
-		g.guard(fmt.Sprintf("%s < %sn", name, f.IntMin.String()), "", ind)
-	case guardHi:
-		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), "", ind)
-	}
+	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 	off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {
 		off = name
@@ -1278,7 +1301,7 @@ func (g *fgen) emitWriteEnum(ref *ir.Enum, name, ind string) {
 
 func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 	wb := int64(ref.WireBits)
-	if g.checked && wb < 64 {
+	if wb < 64 {
 		lim := new(big.Int).Lsh(big.NewInt(1), uint(wb))
 		g.guard(fmt.Sprintf("BigInt.asUintN(64, %s) >= %sn", name, lim.String()),
 			" // a mask bit above the wire width cannot ride", ind)
@@ -2016,7 +2039,7 @@ func (g *fgen) emitReadWideOffsetNum(f *ir.Field, name string, bits int64, diff,
 
 // ---- inline zeroing (SPEC §5: untaken branch sides read as ZERO) ----
 
-// emitWriteUnionFlat inlines a union field (SPEC §4.8): the checked guard
+// emitWriteUnionFlat inlines a union field (SPEC §4.8): the guard
 // validates the tag BEFORE it rides, the tag merges in minimal bits, then a
 // switch inlines each arm's items — the struct-inlining move, per arm. expr
 // is the union object (a field path or a hoisted element ref).

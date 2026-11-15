@@ -64,6 +64,15 @@ func WriteBenchPacket(stream *serialize.WriteStream, value *BenchPacket) error {
 	if value.C < -1000000 || value.C > 1000000 {
 		return serialize.ErrValueOutOfRange
 	}
+	if value.Bits7 > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Bits13 > 8191 { // a value above the bits(13) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Bits23 > 8388607 { // a value above the bits(23) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if math.Float32bits(value.X)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
@@ -100,10 +109,21 @@ func WriteBenchPacket(stream *serialize.WriteStream, value *BenchPacket) error {
 	return stream.Err()
 }
 
-// ReadBenchPacket reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadBenchPacket reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchPacket(stream *serialize.ReadStream, value *BenchPacket) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchPacket nested in another value is read through it.
+func (value *BenchPacket) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -231,10 +251,21 @@ func WriteBenchInts(stream *serialize.WriteStream, value *BenchInts) error {
 	return stream.Err()
 }
 
-// ReadBenchInts reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadBenchInts reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchInts(stream *serialize.ReadStream, value *BenchInts) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchInts nested in another value is read through it.
+func (value *BenchInts) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -308,6 +339,27 @@ const BenchBitsMaxBytes = 24
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteBenchBits(stream *serialize.WriteStream, value *BenchBits) error {
+	if value.B7 > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B13 > 8191 { // a value above the bits(13) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B23 > 8388607 { // a value above the bits(23) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B3 > 7 { // a value above the bits(3) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B11 > 2047 { // a value above the bits(11) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B19 > 524287 { // a value above the bits(19) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.B48 > 281474976710655 { // a value above the bits(48) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.B7) & 0x7f
 	f1 := uint64(value.B13) & 0x1fff
 	f2 := uint64(value.B23) & 0x7fffff
@@ -325,10 +377,21 @@ func WriteBenchBits(stream *serialize.WriteStream, value *BenchBits) error {
 	return stream.Err()
 }
 
-// ReadBenchBits reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadBenchBits reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchBits(stream *serialize.ReadStream, value *BenchBits) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchBits nested in another value is read through it.
+func (value *BenchBits) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -546,6 +609,9 @@ const MixedEntityMaxBytes = 24
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteMixedEntity(stream *serialize.WriteStream, value *MixedEntity) error {
+	if value.EntityID > 4095 { // a value above the bits(12) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.PosX < -16383 || value.PosX > 16383 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -553,6 +619,12 @@ func WriteMixedEntity(stream *serialize.WriteStream, value *MixedEntity) error {
 		return serialize.ErrValueOutOfRange
 	}
 	if value.PosZ < -16383 || value.PosZ > 16383 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Yaw > 511 { // a value above the bits(9) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Pitch > 511 { // a value above the bits(9) wire width cannot ride
 		return serialize.ErrValueOutOfRange
 	}
 	if value.VelX < -2048 || value.VelX > 2047 {
@@ -602,10 +674,21 @@ func WriteMixedEntity(stream *serialize.WriteStream, value *MixedEntity) error {
 	return stream.Err()
 }
 
-// ReadMixedEntity reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadMixedEntity reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedEntity(stream *serialize.ReadStream, value *MixedEntity) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedEntity nested in another value is read through it.
+func (value *MixedEntity) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -678,6 +761,9 @@ const MixedStatMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteMixedStat(stream *serialize.WriteStream, value *MixedStat) error {
+	if value.StatID > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.Delta < -512 || value.Delta > 511 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -688,10 +774,21 @@ func WriteMixedStat(stream *serialize.WriteStream, value *MixedStat) error {
 	return stream.Err()
 }
 
-// ReadMixedStat reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadMixedStat reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedStat(stream *serialize.ReadStream, value *MixedStat) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedStat nested in another value is read through it.
+func (value *MixedStat) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 18)
 	c0 := uint64(n0)
@@ -726,6 +823,9 @@ const MixedHitEventMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteMixedHitEvent(stream *serialize.WriteStream, value *MixedHitEvent) error {
+	if value.TargetID > 4095 { // a value above the bits(12) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.Damage < 0 || value.Damage > 4095 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -744,10 +844,21 @@ func WriteMixedHitEvent(stream *serialize.WriteStream, value *MixedHitEvent) err
 	return stream.Err()
 }
 
-// ReadMixedHitEvent reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadMixedHitEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedHitEvent(stream *serialize.ReadStream, value *MixedHitEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedHitEvent nested in another value is read through it.
+func (value *MixedHitEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 28)
 	c0 := uint64(n0)
@@ -788,6 +899,9 @@ func WriteMixedChatEvent(stream *serialize.WriteStream, value *MixedChatEvent) e
 	if value.Channel < 0 || value.Channel > 3 {
 		return serialize.ErrValueOutOfRange
 	}
+	if value.Speaker > 4095 { // a value above the bits(12) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Channel) & 0x3
 	f1 := uint64(value.Speaker) & 0xfff
 	w0 := uint32(f0 | f1<<2)
@@ -795,10 +909,21 @@ func WriteMixedChatEvent(stream *serialize.WriteStream, value *MixedChatEvent) e
 	return stream.Err()
 }
 
-// ReadMixedChatEvent reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadMixedChatEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedChatEvent(stream *serialize.ReadStream, value *MixedChatEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedChatEvent nested in another value is read through it.
+func (value *MixedChatEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 14)
 	c0 := uint64(n0)
@@ -832,6 +957,9 @@ const MixedPickupEventMaxBytes = 8
 // cannot carry) or the stream's error; the size written is
 // stream.BitsProcessed().
 func WriteMixedPickupEvent(stream *serialize.WriteStream, value *MixedPickupEvent) error {
+	if value.ItemID > 1023 { // a value above the bits(10) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.Amount < 0 || value.Amount > 255 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -842,10 +970,21 @@ func WriteMixedPickupEvent(stream *serialize.WriteStream, value *MixedPickupEven
 	return stream.Err()
 }
 
-// ReadMixedPickupEvent reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadMixedPickupEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedPickupEvent(stream *serialize.ReadStream, value *MixedPickupEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedPickupEvent nested in another value is read through it.
+func (value *MixedPickupEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 18)
 	c0 := uint64(n0)
@@ -937,10 +1076,21 @@ func WriteMixedEvent(stream *serialize.WriteStream, value *MixedEvent) error {
 	return stream.Err() // None — the tag is the whole wire
 }
 
-// ReadMixedEvent reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadMixedEvent reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedEvent nested in another value is read through it.
+func (value *MixedEvent) read(stream *serialize.ReadStream) error {
 	offsetValue := uint32(0)
 	stream.SerializeBits(&offsetValue, 2)
 	if stream.Err() != nil {
@@ -950,13 +1100,13 @@ func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
 	switch value.Type {
 	case MixedEventTypeHit:
 		value.Hit = MixedHitEvent{} // fresh payload on every selection
-		return ReadMixedHitEvent(stream, &value.Hit)
+		return value.Hit.read(stream)
 	case MixedEventTypeChat:
 		value.Chat = MixedChatEvent{} // fresh payload on every selection
-		return ReadMixedChatEvent(stream, &value.Chat)
+		return value.Chat.read(stream)
 	case MixedEventTypePickup:
 		value.Pickup = MixedPickupEvent{} // fresh payload on every selection
-		return ReadMixedPickupEvent(stream, &value.Pickup)
+		return value.Pickup.read(stream)
 	}
 	return stream.Err() // None
 }
@@ -1019,10 +1169,16 @@ const BenchMixedMaxBytes = 456
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
+	if value.Sequence > 65535 { // a value above the bits(16) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.AckSequence < 0 || value.AckSequence > 65535 {
 		return serialize.ErrValueOutOfRange
 	}
 	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.FrameTick > 281474976710655 { // a value above the bits(48) wire width cannot ride
 		return serialize.ErrValueOutOfRange
 	}
 	f28 := uint64(49374) & 0xffff // const(49374, 16)
@@ -1058,6 +1214,9 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	}
 	i := int32(0)
 	for ; i+2 <= value.EntitiesCount; i += 2 {
+		if value.Entities[i].EntityID > 4095 { // a value above the bits(12) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Entities[i].PosX < -16383 || value.Entities[i].PosX > 16383 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1065,6 +1224,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Entities[i].PosZ < -16383 || value.Entities[i].PosZ > 16383 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].Yaw > 511 { // a value above the bits(9) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].Pitch > 511 { // a value above the bits(9) wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Entities[i].VelX < -2048 || value.Entities[i].VelX > 2047 {
@@ -1085,6 +1250,9 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		if value.Entities[i].Damage >= 1<<8 { // a mask bit above the wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
+		if value.Entities[i+1].EntityID > 4095 { // a value above the bits(12) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Entities[i+1].PosX < -16383 || value.Entities[i+1].PosX > 16383 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1092,6 +1260,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Entities[i+1].PosZ < -16383 || value.Entities[i+1].PosZ > 16383 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i+1].Yaw > 511 { // a value above the bits(9) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i+1].Pitch > 511 { // a value above the bits(9) wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Entities[i+1].VelX < -2048 || value.Entities[i+1].VelX > 2047 {
@@ -1164,6 +1338,9 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		stream.SerializeBits(&w4, 14)
 	}
 	for ; i < value.EntitiesCount; i++ {
+		if value.Entities[i].EntityID > 4095 { // a value above the bits(12) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Entities[i].PosX < -16383 || value.Entities[i].PosX > 16383 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1171,6 +1348,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Entities[i].PosZ < -16383 || value.Entities[i].PosZ > 16383 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].Yaw > 511 { // a value above the bits(9) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Entities[i].Pitch > 511 { // a value above the bits(9) wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Entities[i].VelX < -2048 || value.Entities[i].VelX > 2047 {
@@ -1228,22 +1411,43 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	}
 	i2 := int32(0)
 	for ; i2+7 <= value.StatsCount; i2 += 7 {
+		if value.Stats[i2].StatID > 255 { // a value above the bits(8) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Stats[i2].Delta < -512 || value.Stats[i2].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i2+1].StatID > 255 { // a value above the bits(8) wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Stats[i2+1].Delta < -512 || value.Stats[i2+1].Delta > 511 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.Stats[i2+2].StatID > 255 { // a value above the bits(8) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Stats[i2+2].Delta < -512 || value.Stats[i2+2].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i2+3].StatID > 255 { // a value above the bits(8) wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Stats[i2+3].Delta < -512 || value.Stats[i2+3].Delta > 511 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.Stats[i2+4].StatID > 255 { // a value above the bits(8) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Stats[i2+4].Delta < -512 || value.Stats[i2+4].Delta > 511 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.Stats[i2+5].StatID > 255 { // a value above the bits(8) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Stats[i2+5].Delta < -512 || value.Stats[i2+5].Delta > 511 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Stats[i2+6].StatID > 255 { // a value above the bits(8) wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
 		if value.Stats[i2+6].Delta < -512 || value.Stats[i2+6].Delta > 511 {
@@ -1269,6 +1473,9 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		stream.SerializeBits64(&w1, 62)
 	}
 	for ; i2 < value.StatsCount; i2++ {
+		if value.Stats[i2].StatID > 255 { // a value above the bits(8) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Stats[i2].Delta < -512 || value.Stats[i2].Delta > 511 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1312,6 +1519,24 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.Payload[:value.PayloadLength])
+	if math.Float32bits(value.AimX)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.AimX < -1.0 || value.AimX > 1.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.AimY)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.AimY < -1.0 || value.AimY > 1.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.AimZ)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return serialize.ErrValueOutOfRange
+	}
 	if math.Float32bits(value.Recoil)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
@@ -1320,11 +1545,6 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	}
 	f41 := uint64(0)
 	normalizedValue := (value.AimX + 1.0) / 2.0
-	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue = 0
-	} else if !(normalizedValue <= 1) {
-		normalizedValue = 1
-	}
 	integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue > 200 {
@@ -1333,11 +1553,6 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	f41 = uint64(integerValue) & 0xff
 	f42 := uint64(0)
 	normalizedValue2 := (value.AimY + 1.0) / 2.0
-	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue2 = 0
-	} else if !(normalizedValue2 <= 1) {
-		normalizedValue2 = 1
-	}
 	integerValue2 := uint32(float32(normalizedValue2*200.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue2 > 200 {
@@ -1346,11 +1561,6 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	f42 = uint64(integerValue2) & 0xff
 	f43 := uint64(0)
 	normalizedValue3 := (value.AimZ + 1.0) / 2.0
-	if !(normalizedValue3 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue3 = 0
-	} else if !(normalizedValue3 <= 1) {
-		normalizedValue3 = 1
-	}
 	integerValue3 := uint32(float32(normalizedValue3*200.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue3 > 200 {
@@ -1370,6 +1580,9 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	reservedValue := uint32(0)
 	stream.SerializeBits(&reservedValue, 4) // reserved(4) — zeros on the wire
 	stream.SerializeAlign()
+	if value.CrcHint > 16777215 { // a value above the bits(24) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.Extra < 0 || value.Extra > 255 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -1388,10 +1601,21 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	return stream.Err()
 }
 
-// ReadBenchMixed reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadBenchMixed reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchMixed nested in another value is read through it.
+func (value *BenchMixed) read(stream *serialize.ReadStream) error {
 	c6 := uint64(0)
 	stream.SerializeBits64(&c6, 64)
 	c7 := uint64(0)
@@ -1648,7 +1872,7 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		v1 := (c0 >> 8) & 0x3ff
 		value.Stats[i3].Delta = int32(v1) - 512
 	}
-	if err := ReadMixedEvent(stream, &value.GameEvent); err != nil {
+	if err := value.GameEvent.read(stream); err != nil {
 		return err
 	}
 	n1 := uint32(0)

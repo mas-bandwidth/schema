@@ -1052,9 +1052,17 @@ final class FixedTableCookWire {
     }
     // §3.1's numbering, the wire's own: node 1 is the root.
     final s = wire.WireState();
-    s.indexRoot(value);
     try {
-      wire.fixedTableNumber(s, value, <Object>{value});
+      s.numberGraph(value, (obj) {
+        if (obj is wire.FixedTable) { wire.fixedTableNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.BenchMixed) { wire.benchMixedNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.MixedHitEvent) { wire.mixedHitEventNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.MixedChatEvent) { wire.mixedChatEventNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.MixedPickupEvent) { wire.mixedPickupEventNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.MixedEntity) { wire.mixedEntityNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.MixedStat) { wire.mixedStatNumber(s, obj, <Object>{}); return; }
+        throw StateError('no node numberer for ${obj.runtimeType}');
+      });
     } on StateError {
       if (report != null) report.reason = 'data_cycle';
       return -1;
@@ -1203,7 +1211,7 @@ final class FixedTableCookWire {
         );
       }
     }
-    if (value.entities.length > 8) return false;
+    assert(value.entities.length <= 8);
     out?.setInt32(at + 576, value.entities.length, order);
     for (var i = 0; i < 8; i++) {
       final e = i < value.entities.length
@@ -1211,14 +1219,15 @@ final class FixedTableCookWire {
           : wire.MixedEntity();
       if (!_cookMixedEntity(e, c, at + 64 + i * 64)) return false;
     }
-    if (value.stats.length > 80) return false;
+    assert(value.stats.length <= 80);
     out?.setInt32(at + 1220, value.stats.length, order);
     for (var i = 0; i < 80; i++) {
       final e = i < value.stats.length ? value.stats[i] : wire.MixedStat();
       if (!_cookMixedStat(e, c, at + 580 + i * 8)) return false;
     }
     final gameEventArm = value.gameEvent.armTag;
-    if (gameEventArm < 0 || gameEventArm > 3) return false;
+    assert(gameEventArm >= 0);
+    assert(gameEventArm <= 3);
     out?.setUint8(at + 1224, gameEventArm);
     switch (gameEventArm) {
       case 1:
@@ -1239,7 +1248,7 @@ final class FixedTableCookWire {
       }
     }
     final playerNameText = utf8.encode(value.playerName);
-    if (playerNameText.length > 15) return false;
+    assert(playerNameText.length <= 15);
     if (out != null) {
       out.setInt32(at + 1264, playerNameText.length, order);
       for (var i = 0; i < playerNameText.length; i++) {
@@ -1247,7 +1256,7 @@ final class FixedTableCookWire {
       }
     }
     final payloadBytes = latin1.encode(value.payload);
-    if (payloadBytes.length > 16) return false;
+    assert(payloadBytes.length <= 16);
     if (out != null) {
       out.setInt32(at + 1284, payloadBytes.length, order);
       for (var i = 0; i < payloadBytes.length; i++) {

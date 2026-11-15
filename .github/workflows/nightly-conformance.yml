@@ -36,12 +36,11 @@ name: Nightly conformance
 # guard every job carries (ci-fast.yml, "ONLY THE TABLE PUSHES").
 
 on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '41 5 * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/nightly-conformance.yml
 
 concurrency:
   group: nightly-conformance-${{ github.ref }}
@@ -323,6 +322,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != '' && runner.environment == 'github-hosted'
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: matrix.dart != '' && runner.environment == 'github-hosted'

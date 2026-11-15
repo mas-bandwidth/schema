@@ -1,7 +1,7 @@
 // TestPortSquirrelPageCurrent pins docs/PORT-SQUIRREL.md to the tree it
 // describes: both surfaces carry their codecs, a map has table storage, and
 // the table wire carries the 128-bit kinds on its variable and fixed forms.
-// The float-width check the page still owes stays stated. Each corrected
+// The pinned-VM check the runtime makes at load stays stated. Each corrected
 // statement has a want, and each removed phrase has a stale the page must not
 // carry.
 package compiler
@@ -79,10 +79,14 @@ func TestPortSquirrelPageCurrent(t *testing.T) {
 			},
 		},
 		{
-			row:  "the float-width check is still owed",
+			// the check landed (internal/codegen/squirreltable/unpinnedvm_test.go)
+			row:  "the pinned-VM check is made at load",
 			text: portSquirrelSection(t, page, "## THE PINNED INTERPRETER", "## THE TYPE MAPPING"),
 			wants: []string{
-				"`_intsize_ == 8 && _floatsize_ == 8`",
+				"`_intsize_ == 8 && _floatsize_ == 8 && _charsize_ == 1`",
+				"requires `schema_table_descriptor` before any other table runtime",
+			},
+			stales: []string{
 				"that check is owed to the first codec card",
 			},
 		},

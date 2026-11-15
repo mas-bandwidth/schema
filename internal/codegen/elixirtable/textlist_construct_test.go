@@ -90,7 +90,7 @@ P.ok(T.cook_measure(name,v)==byte_size(cook),"text list cook measure")
  for bad<-["abcdef","x"<><<0>><>"y",<<255>>] do
   v=%{field=>[%{"value"=>bad}]}
   P.ok(T.save("Lists",v)=={:error,:invalid_value},"invalid text wire "<>field)
-  P.ok(T.to_json("Lists",v)=={:error,:invalid_value},"invalid text JSON "<>field)
+  P.ok(T.to_json("Lists",v)=={:error,:invalid_value},"invalid text JSON (a zero byte refuses, SPEC-TABLES §16.3) "<>field)
   P.ok(T.cook_measure("Lists",v)==-1,"invalid text cook "<>field)
  end
 end

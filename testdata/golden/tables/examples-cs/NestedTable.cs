@@ -118,8 +118,8 @@ namespace Tabledemo
             return ArchiveConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long ArchiveConfigMeasureMessages(ArchiveConfig[] values) { return TableWire.MessageSave(values, ArchiveConfigTableType(), Span<byte>.Empty, true); }
-        public static long ArchiveConfigSaveMessages(ArchiveConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArchiveConfigTableType(), bytes, false); }
+        public static long ArchiveConfigMeasureMessages(ArchiveConfig[] values) { long wrote = TableWire.MessageSave(values, ArchiveConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (ArchiveConfig v in values) { System.Diagnostics.Debug.Assert(ArchiveConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long ArchiveConfigSaveMessages(ArchiveConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, ArchiveConfigTableType(), bytes, false); if (wrote >= 0) { foreach (ArchiveConfig v in values) { System.Diagnostics.Debug.Assert(ArchiveConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict ArchiveConfigLoadMessages(ArchiveConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArchiveConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long ArchiveConfigCookMeasure(ArchiveConfig value) { return TableWire.Cook(value, ArchiveConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -144,6 +144,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -208,6 +209,14 @@ namespace Tabledemo
             if (value.Count < 0 || value.Count > 100) { clamped++; }
         }
 
+        // ArchiveConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void ArchiveConfigFixedWriteCheckBody(ArchiveConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            RootConfigFixedWriteCheckBody(value.Root, ref clamped);
+            if (value.Count < 0 || value.Count > 100) { clamped++; }
+        }
+
         // ArchiveConfig's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string ArchiveConfigFixedFiniteBody(ArchiveConfig value)
@@ -231,6 +240,15 @@ namespace Tabledemo
             ArchiveConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this ArchiveConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool ArchiveConfigFixedWriteAdmits(ArchiveConfig value)
+        {
+            int bad = 0;
+            ArchiveConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- ArchiveConfig, the fixed form ----
@@ -1644,6 +1662,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             ArchiveConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2081,9 +2100,14 @@ namespace Tabledemo
 
         public static long ArchiveConfigFixedSave(ReadOnlySpan<ArchiveConfig> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ArchiveConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ArchiveConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(ArchiveConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ArchiveConfigFixedHash);
@@ -2212,7 +2236,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

@@ -14,19 +14,17 @@
 // RECORD and not in the header — a record is its hash and then its values.
 // This is the reference's header (cpptable) and the committed corpus's.
 //
-// TWO ENTRY POINTS, ONE FORM EACH, AND EACH REFUSES THE OTHER'S BYTE (§15):
-// <T>Load is the VARIABLE form's entry point and READS form 1; <T>FixedLoad is
-// the form-3 reader and names a form-1 file `previous_form`. The `fixed table`
-// KEYWORD ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT for what a
-// WRITER emits — a bounded body a variable table declares is the variable wire
-// and gets no form-3 surface at all, nothing is derived in either direction
-// (§2.2, [ir.TableFixedRoots]) — and it does NOT move the refusal into <T>Load.
-// The shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a
-// DECLARED fixed root and the C++ reference reads it there through <T>Load, so
-// a Go <T>Load that refused would be the one leg disagreeing with the byte
-// authority. FixedLoad answers by the form REGISTRY (§3): previous_form for 1,
-// message_form_as_file for 2, newer_form for every byte §3 has not assigned.
-// The single entry point that would answer both by DISPATCH is §15's follow-on.
+// THE PLAIN ENTRY POINTS ARE THE FIXED FORM'S (docs/SPEC-TABLES.md §3, §3.4):
+// <T>Save writes form 3, the bytes <T>FixedSave writes; <T>Measure sizes that
+// file; and <T>Load reads it through <T>FixedLoad, naming a form-1 file
+// `previous_form`. <T>FixedSave and <T>FixedLoad keep their batch shape, and
+// the form REGISTRY answers every other byte: message_form_as_file for 2 and
+// newer_form for every byte §3 has not assigned. The `fixed table` KEYWORD
+// ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT: a declared fixed
+// table whose record is within form 3's bounds takes the fixed file surface,
+// and one past a bound carries no form-3 surface and keeps the variable form's
+// entry points (nothing is derived in either direction, §2.2,
+// [ir.TableFixedRoots]).
 package gotable
 
 import (
@@ -212,7 +210,7 @@ func (w *fixedWalk) push(e fixedLayoutEntry, dst string) {
 	w.dst = append(w.dst, dst)
 }
 
-func dstGo(dst, stride, aux string, counted, arg int) string {
+func dstGo(dst, stride, aux string, counted, arg int, minCount ...int64) string {
 	if dst == "" {
 		dst = "0"
 	}
@@ -222,7 +220,11 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 	if aux == "" {
 		aux = "0"
 	}
-	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d}", dst, stride, aux, counted, arg, arg)
+	min := int64(0)
+	if len(minCount) > 0 {
+		min = minCount[0]
+	}
+	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d, %d}", dst, stride, aux, min, counted, arg, arg)
 }
 
 // offGo is a destination over the storage the unit actually holds: in a
@@ -285,7 +287,7 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, off func(string) string, f *ir
 			counted, aux = 1, off("Count")
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(off(""), g.sizeofGo(f), aux, counted, fixedDstArg(0, f.Deprecated)))
+			dstGo(off(""), g.sizeofGo(f), aux, counted, fixedDstArg(0, f.Deprecated), f.ArrayMin))
 		g.fixedWalkElement(w, f, 0, "element", "0", false)
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
@@ -400,7 +402,8 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 	// would produce bytes nobody can read. This leg does not build its roots
 	// from ir.TableFixedFormRoots, so the bound is named here too, or a bounded
 	// `blob bytes(70000)` — one leaf, inside the leaf cap — rides form 3 out of
-	// this leg alone. ir.TableFixedRecordBounds names the table; it keeps form 1.
+	// this leg alone. ir.TableFixedRecordBounds names the table; a declared one
+	// has no file form (fixedNoFileForm).
 	if ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
 		return false
 	}
@@ -413,6 +416,21 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap
+}
+
+// fixedFileSurface is whether this table's plain Save/Measure/Load are the
+// fixed form's file entry points: a declared fixed table whose form-3 surface
+// this generate emits. A table without that surface keeps the variable form's.
+func (g *tableGen) fixedFileSurface(st *ir.Struct) bool {
+	return st.FixedDeclared && g.surfaces.Fixed && g.hasFixedForm(st)
+}
+
+// fixedNoFileForm is a declared fixed table past one of form 3's bounds: it
+// has NO FILE FORM (docs/SPEC-TABLES.md §3.4, THE SIZE BOUNDS: "its file save
+// refuses rather than falling back to form `1`"), so its plain Save and
+// Measure refuse and its Load reads no file.
+func (g *tableGen) fixedNoFileForm(st *ir.Struct) bool {
+	return st.FixedDeclared && g.surfaces.Fixed && !g.hasFixedForm(st)
 }
 
 // fixedArmOffGo is the destination of a union arm's member (suffix "" for the
@@ -635,8 +653,8 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, fixedElementBytes(f), f.Name)
+		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Min: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.ArrayMin, fixedElementBytes(f), f.Name)
 		g.pf("\tn++\n")
 		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
@@ -761,8 +779,8 @@ func (g *tableGen) emitFixedArmLeaves(un *ir.Union, v ir.UnionVariant, src, dst 
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedArmLoop(f, src, valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, fixedElementBytes(f), v.Name)
+		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Min: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, f.ArrayMin, fixedElementBytes(f), v.Name)
 		g.pf("%sn++\n", ind)
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:
@@ -1174,6 +1192,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\treturn m\n")
 	g.pf("}()\n\n")
 
+	// THE PLAIN LOAD'S PLAN: it passes the capacity the fixed reader checks,
+	// and the read never writes the plan, so one package buffer serves
+	// concurrent plain reads without an allocation per call (§4.3).
+	g.pf("var %sFixedReadPlan = make([]TableFixedEntry, int(%sFixedPlanMax))\n\n", st.Name, st.Name)
+
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)
@@ -1349,7 +1372,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
-	g.pf("\tfor k := range n {\n")
+	g.pf("\tfor k := range values[:n] {\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
@@ -1367,16 +1390,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// and a NaN or an infinity refuses the whole batch as
 		// non_finite_float. Nothing of the batch is kept: every record this
 		// call wrote goes back to its defaults.
-		g.pf("\t\tif why := %sFixedFiniteBody(&values[k]); why != \"\" {\n", st.Name)
-		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\tif why := %sFixedFiniteBody(&values[k : k+1][0]); why != \"\" {\n", st.Name)
+		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\ttableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())\n\t\t\treport.Field = why\n\t\t\treturn -1\n\t\t}\n")
 	}
 	if len(writerBounds) > 0 {
 		g.pf("\t\tswitch pick {\n")
 		for _, i := range writerBounds {
 			g.pf("\t\tcase %d:\n", i)
-			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k]) {\n", st.Name, i)
-			g.pf("\t\t\t\tfor j := range k + 1 { %sReset(&values[j]) }\n", st.Name)
+			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k : k+1][0]) {\n", st.Name, i)
+			g.pf("\t\t\t\tfor j := range values[:k+1] { %sReset(&values[j]) }\n", st.Name)
 			g.pf("\t\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t\t}\n")
 		}
 		g.pf("\t\t}\n")
@@ -1384,8 +1407,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4, §4.6).\n")
-		g.pf("\t\tif !%sFixedBounds(&values[k]) {\n", st.Name)
-		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\tif !%sFixedBounds(&values[k : k+1][0]) {\n", st.Name)
+		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t}\n")
 	}
 	g.pf("\t\tat = at[recordBytes:]\n")
@@ -1680,7 +1703,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass
 		loop(fmt.Sprint(f.ArrayBound), false)
 	case f.Array == ir.ArrayCounted:
 		if chk {
-			g.pf("%sif %s.%sCount < 0 || %s.%sCount > %d { return false }\n", ind, val, member(f), val, member(f), f.ArrayBound)
+			g.pf("%sif %s.%sCount < %d || %s.%sCount > %d { return false }\n", ind, val, member(f), f.ArrayMin, val, member(f), f.ArrayBound)
 		}
 		loop(fmt.Sprintf("int64(%s.%sCount)", val, member(f)), chk)
 	default:

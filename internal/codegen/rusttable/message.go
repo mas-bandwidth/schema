@@ -351,7 +351,7 @@ fn announce_read_once(
                 return false;
             }
             let (framed, ok) = read_leb(body, &mut at);
-            if !ok || at + (framed as usize) > body.len() {
+            if !ok || at > body.len() || framed > (body.len() - at) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -364,7 +364,7 @@ fn announce_read_once(
             }
             let mut vat = begin + 1;
             let (length, ok) = read_leb(body, &mut vat);
-            if !ok || vat + (length as usize) != end_at {
+            if !ok || vat > end_at || length != (end_at - vat) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -924,20 +924,6 @@ pub struct TableReport {
     pub missing_required: u64,
     /// The current refusal's names, in field declaration order.
     pub missing_required_fields: String,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct TableReportWireFuzz {
-    pub mismatch: u64,
-    pub oor: u64,
-    pub repeated: u64,
-}
-
-impl std::ops::Deref for TableReport {
-    type Target = TableReportWireFuzz;
-    fn deref(&self) -> &Self::Target {
-        &TableReportWireFuzz { mismatch: 0, oor: 0, repeated: 0 }
-    }
 }
 
 impl TableReport {

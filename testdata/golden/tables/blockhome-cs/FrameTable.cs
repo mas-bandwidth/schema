@@ -298,6 +298,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -337,6 +338,7 @@ namespace Blockhome
                 info.RootElemSlots = 32;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1047,6 +1049,7 @@ namespace Blockhome
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PartRowFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -1217,6 +1220,7 @@ namespace Blockhome
 
         public static long PartRowFixedSave(ReadOnlySpan<PartRow> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PartRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PartRowFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -1348,7 +1352,7 @@ namespace Blockhome
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -11270,6 +11274,7 @@ namespace Blockhome
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PartFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -14111,6 +14116,7 @@ namespace Blockhome
 
         public static long PartFrameFixedSave(ReadOnlySpan<PartFrame> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PartFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PartFrameFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -14242,7 +14248,7 @@ namespace Blockhome
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

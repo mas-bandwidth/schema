@@ -3,11 +3,21 @@ package main
 // The Goose packet wire's controls (make/goose-packet.mk). Each removes one
 // rule from the emitter and must fail exactly the rows that rule holds.
 func init() {
+	sabotages["packet-write-cfloat-goose"] = []edit{{
+		old: `w.Pf("%sif %s < %s || %s > %s { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }\n", ind, expr, floatLit32(min32), expr, floatLit32(float32(f.FMax)))`,
+		new: `// SABOTAGED: range check removed`,
+	}}
 	// SPEC §4.7: the read's UTF-8 validation; the harness's mutation sweep
 	// must then disagree with the C++ reader.
 	sabotages["packet-utf8-goose-read"] = []edit{{
 		old: `w.Pf("%sguard serialize_valid_utf8(%s[0..%s]) else {`,
 		new: `/* SABOTAGED */ w.Pf("%sguard true || serialize_valid_utf8(%s[0..%s]) else {`,
+	}}
+	// SPEC §5: the public read's one end check after the top-level object,
+	// so a trailing byte and set padding read as the value again.
+	sabotages["packet-end-goose"] = []edit{{
+		old: `	w.Pf("    guard serialize_end(s) else { return false; } // one packet's end: no trailing byte, no set padding (SPEC §5)\n")`,
+		new: `	// SABOTAGED: the end check removed`,
 	}}
 	// SPEC §4.2: the constructor's byte default, its length kept.
 	sabotages["packet-defaults-goose-constructor-bytes"] = []edit{{

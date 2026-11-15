@@ -170,46 +170,51 @@ const integrityFixedVarFormGolden = "0101041100000000ea0ce83094fde47c01000000000
 const integrityFixedVarFormPlainGolden = "0101041100000000ea0ce83094fde47c0100000000000000"
 
 const integrityFixedVarFormProbe = `package probe
-import ("encoding/base64"; "encoding/binary"; "encoding/hex"; "errors"; "hash/crc32"; "testing")
+import ("bytes"; "encoding/base64"; "encoding/binary"; "encoding/hex"; "errors"; "hash/crc32"; "testing")
 
-func TestIntegrityFixedVariableForm(t *testing.T) {
+func TestIntegrityFixedSaveForm(t *testing.T) {
 	t.Parallel()
 	row := FixedRow{Value: 17}
 	plain := PlainFixedRow{Value: 17}
-	if FixedRowMeasure(&row) != 28 {
-		t.Fatalf("FixedRowMeasure = %d, want 28", FixedRowMeasure(&row))
+	if FixedRowMeasure(&row) != FixedRowFixedMeasure(1) {
+		t.Fatalf("FixedRowMeasure = %d, want the fixed form's %d", FixedRowMeasure(&row), FixedRowFixedMeasure(1))
 	}
-	if PlainFixedRowMeasure(&plain) != 24 {
-		t.Fatalf("PlainFixedRowMeasure = %d, want 24", PlainFixedRowMeasure(&plain))
+	if PlainFixedRowMeasure(&plain) != PlainFixedRowFixedMeasure(1) {
+		t.Fatalf("PlainFixedRowMeasure = %d, want the fixed form's %d", PlainFixedRowMeasure(&plain), PlainFixedRowFixedMeasure(1))
 	}
-	if n, err := FixedRowMeasureReason(&row); n != 28 || err != nil {
-		t.Fatalf("FixedRowMeasureReason = (%d, %v), want (28, nil)", n, err)
+	if n, err := FixedRowMeasureReason(&row); n != FixedRowFixedMeasure(1) || err != nil {
+		t.Fatalf("FixedRowMeasureReason = (%d, %v), want (%d, nil)", n, err, FixedRowFixedMeasure(1))
 	}
-	kw := make([]byte, FixedRowMeasure(&row))
-	if n := FixedRowSave(&row, kw); n != int64(len(kw)) {
-		t.Fatalf("FixedRowSave = %d, want %d", n, len(kw))
+	saved := make([]byte, FixedRowMeasure(&row))
+	if n := FixedRowSave(&row, saved); n != int64(len(saved)) || saved[0] != TableFixedForm {
+		t.Fatalf("FixedRowSave = %d form %d, want form 3", n, saved[0])
 	}
-	if n := FixedRowSave(&row, make([]byte, len(kw)-1)); n >= 0 {
+	if n := FixedRowSave(&row, make([]byte, len(saved)-1)); n >= 0 {
 		t.Fatal("FixedRowSave into a buffer one byte short did not refuse")
 	}
-	pw := make([]byte, PlainFixedRowMeasure(&plain))
-	if n := PlainFixedRowSave(&plain, pw); n != int64(len(pw)) {
-		t.Fatalf("PlainFixedRowSave = %d, want %d", n, len(pw))
+	savedPlain := make([]byte, PlainFixedRowMeasure(&plain))
+	if n := PlainFixedRowSave(&plain, savedPlain); n != int64(len(savedPlain)) || savedPlain[0] != TableFixedForm {
+		t.Fatalf("PlainFixedRowSave = %d form %d, want form 3", n, savedPlain[0])
 	}
-	if got := hex.EncodeToString(kw); got != "` + integrityFixedVarFormGolden + `" {
-		t.Fatalf("FixedRowSave golden = %s, want ` + integrityFixedVarFormGolden + `", got)
+	// The form-1 files themselves stay constructible for the refusal checks
+	// below; they are the golden bytes and no writer emits them at a fixed root.
+	kw, err := hex.DecodeString("` + integrityFixedVarFormGolden + `")
+	if err != nil || len(kw) == 0 {
+		t.Fatalf("form-1 golden: %v", err)
 	}
-	if got := hex.EncodeToString(pw); got != "` + integrityFixedVarFormPlainGolden + `" {
-		t.Fatalf("PlainFixedRowSave golden = %s, want ` + integrityFixedVarFormPlainGolden + `", got)
+	pw, err := hex.DecodeString("` + integrityFixedVarFormPlainGolden + `")
+	if err != nil || len(pw) == 0 {
+		t.Fatalf("form-1 plain golden: %v", err)
 	}
-	body := kw[:len(kw)-4]
-	if binary.LittleEndian.Uint32(kw[len(body):]) != crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)) {
+	body := saved[:len(saved)-4]
+	if binary.LittleEndian.Uint32(saved[len(body):]) != crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)) {
 		t.Fatal("FixedRowSave trailer is not the CRC-32C of the bytes before it")
 	}
 	text, err := FixedRowSaveText(&row)
-	if err != nil || text != base64.StdEncoding.EncodeToString(kw) {
+	if err != nil || text != base64.StdEncoding.EncodeToString(saved) {
 		t.Fatalf("FixedRowSaveText = (%q, %v)", text, err)
 	}
+	form1Text := base64.StdEncoding.EncodeToString(kw)
 	// Form 1 is previous_form at a fixed root, trailer included. The value
 	// round-trips through FixedLoad, which is where the trailer is checked.
 	var got FixedRow
@@ -220,12 +225,19 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 	if _, err := FixedRowReadStrict(kw); !errors.Is(err, TableRefuseUnknownForm) {
 		t.Fatalf("form-1 ReadStrict: %v", err)
 	}
-	if back, err := FixedRowLoadText(text, &r); err == nil || back != nil || r.Reason != "previous_form" || !errors.Is(err, TableRefuseUnknownForm) {
+	if back, err := FixedRowLoadText(form1Text, &r); err == nil || back != nil || r.Reason != "previous_form" || !errors.Is(err, TableRefuseUnknownForm) {
 		t.Fatalf("form-1 LoadText: %v %+v", err, r)
 	}
 	fw := make([]byte, FixedRowFixedMeasure(1))
 	if FixedRowFixedSave([]FixedRow{row}, fw) != int64(len(fw)) {
 		t.Fatal("fixed save")
+	}
+	if !bytes.Equal(saved, fw) {
+		t.Fatalf("plain Save %x differs from FixedSave %x", saved, fw)
+	}
+	plainFW := make([]byte, PlainFixedRowFixedMeasure(1))
+	if PlainFixedRowFixedSave([]PlainFixedRow{plain}, plainFW) != int64(len(plainFW)) || !bytes.Equal(savedPlain, plainFW) {
+		t.Fatalf("PlainFixedRowSave %x differs from its FixedSave", savedPlain)
 	}
 	batch := make([]FixedRow, 1)
 	plan := make([]TableFixedEntry, int(FixedRowFixedPlanMax))
@@ -252,6 +264,11 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 				t.Fatalf("byte %d ^ 0x%02x did not reset out: %+v", i, x, out)
 			}
 			if i == 0 {
+				if bad[0] == TableFixedForm {
+					// This flip lands on the fixed form, which is the file's own:
+					// it is a form-3 file whose layout and trailer do not match.
+					continue
+				}
 				if rr.Verdict != TableOpenRefused || (rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed") || rr.Reason == "integrity_mismatch" {
 					t.Fatalf("form byte ^ 0x%02x: got %+v", x, rr)
 				}

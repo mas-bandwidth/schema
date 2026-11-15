@@ -29,6 +29,14 @@ public final class MixedHitEventFixed {
 
         /** bool */
         public boolean crit;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            targetId = 0;
+            damage = 0;
+            hitKind = 0;
+            crit = false;
+        }
     }
 
     /**
@@ -54,7 +62,9 @@ public final class MixedHitEventFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert (v.targetId & 0xfffffffffffff000L) == 0;
+        assert v.damage >= 0L && v.damage <= 4095L;
+        assert v.hitKind >= 0L && v.hitKind <= 7L;
         return true;
     }
 
@@ -63,19 +73,35 @@ public final class MixedHitEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true, false);
+    }
+
+    /**
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
+     */
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.targetId = TableFixed.get32(b, at + 0);
-        if (v.targetId > 4095L) {
+        if (Integer.compareUnsigned(v.targetId, 4095) > 0) {
             v.targetId = (int) (4095L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 4095L) {
                 q = 4095L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.damage = (int) (q);
         }
@@ -83,12 +109,21 @@ public final class MixedHitEventFixed {
             long q = TableFixed.get32(b, at + 8);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 7L) {
                 q = 7L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.hitKind = (int) (q);
+        }
+        if ((b[at + 12] & 0xFF) > 1) {
+            if (live) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+            }
         }
         v.crit = b[at + 12] != 0;
     }

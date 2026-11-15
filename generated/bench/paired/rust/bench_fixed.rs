@@ -42,9 +42,10 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
         1 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
-            // tag was just matched against `hit`, every arm is plain data
-            // with no niche in it, and the overlay's zero form is a value of
-            // every arm — so a Row whose tag was set without its arm reads a
+            // tag was just matched against `hit`, and the overlay's zero form
+            // is a value of every arm — zero is valid for every scalar and
+            // every bool, and a zero self-relative delta is the null
+            // reference — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
             let arm = unsafe { value.arms.hit };
             let at = 1;
@@ -53,9 +54,10 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
         2 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
-            // tag was just matched against `chat`, every arm is plain data
-            // with no niche in it, and the overlay's zero form is a value of
-            // every arm — so a Row whose tag was set without its arm reads a
+            // tag was just matched against `chat`, and the overlay's zero form
+            // is a value of every arm — zero is valid for every scalar and
+            // every bool, and a zero self-relative delta is the null
+            // reference — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
             let arm = unsafe { value.arms.chat };
             let at = 1;
@@ -64,9 +66,10 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
         3 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
-            // tag was just matched against `pickup`, every arm is plain data
-            // with no niche in it, and the overlay's zero form is a value of
-            // every arm — so a Row whose tag was set without its arm reads a
+            // tag was just matched against `pickup`, and the overlay's zero form
+            // is a value of every arm — zero is valid for every scalar and
+            // every bool, and a zero self-relative delta is the null
+            // reference — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
             let arm = unsafe { value.arms.pickup };
             let at = 1;
@@ -86,7 +89,7 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
     // it lands as None and counts one held rather than selecting nothing
     // silently.
     if tag_raw > 3 {
-        report.held += 1;
+        if report.slack == 0 { report.held += 1; }
     } else {
         value.tag = tag_raw;
     }
@@ -242,7 +245,7 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
         let at = 40;
         let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
         if raw > 15 {
-            report.held += 1;
+            if report.slack == 0 { report.held += 1; }
             value.weapon = 0;
         } else {
             value.weapon = raw;
@@ -619,7 +622,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[52..56].try_into().expect("four bytes"));
         let held = raw.clamp(0, 8);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.entities_count = held;
@@ -636,7 +639,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
         let held = raw.clamp(0, 80);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.stats_count = held;
@@ -664,7 +667,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes"));
         let held = raw.clamp(0, 15);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.player_name_length = held;
@@ -675,7 +678,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes"));
         let held = raw.clamp(0, 16);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.payload_length = held;

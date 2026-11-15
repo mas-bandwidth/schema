@@ -290,7 +290,8 @@ fixed table Live
 		"live_grades_fixed_list(b_grades, min(max(n_grades, 0), 4), c, m)",
 		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNTER: the payload's clamp
 		// lands in a shadow counter the present flag either keeps or drops.
-		"c = if(p_note != 0, do: c_note, else: c)",
+		"p_note = R.flag(p_note)",
+		"c = if(p_note, do: c_note, else: c)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the projection of Live does not carry %q, so a slack slot or an absent payload counts", want)
@@ -700,8 +701,9 @@ fixed table Root
 
 // Counted-array slack is held by TestFixedCountedArrayLiveExtent below the
 // public native boundary. Compile-time entry emission and runtime execution
-// are distinct: SPEC-TABLES §3.4 leaves slack uninspected, while algorithm
-// §5.9 #33 requires one widening operation per live element.
+// are distinct: a non-zero slot past the count is a dead byte that refuses the
+// whole load (algorithm §5.3 step 11), while §5.9 #33 still requires one
+// widening operation per live element.
 
 // findGenerated answers the one generated file whose text carries `needle`, so
 // a test can name a shape rather than a filename.

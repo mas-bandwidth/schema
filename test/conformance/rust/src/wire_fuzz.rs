@@ -97,6 +97,7 @@ fn main() {
             let mut store = TableRetain {
                 bytes: Vec::with_capacity(1 << 20),
                 ids: Vec::with_capacity(1 << 17),
+                nodes: Default::default(),
             };
             let value = card_load_retain(&wire, &mut store, &mut report);
             loaded = value.is_some();
@@ -121,10 +122,12 @@ fn main() {
         let mut head = [0u8; 47];
         head[0] = loaded as u8;
         head[1..5].copy_from_slice(&(report.unknown as u32).to_le_bytes());
-        head[5..9].copy_from_slice(&(report.mismatch as u32).to_le_bytes());
+        // kind_mismatch, clamped and duplicate are retired. The slots stay
+        // and carry zero.
+        head[5..9].copy_from_slice(&0u32.to_le_bytes());
         head[9..13].copy_from_slice(&(report.widened as u32).to_le_bytes());
-        head[13..17].copy_from_slice(&(report.oor as u32).to_le_bytes());
-        head[17..21].copy_from_slice(&(report.repeated as u32).to_le_bytes());
+        head[13..17].copy_from_slice(&0u32.to_le_bytes());
+        head[17..21].copy_from_slice(&0u32.to_le_bytes());
         head[21] = report.damaged as u8;
         head[22] = report.refused as u8;
         head[23..31].copy_from_slice(&(measure as i64).to_le_bytes());

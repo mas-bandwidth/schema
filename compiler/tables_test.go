@@ -75,7 +75,7 @@ fixed table Config
 // from tableSrc on purpose — the zero-cost gate reads tableSrc and a keyed
 // array legitimately emits a C++ class template, which that gate greps for.
 const runtimeSrc = tableSrc + `
-fixed table Keyed
+fixed table KeyedSlots
 {
     slots [Kind]int32
     extra ?Point
@@ -1023,8 +1023,9 @@ fixed table ShipConfig
 }
 
 // THE RESOLVING WALK'S CAP COUNTS NESTED FRAMED VALUES (docs/SPEC-TABLES.md
-// §6.6): the last depth the cap admits rides and one past it is dropped. The C
-// target pins the same pair in TestCTableRetainFramedDepth.
+// §6.6) and it is §4's binary bound. The last depth the cap admits rides, and a
+// schema one level past the bound is refused by the compiler, so no conforming
+// wire can reach a record the retaining walk must drop for its depth.
 func TestCppTableRetainFramedDepth(t *testing.T) {
 	t.Parallel()
 	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
@@ -1032,7 +1033,7 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, depth := range []int{64, 65} {
+	for _, depth := range []int{128, 129} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {
 			var schema, fixture strings.Builder
 			schema.WriteString("package probe\ntable Root { next *Root\nextra T0 }\n")
@@ -1047,6 +1048,19 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 				}
 			}
 			fixture.WriteString(strings.Repeat("}", depth))
+			if depth > 128 {
+				f, perrs := parser.Parse("Probe.schema", []byte(schema.String()))
+				if len(perrs) > 0 {
+					t.Fatalf("parse: %v", perrs[0])
+				}
+				_, cerrs := check.Unit([]check.SourceFile{{
+					Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(schema.String()), AST: f,
+				}})
+				if len(cerrs) == 0 || !strings.Contains(cerrs[0].Error(), "binary bound") {
+					t.Fatalf("a %d-level schema: %v, want the compiler's binary-bound refusal", depth, cerrs)
+				}
+				return
+			}
 			future := unitFromSource(t, schema.String())
 			m := tabletext.NewModel(future)
 			value := m.New(m.Lookup("Root"))
@@ -1059,7 +1073,7 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 				t.Fatal(err)
 			}
 			kept := 0
-			if depth == 64 {
+			if depth == 128 {
 				kept = 1
 			}
 			referenceCompileRun(t, files, fmt.Sprintf(`#include "ProbeTable.h"

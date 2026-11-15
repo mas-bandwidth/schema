@@ -8,13 +8,6 @@
 // closed by the zero reference; a field at its declared default does not ride.
 // The bodies of one batch are one continuous bit stream, padded to a byte once
 // at its end (§3.3).
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_assignments)]
-#![allow(unused_labels)]
-#![allow(unused_comparisons)]
-#![allow(clippy::all)]
 
 // THE ONE REPORT (§4, §3.3): the crate root exports one TableReport, the
 // variable runtime's when the unit carries that form and the message
@@ -39,69 +32,69 @@ pub fn mixed_entity_message_default() -> MixedEntityRow {
 /// One MixedEntity body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntityRow) -> bool {
-    let d = mixed_entity_message_default();
+    let dflt = mixed_entity_message_default();
     {
-        if value.entity_id != d.entity_id {
+        if value.entity_id != dflt.entity_id {
             w.put(31, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.entity_id as u64, 0);
         }
     }
     {
-        if value.pos_x != d.pos_x {
+        if value.pos_x != dflt.pos_x {
             w.put(32, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_x as i64 as u64, 0);
         }
     }
     {
-        if value.pos_y != d.pos_y {
+        if value.pos_y != dflt.pos_y {
             w.put(33, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_y as i64 as u64, 0);
         }
     }
     {
-        if value.pos_z != d.pos_z {
+        if value.pos_z != dflt.pos_z {
             w.put(34, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_z as i64 as u64, 0);
         }
     }
     {
-        if value.yaw != d.yaw {
+        if value.yaw != dflt.yaw {
             w.put(35, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.yaw as u64, 0);
         }
     }
     {
-        if value.pitch != d.pitch {
+        if value.pitch != dflt.pitch {
             w.put(36, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pitch as u64, 0);
         }
     }
     {
-        if value.vel_x != d.vel_x {
+        if value.vel_x != dflt.vel_x {
             w.put(37, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_x as i64 as u64, 0);
         }
     }
     {
-        if value.vel_y != d.vel_y {
+        if value.vel_y != dflt.vel_y {
             w.put(38, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_y as i64 as u64, 0);
         }
     }
     {
-        if value.vel_z != d.vel_z {
+        if value.vel_z != dflt.vel_z {
             w.put(39, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_z as i64 as u64, 0);
         }
     }
     {
-        if value.health != d.health {
+        if value.health != dflt.health {
             w.put(40, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.health as i64 as u64, 0);
         }
     }
     {
-        if value.weapon != d.weapon {
+        if value.weapon != dflt.weapon {
             w.put(41, TABLE_MESSAGE_REF_BITS);
             match value.weapon {
                 0 => w.put(0, TABLE_MESSAGE_REF_BITS),
@@ -125,19 +118,19 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
         }
     }
     {
-        if value.damage != d.damage {
+        if value.damage != dflt.damage {
             w.put(42, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage, 0);
         }
     }
     {
-        if value.moving != d.moving {
+        if value.moving != dflt.moving {
             w.put(43, TABLE_MESSAGE_REF_BITS);
             w.put(if value.moving { 1 } else { 0 }, 1);
         }
     }
     {
-        if value.firing != d.firing {
+        if value.firing != dflt.firing {
             w.put(44, TABLE_MESSAGE_REF_BITS);
             w.put(if value.firing { 1 } else { 0 }, 1);
         }
@@ -152,11 +145,17 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
 /// kind is a kind mismatch, skipped.
 pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
     *value = mixed_entity_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0x23fcfd6678e36712 => {
                 let mut widened = false;
@@ -369,7 +368,6 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 }
             }
             0xa0b610205f2c6e01 => {
-                let mut widened = false;
                 'f11: {
                     if entry.kind != 30 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -402,7 +400,6 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             };
                         }
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x7f6308be8ab37fc0 => {
@@ -419,14 +416,13 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.damage = x as u64;
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0x11a44fc1d1243da7 => {
-                let mut widened = false;
                 'f13: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -434,14 +430,12 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         break 'f13;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.moving = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x7674cfd19b9031ca => {
-                let mut widened = false;
                 'f14: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -449,10 +443,9 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         break 'f14;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.firing = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             _ => {
@@ -478,15 +471,15 @@ pub fn mixed_stat_message_default() -> MixedStatRow {
 /// One MixedStat body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow) -> bool {
-    let d = mixed_stat_message_default();
+    let dflt = mixed_stat_message_default();
     {
-        if value.stat_id != d.stat_id {
+        if value.stat_id != dflt.stat_id {
             w.put(51, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.stat_id as u64, 0);
         }
     }
     {
-        if value.delta != d.delta {
+        if value.delta != dflt.delta {
             w.put(52, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0xfffffffffffffe00, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.delta as i64 as u64, 0);
         }
@@ -501,14 +494,19 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
 /// kind is a kind mismatch, skipped.
 pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
     *value = mixed_stat_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0x80ab75f0866dbf65 => {
-                let mut widened = false;
                 'f15: {
                     if entry.kind != 6 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -521,7 +519,6 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                         if x > 255 { x = 255; report.damaged = true; }
                         value.stat_id = x as u32;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x52076675ec13a0c1 => {
@@ -568,27 +565,27 @@ pub fn mixed_hit_event_message_default() -> MixedHitEventRow {
 /// One MixedHitEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHitEventRow) -> bool {
-    let d = mixed_hit_event_message_default();
+    let dflt = mixed_hit_event_message_default();
     {
-        if value.target_id != d.target_id {
+        if value.target_id != dflt.target_id {
             w.put(45, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.target_id as u64, 0);
         }
     }
     {
-        if value.damage != d.damage {
+        if value.damage != dflt.damage {
             w.put(46, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage as i64 as u64, 0);
         }
     }
     {
-        if value.hit_kind != d.hit_kind {
+        if value.hit_kind != dflt.hit_kind {
             w.put(47, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 3, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.hit_kind as i64 as u64, 0);
         }
     }
     {
-        if value.crit != d.crit {
+        if value.crit != dflt.crit {
             w.put(48, TABLE_MESSAGE_REF_BITS);
             w.put(if value.crit { 1 } else { 0 }, 1);
         }
@@ -603,11 +600,17 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
 /// kind is a kind mismatch, skipped.
 pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
     *value = mixed_hit_event_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0xb7bc9ac015a25050 => {
                 let mut widened = false;
@@ -673,7 +676,6 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                 }
             }
             0x126167908c9aa52d => {
-                let mut widened = false;
                 'f20: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -681,10 +683,9 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         break 'f20;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.crit = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             _ => {
@@ -710,15 +711,15 @@ pub fn mixed_chat_event_message_default() -> MixedChatEventRow {
 /// One MixedChatEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedChatEventRow) -> bool {
-    let d = mixed_chat_event_message_default();
+    let dflt = mixed_chat_event_message_default();
     {
-        if value.channel != d.channel {
+        if value.channel != dflt.channel {
             w.put(29, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 2, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.channel as i64 as u64, 0);
         }
     }
     {
-        if value.speaker != d.speaker {
+        if value.speaker != dflt.speaker {
             w.put(30, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.speaker as u64, 0);
         }
@@ -733,11 +734,17 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
 /// kind is a kind mismatch, skipped.
 pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
     *value = mixed_chat_event_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0xa5013e9ad5caeda4 => {
                 let mut widened = false;
@@ -804,15 +811,15 @@ pub fn mixed_pickup_event_message_default() -> MixedPickupEventRow {
 /// One MixedPickupEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &MixedPickupEventRow) -> bool {
-    let d = mixed_pickup_event_message_default();
+    let dflt = mixed_pickup_event_message_default();
     {
-        if value.item_id != d.item_id {
+        if value.item_id != dflt.item_id {
             w.put(49, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.item_id as u64, 0);
         }
     }
     {
-        if value.amount != d.amount {
+        if value.amount != dflt.amount {
             w.put(50, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.amount as i64 as u64, 0);
         }
@@ -827,11 +834,17 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
 /// kind is a kind mismatch, skipped.
 pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
     *value = mixed_pickup_event_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0x9e7fd06d864fbd56 => {
                 let mut widened = false;
@@ -974,58 +987,61 @@ pub fn bench_mixed_message_default() -> BenchMixedRow {
 
 /// One BenchMixed body (§3.3): each field off its declared default, then the zero
 /// reference.
+// The ride loop indexes the row's storage by the declared count: an
+// iterator would turn an off-contract short row into a silent short write.
+#[allow(clippy::needless_range_loop)]
 pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedRow) -> bool {
-    let d = bench_mixed_message_default();
+    let dflt = bench_mixed_message_default();
     {
-        if value.sequence != d.sequence {
+        if value.sequence != dflt.sequence {
             w.put(1, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.sequence as u64, 0);
         }
     }
     {
-        if value.ack_sequence != d.ack_sequence {
+        if value.ack_sequence != dflt.ack_sequence {
             w.put(2, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_sequence as i64 as u64, 0);
         }
     }
     {
-        if value.ack_bits != d.ack_bits {
+        if value.ack_bits != dflt.ack_bits {
             w.put(3, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_bits as u64, 0);
         }
     }
     {
-        if value.session_id != d.session_id {
+        if value.session_id != dflt.session_id {
             w.put(4, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.session_id as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.session_id, 0);
         }
     }
     {
-        if value.client_id != d.client_id {
+        if value.client_id != dflt.client_id {
             w.put(5, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.client_id as u64, 0);
         }
     }
     {
-        if value.nonce != d.nonce {
+        if value.nonce != dflt.nonce {
             w.put(6, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.nonce as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.nonce, 0);
         }
     }
     {
-        if value.world_time != d.world_time {
+        if value.world_time != dflt.world_time {
             w.put(7, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.world_time as i64 as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.world_time as u64, 0);
         }
     }
     {
-        if value.frame_tick != d.frame_tick {
+        if value.frame_tick != dflt.frame_tick {
             w.put(8, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.frame_tick as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.frame_tick, 0);
         }
     }
     {
-        if value.server_time != d.server_time {
+        if value.server_time != dflt.server_time {
             w.put(9, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.server_time as i64 as u64, 0);
         }
@@ -1075,11 +1091,11 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if (0..4).any(|i| value.loadout[i] != d.loadout[i]) {
+        if (0..4).any(|i| value.loadout[i] != dflt.loadout[i]) {
             w.put(13, TABLE_MESSAGE_REF_BITS);
-            w.put((4 as u64).wrapping_sub(4), 0);
+            w.put(4u64.wrapping_sub(4), 0);
             w.align();
-            for i in 0..(4 as usize) {
+            for i in 0..4usize {
                 table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.loadout[i] as u64, 0);
             }
         }
@@ -1104,78 +1120,78 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.aim_x != d.aim_x {
+        if value.aim_x != dflt.aim_x {
             w.put(16, TABLE_MESSAGE_REF_BITS);
             if !value.aim_x.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_x.to_bits() as u64, 0);
         }
     }
     {
-        if value.aim_y != d.aim_y {
+        if value.aim_y != dflt.aim_y {
             w.put(17, TABLE_MESSAGE_REF_BITS);
             if !value.aim_y.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_y.to_bits() as u64, 0);
         }
     }
     {
-        if value.aim_z != d.aim_z {
+        if value.aim_z != dflt.aim_z {
             w.put(18, TABLE_MESSAGE_REF_BITS);
             if !value.aim_z.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_z.to_bits() as u64, 0);
         }
     }
     {
-        if value.recoil.to_bits() != d.recoil.to_bits() {
+        if value.recoil.to_bits() != dflt.recoil.to_bits() {
             w.put(19, TABLE_MESSAGE_REF_BITS);
             if !value.recoil.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.recoil.to_bits() as u64, 0);
         }
     }
     {
-        if value.drift.to_bits() != d.drift.to_bits() {
+        if value.drift.to_bits() != dflt.drift.to_bits() {
             w.put(20, TABLE_MESSAGE_REF_BITS);
             if !value.drift.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.drift.to_bits(), 0);
         }
     }
     {
-        if value.wide_key != d.wide_key {
+        if value.wide_key != dflt.wide_key {
             w.put(21, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 128, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.wide_key.0 as u64, (value.wide_key.0 >> 64) as u64);
         }
     }
     {
-        if value.flux != d.flux {
+        if value.flux != dflt.flux {
             w.put(22, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 102, base_lo: 0x0, base_hi: 0xfffffff000000000, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.flux.0 as u64, (value.flux.0 >> 64) as u64);
         }
     }
     {
-        if value.ping != d.ping {
+        if value.ping != dflt.ping {
             w.put(23, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ping as u64, 0);
         }
     }
     {
-        if value.crc_hint != d.crc_hint {
+        if value.crc_hint != dflt.crc_hint {
             w.put(24, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.crc_hint as u64, 0);
         }
     }
     {
-        if value.has_extra != d.has_extra {
+        if value.has_extra != dflt.has_extra {
             w.put(25, TABLE_MESSAGE_REF_BITS);
             w.put(if value.has_extra { 1 } else { 0 }, 1);
         }
     }
     {
-        if value.extra != d.extra {
+        if value.extra != dflt.extra {
             w.put(26, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.extra as i64 as u64, 0);
         }
     }
     {
-        if value.idle_ticks != d.idle_ticks {
+        if value.idle_ticks != dflt.idle_ticks {
             w.put(27, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 4, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.idle_ticks as i64 as u64, 0);
         }
@@ -1190,11 +1206,17 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
 /// kind is a kind mismatch, skipped.
 pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {
     *value = bench_mixed_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0xaa38aca481f528a8 => {
                 let mut widened = false;
@@ -1273,7 +1295,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.session_id = x as u64;
                     }
                     if widened { report.widened += 1; }
@@ -1293,7 +1315,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.client_id = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -1314,7 +1336,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x < 0u128 { x = 0u128; report.damaged = true; } else if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
+                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
                         value.nonce = x as u64;
                     }
                     if widened { report.widened += 1; }
@@ -1363,7 +1385,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 }
             }
             0x3c460475f9be69c6 => {
-                let mut widened = false;
                 'f36: {
                     if entry.kind != 22 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1376,11 +1397,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 16776960i128 { x = 16776960i128; report.damaged = true; }
                         value.server_time = x as i32;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x935d0fb07bb3822a => {
-                let mut widened = false;
                 'f37: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
@@ -1403,11 +1422,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                         value.entities_count = keep as i32;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0xee639cad45b1994c => {
-                let mut widened = false;
                 'f39: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
@@ -1430,11 +1447,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                         value.stats_count = keep as i32;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x2e35dc5321aa5790 => {
-                let mut widened = false;
                 'f41: {
                     if entry.kind != 15 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1450,7 +1465,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             if arm_entry42.id >= 0xffff_ffff_ffff_fffd || arm_entry42.kind == 0 { report.damaged = true; return false; }
                             match arm_entry42.id {
                                 0x33732819300680aa => {
-                                    let mut widened = false;
                                     'a43: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
@@ -1461,11 +1475,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                         let mut arm44: MixedHitEventRow = Default::default();
                                         if !mixed_hit_event_load_message_body(r, v, report, &mut arm44) { return false; }
                                         value.game_event.set_hit(arm44);
-                                        if widened { report.widened += 1; }
                                     }
                                 }
                                 0xf2a38d910b5b348b => {
-                                    let mut widened = false;
                                     'a45: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
@@ -1476,11 +1488,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                         let mut arm46: MixedChatEventRow = Default::default();
                                         if !mixed_chat_event_load_message_body(r, v, report, &mut arm46) { return false; }
                                         value.game_event.set_chat(arm46);
-                                        if widened { report.widened += 1; }
                                     }
                                 }
                                 0x9fa3a41c86ecb765 => {
-                                    let mut widened = false;
                                     'a47: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
@@ -1491,7 +1501,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                         let mut arm48: MixedPickupEventRow = Default::default();
                                         if !mixed_pickup_event_load_message_body(r, v, report, &mut arm48) { return false; }
                                         value.game_event.set_pickup(arm48);
-                                        if widened { report.widened += 1; }
                                     }
                                 }
                                 _ => {
@@ -1502,11 +1511,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             }
                         }
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x5759ce7586bbb5a3 => {
-                let mut widened = false;
                 'f49: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
@@ -1526,17 +1533,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             let p: &mut u8 = if i < keep { &mut value.loadout[i as usize] } else { &mut scratch };
                             {
                                 let Some((lo, hi)) = table_message_read_scalar(r, element50.kind, &element50.shape) else { report.damaged = true; return false; };
-                                let mut x = table_message_unsigned(element50.kind, lo, hi);
+                                let x = table_message_unsigned(element50.kind, lo, hi);
                                 (*p) = x as u8;
                             }
                         }
                         if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x13a62f542cf8e86e => {
-                let mut widened = false;
                 'f51: {
                     if entry.kind != 12 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1557,11 +1562,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         value.player_name[..kept].copy_from_slice(&text[..kept]);
                         value.player_name_length = kept as i32;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0xcfb8a9d063b5e9e5 => {
-                let mut widened = false;
                 'f52: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
@@ -1580,11 +1583,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         value.payload[..kept].copy_from_slice(&buf[start..start + kept]);
                         value.payload_length = kept as i32;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0xdbaf7be5e24296c9 => {
-                let mut widened = false;
                 'f53: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1592,16 +1593,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f53;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_x = x;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0xdbaf7ae5e2429516 => {
-                let mut widened = false;
                 'f54: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1609,16 +1608,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f54;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_y = x;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0xdbaf79e5e2429363 => {
-                let mut widened = false;
                 'f55: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1626,16 +1623,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f55;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_z = x;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x9cef31fff7e2e457 => {
-                let mut widened = false;
                 'f56: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1643,11 +1638,10 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f56;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
                         value.recoil = x;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x5ab3f9c9341f6c04 => {
@@ -1663,8 +1657,8 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let x = if entry.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
                         value.drift = x;
                     }
                     if widened { report.widened += 1; }
@@ -1684,7 +1678,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.wide_key = TableU128(x);
                     }
                     if widened { report.widened += 1; }
@@ -1712,7 +1706,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 }
             }
             0xbf30e00dc53307a9 => {
-                let mut widened = false;
                 'f60: {
                     if entry.kind != 26 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1722,10 +1715,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x < 0u128 { x = 0u128; report.damaged = true; } else if x > 64000u128 { x = 64000u128; report.damaged = true; }
+                        if x > 64000u128 { x = 64000u128; report.damaged = true; }
                         value.ping = x as u16;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0x560d6527ccd8515f => {
@@ -1750,7 +1742,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 }
             }
             0xc08292176cfd8672 => {
-                let mut widened = false;
                 'f62: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1758,10 +1749,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f62;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.has_extra = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
                 }
             }
             0xfd29ee12a979cb69 => {

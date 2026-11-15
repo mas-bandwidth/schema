@@ -1,0 +1,6 @@
+package packetwritetext
+
+type TextPacket
+{
+    text string(8)
+}

@@ -967,8 +967,8 @@ namespace Blockdemo
             return RenderShipLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderShipMeasureMessages(RenderShip[] values) { return TableWire.MessageSave(values, RenderShipTableType(), Span<byte>.Empty, true); }
-        public static long RenderShipSaveMessages(RenderShip[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderShipTableType(), bytes, false); }
+        public static long RenderShipMeasureMessages(RenderShip[] values) { long wrote = TableWire.MessageSave(values, RenderShipTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderShip v in values) { System.Diagnostics.Debug.Assert(RenderShipFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderShipSaveMessages(RenderShip[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderShipTableType(), bytes, false); if (wrote >= 0) { foreach (RenderShip v in values) { System.Diagnostics.Debug.Assert(RenderShipFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderShipLoadMessages(RenderShip[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderShipTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderShipCookMeasure(RenderShip value) { return TableWire.Cook(value, RenderShipTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1118,8 +1118,8 @@ namespace Blockdemo
             return RenderTurretLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderTurretMeasureMessages(RenderTurret[] values) { return TableWire.MessageSave(values, RenderTurretTableType(), Span<byte>.Empty, true); }
-        public static long RenderTurretSaveMessages(RenderTurret[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderTurretTableType(), bytes, false); }
+        public static long RenderTurretMeasureMessages(RenderTurret[] values) { long wrote = TableWire.MessageSave(values, RenderTurretTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderTurret v in values) { System.Diagnostics.Debug.Assert(RenderTurretFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderTurretSaveMessages(RenderTurret[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderTurretTableType(), bytes, false); if (wrote >= 0) { foreach (RenderTurret v in values) { System.Diagnostics.Debug.Assert(RenderTurretFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderTurretLoadMessages(RenderTurret[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderTurretTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderTurretCookMeasure(RenderTurret value) { return TableWire.Cook(value, RenderTurretTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1247,8 +1247,8 @@ namespace Blockdemo
             return RenderMissileLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderMissileMeasureMessages(RenderMissile[] values) { return TableWire.MessageSave(values, RenderMissileTableType(), Span<byte>.Empty, true); }
-        public static long RenderMissileSaveMessages(RenderMissile[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderMissileTableType(), bytes, false); }
+        public static long RenderMissileMeasureMessages(RenderMissile[] values) { long wrote = TableWire.MessageSave(values, RenderMissileTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderMissile v in values) { System.Diagnostics.Debug.Assert(RenderMissileFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderMissileSaveMessages(RenderMissile[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderMissileTableType(), bytes, false); if (wrote >= 0) { foreach (RenderMissile v in values) { System.Diagnostics.Debug.Assert(RenderMissileFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderMissileLoadMessages(RenderMissile[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderMissileTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderMissileCookMeasure(RenderMissile value) { return TableWire.Cook(value, RenderMissileTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1376,8 +1376,8 @@ namespace Blockdemo
             return RenderDynamicPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderDynamicPropMeasureMessages(RenderDynamicProp[] values) { return TableWire.MessageSave(values, RenderDynamicPropTableType(), Span<byte>.Empty, true); }
-        public static long RenderDynamicPropSaveMessages(RenderDynamicProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderDynamicPropTableType(), bytes, false); }
+        public static long RenderDynamicPropMeasureMessages(RenderDynamicProp[] values) { long wrote = TableWire.MessageSave(values, RenderDynamicPropTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderDynamicProp v in values) { System.Diagnostics.Debug.Assert(RenderDynamicPropFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderDynamicPropSaveMessages(RenderDynamicProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderDynamicPropTableType(), bytes, false); if (wrote >= 0) { foreach (RenderDynamicProp v in values) { System.Diagnostics.Debug.Assert(RenderDynamicPropFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderDynamicPropLoadMessages(RenderDynamicProp[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderDynamicPropTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderDynamicPropCookMeasure(RenderDynamicProp value) { return TableWire.Cook(value, RenderDynamicPropTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1506,8 +1506,8 @@ namespace Blockdemo
             return RenderStaticPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderStaticPropMeasureMessages(RenderStaticProp[] values) { return TableWire.MessageSave(values, RenderStaticPropTableType(), Span<byte>.Empty, true); }
-        public static long RenderStaticPropSaveMessages(RenderStaticProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderStaticPropTableType(), bytes, false); }
+        public static long RenderStaticPropMeasureMessages(RenderStaticProp[] values) { long wrote = TableWire.MessageSave(values, RenderStaticPropTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderStaticProp v in values) { System.Diagnostics.Debug.Assert(RenderStaticPropFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderStaticPropSaveMessages(RenderStaticProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderStaticPropTableType(), bytes, false); if (wrote >= 0) { foreach (RenderStaticProp v in values) { System.Diagnostics.Debug.Assert(RenderStaticPropFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderStaticPropLoadMessages(RenderStaticProp[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderStaticPropTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderStaticPropCookMeasure(RenderStaticProp value) { return TableWire.Cook(value, RenderStaticPropTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1644,8 +1644,8 @@ namespace Blockdemo
             return RenderCosmeticPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderCosmeticPropMeasureMessages(RenderCosmeticProp[] values) { return TableWire.MessageSave(values, RenderCosmeticPropTableType(), Span<byte>.Empty, true); }
-        public static long RenderCosmeticPropSaveMessages(RenderCosmeticProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderCosmeticPropTableType(), bytes, false); }
+        public static long RenderCosmeticPropMeasureMessages(RenderCosmeticProp[] values) { long wrote = TableWire.MessageSave(values, RenderCosmeticPropTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderCosmeticProp v in values) { System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderCosmeticPropSaveMessages(RenderCosmeticProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderCosmeticPropTableType(), bytes, false); if (wrote >= 0) { foreach (RenderCosmeticProp v in values) { System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderCosmeticPropLoadMessages(RenderCosmeticProp[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderCosmeticPropTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderCosmeticPropCookMeasure(RenderCosmeticProp value) { return TableWire.Cook(value, RenderCosmeticPropTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1766,8 +1766,8 @@ namespace Blockdemo
             return RenderLaserLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderLaserMeasureMessages(RenderLaser[] values) { return TableWire.MessageSave(values, RenderLaserTableType(), Span<byte>.Empty, true); }
-        public static long RenderLaserSaveMessages(RenderLaser[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderLaserTableType(), bytes, false); }
+        public static long RenderLaserMeasureMessages(RenderLaser[] values) { long wrote = TableWire.MessageSave(values, RenderLaserTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderLaser v in values) { System.Diagnostics.Debug.Assert(RenderLaserFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderLaserSaveMessages(RenderLaser[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderLaserTableType(), bytes, false); if (wrote >= 0) { foreach (RenderLaser v in values) { System.Diagnostics.Debug.Assert(RenderLaserFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderLaserLoadMessages(RenderLaser[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderLaserTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderLaserCookMeasure(RenderLaser value) { return TableWire.Cook(value, RenderLaserTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1896,8 +1896,8 @@ namespace Blockdemo
             return RenderExplosionLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RenderExplosionMeasureMessages(RenderExplosion[] values) { return TableWire.MessageSave(values, RenderExplosionTableType(), Span<byte>.Empty, true); }
-        public static long RenderExplosionSaveMessages(RenderExplosion[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderExplosionTableType(), bytes, false); }
+        public static long RenderExplosionMeasureMessages(RenderExplosion[] values) { long wrote = TableWire.MessageSave(values, RenderExplosionTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RenderExplosion v in values) { System.Diagnostics.Debug.Assert(RenderExplosionFixedWriteAdmits(v)); } } return wrote; }
+        public static long RenderExplosionSaveMessages(RenderExplosion[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RenderExplosionTableType(), bytes, false); if (wrote >= 0) { foreach (RenderExplosion v in values) { System.Diagnostics.Debug.Assert(RenderExplosionFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RenderExplosionLoadMessages(RenderExplosion[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderExplosionTableType(), bytes, vocabulary, report, out count); }
 
         public static long RenderExplosionCookMeasure(RenderExplosion value) { return TableWire.Cook(value, RenderExplosionTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -2149,6 +2149,7 @@ namespace Blockdemo
                 info.RootElemSlots = 256;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2194,6 +2195,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2235,6 +2237,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2281,6 +2284,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2325,6 +2329,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2367,6 +2372,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2409,6 +2415,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2451,6 +2458,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2494,6 +2502,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2535,6 +2544,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2577,6 +2587,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2615,6 +2626,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -3060,6 +3072,69 @@ namespace Blockdemo
 
         // RenderExplosion's read-side bounds (§4.6).
         public static void RenderExplosionFixedClampBody(RenderExplosion value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.ExplosionType > 2) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderShip's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderShipFixedWriteCheckBody(RenderShip value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.ShipType > 3) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderTurret's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderTurretFixedWriteCheckBody(RenderTurret value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderMissile's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderMissileFixedWriteCheckBody(RenderMissile value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.MissileType > 2) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderDynamicProp's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderDynamicPropFixedWriteCheckBody(RenderDynamicProp value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.PropType > 3) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderStaticProp's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderStaticPropFixedWriteCheckBody(RenderStaticProp value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.PropType > 3) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderCosmeticProp's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderCosmeticPropFixedWriteCheckBody(RenderCosmeticProp value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.PropType > 3) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderLaser's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderLaserFixedWriteCheckBody(RenderLaser value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.LaserType > 2) { clamped++; }
+            if ((ulong)value.Team > 4) { clamped++; }
+        }
+
+        // RenderExplosion's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RenderExplosionFixedWriteCheckBody(RenderExplosion value, ref int clamped)
         {
             if (value == null) return;
             if ((ulong)value.ExplosionType > 2) { clamped++; }
@@ -3539,6 +3614,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderCameraFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -3623,6 +3699,7 @@ namespace Blockdemo
 
         public static long RenderCameraFixedSave(ReadOnlySpan<RenderCamera> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCameraFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCameraFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -3754,7 +3831,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -3854,6 +3931,15 @@ namespace Blockdemo
             RenderShipFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderShip
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderShipFixedWriteAdmits(RenderShip value)
+        {
+            int bad = 0;
+            RenderShipFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderShip, the fixed form ----
@@ -4199,6 +4285,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderShipFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4300,9 +4387,14 @@ namespace Blockdemo
 
         public static long RenderShipFixedSave(ReadOnlySpan<RenderShip> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderShipFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderShipFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderShipFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderShipFixedHash);
@@ -4431,7 +4523,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -4532,6 +4624,15 @@ namespace Blockdemo
             RenderTurretFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderTurret
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderTurretFixedWriteAdmits(RenderTurret value)
+        {
+            int bad = 0;
+            RenderTurretFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderTurret, the fixed form ----
@@ -4845,6 +4946,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderTurretFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4934,9 +5036,14 @@ namespace Blockdemo
 
         public static long RenderTurretFixedSave(ReadOnlySpan<RenderTurret> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderTurretFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderTurretFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderTurretFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderTurretFixedHash);
@@ -5065,7 +5172,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5166,6 +5273,15 @@ namespace Blockdemo
             RenderMissileFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderMissile
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderMissileFixedWriteAdmits(RenderMissile value)
+        {
+            int bad = 0;
+            RenderMissileFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderMissile, the fixed form ----
@@ -5488,6 +5604,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderMissileFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -5580,9 +5697,14 @@ namespace Blockdemo
 
         public static long RenderMissileFixedSave(ReadOnlySpan<RenderMissile> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderMissileFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderMissileFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderMissileFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderMissileFixedHash);
@@ -5711,7 +5833,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5812,6 +5934,15 @@ namespace Blockdemo
             RenderDynamicPropFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderDynamicProp
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderDynamicPropFixedWriteAdmits(RenderDynamicProp value)
+        {
+            int bad = 0;
+            RenderDynamicPropFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderDynamicProp, the fixed form ----
@@ -6136,6 +6267,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderDynamicPropFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -6229,9 +6361,14 @@ namespace Blockdemo
 
         public static long RenderDynamicPropFixedSave(ReadOnlySpan<RenderDynamicProp> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderDynamicPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderDynamicPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderDynamicPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderDynamicPropFixedHash);
@@ -6360,7 +6497,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -6461,6 +6598,15 @@ namespace Blockdemo
             RenderStaticPropFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderStaticProp
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderStaticPropFixedWriteAdmits(RenderStaticProp value)
+        {
+            int bad = 0;
+            RenderStaticPropFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderStaticProp, the fixed form ----
@@ -6786,6 +6932,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderStaticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -6879,9 +7026,14 @@ namespace Blockdemo
 
         public static long RenderStaticPropFixedSave(ReadOnlySpan<RenderStaticProp> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderStaticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderStaticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderStaticPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderStaticPropFixedHash);
@@ -7010,7 +7162,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -7111,6 +7263,15 @@ namespace Blockdemo
             RenderCosmeticPropFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderCosmeticProp
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderCosmeticPropFixedWriteAdmits(RenderCosmeticProp value)
+        {
+            int bad = 0;
+            RenderCosmeticPropFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderCosmeticProp, the fixed form ----
@@ -7441,6 +7602,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderCosmeticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -7536,9 +7698,14 @@ namespace Blockdemo
 
         public static long RenderCosmeticPropFixedSave(ReadOnlySpan<RenderCosmeticProp> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCosmeticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCosmeticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderCosmeticPropFixedHash);
@@ -7667,7 +7834,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -7768,6 +7935,15 @@ namespace Blockdemo
             RenderLaserFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderLaser
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderLaserFixedWriteAdmits(RenderLaser value)
+        {
+            int bad = 0;
+            RenderLaserFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderLaser, the fixed form ----
@@ -8080,6 +8256,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderLaserFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -8168,9 +8345,14 @@ namespace Blockdemo
 
         public static long RenderLaserFixedSave(ReadOnlySpan<RenderLaser> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderLaserFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderLaserFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderLaserFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderLaserFixedHash);
@@ -8299,7 +8481,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -8400,6 +8582,15 @@ namespace Blockdemo
             RenderExplosionFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RenderExplosion
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RenderExplosionFixedWriteAdmits(RenderExplosion value)
+        {
+            int bad = 0;
+            RenderExplosionFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RenderExplosion, the fixed form ----
@@ -8723,6 +8914,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RenderExplosionFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -8815,9 +9007,14 @@ namespace Blockdemo
 
         public static long RenderExplosionFixedSave(ReadOnlySpan<RenderExplosion> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderExplosionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderExplosionFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RenderExplosionFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderExplosionFixedHash);
@@ -8946,7 +9143,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

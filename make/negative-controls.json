@@ -86,8 +86,8 @@
     },
     {
       "name": "base-3-3",
-      "when": "pull-request",
-      "why": "third slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): doctags, fixed-twin, JSON clamp/keyed-dup/read/write-refusal, and retain-fixed-class controls. Measured 8 s of control time on run 42556155793 over 7 controls.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 126 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-3-3. Before: third slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): doctags, fixed-twin, JSON clamp/keyed-dup/read/write-refusal, and retain-fixed-class controls. Measured 8 s of control time on run 42556155793 over 7 controls.",
       "targets": [
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
@@ -126,24 +126,28 @@
     {
       "name": "base-packet-2",
       "when": "pull-request",
-      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults and Go packet-finite controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls.",
+      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults, Go packet-finite and the C packet-end read controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls; the C packet-end read control joins the same group.",
       "targets": [
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
-        "packet-finite-go-negative-control"
+        "packet-finite-go-negative-control",
+        "packet-write-cfloat-c-negative-control",
+        "packet-end-c-negative-control"
       ]
     },
     {
       "name": "base-packet-3",
       "when": "pull-request",
-      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go) and packet-void read/write (C, C++) controls. Measured 28 s of control time on run 42556155793 over 6 controls.",
+      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
       "targets": [
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
-        "packet-void-cpp-write-negative-control"
+        "packet-void-cpp-write-negative-control",
+        "packet-write-cfloat-cpp-negative-control",
+        "packet-end-cpp-negative-control"
       ]
     },
     {
@@ -214,12 +218,13 @@
     {
       "name": "lua-conformance",
       "when": "pull-request",
-      "why": "the Lua port's conformance-harness controls on the pinned PUC-Rio 5.4.8 (make dist-lua): the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the walk and cycle surfaces, and the caller-owned absent driver (a driver whose absent() writes nothing; red because an unanswered case never passes, I4). Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; this half is the harness leg. Measured 38 s of control time over the 5 harness controls.",
+      "why": "the Lua port's conformance-harness controls on the pinned PUC-Rio 5.4.8 (make dist-lua): the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the walk and cycle surfaces, the write-contract walk answering nil (red on exactly lua / write-refusal, write-refusal-fixed and write-refusal-message), and the caller-owned absent driver (a driver whose absent() writes nothing; red because an unanswered case never passes, I4). Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; this half is the harness leg. Measured 38 s of control time over the 5 harness controls; the write control measured 21 s warm on the studio at load average 34 (2026-11-14).",
       "targets": [
         "conformance-negative-control-lua",
         "conformance-negative-control-lua-walk",
         "conformance-negative-control-lua-framing",
         "conformance-negative-control-lua-cycle",
+        "conformance-negative-control-lua-write",
         "conformance-negative-control-lua-absent"
       ],
       "lua": "5.4.8"
@@ -227,11 +232,13 @@
     {
       "name": "lua-packet",
       "when": "pull-request",
-      "why": "the Lua port's four packet families (constructor defaults, finite-float, UTF-8 read validation and wide pairing) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls.",
+      "why": "the Lua port's five packet families (constructor defaults, finite-float, UTF-8 read validation, wide pairing and the packet end check) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls before the packet-end control joined.",
       "targets": [
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
-        "packet-defaults-lua-negative-control"
+        "packet-defaults-lua-negative-control",
+        "packet-end-lua-negative-control",
+        "packet-write-cfloat-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -511,8 +518,8 @@
     },
     {
       "name": "base-tool-cook-differential-a",
-      "when": "pull-request",
-      "why": "slice 1 of 2 of base-tool-cook-differential, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-tool-cook-differential-negative-control 129 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 136 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-tool-cook-differential-a. Before: slice 1 of 2 of base-tool-cook-differential, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-tool-cook-differential-negative-control 129 s.",
       "targets": [
         "tables-tool-cook-differential-negative-control"
       ]
@@ -1033,6 +1040,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-core",
+      "when": "pull-request",
+      "why": "the table core's form-byte control (make/python.mk): the generated runtime's form byte is moved in a copy, and the pinned-interpreter probe must go red naming message_form_as_file. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "targets": [
+        "python-table-core-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
@@ -1064,8 +1080,8 @@
     },
     {
       "name": "block-fuzz-maximum",
-      "when": "pull-request",
-      "why": "the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 139 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-block-fuzz-maximum. Before: the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
       "targets": [
         "tables-block-fuzz-maximum-negative-control"
       ],
@@ -1195,6 +1211,24 @@
       "why": "the C# packet finite-float read rule: float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors. One build of test/cs under the SerializeConformanceControls switch and two deleted-rule runs; split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
         "packet-finite-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-end",
+      "when": "pull-request",
+      "why": "the C# packet read-termination rule (docs/SPEC.md §5): one overlay rebuild of the emitter without the public read's end call, one regenerated End unit, and the shared packet-end vectors required to refuse the trailing byte and the final-byte padding while the exact packet stays accepted.",
+      "targets": [
+        "packet-end-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-write-cfloat",
+      "when": "pull-request",
+      "why": "the C# packet writer's compressed-float range contract (docs/SPEC.md §5.1 row 10, docs/PACKET-WIRE-ALGORITHM.md §2.5): one overlay rebuild of the emitter with the generated finite/range assertion removed, one regenerated CFloat unit, and the shared cases required to report the three finite off-range verdicts red by name while the lawful cases stay written.",
+      "targets": [
+        "packet-write-cfloat-cs-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -1480,7 +1514,8 @@
         "cards-rust-conformance-hash-negative-control",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
-        "packet-utf8-rust-negative-control"
+        "packet-utf8-rust-negative-control",
+        "packet-end-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -1490,22 +1525,46 @@
       "why": "the Rust conformance walk control (the emitted JSON reader's field-key match sabotaged through go build -overlay, the units regenerated and the conformance driver rebuilt against them, requiring rust / json-read red while json-write and wire stay green) paired with the cook-write finite-float and JSON-hostile go-test overlay controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739) so no row carries two complete-driver rebuilds. Measured 60 s of control time over the 3 controls on vision (walk 50 s, cook-write 6 s, json-hostile 5 s; 27 s on the author's quiet machine).",
       "targets": [
         "conformance-negative-control-rust-walk",
-        "tables-rust-cook-write-negative-control",
         "tables-rust-json-hostile-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-cook-write-test",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): taken out of rust-conformance-walk because the suite it plants into, TestCookWriteRust, is red on main without the plant: it reads every cook-write row from the instance wire, so the recipe rows (input=<json> share=<from>:<to>, blob_shared) fail, and a form-1 load the Rust leg refuses panics the cook probe; re-enable: relax/rust-cookwrite-test-red.",
+      "targets": [
+        "tables-rust-cook-write-negative-control"
       ],
       "rust": "stable"
     },
     {
       "name": "rust-conformance-framing",
       "when": "pull-request",
-      "why": "the Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8) and per-case absence control (docs/PORTING.md I4), with the byte-order, order-word, node-label and cook-layout 3.0.0 proof controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 58 s of control time over the 6 controls on vision (framing 9 s, absent 12 s, byte-order 7 s, order-word 11 s, node-label 15 s, cook-layout 6 s).",
+      "why": "Since 2026-11-14 the byte-order, order-word, node-label and cook-layout controls only: the framing control is in rust-conformance-framing-control and the absence control in rust-conformance-absent (the six ran 213-224 s on AWS runners). Before: the Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8) and per-case absence control (docs/PORTING.md I4), with the byte-order, order-word, node-label and cook-layout 3.0.0 proof controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 58 s of control time over the 6 controls on vision (framing 9 s, absent 12 s, byte-order 7 s, order-word 11 s, node-label 15 s, cook-layout 6 s).",
       "targets": [
-        "conformance-negative-control-rust-framing",
-        "conformance-rust-absent-negative-control",
         "tables-rust-byte-order-negative-control",
         "tables-rust-order-word-negative-control",
         "tables-rust-node-label-negative-control",
         "tables-rust-cook-layout-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-conformance-absent",
+      "when": "pull-request",
+      "why": "the Rust per-case absence control (docs/PORTING.md I4), split from rust-conformance-framing: that group ran 213-224 s on AWS runners (main CI full 43635368439, 43640159584) against the 2-minute per-commit rule. One cargo build of the sabotaged driver.",
+      "targets": [
+        "conformance-rust-absent-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-conformance-framing-control",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the Rust conformance framing control alone builds two sabotaged drivers in sequence (about 67 s each on an AWS runner, main CI full 43635368439), past the 2-minute per-commit rule; re-enable: relax/ci-time-rust-conformance-framing. Before: in rust-conformance-framing, pull-request. The Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8).",
+      "targets": [
+        "conformance-negative-control-rust-framing"
       ],
       "rust": "stable"
     },
@@ -1520,8 +1579,8 @@
     },
     {
       "name": "rust-tables-1",
-      "when": "pull-request",
-      "why": "first slice of the Rust table emitter's go-test and go-build overlay controls: the numbering walk and float NaN control, the keyed accessor's three clauses (None, E.Max, shift), the map writer's sort control, and the accessor/descriptor and block-slot agreement controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 59 s of control time over the 5 controls on vision (number-walk 15 s, keyed 10 s, map-sort 15 s, accessor 10 s, slot 9 s).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 114 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-rust-tables-1. Before: first slice of the Rust table emitter's go-test and go-build overlay controls: the numbering walk and float NaN control, the keyed accessor's three clauses (None, E.Max, shift), the map writer's sort control, and the accessor/descriptor and block-slot agreement controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 59 s of control time over the 5 controls on vision (number-walk 15 s, keyed 10 s, map-sort 15 s, accessor 10 s, slot 9 s).",
       "targets": [
         "tables-rust-number-walk-negative-control",
         "tables-rust-keyed-negative-control",
@@ -1547,8 +1606,8 @@
     },
     {
       "name": "rust-retain-soak",
-      "when": "pull-request",
-      "why": "the Rust retention control and the tables soak control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature, requiring the allocator call count red while live-heap drift stays flat). Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 56 s of control time over the 2 controls on vision (retain 38 s, soak 18 s).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 135 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-rust-retain-soak. Before: the Rust retention control and the tables soak control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature, requiring the allocator call count red while live-heap drift stays flat). Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 56 s of control time over the 2 controls on vision (retain 38 s, soak 18 s).",
       "targets": [
         "tables-rust-retain-negative-control",
         "tables-rust-soak-negative-control"
@@ -1608,7 +1667,9 @@
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
-        "packet-utf8-js-negative-control"
+        "packet-end-js-negative-control",
+        "packet-utf8-js-negative-control",
+        "packet-write-cfloat-js-negative-control"
       ],
       "node": "26"
     },
@@ -1632,8 +1693,8 @@
     },
     {
       "name": "js-tables-2",
-      "when": "pull-request",
-      "why": "the JavaScript port's table gates' controls, the other half: the soak, the slot, the fixed-form slack, the union-arm text, the versioning, the wire fuzzer, the clean gate, the text differential and the finite-float rule. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and js-tables-1 split the table gates so each row stays inside the rule.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 135 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-js-tables-2. Before: the JavaScript port's table gates' controls, the other half: the soak, the slot, the fixed-form slack, the union-arm text, the versioning, the wire fuzzer, the clean gate, the text differential and the finite-float rule. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and js-tables-1 split the table gates so each row stays inside the rule.",
       "targets": [
         "tables-js-soak-negative-control",
         "tables-js-slot-negative-control",
@@ -1719,8 +1780,8 @@
     },
     {
       "name": "dart-conformance-a",
-      "when": "pull-request",
-      "why": "slice 1 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-share 361 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 298 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-dart-conformance-a. Before: slice 1 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-share 361 s.",
       "targets": [
         "conformance-negative-control-dart-share"
       ],
@@ -1764,8 +1825,8 @@
     },
     {
       "name": "dart-conformance-2-a",
-      "when": "pull-request",
-      "why": "slice 1 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-absent 80 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 136 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-dart-conformance-2-a. Before: slice 1 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-absent 80 s.",
       "targets": [
         "conformance-negative-control-dart-absent"
       ],
@@ -1838,7 +1899,9 @@
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
-        "packet-defaults-dart-negative-control"
+        "packet-defaults-dart-negative-control",
+        "packet-end-dart-negative-control",
+        "packet-write-cfloat-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -1864,8 +1927,8 @@
     },
     {
       "name": "dart-tables-2-a",
-      "when": "pull-request",
-      "why": "slice 1 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-cookwrite-negative-control 130 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 142 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-dart-tables-2-a. Before: slice 1 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-cookwrite-negative-control 130 s.",
       "targets": [
         "tables-dart-cookwrite-negative-control"
       ],
@@ -1926,6 +1989,7 @@
       "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
+        "packet-end-java-negative-control",
         "packet-utf8-java-negative-control"
       ],
       "java": "21"
@@ -1941,8 +2005,8 @@
     },
     {
       "name": "java-tables-a",
-      "when": "pull-request",
-      "why": "slice 1 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-alloc-negative-control 49 s, tables-java-allocator-runtime-negative-control 1 s, tables-java-fixedform-negative-control 8 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 123 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-tables-a. Before: slice 1 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-alloc-negative-control 49 s, tables-java-allocator-runtime-negative-control 1 s, tables-java-fixedform-negative-control 8 s.",
       "targets": [
         "tables-java-alloc-negative-control",
         "tables-java-allocator-runtime-negative-control",
@@ -1974,8 +2038,8 @@
     },
     {
       "name": "java-tables-more-a",
-      "when": "pull-request",
-      "why": "slice 1 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: schema-java-runs-hostile-corpus-negative-control 115 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 117 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-tables-more-a. Before: slice 1 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: schema-java-runs-hostile-corpus-negative-control 115 s.",
       "targets": [
         "schema-java-runs-hostile-corpus-negative-control"
       ],
@@ -2049,30 +2113,45 @@
     {
       "name": "java-wire-fuzz",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind’s count inside the map’s own L and requires the plain arm to go red on listdemo.Army. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the four pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose wire-alone walk and map reader both read a map count that crosses its L as zero entries and requires the plain arm to go red on the read verdict for map_count_crosses_l (mapdemo.Slots). Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
-        "tables-java-wire-fuzz-negative-control",
-        "tables-java-retain-fuzz-negative-control",
+        "tables-java-wire-fuzz-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz-retain",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job ran 109, 110, 124 and 125 s on CI full 43654301368, 43657435173, 43658279634 and 43658322804, killed twice by the 120 s per-commit rule; re-enable: relax/ci-time-java-wire-fuzz-retain. Before: the Java retention arm's control (tables-java-retain-fuzz-negative-control), split from java-wire-fuzz: the three controls in one job ran 109-128 s on AWS runners against the 2-minute per-commit rule (main CI full 43632830583 to 43640159584).",
+      "targets": [
+        "tables-java-retain-fuzz-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz-map-count",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job ran 123, 112 and 125 s on CI full 43654301368, 43657435173 and 43658322804, killed twice by the 120 s per-commit rule; re-enable: relax/ci-time-java-wire-fuzz-map-count. Before: the Java map-count control (tables-java-map-count-negative-control), split from java-wire-fuzz for the same 109-128 s.",
+      "targets": [
         "tables-java-map-count-negative-control"
       ],
       "java": "21"
     },
     {
       "name": "java-wire-fuzz-2",
-      "when": "pull-request",
-      "why": "the Java leg of the tolerant wire fuzzer's four pin replays (docs/PORTING.md I15): keyed-count, retain-node, node-index and map-key-damage, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 123 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-wire-fuzz-2. Before: the Java leg of the tolerant wire fuzzer's three pin replays (docs/PORTING.md I15): keyed-count, retain-node and node-index, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run. The map-key-damage control was deleted on 2026-11-14 under docs/plans/strict-only.md table (c): its plant let a key scan read on past a key already judged malformed, which only chose between two refusals, so no plant of that rule can change a read verdict.",
       "targets": [
         "tables-java-keyed-count-negative-control",
         "tables-java-retain-node-negative-control",
-        "tables-java-node-index-negative-control",
-        "tables-java-map-key-damage-negative-control"
+        "tables-java-node-index-negative-control"
       ],
       "java": "21"
     },
     {
       "name": "java-proof",
-      "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse). Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps three of the five compiler rebuilds (the layout contract and the two order checks) and the generated-fresh control, and java-proof-2 carries the usage, release, absent and framing controls. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 137 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-proof. Before: the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse). Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps three of the five compiler rebuilds (the layout contract and the two order checks) and the generated-fresh control, and java-proof-2 carries the usage, release, absent and framing controls. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
       "targets": [
         "tables-java-layout-contract-negative-control",
         "tables-java-order-negative-control",
@@ -2083,8 +2162,8 @@
     },
     {
       "name": "java-proof-2",
-      "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table’s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 135 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-java-proof-2. Before: the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table’s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
       "targets": [
         "tables-java-usage-negative-control",
         "tables-java-release-negative-control",
@@ -2096,11 +2175,12 @@
     {
       "name": "elixir-packets",
       "when": "pull-request",
-      "why": "the Elixir port's four packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, and the finite-float read rule, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
+      "why": "the Elixir port's five packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, the finite-float read rule, and the one-packet end check, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
       "targets": [
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
-        "packet-finite-elixir-negative-control"
+        "packet-finite-elixir-negative-control",
+        "packet-end-elixir-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -2193,8 +2273,8 @@
     },
     {
       "name": "elixir-discard",
-      "when": "pull-request",
-      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md §4): removing the plain read's discard from a copy of the emitter reds TestDamageDiscardsTheWholeLoadElixir on a framing vector. It generates and runs three units under the overlay, so it is a group of its own.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): PR 3290's strict load refuses the damaged vector before the discard this control removes, so the control cannot go red; re-enable: relax/nc-elixir-discard-masked. Before: the Elixir whole-load discard control (docs/SPEC-TABLES.md §4): removing the plain read's discard from a copy of the emitter reds TestDamageDiscardsTheWholeLoadElixir on a framing vector. It generates and runs three units under the overlay, so it is a group of its own.",
       "targets": [
         "tables-elixir-discard-negative-control"
       ],
@@ -2202,9 +2282,19 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-wire-fuzz",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the plant does not turn the Elixir wire fuzz red, and the step takes 176 s; re-enable: relax/nc-elixir-wire-fuzz-array-tail. Before: the Elixir wire fuzzer's control (docs/PORTING.md I15): the rule that bytes left inside an array's L are damage is removed from a copy of one unit's generated reader (featurewitnesses), compiled over a copy of the corpus ebin, and tables-elixir-wire-fuzz-all at N=200 must go red with the leg accepting a mutant the oracle refuses. One file recompiled and one short harness run, so it is a group of its own.",
+      "targets": [
+        "tables-elixir-wire-fuzz-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-nightly-conformance",
       "when": "nightly",
-      "why": "the Elixir conformance harness's controls, each of which rebuilds the whole corpus through a sabotaged compiler (walk, shared, label, ids, arm, order, mapsort and framing; framing does two builds) and runs the harness's Elixir leg against it. They are structurally identical to the alloc/soak/block controls that measure 95-173 s on the fleet runner, so every one of them exceeds the 75 s control budget the per-commit rule leaves after ~30 s of setup and shared build, and none can be split further by grouping. They moved from the pull request to the nightly tier on 2026-11-09 for that reason; the harness's cheap sibling surfaces (cards, packets, keyed, cook-blob, versioning, fixed-form) remain per commit, and no control was dropped.",
+      "why": "the Elixir conformance harness's controls, each of which rebuilds the whole corpus through a sabotaged compiler (walk, shared, label, ids, arm, order, mapsort, framing and the three write-refusal surfaces; framing does two builds) and runs the harness's Elixir leg against it. They are structurally identical to the alloc/soak/block controls that measure 95-173 s on the fleet runner, so every one of them exceeds the 75 s control budget the per-commit rule leaves after ~30 s of setup and shared build, and none can be split further by grouping. They moved from the pull request to the nightly tier on 2026-11-09 for that reason; the harness's cheap sibling surfaces (cards, packets, keyed, cook-blob, versioning, fixed-form) remain per commit, and no control was dropped.",
       "targets": [
         "conformance-negative-control-elixir-walk",
         "conformance-negative-control-elixir-shared",
@@ -2213,7 +2303,10 @@
         "conformance-negative-control-elixir-arm",
         "conformance-negative-control-elixir-order",
         "conformance-negative-control-elixir-mapsort",
-        "conformance-negative-control-elixir-framing"
+        "conformance-negative-control-elixir-framing",
+        "conformance-negative-control-elixir-write-refusal",
+        "conformance-negative-control-elixir-write-refusal-fixed",
+        "conformance-negative-control-elixir-write-refusal-message"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -2255,7 +2348,7 @@
     {
       "name": "goose",
       "when": "pull-request",
-      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
+      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else. With them, the enum-keyed accessor's control (M5: the None compare, the past-E.Max compare and the shift planted out, each over a `goose build -O2` probe) and the maps controls (M19: eight plants of the writers' sort, the readers' placement and the wire reader's rules), measured on studio on 2026-11-14 at 1.53 s and 1.39 s of make wall (time -p real), Go and the pinned Goose only.",
       "targets": [
         "tables-goose-fixedform-negative-control",
         "tables-goose-tablewire-negative-control",
@@ -2263,7 +2356,9 @@
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
         "tables-goose-damage-negative-control",
-        "tables-goose-view-negative-controls"
+        "tables-goose-view-negative-controls",
+        "tables-goose-keyed-negative-control",
+        "tables-goose-maps-negative-controls"
       ]
     },
     {
@@ -2338,8 +2433,8 @@
     },
     {
       "name": "goose-gates",
-      "when": "pull-request",
-      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the runtime home's file-order control, the unit home, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it. Split from the single `goose-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 16 s of control time over the 3 controls.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 153 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-goose-gates. Before: the Goose leg's gates over what it emits (make/goose-gates.mk): the runtime home's file-order control, the unit home, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it. Split from the single `goose-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 16 s of control time over the 3 controls.",
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-unit-home-negative-control",
@@ -2358,11 +2453,14 @@
     {
       "name": "goose-packet",
       "when": "pull-request",
-      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control and the finite-float control per direction. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction, the end-check control and the Write text-content control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
       "targets": [
         "packet-defaults-goose-negative-control",
+        "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
-        "packet-utf8-goose-negative-control"
+        "packet-utf8-goose-negative-control",
+        "packet-write-cfloat-goose-negative-control",
+        "packet-write-text-goose-negative-control"
       ]
     },
     {
@@ -2453,8 +2551,8 @@
     },
     {
       "name": "lobster-conformance",
-      "when": "pull-request",
-      "why": "the Lobster leg's report, walk and framing conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11), each sedding one runtime file the table emitter embeds, building a private compiler through go build -overlay, regenerating every manifest unit and requiring the harness red on exactly its surfaces (17 s and 16 s on hulk off one warm build). Split from the single `lobster-conformance` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 3 conformance controls.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 139 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-lobster-conformance. Before: the Lobster leg's report, walk and framing conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11), each sedding one runtime file the table emitter embeds, building a private compiler through go build -overlay, regenerating every manifest unit and requiring the harness red on exactly its surfaces (17 s and 16 s on hulk off one warm build). Split from the single `lobster-conformance` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 3 conformance controls.",
       "targets": [
         "conformance-negative-control-lobster",
         "conformance-negative-control-lobster-walk",
@@ -2617,17 +2715,31 @@
     {
       "name": "go-proof-2",
       "when": "pull-request",
-      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md M14, I4, J6): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision), the card renderer check (8 s on hulk, 24 s on vision), and the &node graph-label check (5 s on hulk, 13 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (52 s warm on vision).",
+      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md I4): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739), then from go-proof-4 and go-proof-5: the three run one after another under `make -k` and hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2: the cards generations alone took about 3 minutes), so each now has its own row.",
       "targets": [
-        "conformance-negative-control-go-absent",
-        "cards-conformance-go-negative-control",
+        "conformance-negative-control-go-absent"
+      ]
+    },
+    {
+      "name": "go-proof-4",
+      "when": "pull-request",
+      "why": "the Go leg's card renderer proof-cell control (docs/PORTING.md J6, 8 s on hulk, 24 s on vision). Split from go-proof-2, whose three serial controls hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2).",
+      "targets": [
+        "cards-conformance-go-negative-control"
+      ]
+    },
+    {
+      "name": "go-proof-5",
+      "when": "pull-request",
+      "why": "the Go leg's &node graph-label proof-cell control (docs/PORTING.md M14, 5 s on hulk, 13 s on vision). Split from go-proof-2, whose three serial controls hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2).",
+      "targets": [
         "tables-go-graph-label-negative-control"
       ]
     },
     {
       "name": "go-proof-3",
-      "when": "pull-request",
-      "why": "third slice of the Go leg's proof-cell controls (docs/PORTING.md M5, J4): the keyed accessor's three clauses (13 s on hulk, 3 s warm on vision) and the clean-vet/clean-format gate (11 s on hulk, 37 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (40 s warm on vision).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 165 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-go-proof-3. Before: third slice of the Go leg's proof-cell controls (docs/PORTING.md M5, J4): the keyed accessor's three clauses (13 s on hulk, 3 s warm on vision) and the clean-vet/clean-format gate (11 s on hulk, 37 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (40 s warm on vision).",
       "targets": [
         "tables-go-keyed-negative-control",
         "tables-go-clean-negative-control"
@@ -2636,7 +2748,7 @@
     {
       "name": "squirrel-conformance",
       "when": "pull-request",
-      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur (report red, wire green), the walk saboteur (json-read red, json-write and wire green), the block saboteur (forgery red, block and block-dump green) and the retain saboteur (retain red, wire and report green), each rebuilding the compiler under an overlay and regenerating the corpus, about 12 s on the studio. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 4 conformance controls.",
+      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur (report red, wire green), the walk saboteur (json-read red, json-write and wire green), the block saboteur (forgery red, block and block-dump green) and the retain saboteur (retain-save red, retain, wire and report green), each rebuilding the compiler under an overlay and regenerating the corpus, about 12 s on the studio. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 4 conformance controls.",
       "targets": [
         "conformance-negative-control-squirrel",
         "conformance-negative-control-squirrel-block",
@@ -2663,14 +2775,16 @@
       "targets": [
         "packet-finite-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
-        "packet-defaults-squirrel-negative-control"
+        "packet-defaults-squirrel-negative-control",
+        "packet-write-bareint-squirrel-negative-control",
+        "packet-end-squirrel-negative-control"
       ],
       "squirrel": "3.2"
     },
     {
       "name": "squirrel-tools-a",
-      "when": "pull-request",
-      "why": "slice 1 of 2 of squirrel-tools, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-squirrel-release-negative-control 724 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 255 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-squirrel-tools-a. Before: slice 1 of 2 of squirrel-tools, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-squirrel-release-negative-control 724 s.",
       "targets": [
         "tables-squirrel-release-negative-control"
       ],
@@ -2772,9 +2886,10 @@
     {
       "name": "luau-packet",
       "when": "pull-request",
-      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
+      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes, the packet end check and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
       "targets": [
         "packet-defaults-luau-negative-control",
+        "packet-end-luau-negative-control",
         "packet-finite-luau-negative-control",
         "packet-utf8-luau-negative-control"
       ],
@@ -2895,7 +3010,7 @@
     {
       "name": "moo",
       "when": "pull-request",
-      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). The block-lead control also runs the positive 130-placement matrix, removes the runtime alignment check, and requires exactly 126 unaligned cases to wrongly open while the four aligned cases stay unchanged (0.18 seconds of test time on Studio). Each packet control is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
+      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). Every target in the row names the pin's interpreter and analyzer under dist/moo, so the runner's environment cannot select another moo. The block-lead control also runs the positive 130-placement matrix, removes the runtime alignment check, and requires exactly 126 unaligned cases to wrongly open while the four aligned cases stay unchanged (0.18 seconds of test time on Studio). Each packet control is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
       "targets": [
         "tables-moo-block-lead-negative-control",
         "packet-analyze-moo-negative-control",
@@ -2972,22 +3087,28 @@
       ]
     },
     {
-      "name": "write-refusal-storage-release-c",
+      "name": "write-check-storage-debug-c",
       "when": "pull-request",
-      "why": "the C and C++ release storage gates (docs/SPEC.md §5.1): each generates a small table unit, compiles the message writer with the language's release flags (-DNDEBUG for both), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. Two small compiler runs, with no toolchain beyond the host C and C++ compilers.",
+      "why": "the C debug storage gate (docs/SPEC.md §5.1): C is an assert leg, so a wstring length past its storage is held by the writer's schema_assert in a debug build and a release build carries no write-side check. The gate generates a small table unit, compiles the message writer without NDEBUG, and requires Measure and Save each to die on the assert; the control runs that gate, then strips the generated assert and requires the same gate to go red. Two small C compiler runs, with no toolchain beyond the host C compiler.",
       "targets": [
-        "write-refusal-storage-release-c-negative-control",
+        "write-check-storage-debug-c-negative-control"
+      ]
+    },
+    {
+      "name": "write-refusal-storage-release-cpp",
+      "when": "pull-request",
+      "why": "the C++ release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the message writer with the release flags (-DNDEBUG), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small compiler run, with no toolchain beyond the host C++ compiler.",
+      "targets": [
         "write-refusal-storage-release-cpp-negative-control"
       ]
     },
     {
-      "name": "write-refusal-storage-release-cs",
+      "name": "write-refusal-storage-debug-cs",
       "when": "pull-request",
-      "why": "the C# release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in -c Release, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small .NET build.",
+      "why": "The C# debug storage gate (docs/SPEC.md §5.1) requires assertions for an overlong counted array and string. Its control removes the generated assertions and requires both probes to turn red.",
       "targets": [
-        "write-refusal-storage-release-cs-negative-control"
-      ],
-      "dotnet": "pin"
+        "write-refusal-storage-debug-cs-negative-control"
+      ]
     },
     {
       "name": "write-refusal-storage-release-rust",
@@ -2999,20 +3120,20 @@
       "rust": "stable"
     },
     {
-      "name": "write-refusal-storage-release-java",
+      "name": "write-refusal-storage-debug-java",
       "when": "pull-request",
-      "why": "the Java release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer without -ea, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small javac and java run.",
+      "why": "the Java debug storage gate (docs/SPEC.md §5.1): it generates a table unit, runs the message writer with -ea, and requires an overlong count and length to assert. The control strips the generated count assert and requires the gate to go red. One small javac and java run.",
       "targets": [
-        "write-refusal-storage-release-java-negative-control"
+        "write-refusal-storage-debug-java-negative-control"
       ],
       "java": "21"
     },
     {
-      "name": "write-refusal-storage-release-dart",
+      "name": "write-refusal-storage-debug-dart",
       "when": "pull-request",
-      "why": "the Dart release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the cook writer AOT, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small Dart compile.",
+      "why": "the Dart debug storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs the cook writer with asserts on, and requires a count and a length past their storage to hit the assert. The control runs that gate first, then strips the generated asserts and requires the same debug gate to go red. Two small Dart runs.",
       "targets": [
-        "write-refusal-storage-release-dart-negative-control"
+        "write-refusal-storage-debug-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -3028,8 +3149,8 @@
     },
     {
       "name": "base-c-write-refusal-a",
-      "when": "pull-request",
-      "why": "slice 1 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-fixed 287 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 116 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-c-write-refusal-a. Before: slice 1 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-fixed 287 s.",
       "targets": [
         "conformance-negative-control-c-write-refusal-fixed"
       ]
@@ -3053,11 +3174,27 @@
     {
       "name": "rust-write-refusal",
       "when": "pull-request",
-      "why": "the Rust leg's write-contract controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated crates, the conformance driver rebuilt against the copy in the dev profile, and the writer's surface required red with the surface beside it green.",
+      "why": "the Rust leg's write-contract controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated crates, the conformance driver rebuilt against the copy in the dev profile, and the writer's surface required red with the surface beside it green. One control per group: each rebuilds the driver, and the three in one job ran 113-211 s against the 110 s wall (main CI full 43633753076, 43635368439).",
       "rust": "stable",
       "targets": [
-        "conformance-negative-control-rust-write-refusal",
-        "conformance-negative-control-rust-write-refusal-fixed",
+        "conformance-negative-control-rust-write-refusal"
+      ]
+    },
+    {
+      "name": "rust-write-refusal-fixed",
+      "when": "pull-request",
+      "why": "the Rust fixed writer's write-contract control (docs/SPEC.md §5.1), split from rust-write-refusal so each driver rebuild has its own job.",
+      "rust": "stable",
+      "targets": [
+        "conformance-negative-control-rust-write-refusal-fixed"
+      ]
+    },
+    {
+      "name": "rust-write-refusal-message",
+      "when": "pull-request",
+      "why": "the Rust message writer's write-contract control (docs/SPEC.md §5.1), split from rust-write-refusal so each driver rebuild has its own job.",
+      "rust": "stable",
+      "targets": [
         "conformance-negative-control-rust-write-refusal-message"
       ]
     },
@@ -3071,6 +3208,27 @@
         "conformance-negative-control-cs-write-refusal-fixed",
         "conformance-negative-control-cs-write-refusal-message"
       ]
+    },
+    {
+      "name": "js-write-refusal",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the JavaScript leg's write-contract controls landed in PR 3291 without a group, which turned `negativecontrols check` red; they run nightly here, unmeasured, until a per-commit run of them is measured green; re-enable: relax/nc-plan-write-refusal-js-lobster.",
+      "targets": [
+        "conformance-negative-control-js-write-refusal",
+        "conformance-negative-control-js-write-refusal-fixed",
+        "conformance-negative-control-js-write-refusal-message"
+      ],
+      "node": "26"
+    },
+    {
+      "name": "lobster-write-refusal",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): the Lobster leg's write-contract controls landed in PR 3294 without a group, which turned `negativecontrols check` red; they run nightly here, unmeasured, until a per-commit run of them is measured green; re-enable: relax/nc-plan-write-refusal-js-lobster.",
+      "targets": [
+        "conformance-negative-control-lobster-write-refusal",
+        "conformance-negative-control-lobster-write-refusal-message"
+      ],
+      "lobster": "v2026.8"
     },
     {
       "name": "python-packet-core",
@@ -3174,6 +3332,10 @@
     {
       "target": "packet-utf8-moo-negative-control",
       "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-end-moo-negative-control",
+      "reason": "the moo leg's one-packet end-check control (make/moo-packet.mk, SPEC §5 'Read termination'): the emitted public read's end call is dropped, so trailing data and non-zero final-byte padding must both fail by name. It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",

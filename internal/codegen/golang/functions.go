@@ -53,8 +53,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("\t}\n\treturn stream.Err() // None — the tag is the whole wire\n}\n\n")
 	}
 
-	g.emitReadDoc(d.Name)
-	g.pf("func Read%s(stream *serialize.ReadStream, value *%s) error {\n", d.Name, d.Name)
+	g.emitReadEntry(d.Name)
 	if d.Max == 0 {
 		g.pf("\tvalue.Type = %sTypeNone // zero wire bits — only None exists\n", d.Name)
 		g.pf("\treturn stream.Err()\n}\n\n")
@@ -76,7 +75,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		} else {
 			g.pf("\t\tvalue.%s = %s{} // fresh payload on every selection\n", goname.Member(v.Name), v.Type)
 		}
-		g.pf("\t\treturn Read%s(stream, &value.%s)\n", v.Type, goname.Member(v.Name))
+		g.pf("\t\treturn value.%s.read(stream)\n", goname.Member(v.Name))
 	}
 	g.pf("\t}\n\treturn stream.Err() // None\n}\n\n")
 }
@@ -100,8 +99,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 	g.pf("\treturn stream.Err()\n}\n\n")
 
-	g.emitReadDoc(st.Name)
-	g.pf("func Read%s(stream *serialize.ReadStream, value *%s) error {\n", st.Name, st.Name)
+	g.emitReadEntry(st.Name)
 	if len(st.Items) == 0 {
 		g.pf("\t_ = value\n")
 	} else {
@@ -116,15 +114,26 @@ func (g *gen) emitMaxBytes(name string, maxBits int64) {
 	g.pf("const %sMaxBytes = %d\n\n", name, ir.MaxBytes(maxBits))
 }
 
-// emitWriteDoc and emitReadDoc are the wire pair's godoc. Write returns error
-// alone: the size written is the stream's own running count, which a nested
-// write cannot report on its own (SPEC §6.1 item 2, the Go sentence).
+// emitWriteDoc is the write's godoc; emitReadEntry carries the read's. Write
+// returns error alone: the size written is the stream's own running count,
+// which a nested write cannot report on its own (SPEC §6.1 item 2, the Go
+// sentence).
 func (g *gen) emitWriteDoc(name string) {
 	g.docComment("", fmt.Sprintf("Write%s writes value to stream in wire order. It returns the first write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot carry) or the stream's error; the size written is stream.BitsProcessed().", name), "")
 }
 
-func (g *gen) emitReadDoc(name string) {
-	g.docComment("", fmt.Sprintf("Read%s reads value from stream, validating every field. It returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.", name), "")
+// emitReadEntry emits the exported one-packet read and opens the per-type body
+// (SPEC §5, read termination): Read<T> reads the body, then the stream's end
+// check, so the end is checked once, after the top-level object. A value nested
+// in another (a type's field, a union's arm, an array element) is read through
+// the body, which never ends the packet. The body is a method, so its name
+// cannot collide with a declaration's.
+func (g *gen) emitReadEntry(name string) {
+	g.docComment("", fmt.Sprintf("Read%s reads one packet holding value from stream, validating every field, then checks the packet's end: a whole byte left after the value, or a set unused bit in the final byte, is refused. It returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.", name), "")
+	g.pf("func Read%s(stream *serialize.ReadStream, value *%s) error {\n", name, name)
+	g.pf("\tif err := value.read(stream); err != nil {\n\t\treturn err\n\t}\n\treturn stream.SerializeEnd()\n}\n\n")
+	g.docComment("", fmt.Sprintf("read reads value's fields from stream without the packet's end check: a %s nested in another value is read through it.", name), "")
+	g.pf("func (value *%s) read(stream *serialize.ReadStream) error {\n", name)
 }
 
 // emitWriteItems gathers maximal runs of statically-sized pieces and hands
@@ -544,12 +553,39 @@ func (g *gen) emitReadRangedFold64(lo string, bits int64, diff *big.Int, loZero 
 
 // rangeFillsBits reports whether a span of `diff` covers every value `bits`
 // wire bits can carry, which makes the headroom refusal provably vacuous.
+// emitBitsWidthGuard refuses a bits(N) value wider than N bits (SPEC §5.1):
+// the storage is uint32 or uint64, so only a field narrower than its storage
+// can hold such a value, and one as wide as its storage carries no test.
+func (g *gen) emitBitsWidthGuard(f *ir.Field, name, ind string) {
+	storage := int64(64)
+	if f.Type.Width <= 32 {
+		storage = 32
+	}
+	w := int64(f.Type.Width)
+	if w >= storage {
+		return
+	}
+	g.pf("%sif %s > %d { // a value above the bits(%d) wire width cannot ride\n", ind, name, uint64(1)<<uint(w)-1, w)
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+}
+
 func rangeFillsBits(diff *big.Int, bits int64) bool {
 	if bits >= 64 {
 		return diff.Cmp(maxUint64) == 0
 	}
 	span := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 	return diff.Cmp(span) == 0
+}
+
+// emitWriteCompressedRangeGuard refuses a compressed float the declaration does
+// not admit before it is quantized (SPEC §5.1 row 10, PACKET-WIRE-ALGORITHM
+// §2.5): a NaN or an infinity, tested on the raw bits as the plain float guard
+// does, then a finite value outside [min, max]. An in-range value normalizes
+// into [0, 1] by itself, so the fold needs no value clamp.
+func (g *gen) emitWriteCompressedRangeGuard(f *ir.Field, name, ind string) {
+	g.emitWriteFiniteGuard("math.Float32bits("+name+")", "0x7f800000", ind)
+	g.pf("%sif %s < %s || %s > %s {\n", ind, name, f32lit(float32(f.FMin)), name, f32lit(float32(f.FMax)))
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 }
 
 // emitWriteCompressedFold quantizes a ranged float onto its step count in a
@@ -567,21 +603,20 @@ func rangeFillsBits(diff *big.Int, bits int64) bool {
 // fused line writes different bytes for 0.005 over [0, 10] at resolution 0.01.
 // Do not "simplify" it.
 //
-// uint32() truncates toward zero, which is the runtime's Floor: the clamp leaves
-// normalizedValue in [0, 1] (its !>= form sends NaN to 0), so the product plus
-// 0.5 is always positive, where truncation and floor agree.
+// uint32() truncates toward zero, which is the runtime's Floor: the range guard
+// leaves normalizedValue in [0, 1], so the product plus 0.5 is always positive,
+// where truncation and floor agree.
 func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
+	g.emitWriteCompressedRangeGuard(f, name, ind)
 	g.pf("%s{\n", ind)
 	if min32 == 0 {
 		g.pf("%s\tnormalizedValue := %s / %s\n", ind, name, f32lit(delta))
 	} else {
 		g.pf("%s\tnormalizedValue := (%s) / %s\n", ind, floatMinusMin(name, min32), f32lit(delta))
 	}
-	g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
-	g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
 	g.pf("%s\tintegerValue := uint32(float32(normalizedValue*%s) + 0.5)\n", ind, f32lit(float32(steps)))
 	g.pf("%s\t// the integer clamp is normative\n", ind)
 	g.pf("%s\tif integerValue > %d { integerValue = %d }\n", ind, steps, steps)
@@ -835,6 +870,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		g.emitBitsWidthGuard(f, name, ind)
 		if f.Type.Width <= 32 {
 			g.pf("%sstream.SerializeBits(&%s, %d)\n", ind, name, f.Type.Width)
 		} else {
@@ -847,8 +883,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteCompressedFold(f, name, ind)
 			return
 		}
+		g.emitWriteFiniteGuard("math.Float32bits("+name+")", "0x7f800000", ind)
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)
 	case ir.TFloat64:
+		g.emitWriteFiniteGuard("math.Float64bits("+name+")", "0x7ff0000000000000", ind)
 		g.pf("%sstream.SerializeFloat64(&%s)\n", ind, name)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
@@ -886,6 +924,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%sif err := Write%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
 		}
 	}
+}
+
+// emitWriteFiniteGuard refuses a NaN or an infinity before a plain float is
+// written, in every build (SPEC §4.3, SPEC §5.1 row 7): its exponent field is
+// all ones. It is tested on the raw bits, as the flat path does, so negative
+// zero and the subnormals still ride bit exact and the runtime write is only
+// ever reached with a finite value. bitsExpr is the pattern at its own width,
+// exponent the mask of its exponent field.
+func (g *gen) emitWriteFiniteGuard(bitsExpr, exponent, ind string) {
+	g.needsMath = true
+	g.pf("%sif %s&%s == %s { // NaN and the infinities are not values of the type\n", ind, bitsExpr, exponent, exponent)
+	g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
 }
 
 // emitWriteBareInt writes a bare integer at its storage width. Signed values
@@ -1095,10 +1145,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				})
 		case *ir.Flags:
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
-		case *ir.Struct:
-			g.pf("%sif err := Read%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
-		case *ir.Union:
-			g.pf("%sif err := Read%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
+		case *ir.Struct, *ir.Union:
+			// the nested body: the packet's end is checked once, by the
+			// top-level Read<T>
+			g.pf("%sif err := %s.read(stream); err != nil {\n%s\treturn err\n%s}\n", ind, name, ind, ind)
 		}
 	}
 }

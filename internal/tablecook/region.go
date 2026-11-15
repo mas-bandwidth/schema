@@ -260,6 +260,13 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		// side reads (§20.2's `optional=true`)
 		p := pieces[len(pieces)-1]
 		w.putBool(p.Offset, fv.Present)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md
+		// §7.2; docs/rulings.json `fixed-dead-bytes-are-zero`): zero on write
+		// whatever the element's declared default is, which stays a READ rule
+		// and never enters the dead storage.
+		if !fv.Present {
+			return nil
+		}
 	}
 	switch {
 	case f.IsMap():
@@ -311,11 +318,11 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 	case f.Array == ir.ArrayFixed:
 		return w.slots(value.Offset, f, fv.Elems, len(fv.Elems))
 	case f.Array == ir.ArrayCounted:
-		// all N slots are written: the storage is allocate-max, and a slot past
-		// the live count holds the VALUE-INITIALIZED element — zero for a
-		// scalar, the element type's own declared defaults for a record — which
-		// is what `T x[N] = {}` produces and what a wire load leaves there
-		if err := w.slots(value.Offset, f, fv.Elems, len(fv.Elems)); err != nil {
+		// the live elements are written; a slot past the count is DEAD BYTES
+		// and stays the buffer's zero, and a pointer stored there is never
+		// followed (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero)
+		if err := w.slots(value.Offset, f, fv.Elems, fv.Count); err != nil {
 			return err
 		}
 		w.putI32(pieces[1].Offset, int32(fv.Count))

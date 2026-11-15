@@ -285,6 +285,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F003Int < -835897 || value.F003Int > 835897 {
 		return serialize.ErrValueOutOfRange
 	}
+	if math.Float32bits(value.F004Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F004Cf32 < 0.0 || value.F004Cf32 > 2000.0 {
+		return serialize.ErrValueOutOfRange
+	}
 	if value.F005Uint > 7316 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -300,16 +306,14 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if math.Float32bits(value.F010F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
+	if value.F011Bits > 1023 { // a value above the bits(10) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.F001Int+805495) & 0x1fffff
 	f1 := math.Float64bits(value.F002F64)
 	f2 := uint64(value.F003Int+835897) & 0x1fffff
 	f3 := uint64(0)
 	normalizedValue := value.F004Cf32 / 2000.0
-	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue = 0
-	} else if !(normalizedValue <= 1) {
-		normalizedValue = 1
-	}
 	integerValue := uint32(float32(normalizedValue*20000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue > 20000 {
@@ -381,6 +385,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if math.Float32bits(value.F022F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
+	if value.F023Bits > 33554431 { // a value above the bits(25) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if math.Float32bits(value.F024F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
@@ -393,8 +400,23 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&w9, 25)
 	fixedValue3 := int64(value.F025Fixed)
 	stream.SerializeFixed64(&fixedValue3, 8, 8, -119, 119)
+	if value.F026Bits > 511 { // a value above the bits(9) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F027Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F027Cf32 < -2.0 || value.F027Cf32 > 2.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F028Bits > 15 { // a value above the bits(4) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if math.Float32bits(value.F030F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
+	}
+	if value.F031Bits > 1 { // a value above the bits(1) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	if value.F032Int < -3 || value.F032Int > 3 {
 		return serialize.ErrValueOutOfRange
@@ -405,17 +427,18 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F034Uint > 14149 {
 		return serialize.ErrValueOutOfRange
 	}
+	if value.F035Bits > 511 { // a value above the bits(9) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.F036Enum > 5 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F039Bits > 524287 { // a value above the bits(19) wire width cannot ride
 		return serialize.ErrValueOutOfRange
 	}
 	f23 := uint64(value.F026Bits) & 0x1ff
 	f24 := uint64(0)
 	normalizedValue2 := (value.F027Cf32 + 2.0) / 4.0
-	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue2 = 0
-	} else if !(normalizedValue2 <= 1) {
-		normalizedValue2 = 1
-	}
 	integerValue2 := uint32(float32(normalizedValue2*16.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue2 > 16 {
@@ -451,6 +474,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F041Int < -55 || value.F041Int > 55 {
 		return serialize.ErrValueOutOfRange
 	}
+	if value.F042Bits > 1073741823 { // a value above the bits(30) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f35 := uint64(int32(value.F041Int)+55) & 0x7f
 	f36 := uint64(value.F042Bits) & 0x3fffffff
 	f37 := uint64(0)
@@ -462,6 +488,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F043Bool {
 		if math.Float32bits(value.F044F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 			return serialize.ErrNonFiniteFloat
+		}
+		if value.F045Bits > 4095 { // a value above the bits(12) wire width cannot ride
+			return serialize.ErrValueOutOfRange
 		}
 		if value.F046Uint > 76063 {
 			return serialize.ErrValueOutOfRange
@@ -477,6 +506,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits64(&w14, 64)
 		w15 := uint32(f41 >> 3)
 		stream.SerializeBits(&w15, 17)
+	}
+	if math.Float64bits(value.F048F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
 	}
 	stream.SerializeFloat64(&value.F048F64)
 	fixedValue5 := int64(value.F049Ufixed)
@@ -514,10 +546,25 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if math.Float64bits(value.F059F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
+	if value.F060Bits > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F061Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F061Cf32 < -90.0 || value.F061Cf32 > 90.0 {
+		return serialize.ErrValueOutOfRange
+	}
 	if value.F062Uint > 503 {
 		return serialize.ErrValueOutOfRange
 	}
 	if value.F064Uint > 299 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F065Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F065Cf32 < 0.0 || value.F065Cf32 > 30.0 {
 		return serialize.ErrValueOutOfRange
 	}
 	f46 := uint64(0)
@@ -531,11 +578,6 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	f51 := uint64(value.F060Bits) & 0xff
 	f52 := uint64(0)
 	normalizedValue3 := (value.F061Cf32 + 90.0) / 180.0
-	if !(normalizedValue3 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue3 = 0
-	} else if !(normalizedValue3 <= 1) {
-		normalizedValue3 = 1
-	}
 	integerValue3 := uint32(float32(normalizedValue3*360.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue3 > 360 {
@@ -547,11 +589,6 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	f55 := uint64(value.F064Uint) & 0x1ff
 	f56 := uint64(0)
 	normalizedValue4 := value.F065Cf32 / 30.0
-	if !(normalizedValue4 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue4 = 0
-	} else if !(normalizedValue4 <= 1) {
-		normalizedValue4 = 1
-	}
 	integerValue4 := uint32(float32(normalizedValue4*60.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue4 > 60 {
@@ -568,7 +605,34 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&w20, 20)
 	fixedValue6 := int64(value.F066Ufixed)
 	stream.SerializeFixed64(&fixedValue6, 2, 14, 0, 2)
+	if math.Float32bits(value.F067Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F067Cf32 < -100.0 || value.F067Cf32 > 100.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F068Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F068Cf32 < 0.0 || value.F068Cf32 > 2000.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F069Bits > 2047 { // a value above the bits(11) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.F070Uint > 2 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F071Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F071Cf32 < 0.0 || value.F071Cf32 > 10.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F072Cf32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.F072Cf32 < 0.0 || value.F072Cf32 > 100.0 {
 		return serialize.ErrValueOutOfRange
 	}
 	if value.F073Int < -4 || value.F073Int > 4 {
@@ -576,11 +640,6 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	f57 := uint64(0)
 	normalizedValue5 := (value.F067Cf32 + 100.0) / 200.0
-	if !(normalizedValue5 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue5 = 0
-	} else if !(normalizedValue5 <= 1) {
-		normalizedValue5 = 1
-	}
 	integerValue5 := uint32(float32(normalizedValue5*800.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue5 > 800 {
@@ -589,11 +648,6 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	f57 = uint64(integerValue5) & 0x3ff
 	f58 := uint64(0)
 	normalizedValue6 := value.F068Cf32 / 2000.0
-	if !(normalizedValue6 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue6 = 0
-	} else if !(normalizedValue6 <= 1) {
-		normalizedValue6 = 1
-	}
 	integerValue6 := uint32(float32(normalizedValue6*2000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue6 > 2000 {
@@ -604,11 +658,6 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	f60 := uint64(value.F070Uint) & 0x3
 	f61 := uint64(0)
 	normalizedValue7 := value.F071Cf32 / 10.0
-	if !(normalizedValue7 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue7 = 0
-	} else if !(normalizedValue7 <= 1) {
-		normalizedValue7 = 1
-	}
 	integerValue7 := uint32(float32(normalizedValue7*500.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue7 > 500 {
@@ -617,11 +666,6 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	f61 = uint64(integerValue7) & 0x1ff
 	f62 := uint64(0)
 	normalizedValue8 := value.F072Cf32 / 100.0
-	if !(normalizedValue8 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue8 = 0
-	} else if !(normalizedValue8 <= 1) {
-		normalizedValue8 = 1
-	}
 	integerValue8 := uint32(float32(normalizedValue8*10000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue8 > 10000 {
@@ -642,6 +686,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		if value.F077Int < -17 || value.F077Int > 17 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.F078Bits > 511 { // a value above the bits(9) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		if value.F079Uint > 17 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -654,6 +701,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeBits64(&w22, 64)
 		w23 := f66 | f67<<16 | f68<<22 | f69<<31
 		stream.SerializeBits64(&w23, 36)
+	}
+	if value.F081Bits > 536870911 { // a value above the bits(29) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F082Bits > 33554431 { // a value above the bits(25) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	if value.F083Enum > 5 {
 		return serialize.ErrValueOutOfRange
@@ -669,6 +722,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits64(&w24, 58)
 	fixedValue7 := int64(value.F084Ufixed)
 	stream.SerializeFixed64(&fixedValue7, 1, 7, 0, 1)
+	if value.F085Bits > 2097151 { // a value above the bits(21) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.F086Uint > 399 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -676,6 +732,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		return serialize.ErrNonFiniteFloat
 	}
 	if value.F088Int < -694 || value.F088Int > 694 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F089Bits > 281474976710655 { // a value above the bits(48) wire width cannot ride
 		return serialize.ErrValueOutOfRange
 	}
 	if value.F090Uint > 214 {
@@ -710,6 +769,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits64(&w28, 40)
 	fixedValue8 := int64(value.F095Fixed)
 	stream.SerializeFixed64(&fixedValue8, 16, 16, -1577, 1577)
+	if value.F096Bits > 262143 { // a value above the bits(18) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F097Bits > 4095 { // a value above the bits(12) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f84 := uint64(value.F096Bits) & 0x3ffff
 	f85 := uint64(value.F097Bits) & 0xfff
 	w29 := uint32(f84 | f85<<18)
@@ -717,10 +782,21 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	return stream.Err()
 }
 
-// ReadRealPacket reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadRealPacket reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// RealPacket nested in another value is read through it.
+func (value *RealPacket) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)

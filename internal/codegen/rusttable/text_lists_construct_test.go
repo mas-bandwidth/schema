@@ -44,7 +44,7 @@ func TestRustTextListsNative(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert!(!r.damaged,"JSON clean %d");assert_eq!(root_to_json(&v).trim_end(),%q,"flat JSON %d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire pin %d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);assert!(root_load_measure(&wire)>0);let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, i, string(text), i, rustByteVector(wire), i)
+		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert!(!r.damaged,"JSON clean %d");assert_eq!(root_to_json(&v).trim_end(),%q,"flat JSON %d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire pin %d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);assert!(root_load_measure(&wire)>0);let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, i, string(text), i, rustByteVector(wire), i)
 		for _, big := range []bool{false, true} {
 			pin, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {

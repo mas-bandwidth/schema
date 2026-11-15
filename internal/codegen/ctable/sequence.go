@@ -444,7 +444,7 @@ func (g *tableGen) emitSequenceWrite(f *ir.Field, expr string) {
 		if val.Type.Optional {
 			g.pf("          if(!te->value_present) { continue; }\n")
 		}
-		g.pf("          if(te->value_length<0 || te->value_length>%d) { return 0; }\n", val.Type.Size)
+		g.writeStorageBound("te->value_length", val.Type.Size, "          ")
 		g.pf("          total+=te->value_length; if(total>%d) { return 0; }\n", f.TextTotal)
 		g.pf("      }\n    }\n")
 	}
@@ -477,6 +477,7 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	} else {
 		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	}
+	g.pf("                    if(!table_array_element_kind_allowed(elem_kind)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	g.pf("                    if(elem_kind!=%d && !(%s)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.retainReplace(f, "                    ")
 	// a widened element kind counts once the count is known to land: the

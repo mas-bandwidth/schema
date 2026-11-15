@@ -1378,6 +1378,28 @@ defmodule Benchtable.Table do
   # The write is the fixed form's own. The variable codec below is for
   # variable roots, including one that holds a fixed table.
 
+  # the atom each declared enum variant and union arm name stands for
+  @fixed_class_atoms %{
+    "Drone" => :drone,
+    "Fists" => :fists,
+    "Flamer" => :flamer,
+    "Grenade" => :grenade,
+    "Mine" => :mine,
+    "Pistol" => :pistol,
+    "Plasma" => :plasma,
+    "Railgun" => :railgun,
+    "Repair" => :repair,
+    "Rifle" => :rifle,
+    "Rocket" => :rocket,
+    "Shotgun" => :shotgun,
+    "Smg" => :smg,
+    "Sniper" => :sniper,
+    "Turret" => :turret,
+    "chat" => :chat,
+    "hit" => :hit,
+    "pickup" => :pickup
+  }
+
   # A fixed root's Table value is the Table API's value: the fixed record
   # converted by the descriptors above, so the text form, the cook writer
   # and a re-save walk the same string-keyed map a variable root returns.
@@ -1392,6 +1414,16 @@ defmodule Benchtable.Table do
       blob_shared: Map.get(report, :blob_shared, 0),
       reason: Map.get(report, :reason, "")
     }
+  end
+
+  # A refused load's report names its refusal (docs/SPEC-TABLES.md §4): the
+  # verdict and the reason never disagree, so a refusal the fixed read left
+  # unnamed takes the refusal's own name.
+  defp fixed_class_refusal(refusal, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = named -> %{named | reason: to_string(refusal)}
+      named -> named
+    end
   end
 
   defp fixed_class_snake(name) do
@@ -1492,7 +1524,6 @@ defmodule Benchtable.Table do
 
   defp fixed_class_keyed_to_table(_f, _value), do: %{}
 
-
   defp fixed_class_union_to_table(f, value) do
     case value do
       nil ->
@@ -1535,14 +1566,13 @@ defmodule Benchtable.Table do
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
-            {atom, fixed_class_value_from_table(desc, payload)}
+            {Map.fetch!(@fixed_class_atoms, arm), fixed_class_value_from_table(desc, payload)}
         end
 
       {arm, payload} when is_atom(arm) ->
@@ -1629,7 +1659,12 @@ defmodule Benchtable.Table do
     case Map.get(f, :fixed_array) do
       n when is_integer(n) ->
         kept = Enum.take(elems, n)
-        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+        kept ++
+          List.duplicate(
+            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
+            max(n - length(kept), 0)
+          )
 
       _ ->
         elems
@@ -1661,8 +1696,12 @@ defmodule Benchtable.Table do
 
   defp fixed_class_enum_from_table(_f, "None"), do: :none
 
-  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
-    do: String.to_atom(fixed_class_snake(value))
+  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
 
   defp fixed_class_enum_from_table(_f, value), do: value
 
@@ -1672,9 +1711,14 @@ defmodule Benchtable.Table do
     Enum.map(Map.fetch!(f, :key_names), fn name ->
       raw =
         cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) -> Map.get(value, String.to_atom(fixed_class_snake(name)))
-          true -> Map.get(item, :default)
+          Map.has_key?(value, name) ->
+            Map.get(value, name)
+
+          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
+            Map.get(value, String.to_atom(fixed_class_snake(name)))
+
+          true ->
+            Map.get(item, :default)
         end
 
       fixed_class_value_from_table(item, raw)
@@ -1724,8 +1768,8 @@ defmodule Benchtable.Table do
     # DISTINCT node: a table node two fields share is numbered once, so the
     # saved wire matches the reference backends byte for byte (§3.1), and a
     # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
-    # are two records. A blob the strict read found named from two slots
-    # refuses the save by name, blob_shared (§2.5).
+    # are two records. A blob a second slot names refuses the save by name,
+    # blob_shared (§2.5, §6.5), as the strict read refuses it.
     try do
       nodes = collect_root(desc, value)
       idx_map = node_index(nodes)
@@ -1763,8 +1807,9 @@ defmodule Benchtable.Table do
   # the body that holds it (the root, or the table node by its content) and its
   # position among that body's blob slots in declaration order. The node walk
   # and the body writer meet a body's blob slots in the same order, so the two
-  # name the same site. A {:blob_shared, bytes} slot is the strict read's
-  # mark of a blob a second slot named, and every writer refuses it (§2.5).
+  # name the same site. A {:blob_shared, bytes} slot a caller hands the writer
+  # names a blob a second slot names, and every writer refuses it (§2.5,
+  # §6.5); the strict read itself already refused that wire.
   defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
 
   defp blob_site({:__wire_blob__, idx, order, _bytes}), do: {:wire_blob, idx, order}
@@ -2417,95 +2462,360 @@ defmodule Benchtable.Table do
     {IO.iodata_to_binary([body, <<0>>]), ids, order}
   end
 
-  # variable_load is the strict variable-form read for the framing
-  # vectors; strict_load is that read beside the fixed roots' own form.
-
-  def variable_load(table, data) when is_binary(data) do
-    Process.put(:elixir_strict_framing, true)
-
-    try do
-      variable_load_impl(table, data)
-    after
-      Process.delete(:elixir_strict_framing)
+  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC-TABLES.md §3, §4):
+  # its payload is walked as the framing alone describes it, nested bodies,
+  # arrays, keyed pairs and arms included, and whatever no writer emits there
+  # refuses the whole read: a reference past the id table, a repeated id or
+  # key, a reserved id, a bool past 1, ill-formed text, a float that is not
+  # finite, a header that does not fill its L. Pointer payloads are the reach
+  # walk's (strict_wire_reachable!/4).
+  defp strict_unknown!(kind, payload, _nodes, ids) do
+    case unknown_payload(payload, kind, ids, 0) do
+      {:ok, <<>>} -> :ok
+      _ -> throw(:wire_damaged)
     end
   end
 
-  def strict_load("TableEntity", data) when is_binary(data), do: load("TableEntity", data)
+  # EVERY BODY IS HELD TO ITS FRAMING (docs/SPEC-TABLES.md §3, §4: the strict
+  # read's rules are decidable from the wire alone and apply to every byte).
+  # After the read, the root body and each table record's body are walked as
+  # an unknown field's payload is, so an arm, a slot or a field the read
+  # skipped carries no damage the read stepped over. A non-finite float a
+  # known field holds has already refused by name.
+  defp strict_syntax!(body, nodes, ids) do
+    if not unknown_root_body?(body, ids, MapSet.new()), do: throw(:wire_damaged)
 
-  def strict_load("TableStat", data) when is_binary(data), do: load("TableStat", data)
+    Enum.each(nodes, fn
+      {:table, _name, b} ->
+        if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
 
-  def strict_load("TableMixed", data) when is_binary(data), do: load("TableMixed", data)
+      {:unknown, b} when is_binary(b) ->
+        if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
 
-  def strict_load(table, data) when is_binary(data), do: variable_load(table, data)
+      _ ->
+        :ok
+    end)
 
-  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
+    :ok
+  end
 
-  defp strict_unknown!(13, payload, _nodes, ids) do
-    case leb(payload) do
-      {l, body} when byte_size(body) >= l ->
-        case entries(binary_part(body, 0, l), ids, false, :nested) do
-          {:ok, _fields, []} -> :ok
-          _ -> throw(:wire_damaged)
+  # the root body is a body whose node table field is its own: a text-kind
+  # payload the node records were read from
+  defp unknown_root_body?(b, ids, seen) do
+    case leb(b) do
+      {0, rest} ->
+        rest == <<>>
+
+      {ref, <<kind, rest::binary>>} ->
+        id = resolve(ids, ref)
+
+        cond do
+          id == :error or MapSet.member?(seen, id) ->
+            false
+
+          id == @node_id and kind == 12 ->
+            case leb(rest) do
+              {n, r} when byte_size(r) >= n ->
+                unknown_root_body?(binary_part(r, n, byte_size(r) - n), ids, MapSet.put(seen, id))
+
+              _ ->
+                false
+            end
+
+          id in [@build_version_id, @message_vocab_id, @node_id] ->
+            false
+
+          true ->
+            case unknown_payload(rest, kind, ids, 0) do
+              {:ok, after_payload} -> unknown_root_body?(after_payload, ids, MapSet.put(seen, id))
+              :error -> false
+            end
         end
 
       _ ->
-        throw(:wire_damaged)
+        false
     end
   end
 
-  defp strict_unknown!(kind, payload, nodes, _ids) when kind in [17, 30] do
-    case leb(payload) do
-      {idx, _rest} when idx <= length(nodes) + 1 -> :ok
-      _ -> throw(:wire_damaged)
+  defp unknown_payload(buf, kind, ids, depth) do
+    cond do
+      kind in 1..11 or kind in 18..29 or kind == 36 ->
+        w = unknown_width(kind)
+
+        case buf do
+          <<v::binary-size(^w), rest::binary>> ->
+            if unknown_scalar?(v, kind), do: {:ok, rest}, else: :error
+
+          _ ->
+            :error
+        end
+
+      kind == 17 ->
+        case leb(buf) do
+          {_idx, rest} -> {:ok, rest}
+          :error -> :error
+        end
+
+      kind == 30 ->
+        case leb(buf) do
+          {ref, rest} when ref <= div(byte_size(ids), 8) -> {:ok, rest}
+          _ -> :error
+        end
+
+      kind == 15 ->
+        unknown_arm(buf, ids, depth)
+
+      kind in [12, 13, 14, 16, 31, 32] ->
+        case leb(buf) do
+          {n, rest} when byte_size(rest) >= n ->
+            <<content::binary-size(^n), after_l::binary>> = rest
+
+            if unknown_content?(content, kind, ids, depth),
+              do: {:ok, after_l},
+              else: :error
+
+          _ ->
+            :error
+        end
+
+      true ->
+        :error
     end
   end
 
-  defp strict_unknown!(kind, payload, _nodes, _ids) when kind in [14, 16] do
-    case leb(payload) do
-      {_l, body} when byte_size(body) >= 2 -> :ok
-      _ -> throw(:wire_damaged)
+  defp unknown_width(kind) when kind in [1, 2, 6, 20, 25], do: 1
+  defp unknown_width(kind) when kind in [3, 7, 21, 26], do: 2
+  defp unknown_width(kind) when kind in [4, 8, 10], do: 4
+  defp unknown_width(kind) when kind in [5, 9, 11], do: 8
+  defp unknown_width(kind), do: kind_width(kind)
+
+  defp unknown_scalar?(<<b>>, 1), do: b <= 1
+  defp unknown_scalar?(<<bits::little-32>>, 10), do: (bits &&& 0x7F800000) != 0x7F800000
+
+  defp unknown_scalar?(<<bits::little-64>>, 11),
+    do: (bits &&& 0x7FF0000000000000) != 0x7FF0000000000000
+
+  defp unknown_scalar?(_v, _kind), do: true
+
+  defp unknown_content?(b, 12, _ids, _depth),
+    do: utf8_valid?(b) and :binary.match(b, <<0>>) == :nomatch
+
+  defp unknown_content?(_b, 31, _ids, _depth), do: true
+  defp unknown_content?(b, 32, _ids, _depth), do: b == <<>>
+
+  defp unknown_content?(_b, kind, _ids, depth) when kind in [13, 14, 16] and depth >= 128,
+    do: false
+
+  defp unknown_content?(b, 13, ids, depth), do: unknown_body?(b, ids, depth + 1, MapSet.new())
+  defp unknown_content?(b, 14, ids, depth), do: unknown_array?(b, ids, depth + 1)
+  defp unknown_content?(b, 16, ids, depth), do: unknown_keyed?(b, ids, depth + 1)
+
+  defp unknown_content?(b, kind, ids, depth) do
+    case unknown_payload(b, kind, ids, depth) do
+      {:ok, <<>>} -> true
+      _ -> false
     end
   end
 
-  defp strict_unknown!(_kind, _payload, _nodes, _ids), do: :ok
+  defp unknown_body?(b, ids, depth, seen) do
+    case leb(b) do
+      {0, rest} ->
+        rest == <<>>
+
+      {ref, <<kind, rest::binary>>} ->
+        id = resolve(ids, ref)
+
+        cond do
+          id == :error or MapSet.member?(seen, id) ->
+            false
+
+          id in [@build_version_id, @message_vocab_id, @node_id] ->
+            false
+
+          true ->
+            case unknown_payload(rest, kind, ids, depth) do
+              {:ok, after_payload} ->
+                unknown_body?(after_payload, ids, depth, MapSet.put(seen, id))
+
+              :error ->
+                false
+            end
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  # THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+  # (kind 14) may carry 1–13, 15, 17 and 18–30, and an enum-keyed body (kind
+  # 16) 1–11, 13 and 18–30. Any other kind is damage under ANY count, a count
+  # of 0 included, so the header's kind byte is judged before the elements.
+  defp array_element_kind?(kind),
+    do: kind in 1..13 or kind in [15, 17, 30] or kind in 18..29
+
+  defp keyed_element_kind?(kind),
+    do: kind in 1..11 or kind == 13 or kind in 18..29 or kind == 30
+
+  defp unknown_array?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
+    if array_element_kind?(ek) do
+      case leb(rest) do
+        {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
+        _ -> false
+      end
+    else
+      false
+    end
+  end
+
+  defp unknown_array?(_b, _ids, _depth), do: false
+
+  defp unknown_elements?(rest, _ek, 0, _ids, _depth), do: rest == <<>>
+
+  defp unknown_elements?(rest, ek, n, ids, depth) do
+    case unknown_payload(rest, ek, ids, depth) do
+      {:ok, after_elem} -> unknown_elements?(after_elem, ek, n - 1, ids, depth)
+      :error -> false
+    end
+  end
+
+  defp unknown_keyed?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
+    if keyed_element_kind?(ek) do
+      case leb(rest) do
+        {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
+        _ -> false
+      end
+    else
+      false
+    end
+  end
+
+  defp unknown_keyed?(_b, _ids, _depth), do: false
+
+  defp unknown_pairs?(rest, _ek, 0, _ids, _depth, _seen), do: rest == <<>>
+
+  defp unknown_pairs?(rest, ek, n, ids, depth, seen) do
+    with {key, r1} <- leb(rest),
+         true <- key != 0 and key <= div(byte_size(ids), 8) and not MapSet.member?(seen, key),
+         {len, r2} when byte_size(r2) >= len <- leb(r1),
+         <<content::binary-size(^len), r3::binary>> <- r2,
+         true <- unknown_content?(content, ek, ids, depth) do
+      unknown_pairs?(r3, ek, n - 1, ids, depth, MapSet.put(seen, key))
+    else
+      _ -> false
+    end
+  end
+
+  defp unknown_arm(buf, ids, depth) do
+    case leb(buf) do
+      {0, rest} ->
+        {:ok, rest}
+
+      {ref, <<kind, rest::binary>>} when ref <= div(byte_size(ids), 8) ->
+        with {n, r1} when byte_size(r1) >= n <- leb(rest),
+             <<content::binary-size(^n), r2::binary>> <- r1 do
+          deeper = if kind in [13, 14, 15, 16], do: depth + 1, else: depth
+
+          cond do
+            kind in [13, 14, 15, 16] and depth >= 128 -> :error
+            unknown_content?(content, kind, ids, deeper) -> {:ok, r2}
+            true -> :error
+          end
+        else
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
 
   # A node record no pointer reaches is damage (§3, §4): the reach is
   # syntactic, over the wire's own pointer payloads in the root body and in
   # every reached node's body, known and unknown fields alike, so a node
   # named only by a skipped field still counts as reached and a node named
-  # by no payload at all refuses the whole load.
+  # by no payload at all refuses the whole load. A record of a type this
+  # reader cannot name is held to the same rule, and its body's payloads
+  # reach as a known record's do (internal/tablewire's wire check). The same
+  # walk judges cycles over every pointer payload (§3.1, §6.5 THE GRAPH,
+  # DEFINED ONCE): a pointer naming a node whose descent is still open, the
+  # root included, is damage, whatever field or record type carries it.
   defp strict_wire_reachable!(fields, node_fields, nodes, ids) do
+    indexed = Enum.with_index(nodes, 2)
+
     node_indices =
-      nodes
-      |> Enum.with_index(2)
-      |> Enum.flat_map(fn {node, idx} ->
-        if match?({:table, _, _}, node) or match?({:blob, _, _}, node),
-          do: [idx],
-          else: []
-      end)
+      for {node, idx} <- indexed, node != :malformed, do: idx
 
-    bodies = Map.put(node_fields, 1, fields)
-    seen = wire_reach([1], bodies, MapSet.new(), ids)
+    unknown_fields =
+      for {{:unknown, body}, idx} <- indexed, is_binary(body), into: %{} do
+        case entries(body, ids, false, :nested) do
+          {:ok, fs, []} -> {idx, fs}
+          _ -> throw(:wire_damaged)
+        end
+      end
 
-    if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
+    children =
+      node_fields
+      |> Map.merge(unknown_fields)
+      |> Map.put(1, fields)
+      |> Map.new(fn {idx, fs} -> {idx, wire_field_refs(fs, ids)} end)
+
+    marks = wire_walk([{1, Map.get(children, 1, [])}], children, %{1 => :open})
+
+    if Enum.any?(node_indices, fn idx -> not Map.has_key?(marks, idx) end),
+      do: throw(:wire_damaged)
+
+    # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5): every pointer
+    # payload in every body names, a skipped field's too, and each body is
+    # counted once however many pointers reach it.
+    names =
+      children
+      |> Map.values()
+      |> Enum.concat()
+      |> Enum.frequencies()
+
+    # A POINTER PAST THE NODE TABLE is damage wherever it rides (§3.1)
+    last = length(nodes) + 1
+    if Enum.any?(Map.keys(names), &(&1 > last)), do: throw(:wire_damaged)
+
+    if Enum.any?(indexed, fn {node, idx} -> blob_node?(node) and Map.get(names, idx, 0) > 1 end),
       do: throw(:wire_damaged)
 
     :ok
   end
 
-  defp wire_reach([], _bodies, seen, _ids), do: seen
+  defp blob_node?({:blob, _kind, _bytes}), do: true
+  defp blob_node?({:unknown, :blob}), do: true
+  defp blob_node?(_node), do: false
 
-  defp wire_reach([idx | rest], bodies, seen, ids) do
-    if MapSet.member?(seen, idx) do
-      wire_reach(rest, bodies, seen, ids)
-    else
-      refs =
-        case Map.fetch(bodies, idx) do
-          {:ok, fields} -> wire_field_refs(fields, ids)
-          :error -> []
-        end
+  # wire_walk is the depth-first descent from the root over an explicit
+  # stack of {node, pointers left}, never one recursion per pointer: a legal
+  # chain can be hundreds of thousands of nodes long. A node is :open while
+  # its descent is on the stack and :closed after; a pointer naming an open
+  # node is a cycle. Index 0 is null. The result's keys are the nodes the
+  # walk reached.
+  defp wire_walk([], _children, marks), do: marks
 
-      wire_reach(refs ++ rest, bodies, MapSet.put(seen, idx), ids)
+  defp wire_walk([{node, []} | stack], children, marks),
+    do: wire_walk(stack, children, Map.put(marks, node, :closed))
+
+  defp wire_walk([{node, [0 | rest]} | stack], children, marks),
+    do: wire_walk([{node, rest} | stack], children, marks)
+
+  defp wire_walk([{node, [next | rest]} | stack], children, marks) do
+    case Map.get(marks, next) do
+      :open ->
+        throw(:wire_damaged)
+
+      :closed ->
+        wire_walk([{node, rest} | stack], children, marks)
+
+      nil ->
+        wire_walk(
+          [{next, Map.get(children, next, [])}, {node, rest} | stack],
+          children,
+          Map.put(marks, next, :open)
+        )
     end
   end
 
@@ -2703,107 +3013,79 @@ defmodule Benchtable.Table do
 
   def load("TableEntity", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}
   end
 
   def load("TableEntity", data) when is_binary(data) do
     case Benchtable.BenchTableFixed.table_entity_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("TableEntity", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_refusal(:truncated, report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_refusal(reason, report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}
     end
   end
 
   def load("TableStat", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}
   end
 
   def load("TableStat", data) when is_binary(data) do
     case Benchtable.BenchTableFixed.table_stat_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("TableStat", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_refusal(:truncated, report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_refusal(reason, report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}
     end
   end
 
   def load("TableMixed", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refusal(:previous_form, report)}
   end
 
   def load("TableMixed", data) when is_binary(data) do
     case Benchtable.BenchTableFixed.table_mixed_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("TableMixed", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_refusal(:truncated, report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_refusal(reason, report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_refusal(:batch_too_large, report)}
     end
   end
 
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
 
-  def load(table, data) when is_binary(data) do
-    desc = Map.fetch!(@tables, table)
+  # THE ONE READ (docs/plans/strict-only.md; docs/SPEC-TABLES.md §4): a load
+  # returns the whole value or refuses the whole load, and nothing between.
+  def load(table, data) when is_binary(data), do: variable_read(table, data)
 
-    case open(data) do
-      {:error, reason} ->
-        {:error, reason, reasoned(empty_report(), reason)}
+  # variable_load is the same read with a declared fixed root's own clauses
+  # passed over: the root is read as the variable class, its form-1 wire
+  # included. The conformance framing battery reads through it.
+  def variable_load(table, data) when is_binary(data), do: variable_read(table, data)
 
-      {:ok, body, ids} ->
-        {fields, nodes, terminated} =
-          case entries(body, ids, desc, desc.variable) do
-            {:ok, fields, nodes} -> {fields, nodes, true}
-            {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
-          end
-
-        {{value, report}, shared} =
-          with_node_directory(table, nodes, fn ->
-            blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
-          end)
-
-        if not terminated, do: throw(:wire_damaged)
-
-        report = Map.put(report, :blob_shared, shared)
-
-        # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
-        # that met damage anywhere returns no value, only its report
-        cond do
-          Map.get(report, :missing_required, 0) > 0 ->
-            {:error, :missing_required, report}
-
-          true ->
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
-        end
-    end
-  catch
-    {:missing_required, report} ->
-      {:error, :missing_required, report}
-
-    {:count_over_extent_cap, report} ->
-      {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
-
-    # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
-    # strict one too, and outranks any damage the walk would have met after
-    # it: nothing lands, and the reason names the first such field.
-    {:non_finite_float, name} ->
-      {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
-
-    # A bits(N) value past the range its WIDTH implies refuses the read (§4),
-    # and the reason names the field.
-    {:out_of_range, name} ->
-      {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-
-    :wire_damaged ->
-      {:error, :malformed, reasoned(empty_report(), :malformed)}
-  end
-
-  defp variable_load_impl(table, data) when is_binary(data) do
+  defp variable_read(table, data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
@@ -2817,14 +3099,18 @@ defmodule Benchtable.Table do
             {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
           end
 
-        {{value, report}, shared} =
+        {value, report} =
           with_node_directory(table, nodes, fn ->
             blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
           end)
 
         if not terminated, do: throw(:wire_damaged)
 
-        report = Map.put(report, :blob_shared, shared)
+        strict_syntax!(body, nodes, ids)
+
+        # A BLOB NAMED FROM TWO SLOTS already refused the read at its second
+        # naming (blob_shared, §2.5), so a read that lands reports 0
+        report = Map.put(report, :blob_shared, 0)
 
         # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
         # that met damage anywhere returns no value, only its report
@@ -2843,6 +3129,11 @@ defmodule Benchtable.Table do
     {:count_over_extent_cap, report} ->
       {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
 
+    # A BLOB NAMED FROM TWO SLOTS refuses the read (docs/SPEC-TABLES.md §2.5,
+    # §6.5): no value lands.
+    :blob_shared ->
+      {:error, :blob_shared, reasoned(empty_report(), :blob_shared)}
+
     # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
     # strict one too, and outranks any damage the walk would have met after
     # it: nothing lands, and the reason names the first such field.
@@ -2857,7 +3148,6 @@ defmodule Benchtable.Table do
     :wire_damaged ->
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
-
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
   # verdict word beside its counters, spelled with the reference leg's
@@ -2878,6 +3168,8 @@ defmodule Benchtable.Table do
 
   defp reasoned(report, :count_over_extent_cap),
     do: Map.put(report, :reason, "count_over_extent_cap")
+
+  defp reasoned(report, :blob_shared), do: Map.put(report, :reason, "blob_shared")
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
@@ -3098,19 +3390,29 @@ defmodule Benchtable.Table do
          true <- byte_size(r2) >= len do
       bytes = binary_part(r2, 0, len)
 
+      # A RECORD THIS READER CANNOT NAME keeps its body ({:unknown, body}):
+      # the value reads it as nothing, but the reach walk still reads its
+      # pointer payloads, as every record's are (§3.1, §4)
       node =
         case resolve(ids, sref) do
           :error ->
-            :unknown
+            {:unknown, bytes}
+
+          id when id in [@node_id, @build_version_id, @message_vocab_id] ->
+            # A RESERVED ID IN A RECORD'S TYPE POSITION is malformed, because
+            # the three ids the language holds back ride only in their own transport
+            # (§3.1, §3.3), so the record names no type and the whole load is
+            # discarded
+            :malformed
 
           @string_id ->
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
             # no *string cannot place the record at all (§3.1)
-            if is_map(allowed) and allowed.string_blob do
-              if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
-            else
-              :unknown
+            cond do
+              not utf8_valid?(bytes) -> :malformed
+              is_map(allowed) and allowed.string_blob -> {:blob, :string, bytes}
+              true -> {:unknown, :blob}
             end
 
           tid ->
@@ -3118,15 +3420,15 @@ defmodule Benchtable.Table do
               {:ok, :bytes} ->
                 if is_map(allowed) and allowed.bytes_blob,
                   do: {:blob, :bytes, bytes},
-                  else: :unknown
+                  else: {:unknown, :blob}
 
               {:ok, name} ->
                 if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
                   do: {:table, name, bytes},
-                  else: :unknown
+                  else: {:unknown, bytes}
 
               :error ->
-                :unknown
+                {:unknown, bytes}
             end
         end
 
@@ -3136,26 +3438,23 @@ defmodule Benchtable.Table do
     end
   end
 
-  # THE TOLERANT READ OF A SHARED BLOB (docs/SPEC-TABLES.md §2.5): a blob is
-  # owned by one slot, and a wire whose two slots name ONE blob record is read,
-  # not refused. Final stored slots use bytes for the first owner and
-  # {:blob_shared, bytes} for each other owner, never a copy. The report counts
-  # extra read namings; writers refuse only ownership that survives replacement.
-  # A read site is the body holding it (root or table node by index) and its
-  # position among that body's blob reads, so a table node a second pointer
-  # decodes again names the same slots and is not a sharing.
+  # A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5, §6.5): a wire whose
+  # two slots name ONE blob record is refused, never read — the second naming
+  # throws blob_shared on the plain and the retaining read alike, so no value
+  # is returned and nothing is retained. A read site is the body holding it
+  # (root or table node by index) and its position among that body's blob
+  # reads, so a table node a second pointer decodes again names the same slots
+  # and is not a sharing.
   defp blob_namings(fun) do
     Process.put(:elixir_blob_read, %{
       holder: :root,
       n: 0,
       next: 0,
-      named: %{},
-      shared: MapSet.new()
+      named: %{}
     })
 
     try do
-      result = fun.()
-      {result, MapSet.size(Process.get(:elixir_blob_read).shared)}
+      fun.()
     after
       Process.delete(:elixir_blob_read)
     end
@@ -3192,7 +3491,7 @@ defmodule Benchtable.Table do
           case Map.fetch(st.named, idx) do
             :error -> %{st | named: Map.put(st.named, idx, site)}
             {:ok, ^site} -> st
-            {:ok, _first} -> %{st | shared: MapSet.put(st.shared, site)}
+            {:ok, _first} -> throw(:blob_shared)
           end
 
         Process.put(:elixir_blob_read, st)
@@ -3290,11 +3589,12 @@ defmodule Benchtable.Table do
           # body was read (directory_report), so this is never taken
           :null
 
-        _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+        {:unknown, _body} ->
+          # A NODE WHOSE TYPE ID THIS READER CANNOT NAME is skipped by its
+          # length, counted unknown, keeps its index, and every pointer
+          # naming it reads null (docs/SPEC-TABLES.md §3.1), as the
+          # retaining read and Go's oracle (internal/tablewire) already do
+          :null
       end
     end
   end
@@ -3302,8 +3602,10 @@ defmodule Benchtable.Table do
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
+    if ends_early?(body, ids), do: throw(:wire_damaged)
+
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
+      {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
@@ -3312,7 +3614,7 @@ defmodule Benchtable.Table do
   defp directory_report(nodes, report, retaining) do
     if :malformed in nodes, do: throw(:wire_damaged)
 
-    unknown = Enum.count(nodes, &(&1 == :unknown))
+    unknown = Enum.count(nodes, &match?({:unknown, _}, &1))
 
     %{
       report
@@ -3452,7 +3754,7 @@ defmodule Benchtable.Table do
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
-            if strict_flag?() and payload != :unframed,
+            if payload != :unframed,
               do: strict_unknown!(kind, payload, nodes, ids)
 
             if payload == :unframed,
@@ -3460,7 +3762,7 @@ defmodule Benchtable.Table do
               else: {:cont, {:cont, value, report}}
 
           f ->
-            if strict_flag?() and Map.has_key?(value, f.name), do: throw(:wire_damaged)
+            if Map.has_key?(value, f.name), do: throw(:wire_damaged)
 
             cond do
               payload == :unframed ->
@@ -3480,10 +3782,6 @@ defmodule Benchtable.Table do
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
-                  {:cont, :inert, report} ->
-                    if strict_flag?(), do: throw(:wire_damaged)
-                    {:cont, {:cont, inert_required_field(f, value), report}}
-
                   {:cont, v, report} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report}}
 
@@ -3525,21 +3823,6 @@ defmodule Benchtable.Table do
 
   defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
 
-  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
-  # array, map or keyed body too short to carry its own header, fewer than two
-  # bytes, decodes nothing, counts nothing, and the field keeps the value it
-  # has. The field rode, so an optional one is present: empty, when no earlier
-  # occurrence set it.
-  defp inert_field(f, value) do
-    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
-      do: Map.put(value, f.name, inert_empty(f)),
-      else: value
-  end
-
-  defp inert_empty(%{t: :bytes}), do: <<>>
-  defp inert_empty(%{t: :list}), do: []
-  defp inert_empty(_f), do: %{}
-
   defp find_field(desc, id) do
     Enum.find(desc.fields, fn f -> f.id == id end)
   end
@@ -3551,10 +3834,10 @@ defmodule Benchtable.Table do
 
         cond do
           not utf8_valid?(raw) ->
-            {:cont, "", throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           not Map.get(f, :unbounded, false) and len > f.size ->
-            {:cont, utf8_prefix(raw, f.size), throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           true ->
             {:cont, raw, report}
@@ -3683,23 +3966,24 @@ defmodule Benchtable.Table do
   end
 
   # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
-  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
-  # declared size clamps.
+  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. The bytes after the
+  # count number exactly the count, never fewer and never more, and a body too
+  # short for its header is damage.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
+      # a body too short to carry its own header is damage (§3, §4)
       {_len, arr} when byte_size(arr) < 2 ->
-        {:cont, :inert, report}
+        {:cont, <<>>, throw(:wire_damaged)}
 
       {_len, <<actual, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, bytes} when actual == 6 ->
             if n > f.size, do: throw(:wire_damaged)
 
-            keep = min(n, f.size)
-            report = report
-
-            if byte_size(bytes) >= keep do
-              {:cont, binary_part(bytes, 0, keep), report}
+            # a count the body cannot cover, and bytes left inside the L after
+            # the count's bytes, are both damage (§3, §4)
+            if byte_size(bytes) == n do
+              {:cont, bytes, report}
             else
               {:cont, bytes, throw(:wire_damaged)}
             end
@@ -3728,9 +4012,6 @@ defmodule Benchtable.Table do
       {:cont, :map_key_mismatch, report} ->
         {:cont, %{}, report}
 
-      {:cont, :inert, report} ->
-        {:cont, :inert, report}
-
       {:cont, entries, report} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
         keys = Enum.map(entries, &Map.get(&1, "key", kf.default))
@@ -3755,14 +4036,14 @@ defmodule Benchtable.Table do
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): the element kind, the
   # pair count, then (key reference, L, element) pairs. A key this reader cannot
   # name counts unknown and its element is skipped by its L.
-  # A body of fewer than two bytes is inert (§4); a foreign element kind is
+  # A body of fewer than two bytes is damage (§3, §4); a foreign element kind is
   # a kind mismatch; a count that does not complete
   # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
   # the parent, it is a count the body cannot cover).
   defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
-        {:cont, :inert, report}
+        {:cont, %{}, throw(:wire_damaged)}
 
       {_len, <<ek, rest::binary>>} ->
         case leb(rest) do
@@ -3784,12 +4065,17 @@ defmodule Benchtable.Table do
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} when byte_size(arr) < 2 ->
-        # a body too short to carry its header is inert (§4, H2)
-        {:cont, :inert, report}
+        # a body too short to carry its header is damage (§3, §4)
+        {:cont, [], throw(:wire_damaged)}
 
       {_len, <<elem_kind, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, elems} ->
+            # THE ELEMENT KIND IS CLOSED (docs/SPEC-TABLES.md §3, §4): judged
+            # under any count before the declaration, so a kind off the array
+            # list is damage rather than a mismatch.
+            if not array_element_kind?(elem_kind), do: throw(:wire_damaged)
+
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
@@ -3802,7 +4088,7 @@ defmodule Benchtable.Table do
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+              reader = %{f | elem_kind: elem_kind}
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -4005,7 +4291,6 @@ defmodule Benchtable.Table do
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
-      {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
       {:cont, v, report} -> {:cont, {name, v}, report}
       {:halt, v, report} -> {:halt, {name, v}, report}
     end
@@ -4033,7 +4318,13 @@ defmodule Benchtable.Table do
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  # Bytes left inside a keyed array's L after its count's slots are damage
+  # (§3, §4): every slot is framed by its own L, so no widening leaves any.
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    if bin != <<>>, do: throw(:wire_damaged)
+
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -4045,12 +4336,18 @@ defmodule Benchtable.Table do
 
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
-            {:cont, v, report} ->
-              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+          if Map.has_key?(acc, name) do
+            # a keyed body names each slot at most once (§3.2); a second pair
+            # whose key resolves to a placed slot is damage (§4)
+            {:cont, acc, throw(:wire_damaged)}
+          else
+            case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+              {:cont, v, report} ->
+                read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-            {:halt, v, report} ->
-              {:halt, Map.put(acc, name, v), report}
+              {:halt, v, report} ->
+                {:halt, Map.put(acc, name, v), report}
+            end
           end
 
         :error ->
@@ -4089,6 +4386,9 @@ defmodule Benchtable.Table do
   # length-framed slot is then decoded at that incoming width (§3.2, §4).
   defp keyed_reader(f, kind, report) do
     cond do
+      not keyed_element_kind?(kind) ->
+        {:mismatch, throw(:wire_damaged)}
+
       kind == f.elem_kind ->
         {:ok, f, report}
 
@@ -4183,12 +4483,11 @@ defmodule Benchtable.Table do
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
-    # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and the rest of the L
-    # is the writer's wider slots, skipped with the body (§2.9, §4).
-    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
-      do: throw(:wire_damaged)
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
+    # Bytes left inside an array's L after its elements are damage (§3, §4),
+    # a widened element kind's too: its elements read at the wire kind's
+    # width and fill the L exactly, as Go's oracle holds (internal/tablewire).
+    if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
   end
@@ -4202,10 +4501,10 @@ defmodule Benchtable.Table do
         {value, report} =
           cond do
             not utf8_valid?(raw) ->
-              {"", throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             not Map.get(f, :text_unbounded, false) and len > f.text_size ->
-              {utf8_prefix(raw, f.text_size), throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             true ->
               {raw, report}
@@ -4319,8 +4618,8 @@ defmodule Benchtable.Table do
 
         value =
           cond do
-            not utf8_valid?(raw) -> ""
-            len > f.size -> utf8_prefix(raw, f.size)
+            not utf8_valid?(raw) -> throw(:wire_damaged)
+            len > f.size -> throw(:wire_damaged)
             true -> raw
           end
 
@@ -4412,8 +4711,8 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, report),
-    do: {Enum.reverse(acc), report}
+  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, _report),
+    do: {Enum.reverse(acc), throw(:wire_damaged)}
 
   # read_element decodes one L-framed nested body: a []T element, a by-value
   # table, a keyed slot, a map entry or a table arm (docs/SPEC-TABLES.md §2.9,
@@ -4484,6 +4783,9 @@ defmodule Benchtable.Table do
 
   defp field_active?(_f, _desc, _value), do: true
 
+  # A WRITER'S TEXT CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md §5.1 row 8):
+  # well-formed text with no zero byte. The text writer refuses a zero too,
+  # because its reader refuses the \u0000 text a writer would otherwise spell.
   defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
@@ -4574,11 +4876,6 @@ defmodule Benchtable.Table do
     do: rest == <<>> or crosses_l?(rest, i + 1)
 
   defp crosses_l?(_bin, _i), do: false
-
-  defp inert_required_field(%{required: true} = f, value),
-    do: Map.put_new(value, f.name, f.default)
-
-  defp inert_required_field(f, value), do: inert_field(f, value)
 
   defp malformed_report, do: throw(:wire_damaged)
 
@@ -4763,7 +5060,7 @@ defmodule Benchtable.Table do
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
-  defp int_of(_payload, _w, _signed), do: 0
+  defp int_of(_payload, _w, _signed), do: throw(:wire_damaged)
 
   defp clamp_int(v, %{min: lo, max: _hi}, _report) when v < lo,
     do: {lo, throw(:wire_damaged)}
@@ -4987,10 +5284,21 @@ defmodule Benchtable.Table do
         _ ->
           {:error, :malformed, empty_report()}
       end
+    rescue
+      # A read answers a value or a refusal (docs/SPEC-TABLES.md §6.5): an
+      # error raised inside the read is that refusal, never an escape from
+      # from_json.
+      _ ->
+        {:error, :malformed, empty_report()}
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
@@ -5023,7 +5331,7 @@ defmodule Benchtable.Table do
     do: tally_node(name, v, acc)
 
   # a blob is its slot's own (§2.5), so equal bytes in two slots are two
-  # strings; only the strict read's {:blob_shared, bytes} mark is a sharing
+  # strings; a {:blob_shared, bytes} slot a caller hands the writer is a sharing
   defp tally_field(%{t: :blob, type_id: id}, {:blob_shared, _bytes}, acc),
     do: Map.put(acc, {:blob, id, :shared}, 2)
 
@@ -5264,6 +5572,10 @@ defmodule Benchtable.Table do
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
+    # A bit above the named variants has no text spelling (docs/SPEC-TABLES.md
+    # §16.2): the file read keeps it whole, and the text writer refuses it.
+    if v >>> length(names) != 0, do: throw(:invalid_value)
+
     set = for {n, i} <- Enum.with_index(names), (v >>> i &&& 1) == 1, do: n
 
     case set do
@@ -5285,8 +5597,17 @@ defmodule Benchtable.Table do
   end
 
   defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
-  defp json_field(%{t: :int, frac: frac}, v, _depth), do: fixed_text(v, frac)
-  defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
+
+  defp json_field(%{t: :int, frac: frac} = f, v, _depth) do
+    text = fixed_text(v, frac)
+    if json_wide_int?(f), do: ["\"", text, "\""], else: text
+  end
+
+  defp json_field(%{t: :int} = f, v, _depth) do
+    text = Integer.to_string(v)
+    if json_wide_int?(f), do: ["\"", text, "\""], else: text
+  end
+
   defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
@@ -5317,7 +5638,13 @@ defmodule Benchtable.Table do
   defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
 
   defp json_list_elem(%{elem_kind: kind}, e, _depth)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+       when kind in [5, 9, 18, 19], do: ["\"", Integer.to_string(e), "\""]
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth)
+       when kind in [2, 3, 4, 6, 7, 8], do: Integer.to_string(e)
+
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth)
+       when kind in [23, 24, 28, 29], do: ["\"", fixed_text(e, frac), "\""]
 
   defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
     do: fixed_text(e, frac)
@@ -5581,14 +5908,43 @@ defmodule Benchtable.Table do
     fixed_digits(rem(ten, scale), scale, [<<div(ten, scale) + ?0>> | acc])
   end
 
+  # A kind's storage is wider than 32 bits — int64, uint64, int128, uint128,
+  # and the 64- and 128-bit fixed kinds — so its JSON form is a STRING of
+  # decimal digits (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11).
+  defp json_wide_int?(%{width: width}) when is_integer(width) and width > 4, do: true
+  defp json_wide_int?(_f), do: false
+
+  # json_integer_text reads a wide integer's string content: digits with an
+  # optional minus, no fraction, no exponent and not -0. The value is exact —
+  # never through a double — and any other spelling is :error (§16.2 Numbers).
+  defp json_integer_text(text) do
+    case json_number(text) do
+      {:ok, value, ""} when is_integer(value) -> {:ok, value}
+      _ -> :error
+    end
+  end
+
+  # json_fixed_text reads a wide fixed kind's string content as the same exact
+  # decimal token a JSON number carries (docs/SPEC-TABLES.md §16.2): a token
+  # finer than 2^-F is :error, never rounded.
+  defp json_fixed_text(text, frac) do
+    case json_number(text) do
+      {:ok, value, ""} when is_integer(value) -> fixed_raw(value, frac)
+      {:ok, {:decimal, _} = token, ""} -> fixed_raw(token, frac)
+      _ -> :error
+    end
+  end
+
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
-  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
-  # well-formed sequence is not text: no read puts it into storage, so a
-  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
-  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
-  # (its generalized encoding, ED A0 80 for D800) refuses here too.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the controls from 0x01
+  # through 0x1F, and a well-formed multibyte UTF-8 sequence rides raw. A zero
+  # byte is not text for this writer either: its reader refuses the \u0000 text
+  # a writer would otherwise spell, so the whole write REFUSES (invalid_value,
+  # §16.14 W0) with nothing replaced. A byte that opens no well-formed sequence
+  # is not text: no read puts it into storage, so a program did, and the whole
+  # write refuses the same way. A wide string is held as UTF-8, so an unpaired
+  # surrogate (its generalized encoding, ED A0 80 for D800) refuses here too.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
@@ -5603,6 +5959,7 @@ defmodule Benchtable.Table do
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =
       case c do
+        0 -> throw(:invalid_value)
         ?" -> "\\\""
         ?\\ -> "\\\\"
         ?\b -> "\\b"
@@ -5637,6 +5994,11 @@ defmodule Benchtable.Table do
     {value, seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
+        if byte_size(k) > 255 do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+
         if Map.get(report, :missing_required, 0) > 0 or
              Process.get(:elixir_json_bad, false) do
           {value, seen, report}
@@ -5698,29 +6060,75 @@ defmodule Benchtable.Table do
       Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
     end
 
-    Enum.each(rest, fn {_k, v} -> json_skip_value(v) end)
+    Enum.each(rest, fn {k, v} ->
+      json_skip_key(k)
+      json_skip_value(v)
+    end)
   end
 
   defp json_skip_value({:obj, pairs}) do
-    Enum.each(pairs, fn {_k, v} -> json_skip_value(v) end)
+    Enum.each(pairs, fn {k, v} ->
+      json_skip_key(k)
+      json_skip_value(v)
+    end)
   end
 
   defp json_skip_value(items) when is_list(items) do
     Enum.each(items, &json_skip_value/1)
   end
 
+  # A STRING THE READ ONLY SKIPS IS HELD TO THE PLACED VALUE'S TEXT RULE
+  # (§16.2, §16.3): one that decodes to U+0000 refuses the read, as a placed
+  # string does.
+  defp json_skip_value(bin) when is_binary(bin) do
+    if :binary.match(bin, <<0>>) == :nomatch, do: :ok, else: throw(:wire_damaged)
+  end
+
   defp json_skip_value(_other), do: :ok
+
+  # a skipped object's keys are schema names too: the 255-byte cap reaches
+  # every object, the dropped one included (docs/SPEC-TABLES.md §16.2).
+  defp json_skip_key(k) do
+    if byte_size(k) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+  end
 
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
-  # Wide integers accept integral decimal/exponent tokens without a double.
-  defp json_read_field(%{t: :int, width: 16} = f, {:decimal, _} = raw, report)
-       when not is_map_key(f, :frac) do
-    case fixed_raw(raw, 0) do
-      {:ok, value} -> clamp_json_int(value, f, report)
-      :error -> {:skip, throw(:wire_damaged)}
+  # A wide integer reads its STRING form with the same rule as its number form
+  # (docs/SPEC-TABLES.md §16.2): the digits and an optional minus, no fraction,
+  # no exponent, not -0. A narrow integer is a number only, so a string there
+  # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
+  # string, and one of 32 bits or under stays a number.
+  defp json_read_field(%{t: :int} = f, raw, report)
+       when is_binary(raw) and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) do
+    cond do
+      not json_wide_int?(f) ->
+        json_skip_value(raw)
+        {:skip, throw(:wire_damaged)}
+
+      Map.has_key?(f, :frac) ->
+        case json_fixed_text(raw, f.frac) do
+          {:ok, value} -> clamp_json_int(value, f, report)
+          :error -> {:skip, throw(:wire_damaged)}
+        end
+
+      true ->
+        case json_integer_text(raw) do
+          {:ok, value} -> clamp_json_int(value, f, report)
+          :error -> {:skip, throw(:wire_damaged)}
+        end
     end
+  end
+
+  # an integer field takes an INTEGER token only: a fraction, an exponent or
+  # -0 is the wrong shape and refuses (docs/SPEC-TABLES.md §16.2, Numbers).
+  defp json_read_field(%{t: :int} = f, {:decimal, _}, _report)
+       when not is_map_key(f, :frac) do
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :float, width: 4} = f, {:decimal, _} = raw, report) do
@@ -5751,6 +6159,11 @@ defmodule Benchtable.Table do
   end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
+    if byte_size(raw) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     # "None" is the reserved nil spelling (docs/SPEC-TABLES.md §16; the Go
     # reference internal/tabletext/value.go EnumValue): it reads the nil variant
     # exactly as value 0 does on the wire, and is never an unknown name.
@@ -5783,6 +6196,11 @@ defmodule Benchtable.Table do
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
+          if byte_size(name) > 255 do
+            Process.put(:elixir_json_bad, true)
+            throw(:wire_damaged)
+          end
+
           # A KEYED OBJECT'S KEYS ARE KEYS: any key named twice refuses the
           # whole read, a known variant, an unknown one or "None" alike
           # (internal/tabletext/read.go readKeyed, docs/SPEC-TABLES.md §16.2).
@@ -5810,12 +6228,31 @@ defmodule Benchtable.Table do
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
-  # a name the flags do not have counts unknown.
+  # an element that is not a string is a kind mismatch that refuses the read,
+  # and a string naming a variant the flags do not have counts unknown.
   defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
+      if not is_binary(n) do
+        json_skip_value(n)
+        throw(:wire_damaged)
+      end
+
+      if byte_size(n) > 255 do
+        Process.put(:elixir_json_bad, true)
+        throw(:wire_damaged)
+      end
+
       case Enum.find_index(names, &(&1 == n)) do
-        nil -> {mask, %{report | unknown: report.unknown + 1}}
-        i -> {mask ||| 1 <<< i, report}
+        nil ->
+          {mask, %{report | unknown: report.unknown + 1}}
+
+        i ->
+          # A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a repeated
+          # known name is a repeated key and refuses the read. An unknown
+          # name keeps the skip-and-count treatment above.
+          bit = 1 <<< i
+          if (mask &&& bit) != 0, do: throw(:wire_damaged)
+          {mask ||| bit, report}
       end
     end)
   end
@@ -5975,6 +6412,11 @@ defmodule Benchtable.Table do
     {:skip, throw(:wire_damaged)}
   end
 
+  # a big integer token is a decimal number for a float field: its text is
+  # parsed at the field's width, never folded into a bignum.
+  defp json_read_field(%{t: :float} = f, {:bigint, token}, report),
+    do: json_read_field(f, {:decimal, token}, report)
+
   defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
     case json_float_in_width(raw, f.width) do
       :error ->
@@ -6087,18 +6529,17 @@ defmodule Benchtable.Table do
 
       true ->
         case json_number(key) do
-          {:ok, raw, ""} ->
-            case fixed_raw(raw, 0) do
-              {:ok, value} ->
-                {lo, hi} = int_domain_bounds(field)
+          {:ok, value, ""} when is_integer(value) ->
+            {lo, hi} = int_domain_bounds(field)
 
-                if value >= lo and value <= hi,
-                  do: {:ok, Integer.to_string(value)},
-                  else: throw(:wire_damaged)
+            if value >= lo and value <= hi,
+              do: {:ok, Integer.to_string(value)},
+              else: throw(:wire_damaged)
 
-              :error ->
-                throw(:wire_damaged)
-            end
+          {:ok, _, ""} ->
+            # a fraction, an exponent, -0 or a magnitude past 128 bits: not
+            # the integer spelling a key takes (docs/SPEC-TABLES.md §2.8, §16.2)
+            throw(:wire_damaged)
 
           _ ->
             :malformed
@@ -6192,15 +6633,14 @@ defmodule Benchtable.Table do
     {0, (1 <<< bits) - 1}
   end
 
-  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
-  # or unpadded (docs/SPEC-TABLES.md §16.2).
-  defp json_decode_base64(""), do: {:ok, <<>>}
-
+  # json_decode_base64 reads §16.2's bytes spelling: CANONICAL base64, the
+  # standard alphabet, padded, pad bits zero, exactly the writer's text
+  # (docs/SPEC-TABLES.md §16.2, §16.8). Any other spelling that decodes
+  # refuses the read.
   defp json_decode_base64(raw) do
-    if String.contains?(raw, "=") do
-      Base.decode64(raw)
-    else
-      Base.decode64(raw, padding: false)
+    case Base.decode64(raw) do
+      {:ok, bytes} -> if Base.encode64(bytes) == raw, do: {:ok, bytes}, else: :error
+      :error -> :error
     end
   end
 
@@ -6255,7 +6695,6 @@ defmodule Benchtable.Table do
 
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
-  # an integer element reads -0 as the 0 it is (json_number keeps the token)
   defp json_read_list_elem(%{text_list: true, text_optional: true}, nil, report),
     do: {%{"value" => nil}, report}
 
@@ -6275,17 +6714,11 @@ defmodule Benchtable.Table do
     {%{"value" => value}, throw(:wire_damaged)}
   end
 
-  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
+  # an integer element takes an INTEGER token only: a fraction, an exponent or
+  # -0 is the wrong shape and refuses (docs/SPEC-TABLES.md §16.2, Numbers).
+  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, _}, _report)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
-       do: {0, report}
-
-  defp json_read_list_elem(%{elem_kind: kind} = f, {:decimal, _} = e, report)
-       when kind in [18, 19] do
-    case fixed_raw(e, 0) do
-      {:ok, value} -> json_clamp_elem(value, f, report)
-      :error -> {:skip, throw(:wire_damaged)}
-    end
-  end
+       do: {:skip, throw(:wire_damaged)}
 
   defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
@@ -6296,6 +6729,24 @@ defmodule Benchtable.Table do
 
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
+
+  # a wide integer element reads its STRING form with the integer-token rule;
+  # a wide fixed element reads its exact decimal string (docs/SPEC-TABLES.md §16.2)
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when is_binary(e) and kind in [5, 9, 18, 19] and not is_map_key(f, :elem_flags) do
+    case json_integer_text(e) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, throw(:wire_damaged)}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac} = f, e, report)
+       when is_binary(e) and kind in [23, 24, 28, 29] do
+    case json_fixed_text(e, frac) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, throw(:wire_damaged)}
+    end
+  end
 
   defp json_read_list_elem(%{elem_kind: 13} = f, raw, report),
     do: json_read_field(%{t: :table, elem: f.elem}, raw, report)
@@ -6317,6 +6768,11 @@ defmodule Benchtable.Table do
   end
 
   defp json_read_list_elem(%{elem_kind: 30} = f, e, report) when is_binary(e) do
+    if byte_size(e) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     case e do
       "None" ->
         {nil, report}
@@ -6353,6 +6809,11 @@ defmodule Benchtable.Table do
     end
   end
 
+  # a big integer token is a decimal number for a float element.
+  defp json_read_list_elem(%{elem_kind: kind} = f, {:bigint, token}, report)
+       when kind in [10, 11],
+       do: json_read_list_elem(f, {:decimal, token}, report)
+
   defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
        when kind in [10, 11] and is_number(e) do
     case json_float_in_width(e, kind_width(kind)) do
@@ -6374,6 +6835,11 @@ defmodule Benchtable.Table do
   defp json_read_arm(_union, {:obj, []}, report), do: {nil, report}
 
   defp json_read_arm(union, {:obj, [{name, input}]}, report) do
+    if byte_size(name) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     un = Map.fetch!(@unions, union)
 
     case Map.fetch(un.by_name, name) do
@@ -6483,10 +6949,12 @@ defmodule Benchtable.Table do
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
   # ---- objects, arrays, strings with escapes, numbers, booleans and null
 
-  defp json_value(_bin, depth) when depth > 128, do: :error
-
+  # THE DEPTH CAP COUNTS CONTAINERS (docs/SPEC-TABLES.md §16.2): the root
+  # container sits at depth 0 and a container past depth 128 is refused, so a
+  # scalar member of a depth-128 object (graph_chain_text's deepest node) reads.
   defp json_value(bin, depth) do
     case json_skip(bin) do
+      <<c, _::binary>> when c in [?{, ?[] and depth > 128 -> :error
       <<"{", rest::binary>> -> json_object_p(rest, depth)
       <<"[", rest::binary>> -> json_array_p(rest, depth)
       <<"\"", rest::binary>> -> json_string(rest, [])
@@ -6502,36 +6970,47 @@ defmodule Benchtable.Table do
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
   # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
   # unclosed block comment leaves a byte behind, so the document is malformed.
+  # A comment's bytes are well-formed UTF-8 and hold no NUL, as at a string
+  # site; a comment that breaks that also leaves a byte behind.
   defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
   defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
 
   defp json_skip_line(<<"\n", rest::binary>>), do: json_skip(rest)
-  defp json_skip_line(<<_, rest::binary>>), do: json_skip_line(rest)
+  defp json_skip_line(<<0, _::binary>>), do: <<0>>
+  defp json_skip_line(<<_::utf8, rest::binary>>), do: json_skip_line(rest)
   defp json_skip_line(<<>>), do: <<>>
+  defp json_skip_line(_), do: <<0>>
 
   defp json_skip_block(<<"*/", rest::binary>>), do: json_skip(rest)
-  defp json_skip_block(<<_, rest::binary>>), do: json_skip_block(rest)
-  defp json_skip_block(<<>>), do: <<0>>
+  defp json_skip_block(<<0, _::binary>>), do: <<0>>
+  defp json_skip_block(<<_::utf8, rest::binary>>), do: json_skip_block(rest)
+  defp json_skip_block(_), do: <<0>>
 
   defp json_object_p(bin, depth) do
     case json_skip(bin) do
       <<"}", rest::binary>> -> {:ok, {:obj, []}, rest}
-      _ -> json_object_pairs(bin, [], depth)
+      _ -> json_object_pairs(bin, [], MapSet.new(), depth)
     end
   end
 
-  defp json_object_pairs(bin, acc, depth) do
+  # every object of the text carries one set of its decoded keys, placed or
+  # skipped (§16.2, §16.12): a repeated key refuses the read.
+  defp json_object_pairs(bin, acc, seen, depth) do
     case json_skip(bin) do
       <<"}", rest::binary>> ->
         {:ok, {:obj, Enum.reverse(acc)}, rest}
 
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
+             :ok <- json_key_ok(key),
              <<":", r2::binary>> <- json_skip(r1),
+             false <- MapSet.member?(seen, key),
              {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+          seen = MapSet.put(seen, key)
+
           case json_skip(r3) do
-            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], depth)
+            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], seen, depth)
             <<"}", r4::binary>> -> {:ok, {:obj, Enum.reverse([{key, val} | acc])}, r4}
             _ -> :error
           end
@@ -6542,6 +7021,13 @@ defmodule Benchtable.Table do
       _ ->
         :error
     end
+  end
+
+  # EVERY OBJECT KEY IS HELD TO THE PLACED VALUE'S TEXT RULE (§16.2, §16.3):
+  # one that decodes to U+0000 refuses the read, whether the reader names the
+  # field or skips it.
+  defp json_key_ok(key) do
+    if :binary.match(key, <<0>>) == :nomatch, do: :ok, else: :error
   end
 
   # json_object_val reads one member's value; in a variable-class document
@@ -6701,63 +7187,75 @@ defmodule Benchtable.Table do
   # no plus sign, digits after a point and an exponent); an integer stays an
   # integer and anything else stays its decimal text, {:decimal, token}, so a
   # fixed-point field reads it exactly and every other field reads the double
-  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2).
+  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2). An integer token past
+  # what any integer field holds rides as {:bigint, token}: a float field reads
+  # the same text, and an integer field refuses it without a bignum.
   defp json_number(bin) do
     with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
          {:ok, frac_digits, r3} <- json_num_frac(r1),
          {:ok, exp_str, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
-      sign_str = if neg, do: "-", else: ""
-
       cond do
-        neg and int_value == 0 and frac_digits == "" and exp_str == "" ->
+        frac_digits != "" or exp_str != "" ->
+          {:ok, {:decimal, json_token(bin, r4)}, r4}
+
+        int_value == :big ->
+          {:ok, {:bigint, json_token(bin, r4)}, r4}
+
+        neg and int_value == 0 ->
           # -0 KEEPS ITS SIGN (docs/SPEC-TABLES.md §3.3, §16.2): an integer
           # has no -0, so the token rides as its decimal text and a float
           # field reads -0.0 from it, where an integer field still reads 0
-          {:ok, {:decimal, "-0"}, r4}
-
-        frac_digits == "" and exp_str == "" ->
-          {:ok, if(neg, do: -int_value, else: int_value), r4}
+          {:ok, {:decimal, json_token(bin, r4)}, r4}
 
         true ->
-          token =
-            sign_str <>
-              Integer.to_string(int_value) <>
-              if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
-
-          {:ok, {:decimal, token}, r4}
+          {:ok, if(neg, do: -int_value, else: int_value), r4}
       end
     end
   end
+
+  # json_token is the token as the document spells it, a sub-binary of the
+  # document: its length costs no copy and no bignum.
+  defp json_token(bin, rest),
+    do: binary_part(bin, 0, byte_size(bin) - byte_size(rest))
 
   defp json_num_sign(<<"-", rest::binary>>), do: {:ok, true, rest}
   defp json_num_sign(<<"+", _::binary>>), do: :error
   defp json_num_sign(rest), do: {:ok, false, rest}
 
-  # the integer part is accumulated by value, not as a text binary: one binary
-  # per element for a 70000-element integer array is the allocation this audit
-  # refuses (docs/SPEC-TABLES.md §16.2 gates the shape, not the cost).
+  # the integer part is accumulated by value only while an integer field can
+  # hold it: 10^39 is past every 128-bit bound, so forty digits is the widest
+  # an integer field needs. Past that the digits are consumed but not folded,
+  # which keeps the scan linear in the token's length (docs/SPEC-TABLES.md
+  # §16.2 gates the shape, not the cost).
   defp json_num_int({:ok, neg, rest}) do
-    case json_int_value(rest, 0) do
+    case json_int_value(rest) do
       {:ok, value, rest2} -> {:ok, neg, value, rest2}
+      {:big, rest2} -> {:ok, neg, :big, rest2}
       :error -> :error
     end
   end
 
   defp json_num_int(:error), do: :error
 
-  defp json_int_value(<<"0", c, _::binary>>, _acc) when c in ?0..?9, do: :error
-  defp json_int_value(<<"0", rest::binary>>, _acc), do: {:ok, 0, rest}
+  defp json_int_value(<<"0", c, _::binary>>) when c in ?0..?9, do: :error
+  defp json_int_value(<<"0", rest::binary>>), do: {:ok, 0, rest}
 
-  defp json_int_value(<<c, rest::binary>>, _acc) when c in ?1..?9,
-    do: json_int_digits(rest, c - ?0)
+  defp json_int_value(<<c, rest::binary>>) when c in ?1..?9,
+    do: json_int_digits(rest, c - ?0, 1)
 
-  defp json_int_value(_, _acc), do: :error
+  defp json_int_value(_), do: :error
 
-  defp json_int_digits(<<c, rest::binary>>, acc) when c in ?0..?9,
-    do: json_int_digits(rest, acc * 10 + (c - ?0))
+  defp json_int_digits(<<c, rest::binary>>, acc, digits) when c in ?0..?9 do
+    if digits < 40,
+      do: json_int_digits(rest, acc * 10 + (c - ?0), digits + 1),
+      else: json_int_past(rest)
+  end
 
-  defp json_int_digits(rest, acc), do: {:ok, acc, rest}
+  defp json_int_digits(rest, acc, _digits), do: {:ok, acc, rest}
+
+  defp json_int_past(<<c, rest::binary>>) when c in ?0..?9, do: json_int_past(rest)
+  defp json_int_past(rest), do: {:big, rest}
 
   defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
   defp json_num_frac(<<".", _::binary>>), do: :error
@@ -6895,6 +7393,8 @@ defmodule Benchtable.Table do
         end
     end
   end
+
+  defp fixed_raw({:bigint, _token}, _frac), do: :error
 
   defp fixed_raw(_, _), do: :error
 

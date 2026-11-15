@@ -202,9 +202,9 @@ static class ProbeMain
             Console.WriteLine("FAIL moved " + BitConverter.SingleToInt32Bits(back.Aim).ToString("X8"));
             return false;
         }
-        if (report.Clamped != 0 || report.Malformed || report.Refused || (report.Reason != null && report.Reason.Length != 0))
+        if (report.Damaged || report.Refused || (report.Reason != null && report.Reason.Length != 0))
         {
-            Console.WriteLine("FAIL report clamped=" + report.Clamped + " reason=" + report.Reason);
+            Console.WriteLine("FAIL report reason=" + report.Reason);
             return false;
         }
         return true;

@@ -57,6 +57,18 @@ local function zeros(n)
   return string.rep("\0", n)
 end
 
+-- EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+-- fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3;
+-- docs/SPEC-TABLES.md §3.4, §13.10): an absent optional's payload, a counted
+-- array's slots past its count, a text's or bytes' units past its used length,
+-- and an inactive union arm. A non-zero byte is wire_damaged, and the whole
+-- read refuses. The range is [from, to), in Lua's one-based cursor.
+local function check_dead(buf, from, to)
+  for i = from, to - 1 do
+    if buf:byte(i) ~= 0 then error("wire_damaged", 0) end
+  end
+end
+
 local function pack_uint(v, w)
   if w == 1 then return string.pack("<I1", v) end
   if w == 2 then return string.pack("<I2", v) end
@@ -267,15 +279,16 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         refuse_out_of_range()
       end
     end
-    -- a bits(N) field past its mask refuses (§4.6); a declared range on the
-    -- same field already held it
+    -- a bits(N) field past its mask refuses (§4.6), compared unsigned as the
+    -- range above is: an eight-byte slot's high bit is not a sign. A declared
+    -- range on the same field already held it
     if
       d.lo == nil
       and d.bits ~= nil
       and d.bits > 0
       and d.bits < w * 8
       and type(v) == "number"
-      and v > (1 << d.bits) - 1
+      and math.ult((1 << d.bits) - 1, v)
     then
       refuse_out_of_range()
     end
@@ -314,6 +327,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local n = string.unpack("<i4", buf, pos)
     local cap = size - 4
     if n < 0 or n > cap then error("length_over_bound") end
+    check_dead(buf, pos + 4 + n, pos + size)
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
     return sub, pos + size
@@ -343,6 +357,13 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local ud = T.FixedUnions[d.target]
     local tag = unpack_int(buf, pos, ud.tag, false)
     if tag > #ud.arms then refuse_out_of_range() end
+    local live = ud.tag
+    if tag ~= 0 then
+      local arm = ud.arms[tag]
+      local fd = T.Unions[d.target].arms[tag].field
+      if fd ~= nil then live = live + arm.size end
+    end
+    check_dead(buf, pos + live, pos + size)
     local v = { tag = tag }
     if tag ~= 0 then
       local arm = ud.arms[tag]
@@ -367,6 +388,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
       end
       local n = string.unpack("<i4", buf, pos)
       if n < 0 or n > d.bound then error("count_over_bound") end
+      check_dead(buf, pos + 4 + n * elemSize, pos + size)
       for i = 1, n do
         local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
         if ev == nil then
@@ -386,6 +408,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     end
     local n = string.unpack("<i4", buf, pos)
     if n < 0 or n > d.bound then error("count_over_bound") end
+    check_dead(buf, pos + 4 + n * elemSize, pos + size)
     for i = 1, n do
       t[i] = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
     end
@@ -407,7 +430,11 @@ decode_table = function(T, name, buf, pos, writerSize)
       if f.optional then
         local present = bool_byte(buf, cursor)
         v[f.name .. "_present"] = present
-        if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem) end
+        if present then
+          v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem)
+        else
+          check_dead(buf, cursor + 1, cursor + fs)
+        end
         cursor = cursor + fs
       else
         v[f.name], cursor = decode_value(T, f, buf, cursor, fs, f.fixed_elem)
@@ -530,7 +557,15 @@ local function compat_old(d, node)
   local s = d.shape
   if s == "int" then
     if d.timestamp then return node.kind == 36 and node.size == 8 end
-    if d.bits then return node.kind == 32 and (node.size == 4 or node.size == 8) end
+    if d.bits then
+      -- A bits(N) rides at its declared storage width under the unsigned
+      -- integer kind its bit count picks (ir.TableFixedLeafKind,
+      -- ir.TableFixedStorageBytes): kinds 6, 7 and 8 at four bytes and kind
+      -- 9 at eight. An older writer may have declared a narrower bits(N), so
+      -- every kind the walk assigns at those widths is a lawful source.
+      if node.size == 4 then return node.kind >= 6 and node.kind <= 8 end
+      return node.size == 8 and node.kind == 9
+    end
     if d.kind and d.kind >= 20 and d.kind <= 29 then return node.kind == d.kind and node.size == d.width end
     return node.kind >= 2 and node.kind <= 9 and node.size <= d.width
   elseif s == "wide" then
@@ -586,6 +621,8 @@ local function decode_old_table(T, name, node, buf, pos, rep)
           v[f.name .. "_present"] = present
           if present and child.children[1] ~= nil and compat_old(f, child.children[1]) then
             v[f.name] = decode_old_value(T, f, child.children[1], buf, cpos + 1, rep)
+          elseif not present then
+            check_dead(buf, cpos + 1, cpos + child.size)
           end
         elseif compat_old(f, child) then
           -- THE PRESENT COMPANION THE READER GAINED IS TRUE for an old T (§5.9
@@ -623,6 +660,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local n = string.unpack("<i4", buf, pos)
     local cap = node.size - 4
     if n < 0 or n > cap then error("length_over_bound") end
+    check_dead(buf, pos + 4 + n, pos + node.size)
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
     return sub
@@ -649,6 +687,12 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local tag = unpack_int(buf, pos, w, false)
     -- THE WRITER'S ARM COUNT GOVERNS (§4.6): a tag past it refuses
     if tag > nArms then refuse_out_of_range() end
+    local live = w
+    if tag ~= 0 then
+      local armNode = node.children[tag]
+      if armNode ~= nil then live = live + armNode.size end
+    end
+    check_dead(buf, pos + live, pos + node.size)
     if tag > #T.Unions[d.target].arms then tag = 0 end
     local v = { tag = tag }
     if tag ~= 0 then
@@ -680,6 +724,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local n = string.unpack("<i4", buf, pos)
     local cap = es > 0 and math.floor((node.size - 4) / es) or 0
     if n < 0 or n > cap then error("count_over_bound") end
+    check_dead(buf, pos + 4 + n * es, pos + node.size)
     for i = 1, n do
       local ev = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es, rep)
       if ev == nil and d.elem.shape == "enum" then ev = false end
@@ -695,8 +740,10 @@ end
 -- THE STRICT SET (docs/SPEC-TABLES.md §6.5, §3.4; docs/FIXED-FORM-ALGORITHM.md
 -- §4.6): the fixed form carries its own rule, and a RANGED integer past the
 -- writer's declared bound (or this reader's when the entry carries no writer
--- range) is the `out_of_range` refusal. The plain name walks what it decoded
--- once.
+-- range) is the `out_of_range` refusal. A bits(N) past its mask, a ranged
+-- 128-bit value and a compressed float past this reader's declared bound
+-- refuse by the same name (the entry carries writer ranges for integers
+-- only). The plain name walks what it decoded once.
 local function strict_value(T, d, v, ranges, wr)
   if v == nil then return end
   local s = d.shape
@@ -711,6 +758,28 @@ local function strict_value(T, d, v, ranges, wr)
       else
         if math.ult(v, lo) or math.ult(hi, v) then error("out_of_range", 0) end
       end
+    elseif d.bits ~= nil and d.bits > 0 and d.bits < 64 then
+      -- a bits(N) past its mask refuses by the same name (§4.6), compared
+      -- unsigned: a bits(N) above 32 bits can land as a negative integer
+      if math.ult((1 << d.bits) - 1, v) then error("out_of_range", 0) end
+    end
+  elseif s == "wide" then
+    -- a 128-bit range is held on its raw halves, compared as the identity
+    -- walk compares them
+    if d.lo ~= nil and d.hi ~= nil then
+      local function lt128(a, b)
+        if a.hi ~= b.hi then
+          if d.signed then return a.hi < b.hi end
+          return math.ult(a.hi, b.hi)
+        end
+        return math.ult(a.lo, b.lo)
+      end
+      if lt128(v, d.lo) or lt128(d.hi, v) then error("out_of_range", 0) end
+    end
+  elseif s == "float" then
+    -- a compressed float is a ranged scalar here (§4.6)
+    if d.fmin ~= nil and d.fmax ~= nil then
+      if v < d.fmin or v > d.fmax then error("out_of_range", 0) end
     end
   elseif s == "table" then
     local desc = T.Tables[d.target]
@@ -732,103 +801,16 @@ local function strict_value(T, d, v, ranges, wr)
   end
 end
 
--- F.read parses the file framing (docs/FIXED-FORM-ALGORITHM.md §2): the form
--- byte, the reserved zeroes, the hash, the layout and one record. A fixed
--- table reads BACKWARD (§5.2): the header's hash selects a layout the BUILD
--- laid down, and an older writer's records are read under ITS layout bytes.
--- `strict` is the plain name's read (docs/SPEC-TABLES.md §6.5).
-local function read_impl(T, name, buf, strict)
-  if #buf < 1 then error("malformed") end
-  local form = buf:byte(1)
-  if form ~= formByte then
-    if form == 1 then error("previous_form") end
-    error("malformed")
-  end
-  local desc = T.Tables[name]
-  if desc ~= nil and desc.integrity ~= nil then
-    if #buf < 5 or string.unpack("<I4", buf, #buf - 3) ~= L.crc32c(buf, #buf - 4) then error("integrity_mismatch") end
-    buf = buf:sub(1, #buf - 4)
-  end
-  if #buf < 20 then error("malformed") end
-  for i = 2, 8 do
-    if buf:byte(i) ~= 0 then error("malformed") end
-  end
-  local hash = string.unpack("<I8", buf, 9)
-  local layoutLen = string.unpack("<I4", buf, 17)
-  if layoutLen < 4 or 20 + layoutLen > #buf then error("layout_malformed") end
-  local layout = string.sub(buf, 21, 20 + layoutLen)
-  local fixed = T.Fixed[name]
-  if fixed == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
-  local known, entry, pick = fixed.known, nil, nil
-  if known ~= nil then
-    for i, k in ipairs(known) do
-      if k.hash == hash then
-        pick, entry = i, k
-        break
-      end
-    end
-    if entry == nil then error("no_layout") end
-    if fixed.floor and pick <= fixed.floor then error("layout_unsupported") end
-    -- under a KNOWN hash the bytes are only COMPARED to the lock's layout,
-    -- never walked: every §1.1 malformation is one name, layout_malformed
-    -- (docs/FIXED-FORM-ALGORITHM.md §1.1, §2 step 5, §5.3).
-    if #layout ~= #entry.layout or layout ~= entry.layout then error("layout_malformed") end
-    -- the tree was built when the module was sealed (F.prepare): a lock's own
-    -- layout that does not parse is false there
-    if not entry.tree then error("layout_malformed") end
-    if entry.tree.refusal then error(entry.tree.refusal) end
-    layout = entry.layout
-  end
-  local count = string.unpack("<I4", layout, 1)
-  if count == 0 or #layout ~= 4 + 17 * count then error("layout_malformed") end
-  local rootKind, rootSize
-  if entry ~= nil then
-    rootKind, rootSize = entry.tree.kind, entry.tree.size
-  else
-    rootKind = layout:byte(5 + 8)
-    rootSize = string.unpack("<I4", layout, 5 + 9)
-  end
-  if rootKind ~= 13 then error("layout_malformed") end
-  if rootSize > maxRecordBytes then error("layout_record_too_large") end
-  local recSize
-  if entry ~= nil then
-    recSize = entry.record
-  else
-    recSize = 8 + rootSize
-  end
-  local rest = #buf - 20 - layoutLen
-  if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("malformed") end
-  if rest / recSize > maxRecords then error("plan_too_large") end
-  local at = 21 + layoutLen
-  if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
-  local value
-  if entry ~= nil and entry.hash ~= fixed.hash then
-    value = decode_old_table(T, name, entry.tree, buf, at + 8)
-    -- the identity walk refuses its bounds as it decodes; an older writer's
-    -- plan is held to them after (§4.6)
-    if strict then strict_value(T, { shape = "table", target = name }, value, entry.ranges) end
-  else
-    value = decode_table(T, name, buf, at + 8, rootSize)
-  end
-  return value, hash, layout
-end
-
--- F.read is one record's read: the value and its layout hash and bytes.
-function F.read(T, name, buf, strict)
-  local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
-  if not ok then error(v, 0) end
-  return v, h, l
-end
-
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
 -- §3.1): the template is the hash and a zeroed body, and each field lands at
 -- its constant offset, little-endian, at its declared width.
 function F.write(T, name, value)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, value)
-  if refused ~= nil then error(refused, 0) end
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, value)
+  if refused ~= nil then return nil, refused end
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
   local out = f.header .. f.hashPrefix .. body
@@ -853,12 +835,16 @@ function F.save(T, name, values)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
   values = values or {}
+  -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/FIXED-FORM-ALGORITHM.md
+  -- §5.3 step 9, docs/SPEC-TABLES.md §22.6): an empty batch is refused, by
+  -- the leg's refusal value, before a byte is written.
+  if #values == 0 then return nil, "invalid_value" end
   local parts = { f.header }
   local hPrefix = f.hashPrefix
   for i = 1, #values do
     local v = values[i]
-    local refused = D.refuse_deprecated(T, name, v)
-    if refused ~= nil then error(refused, 0) end
+    local refused = D.refuse_write(T, name, v)
+    if refused ~= nil then return nil, refused end
     local body = encode_table(T, name, v)
     if #body ~= f.size then error("layout_malformed", 0) end
     parts[#parts + 1] = hPrefix .. body
@@ -917,12 +903,18 @@ local function load_impl(T, name, buf, strict, cap)
   end
   local recSize = entry ~= nil and entry.record or (8 + rootSize)
   local rest = #buf - 20 - layoutLen
-  if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
+  -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, SPEC-TABLES
+  -- §22.6): a header and a layout with no record behind them is refused,
+  -- never read as a batch of none.
+  if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
   -- THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS 4,096: an
   -- omitted (or nil) capacity is the default, never an unbounded read, while
   -- a caller that sets 4,097 or more may read that many records.
   cap = cap or maxRecords
+  -- a read into ONE value holds no value to read from a file of none (§5.3
+  -- step 9), as the Go engine refuses it at a capacity of one
+  if nRec == 0 and cap == 1 then error("truncated", 0) end
   if nRec > cap then error("batch_too_large", 0) end
   local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
   local unknown = rep ~= nil and entry.unknown or 0
@@ -950,6 +942,15 @@ function F.load(T, name, buf, strict, cap)
   local ok, out, h, l, w, u = pcall(load_impl, T, name, buf, strict, cap)
   if not ok then error(out, 0) end
   return out, h, l, w, u
+end
+
+-- F.read is one record's read, and it is the load at a capacity of one
+-- (docs/FIXED-FORM-ALGORITHM.md §4, ONE path): every file gets the load's
+-- verdict, and the value, its layout hash and bytes come back.
+function F.read(T, name, buf, strict)
+  local ok, out, h, l = pcall(load_impl, T, name, buf, strict, 1)
+  if not ok then error(out, 0) end
+  return out[1], h, l
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a

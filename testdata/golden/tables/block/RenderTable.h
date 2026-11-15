@@ -765,6 +765,22 @@ struct TableIdTable
     }
 };
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+// 14) opens with one of 1–13, 15, 17, 18–29 or 30, and an enum-keyed body
+// (kind 16) with one of 1–11, 13, 18–29 or 30. Every other element kind is
+// damage under any count, a count of 0 included, in a declared field and in an
+// unknown one alike, so the header's kind byte is judged before any comparison
+// with the reader's own element kind.
+inline bool TableArrayElementKind( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+
+inline bool TableKeyedElementKind( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
+
 struct TableReader
 {
     const uint8_t * buffer;
@@ -886,10 +902,164 @@ struct TableReader
         return true;
     }
 
+    // THE CONTAINERS ARE OPENED FOR ONE QUESTION: is an inner array or keyed
+    // header off §3's closed element-kind list? An off-list header is damage
+    // under any count, a count of 0 included, so the walk follows a table,
+    // array, keyed body or union arm far enough to judge it. Framing damage is
+    // not this question and ends an inspection without a finding; the typed
+    // read names it where it declares the field. depth keeps the walk bounded.
+    bool badElementKindPayload( uint8_t kind, TableReader & r, int depth )
+    {
+        switch ( kind )
+        {
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 3:
+            case 7:
+            case 21:
+            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 18:
+            case 19:
+            case 24:
+            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 17:
+            case 30:
+            {
+                uint64_t ignored = 0;
+                r.getleb( ignored );
+                return false;
+            }
+            case 12:
+            case 31:
+            case 32:
+            {
+                uint64_t n = 0;
+                if ( r.getleb( n ) && r.room( n ) ) { r.offset += (int64_t) n; }
+                return false;
+            }
+            case 13:
+            case 14:
+            case 16:
+            {
+                uint64_t n = 0;
+                if ( !r.getleb( n ) || !r.room( n ) ) return false;
+                const uint8_t * b = r.buffer + r.offset;
+                r.offset += (int64_t) n;
+                return badElementKindContent( kind, b, (int64_t) n, depth );
+            }
+            case 15: return badElementKindUnion( r, depth );
+        }
+        return false;
+    }
+
+    bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
+    {
+        if ( depth >= 128 ) return false;
+        switch ( kind )
+        {
+            case 13: return badElementKindTable( b, n, depth + 1 );
+            case 14: return badElementKindArray( b, n, depth + 1 );
+            case 16: return badElementKindKeyed( b, n, depth + 1 );
+            case 15:
+            {
+                TableReader r( b, n, report, ids );
+                return badElementKindUnion( r, depth );
+            }
+        }
+        return false;
+    }
+
+    bool badElementKindTable( const uint8_t * b, int64_t n, int depth )
+    {
+        TableReader r( b, n, report, ids );
+        for ( ;; )
+        {
+            uint64_t ref = 0;
+            if ( !r.getleb( ref ) || ref == 0 ) return false;
+            if ( ids == NULL || ref > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+            const uint8_t field_kind = r.get8();
+            const int64_t before = r.offset;
+            if ( badElementKindPayload( field_kind, r, depth ) ) return true;
+            if ( r.offset == before ) return false;
+        }
+    }
+
+    bool badElementKindArray( const uint8_t * b, int64_t n, int depth )
+    {
+        if ( n < 1 ) return false;
+        const uint8_t elem = b[0];
+        if ( !TableArrayElementKind( elem ) ) return true;
+        if ( n < 2 ) return false;
+        TableReader r( b + 1, n - 1, report, ids );
+        uint64_t count = 0;
+        if ( !r.getleb( count ) ) return false;
+        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        for ( uint64_t i = 0; i < count; i++ )
+        {
+            const int64_t before = r.offset;
+            if ( badElementKindPayload( elem, r, depth ) ) return true;
+            if ( r.offset == before ) return false;
+        }
+        return false;
+    }
+
+    bool badElementKindKeyed( const uint8_t * b, int64_t n, int depth )
+    {
+        if ( n < 1 ) return false;
+        const uint8_t elem = b[0];
+        if ( !TableKeyedElementKind( elem ) ) return true;
+        if ( n < 2 ) return false;
+        TableReader r( b + 1, n - 1, report, ids );
+        uint64_t count = 0;
+        if ( !r.getleb( count ) ) return false;
+        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        for ( uint64_t i = 0; i < count; i++ )
+        {
+            uint64_t key = 0;
+            if ( !r.getleb( key ) ) return false;
+            if ( key == 0 || ids == NULL || key > (uint64_t) ids->count ) return false;
+            uint64_t len = 0;
+            if ( !r.getleb( len ) || !r.room( len ) ) return false;
+            const uint8_t * eb = r.buffer + r.offset;
+            r.offset += (int64_t) len;
+            if ( badElementKindContent( elem, eb, (int64_t) len, depth ) ) return true;
+        }
+        return false;
+    }
+
+    bool badElementKindUnion( TableReader & r, int depth )
+    {
+        uint64_t arm = 0;
+        if ( !r.getleb( arm ) || arm == 0 ) return false;
+        if ( ids == NULL || arm > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+        const uint8_t arm_kind = r.get8();
+        uint64_t n = 0;
+        if ( !r.getleb( n ) || !r.room( n ) ) return false;
+        const uint8_t * b = r.buffer + r.offset;
+        r.offset += (int64_t) n;
+        const bool structural = arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16;
+        if ( !structural ) return false;
+        return badElementKindContent( arm_kind, b, (int64_t) n, depth );
+    }
+
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
     // which is why the set is closed and why kind 31 exists.
-    bool skip( uint8_t kind )
+    bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
         {
@@ -929,10 +1099,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12:
-            case 13:
-            case 14:
-            case 16:
+            case 12: // a string body: its L is opaque here
             case 31:
             case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
@@ -940,16 +1107,30 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
+            case 13: // a TABLE body: open it for an off-list array or keyed header (§3, §4)
+            case 14: // an ARRAY body: its element kind is closed under any count (§3)
+            case 16: // an ENUM-KEYED body: its element kind has its own closed list (§3)
+            {
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                if ( !room( n ) ) return false;
+                const uint8_t * b = buffer + offset;
+                offset += (int64_t) n;
+                return !badElementKindContent( kind, b, (int64_t) n, depth );
+            }
             case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
             {
                 uint64_t arm = 0;
                 if ( !getleb( arm ) ) return false;
                 if ( arm == 0 ) return true;
                 if ( !has( 1 ) ) return false;
-                offset += 1; // the arm's kind byte
+                const uint8_t arm_kind = get8();
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+                if ( !room( n ) ) return false;
+                const uint8_t * b = buffer + offset;
+                offset += (int64_t) n;
+                return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
             // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
             // no writer emits it and no reader has a rule for it, so a reader
@@ -1759,7 +1940,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -3036,10 +3217,89 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
         }
         default:
         {
+            // A FLOAT AND A RANGED ELEMENT carry the condition a named read
+            // applies, so they are held by the field's own skip at the
+            // element's shape
+            if ( entry.elem_kind == 10 || entry.elem_kind == 11 || entry.elem_packing == 1 )
+            {
+                TableMessageEntry element;
+                element.kind = entry.elem_kind;
+                element.packing = entry.elem_packing;
+                element.value_bits = entry.elem_value_bits;
+                element.base_lo = entry.elem_base_lo;
+                element.base_hi = entry.elem_base_hi;
+                element.qcount = entry.elem_qcount;
+                return TableMessageSkip( r, vocabulary, index_bits, element, depth );
+            }
             const int64_t elem = entry.elem_value_bits;
             return elem >= 0 && r.skip( elem );
         }
     }
+}
+
+// TableMessageSignedKind is a kind whose domain is two's complement.
+inline bool TableMessageSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
+}
+
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to: the offset's
+// bits can spell a value past the sender's range (§3.3). The base and the
+// offset are added exactly as the named read adds them. The arithmetic is on
+// 64-bit words, since this runtime carries no 128-bit type of its own.
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+{
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    const bool is_signed = TableMessageSignedKind( kind );
+    const int64_t domain = TableMessageKindBits( kind );
+    if ( domain == 128 )
+    {
+        // the room above the base is top minus base, exact at 128 bits
+        // because no base lies above the top of its own domain
+        const uint64_t top_hi = is_signed ? uint64_t( INT64_MAX ) : UINT64_MAX;
+        const uint64_t room_lo = UINT64_MAX - (uint64_t) base_lo;
+        const uint64_t room_hi = top_hi - (uint64_t) base_hi;
+        return hi < room_hi || ( hi == room_hi && lo <= room_lo );
+    }
+    // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
+    // sign-extended for a signed kind, and the sum is held to both ends
+    if ( !is_signed )
+    {
+        const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
+        const uint64_t base = (uint64_t) base_lo;
+        return base <= top && lo <= top - base;
+    }
+    const int64_t top = domain == 64 ? INT64_MAX : (int64_t) ( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
+    const int64_t bottom = -top - 1;
+    if ( base_lo > top || lo > (uint64_t) top - (uint64_t) base_lo ) { return false; }
+    return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
+}
+
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
+// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
+// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
+// it: one name may be announced at two shapes, and naming it twice is a
+// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
+// announcement can carry; a slot past it is damage, never silently untracked.
+static const int64_t kTableMessageSeenBits = 65536;
+
+// TableMessageSeenOnce records one id of a body or one key of a keyed array
+// and answers false on a repeat, whether or not this reader can name the field
+// (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+{
+    uint64_t slot = ref;
+    for ( uint64_t i = 1; i < ref; i++ )
+    {
+        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+    }
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
+    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
+    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
+    seen[slot >> 6] |= bit;
+    return true;
 }
 
 // TableMessageElementRunBits is the bits ONE element of an array or a keyed
@@ -3047,7 +3307,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
 // is one multiplication, and -1 where the element's width is its own
 // content's. A ZERO is a real answer, and it is why this exists: a ranged
 // element whose min equals its max rides no bits at all (§3.3).
-inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
 {
     int64_t elem = 0;
     switch ( entry.elem_kind )
@@ -3064,7 +3324,13 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
-    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    // a keyed slot resolves its own key reference, a zero-bit slot as well
+    if ( entry.kind == 16 ) { return -1; }
+    if ( elem == 0 ) { return 0; }
+    // a float, a ranged value and a quantized value carry a condition a named
+    // read applies, so the element is walked rather than multiplied
+    if ( entry.elem_kind == 10 || entry.elem_kind == 11 ) { return -1; }
+    if ( entry.elem_packing == 1 || entry.elem_packing == 2 ) { return -1; }
     return elem;
 }
 
@@ -3103,6 +3369,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
+            const uint8_t * text = r.buffer + ( r.offset >> 3 );
+            if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 31:
@@ -3112,6 +3381,25 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
+        }
+        case 10:
+        {
+            if ( entry.packing == 2 )
+            {
+                uint64_t index = 0;
+                if ( !r.get( index, entry.value_bits ) ) { return false; }
+                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
+                return true;
+            }
+            uint64_t raw = 0;
+            if ( !r.get( raw, 32 ) ) { return false; }
+            return TableBitsFinite32( (uint32_t) raw );
+        }
+        case 11:
+        {
+            uint64_t raw = 0;
+            if ( !r.get( raw, 64 ) ) { return false; }
+            return TableBitsFinite64( raw );
         }
         case 14:
         case 16:
@@ -3125,33 +3413,54 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( !r.get( raw, width ) ) { return false; }
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
+            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            const int64_t run = TableMessageElementRunBits( entry );
             if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            // A STRUCTURAL ELEMENT NESTS ONE LEVEL DEEPER; a fixed-width one
+            // does not, so the depth cap counts what §4 says it counts.
+            const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
+                entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
+            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
+                if ( entry.kind == 16 )
+                {
+                    uint64_t key_ref = 0;
+                    TableMessageEntry key_entry;
+                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
+                }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
         }
     }
     const int64_t width = entry.value_bits;
+    if ( entry.packing == 1 && ( TableMessageIntegerKind( entry.kind ) || TableMessageFixedKind( entry.kind ) ) )
+    {
+        return TableMessageSkipRanged( r, entry.kind, width, entry.base_lo, entry.base_hi );
+    }
     return width >= 0 && r.skip( width );
 }
 
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
 
@@ -3606,6 +3915,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -3671,6 +3987,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -3773,6 +4109,89 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
+// A LOAD OF ONE VALUE OUT OF NATIVE STORAGE, zero-extended: the inverse of
+// TableFixedStoreNative. The known-range pass reads a landed value through
+// it, never through a memcpy of a narrow width into a 64-bit word, which on a
+// big-endian host fills the word's high bytes.
+inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
+{
+    uint64_t v = 0;
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { v = ( v << 8 ) | (uint64_t) src[i]; }
+        return v;
+    }
+    switch ( size )
+    {
+        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
+        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
+        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
+        case 8: { memcpy( &v, src, 8 ); break; }
+        default: break;
+    }
+    return v;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3786,7 +4205,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -3830,7 +4249,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3847,7 +4268,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -3859,13 +4280,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -3874,14 +4295,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3893,13 +4319,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -3915,10 +4341,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -5126,6 +5556,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -5187,7 +5618,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -5255,7 +5686,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         const TableFixedKnownRange & b = ranges[i];
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
-        memcpy( &raw, dst + b.dst, b.width );
+        raw = TableFixedLoadNative( dst + b.dst, b.width );
         // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
         // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
         // max and never below the min. An unsigned kind's bounds are never
@@ -5290,7 +5721,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         {
             continue;
         }
-        memcpy( dst + b.dst, &landed, b.width );
+        TableFixedStoreNative( dst + b.dst, landed, b.width );
     }
     if ( report != NULL )
     {
@@ -7206,6 +7637,7 @@ inline bool RenderCameraSaveMessageBody( TableBitWriter & w, const RenderCamera 
 inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCamera & value )
 {
     RenderCameraReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7234,6 +7666,11 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -7657,6 +8094,8 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
     if ( value.predicted_explode != false ) { bytes += TableLebBytes( ids.ref_at( 22, 0x4d5be97ba1b9cb81ull ) ) + 1 + 1; } // predicted_explode
     return bytes;
 }
+
+inline bool RenderShipFixedWriteAdmits( const RenderShip & value );
 
 inline int64_t RenderShipMeasure( const RenderShip & value )
 {
@@ -8430,6 +8869,7 @@ inline bool RenderShipSaveMessageBody( TableBitWriter & w, const RenderShip & va
 inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderShip & value )
 {
     RenderShipReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -8458,6 +8898,11 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -8919,6 +9364,7 @@ inline int64_t RenderShipMeasureMessages( const RenderShip * values, int64_t cou
     {
         const int64_t body = RenderShipMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderShipFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8937,6 +9383,7 @@ inline int64_t RenderShipSaveMessages( const RenderShip * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderShipSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderShipFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderShipMeasureMessages( values, count, report )
@@ -9013,6 +9460,8 @@ inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & val
     if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
     return bytes;
 }
+
+inline bool RenderTurretFixedWriteAdmits( const RenderTurret & value );
 
 inline int64_t RenderTurretMeasure( const RenderTurret & value )
 {
@@ -9688,6 +10137,7 @@ inline bool RenderTurretSaveMessageBody( TableBitWriter & w, const RenderTurret 
 inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderTurret & value )
 {
     RenderTurretReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9716,6 +10166,11 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xb51afb05cd34709full: // rotation
@@ -10166,6 +10621,7 @@ inline int64_t RenderTurretMeasureMessages( const RenderTurret * values, int64_t
     {
         const int64_t body = RenderTurretMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderTurretFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10184,6 +10640,7 @@ inline int64_t RenderTurretSaveMessages( const RenderTurret * values, int64_t co
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderTurretSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderTurretFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderTurretMeasureMessages( values, count, report )
@@ -10272,6 +10729,8 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
     }
     return bytes;
 }
+
+inline bool RenderMissileFixedWriteAdmits( const RenderMissile & value );
 
 inline int64_t RenderMissileMeasure( const RenderMissile & value )
 {
@@ -10859,6 +11318,7 @@ inline bool RenderMissileSaveMessageBody( TableBitWriter & w, const RenderMissil
 inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderMissile & value )
 {
     RenderMissileReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -10887,6 +11347,11 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -11187,6 +11652,7 @@ inline int64_t RenderMissileMeasureMessages( const RenderMissile * values, int64
     {
         const int64_t body = RenderMissileMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderMissileFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11205,6 +11671,7 @@ inline int64_t RenderMissileSaveMessages( const RenderMissile * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderMissileSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderMissileFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderMissileMeasureMessages( values, count, report )
@@ -11293,6 +11760,8 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
     }
     return bytes;
 }
+
+inline bool RenderDynamicPropFixedWriteAdmits( const RenderDynamicProp & value );
 
 inline int64_t RenderDynamicPropMeasure( const RenderDynamicProp & value )
 {
@@ -11880,6 +12349,7 @@ inline bool RenderDynamicPropSaveMessageBody( TableBitWriter & w, const RenderDy
 inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderDynamicProp & value )
 {
     RenderDynamicPropReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -11908,6 +12378,11 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -12208,6 +12683,7 @@ inline int64_t RenderDynamicPropMeasureMessages( const RenderDynamicProp * value
     {
         const int64_t body = RenderDynamicPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12226,6 +12702,7 @@ inline int64_t RenderDynamicPropSaveMessages( const RenderDynamicProp * values, 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderDynamicPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderDynamicPropMeasureMessages( values, count, report )
@@ -12315,6 +12792,8 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
     }
     return bytes;
 }
+
+inline bool RenderStaticPropFixedWriteAdmits( const RenderStaticProp & value );
 
 inline int64_t RenderStaticPropMeasure( const RenderStaticProp & value )
 {
@@ -12925,6 +13404,7 @@ inline bool RenderStaticPropSaveMessageBody( TableBitWriter & w, const RenderSta
 inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderStaticProp & value )
 {
     RenderStaticPropReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -12953,6 +13433,11 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -13277,6 +13762,7 @@ inline int64_t RenderStaticPropMeasureMessages( const RenderStaticProp * values,
     {
         const int64_t body = RenderStaticPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13295,6 +13781,7 @@ inline int64_t RenderStaticPropSaveMessages( const RenderStaticProp * values, in
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderStaticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderStaticPropMeasureMessages( values, count, report )
@@ -13385,6 +13872,8 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
     }
     return bytes;
 }
+
+inline bool RenderCosmeticPropFixedWriteAdmits( const RenderCosmeticProp & value );
 
 inline int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp & value )
 {
@@ -14034,6 +14523,7 @@ inline bool RenderCosmeticPropSaveMessageBody( TableBitWriter & w, const RenderC
 inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCosmeticProp & value )
 {
     RenderCosmeticPropReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -14062,6 +14552,11 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -14423,6 +14918,7 @@ inline int64_t RenderCosmeticPropMeasureMessages( const RenderCosmeticProp * val
     {
         const int64_t body = RenderCosmeticPropMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -14441,6 +14937,7 @@ inline int64_t RenderCosmeticPropSaveMessages( const RenderCosmeticProp * values
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderCosmeticPropSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderCosmeticPropMeasureMessages( values, count, report )
@@ -14529,6 +15026,8 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
     }
     return bytes;
 }
+
+inline bool RenderLaserFixedWriteAdmits( const RenderLaser & value );
 
 inline int64_t RenderLaserMeasure( const RenderLaser & value )
 {
@@ -15085,6 +15584,7 @@ inline bool RenderLaserSaveMessageBody( TableBitWriter & w, const RenderLaser & 
 inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderLaser & value )
 {
     RenderLaserReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -15113,6 +15613,11 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xee5d97ad45ad251full: // start
@@ -15388,6 +15893,7 @@ inline int64_t RenderLaserMeasureMessages( const RenderLaser * values, int64_t c
     {
         const int64_t body = RenderLaserMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderLaserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -15406,6 +15912,7 @@ inline int64_t RenderLaserSaveMessages( const RenderLaser * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderLaserSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderLaserFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderLaserMeasureMessages( values, count, report )
@@ -15495,6 +16002,8 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
     }
     return bytes;
 }
+
+inline bool RenderExplosionFixedWriteAdmits( const RenderExplosion & value );
 
 inline int64_t RenderExplosionMeasure( const RenderExplosion & value )
 {
@@ -16105,6 +16614,7 @@ inline bool RenderExplosionSaveMessageBody( TableBitWriter & w, const RenderExpl
 inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderExplosion & value )
 {
     RenderExplosionReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -16133,6 +16643,11 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x4cbf3a26fca1d74aull: // position
@@ -16469,6 +16984,7 @@ inline int64_t RenderExplosionMeasureMessages( const RenderExplosion * values, i
     {
         const int64_t body = RenderExplosionMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderExplosionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -16487,6 +17003,7 @@ inline int64_t RenderExplosionSaveMessages( const RenderExplosion * values, int6
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderExplosionSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderExplosionFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderExplosionMeasureMessages( values, count, report )
@@ -17091,6 +17608,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17178,6 +17703,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17265,6 +17798,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17352,6 +17893,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17439,6 +17988,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17526,6 +18083,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17613,6 +18178,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17700,6 +18273,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17787,6 +18368,14 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -18189,6 +18778,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
 inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderFrame & value )
 {
     RenderFrameReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -18217,6 +18807,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xbb62c62c9808ea37ull: // version
@@ -19226,6 +19821,7 @@ inline bool RenderVector3SaveMessageBody( TableBitWriter & w, const RenderVector
 inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderVector3 & value )
 {
     RenderVector3Reset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -19254,6 +19850,11 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xaf63f54c86021707ull: // x
@@ -20011,6 +20612,7 @@ inline bool RenderQuaternionSaveMessageBody( TableBitWriter & w, const RenderQua
 inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderQuaternion & value )
 {
     RenderQuaternionReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -20039,6 +20641,11 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xaf63f54c86021707ull: // x
@@ -20664,6 +21271,17 @@ TABLE_FIXED_INLINE bool RenderShipFixedInRange( const RenderShip & value )
     return bad == 0;
 }
 
+// RenderShip's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderShipFixedWriteAdmits( const RenderShip & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.ship_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderShip's read-side bounds.
 inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20684,6 +21302,16 @@ TABLE_FIXED_INLINE bool RenderTurretFixedInRange( const RenderTurret & value )
     return bad == 0;
 }
 
+// RenderTurret's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderTurretFixedWriteAdmits( const RenderTurret & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderTurret's read-side bounds.
 inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20696,6 +21324,17 @@ inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CL
 // RenderMissile's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderMissileFixedInRange( const RenderMissile & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.missile_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderMissile's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderMissileFixedWriteAdmits( const RenderMissile & value )
 {
     (void) value;
     int bad = 0;
@@ -20725,6 +21364,17 @@ TABLE_FIXED_INLINE bool RenderDynamicPropFixedInRange( const RenderDynamicProp &
     return bad == 0;
 }
 
+// RenderDynamicProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderDynamicPropFixedWriteAdmits( const RenderDynamicProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderDynamicProp's read-side bounds.
 inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20738,6 +21388,17 @@ inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t 
 // RenderStaticProp's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderStaticPropFixedInRange( const RenderStaticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderStaticProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderStaticPropFixedWriteAdmits( const RenderStaticProp & value )
 {
     (void) value;
     int bad = 0;
@@ -20767,6 +21428,17 @@ TABLE_FIXED_INLINE bool RenderCosmeticPropFixedInRange( const RenderCosmeticProp
     return bad == 0;
 }
 
+// RenderCosmeticProp's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderCosmeticPropFixedWriteAdmits( const RenderCosmeticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderCosmeticProp's read-side bounds.
 inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20788,6 +21460,17 @@ TABLE_FIXED_INLINE bool RenderLaserFixedInRange( const RenderLaser & value )
     return bad == 0;
 }
 
+// RenderLaser's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderLaserFixedWriteAdmits( const RenderLaser & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.laser_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // RenderLaser's read-side bounds.
 inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -20801,6 +21484,17 @@ inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAM
 // RenderExplosion's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool RenderExplosionFixedInRange( const RenderExplosion & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.explosion_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderExplosion's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderExplosionFixedWriteAdmits( const RenderExplosion & value )
 {
     (void) value;
     int bad = 0;
@@ -21015,10 +21709,20 @@ constexpr TableFixedDst RenderCameraFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderCameraFixedPlan[] = {
-    { 0u, 0u, 72u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 60u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
 };
-constexpr int32_t RenderCameraFixedPlanCount = 1;
-constexpr int32_t RenderCameraFixedPlanGuarded = 1;
+constexpr int32_t RenderCameraFixedPlanCount = 11;
+constexpr int32_t RenderCameraFixedPlanGuarded = 11;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderCameraFixedGuards[] = {
@@ -21090,6 +21794,7 @@ inline int64_t RenderCameraFixedSave( const RenderCamera * values, int64_t count
 {
     const int64_t need = RenderCameraFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCameraFixedHash );
@@ -21278,7 +21983,7 @@ inline int64_t RenderCameraFixedLoadWalk( RenderCamera * values, int64_t capacit
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -21570,11 +22275,24 @@ constexpr TableFixedDst RenderShipFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderShipFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
-    { 79u, 79u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_target_lock
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 72u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 76u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 77u, 77u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 78u, 78u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 79u, 79u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // has_target_lock
 };
-constexpr int32_t RenderShipFixedPlanCount = 2;
-constexpr int32_t RenderShipFixedPlanGuarded = 2;
+constexpr int32_t RenderShipFixedPlanCount = 15;
+constexpr int32_t RenderShipFixedPlanGuarded = 15;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderShipFixedGuards[] = {
@@ -21658,6 +22376,11 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
 {
     const int64_t need = RenderShipFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderShipFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderShipFixedHash );
@@ -21846,7 +22569,7 @@ inline int64_t RenderShipFixedLoadWalk( RenderShip * values, int64_t capacity, c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -22115,11 +22838,21 @@ constexpr TableFixedDst RenderTurretFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderTurretFixedPlan[] = {
-    { 0u, 0u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
-    { 58u, 58u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // has_target_lock
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 44u, 44u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 48u, 48u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 52u, 52u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 56u, 56u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 57u, 57u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 58u, 58u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // has_target_lock
 };
-constexpr int32_t RenderTurretFixedPlanCount = 2;
-constexpr int32_t RenderTurretFixedPlanGuarded = 2;
+constexpr int32_t RenderTurretFixedPlanCount = 12;
+constexpr int32_t RenderTurretFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderTurretFixedGuards[] = {
@@ -22195,6 +22928,11 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
 {
     const int64_t need = RenderTurretFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderTurretFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderTurretFixedHash );
@@ -22383,7 +23121,7 @@ inline int64_t RenderTurretFixedLoadWalk( RenderTurret * values, int64_t capacit
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -22664,10 +23402,21 @@ constexpr TableFixedDst RenderMissileFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderMissileFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 69u, 69u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 70u, 70u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderMissileFixedPlanCount = 1;
-constexpr int32_t RenderMissileFixedPlanGuarded = 1;
+constexpr int32_t RenderMissileFixedPlanCount = 12;
+constexpr int32_t RenderMissileFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderMissileFixedGuards[] = {
@@ -22746,6 +23495,11 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
 {
     const int64_t need = RenderMissileFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderMissileFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderMissileFixedHash );
@@ -22934,7 +23688,7 @@ inline int64_t RenderMissileFixedLoadWalk( RenderMissile * values, int64_t capac
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -23219,10 +23973,21 @@ constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderDynamicPropFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 69u, 69u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 70u, 70u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderDynamicPropFixedPlanCount = 1;
-constexpr int32_t RenderDynamicPropFixedPlanGuarded = 1;
+constexpr int32_t RenderDynamicPropFixedPlanCount = 12;
+constexpr int32_t RenderDynamicPropFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderDynamicPropFixedGuards[] = {
@@ -23302,6 +24067,11 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
 {
     const int64_t need = RenderDynamicPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderDynamicPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderDynamicPropFixedHash );
@@ -23490,7 +24260,7 @@ inline int64_t RenderDynamicPropFixedLoadWalk( RenderDynamicProp * values, int64
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -23775,10 +24545,21 @@ constexpr TableFixedDst RenderStaticPropFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderStaticPropFixedPlan[] = {
-    { 0u, 0u, 78u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 72u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 76u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 77u, 77u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderStaticPropFixedPlanCount = 1;
-constexpr int32_t RenderStaticPropFixedPlanGuarded = 1;
+constexpr int32_t RenderStaticPropFixedPlanCount = 12;
+constexpr int32_t RenderStaticPropFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderStaticPropFixedGuards[] = {
@@ -23858,6 +24639,11 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
 {
     const int64_t need = RenderStaticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderStaticPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderStaticPropFixedHash );
@@ -24046,7 +24832,7 @@ inline int64_t RenderStaticPropFixedLoadWalk( RenderStaticProp * values, int64_t
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -24335,10 +25121,22 @@ constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderCosmeticPropFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 72u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 76u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 77u, 77u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 78u, 78u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderCosmeticPropFixedPlanCount = 1;
-constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 1;
+constexpr int32_t RenderCosmeticPropFixedPlanCount = 13;
+constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 13;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderCosmeticPropFixedGuards[] = {
@@ -24419,6 +25217,11 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
 {
     const int64_t need = RenderCosmeticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderCosmeticPropFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCosmeticPropFixedHash );
@@ -24607,7 +25410,7 @@ inline int64_t RenderCosmeticPropFixedLoadWalk( RenderCosmeticProp * values, int
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -24880,10 +25683,19 @@ constexpr TableFixedDst RenderLaserFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderLaserFixedPlan[] = {
-    { 0u, 0u, 62u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 60u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 61u, 61u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderLaserFixedPlanCount = 1;
-constexpr int32_t RenderLaserFixedPlanGuarded = 1;
+constexpr int32_t RenderLaserFixedPlanCount = 10;
+constexpr int32_t RenderLaserFixedPlanGuarded = 10;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderLaserFixedGuards[] = {
@@ -24960,6 +25772,11 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
 {
     const int64_t need = RenderLaserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderLaserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderLaserFixedHash );
@@ -25148,7 +25965,7 @@ inline int64_t RenderLaserFixedLoadWalk( RenderLaser * values, int64_t capacity,
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -25429,10 +26246,21 @@ constexpr TableFixedDst RenderExplosionFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RenderExplosionFixedPlan[] = {
-    { 0u, 0u, 74u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // x
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 8u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 16u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 24u, 24u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 32u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 40u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 48u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 56u, 56u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // x
+    { 64u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 68u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // x
+    { 72u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
+    { 73u, 73u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // x
 };
-constexpr int32_t RenderExplosionFixedPlanCount = 1;
-constexpr int32_t RenderExplosionFixedPlanGuarded = 1;
+constexpr int32_t RenderExplosionFixedPlanCount = 12;
+constexpr int32_t RenderExplosionFixedPlanGuarded = 12;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink RenderExplosionFixedGuards[] = {
@@ -25511,6 +26339,11 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
 {
     const int64_t need = RenderExplosionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( RenderExplosionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderExplosionFixedHash );
@@ -25699,7 +26532,7 @@ inline int64_t RenderExplosionFixedLoadWalk( RenderExplosion * values, int64_t c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;

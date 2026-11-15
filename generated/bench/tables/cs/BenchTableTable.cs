@@ -253,6 +253,11 @@ namespace Benchtable
         internal int RootElemSlots;
         public Func<TableTypeInfo[]> PointerTypes;
         public Func<ulong, TableTypeInfo> PointerType;
+        // DeclaredType names every table this reader DECLARES, whether or not a
+        // pointer below this root can place it (docs/SPEC-TABLES.md §3.1): a node
+        // record of a declared type that is not the pointer slot's target is
+        // damage, while a type this reader does not declare stays unknown.
+        internal Func<ulong, TableTypeInfo> DeclaredType;
         public bool BytesEdge, StringEdge;
         public string Name;         // schema type name
         public ulong Id;            // full wire identity of the table name
@@ -670,11 +675,15 @@ namespace Benchtable
         {
             public const int MaxDepth = 128;
 
-            // A key longer than this cannot name a field, so it is skipped as unknown.
+            // A schema-name string is capped at 255 bytes (§16.2): a longer one is a
+            // name this form refuses, in every object and inside a skipped value.
+            public const int MaxName = 255;
+
+            // A map key's spelling buffer. A map key is data, never a schema name.
             public const int MaxKey = 256;
 
-            // The longest numeric token the walk will convert. Anything longer is a
-            // value no field can hold and counts as a kind mismatch.
+            // The working size of a numeric token's stack scratch. A longer token is
+            // kept whole on the heap: its LENGTH is never why a read refuses (§16.2).
             public const int MaxNumber = 512;
 
             const string Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -750,17 +759,21 @@ namespace Benchtable
             }
             static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
             {
+                // a wide kind is a STRING of decimal digits (§16.14 W10, W11); a
+                // 32-bit fixed kind stays a bare number
+                bool quoted = TableWideJson(f);
+                if (quoted) { o.Put((byte)'"'); }
                 if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
                 int frac = f.FracBits;
                 UInt128 whole = raw >> frac;
                 Span<char> digits = stackalloc char[40];
                 whole.TryFormat(digits, out int used);
                 for (int i = 0; i < used; i++) { o.Put((byte)digits[i]); }
-                if (f.Kind < 20 || f.Kind > 29) { return; }
+                if (f.Kind < 20 || f.Kind > 29) { if (quoted) { o.Put((byte)'"'); } return; }
                 o.Put((byte)'.');
                 UInt128 mask = ((UInt128)1 << frac) - 1;
                 UInt128 fraction = raw & mask;
-                if (fraction == 0) { o.Put((byte)'0'); return; }
+                if (fraction == 0) { o.Put((byte)'0'); if (quoted) { o.Put((byte)'"'); } return; }
                 while (fraction != 0)
                 {
                     UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
@@ -771,10 +784,11 @@ namespace Benchtable
                     if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
                     o.Put((byte)('0' + (int)digit)); fraction &= mask;
                 }
+                if (quoted) { o.Put((byte)'"'); }
             }
             static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
             {
-                Span<byte> digits = stackalloc byte[MaxNumber];
+                byte[] digits = new byte[token.Length];
                 int pos = 0, n = 0, integer = 0;
                 bool negative = token[0] == '-';
                 if (negative) { pos++; }
@@ -802,7 +816,7 @@ namespace Benchtable
                 else if (point < -40) { return RefuseText(ref input, "kind_mismatch"); }
                 else
                 {
-                    Span<byte> fractionDigits = stackalloc byte[MaxNumber + 48];
+                    byte[] fractionDigits = new byte[token.Length + 48];
                     int fn = 0;
                     for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
                     for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
@@ -895,6 +909,47 @@ namespace Benchtable
                 return f.VariantId != null && f.Arms == null;
             }
 
+            // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
+            // integer-shaped kind whose storage is wider than 32 bits is written as a
+            // STRING of decimal digits and reads as a string or a number — int64,
+            // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
+            static bool TableWideJson(TableFieldInfo f)
+            {
+                return f.Kind == 5 || f.Kind == 9 || f.Kind == 18 || f.Kind == 19 ||
+                       f.Kind == 23 || f.Kind == 24 || f.Kind == 28 || f.Kind == 29;
+            }
+
+            // the pure integer kinds, 128-bit included; a fixed-point kind is not one
+            static bool TableIntegerKind(TableFieldInfo f)
+            {
+                return f.Kind >= 2 && f.Kind <= 9 || f.Kind == 18 || f.Kind == 19;
+            }
+
+            // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2):
+            // digits with an optional minus, no leading zero, no fraction, no exponent,
+            // and not -0. The value never passes through a double.
+            static bool TableIntegerToken(ReadOnlySpan<char> text)
+            {
+                int i = 0;
+                bool negative = false;
+                if (i < text.Length && text[i] == '-') { negative = true; i++; }
+                if (i >= text.Length) { return false; }
+                if (text[i] == '0') { return !negative && i + 1 == text.Length; }
+                if (text[i] < '1' || text[i] > '9') { return false; }
+                for (; i < text.Length; i++)
+                {
+                    if (text[i] < '0' || text[i] > '9') { return false; }
+                }
+                return true;
+            }
+
+            // a wide integer declares 'N' and takes a string or a number; every other
+            // shape is exact
+            static bool TableShapeMatches(char want, char got)
+            {
+                return want == got || (want == 'N' && (got == 's' || got == 'n'));
+            }
+
             static char Shape(TableFieldInfo f)
             {
                 if (f.Map) { return 'o'; }
@@ -910,6 +965,7 @@ namespace Benchtable
                 if (IsEnum(f)) { return 's'; }
                 if (IsFlags(f)) { return 'a'; }
                 if (f.Kind == 1) { return 'b'; }
+                if (TableWideJson(f)) { return 'N'; }
                 return 'n';
             }
 
@@ -924,6 +980,7 @@ namespace Benchtable
                 if (IsEnum(f)) { return 's'; }
                 if (IsFlags(f)) { return 'a'; }
                 if (f.Kind == 1) { return 'b'; }
+                if (TableWideJson(f)) { return 'N'; }
                 return 'n';
             }
 
@@ -1116,9 +1173,13 @@ namespace Benchtable
             // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
             // anything else into storage, so a byte that is not part of a well-formed
             // sequence was put there by a program: the write REFUSES (invalid_value,
-            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
+            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. A ZERO
+            // BYTE IS NOT TEXT EITHER, and its reader refuses the \u0000 a writer would
+            // otherwise spell: C# is an assert leg, so the write contract is the debug
+            // assert (docs/SPEC.md §5.1 row 8) and a release build carries no check.
             static void WriteString(ref Out o, ReadOnlySpan<byte> s)
             {
+                System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
                 o.Put((byte)'"');
                 for (int i = 0; i < s.Length; i++)
                 {
@@ -1425,8 +1486,14 @@ namespace Benchtable
                     case 2:
                     case 3:
                     case 4:
-                    case 5:
                         WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
+                        return true;
+                    case 5:
+                        // int64 is wider than 32 bits: a STRING of decimal digits (§16.14 W10)
+                        o.Put((byte)'"'); WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index))); o.Put((byte)'"');
+                        return true;
+                    case 9:
+                        o.Put((byte)'"'); WriteUnsigned(ref o, f.GetRaw(owner, index)); o.Put((byte)'"');
                         return true;
                     default:
                         WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -1440,7 +1507,9 @@ namespace Benchtable
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
+                    // a zero byte is storage that is not text, caught by the debug
+                    // write assert (§5.1 row 8); WriteString refuses ill-formed UTF-8
+                    // itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -1579,8 +1648,8 @@ namespace Benchtable
                     object empty = f.Table.Create(); f.SetChild(owner, index, empty);
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
-                Span<byte> key = stackalloc byte[MaxKey];
-                if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                Span<byte> key = stackalloc byte[MaxName];
+                if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
                 if (!Same(key.Slice(0, used), "&node"))
@@ -1645,6 +1714,22 @@ namespace Benchtable
                     }
                 }
                 if (malformed) { return RefuseText(ref input, "kind_mismatch"); }
+                // The writer's spelling is padded standard base64 with zero pad bits
+                // (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above accepts
+                // decodable unpadded input, so hold the text to that exact spelling
+                // before placing any bytes.
+                bool canonical = symbols % 4 == 0;
+                if (pad == 1)
+                {
+                    int last = Base64Decode[body[body.Length - 2]];
+                    canonical = last >= 0 && (last & 0x03) == 0;
+                }
+                else if (pad == 2)
+                {
+                    int last = Base64Decode[body[body.Length - 3]];
+                    canonical = last >= 0 && (last & 0x0f) == 0;
+                }
+                if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
                 byte[] bytes = new byte[symbols * 6 / 8];
                 int count = 0, held = 0;
                 uint accumulator = 0;
@@ -1746,7 +1831,12 @@ namespace Benchtable
                         ReadOnlySpan<byte> token = actual;
                         Space(token, ref probe);
                         if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
-                        { input.Bad = true; return false; }
+                        {
+                            // a key that is not the key kind's integer spelling is a
+                            // NAMED refusal (docs/SPEC-TABLES.md §16.2), not damage
+                            if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
+                            input.Bad = true; return false;
+                        }
                         if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
                     }
                     if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
@@ -1764,7 +1854,7 @@ namespace Benchtable
                             // A key names a present optional value even when the
                             // value's shape is wrong; the new entry keeps its default.
                             if (field.Optional) { field.SetPresent(entry, true); }
-                            if (shape != Shape(field))
+                            if (!TableShapeMatches(Shape(field), shape))
                             {
                                 return RefuseText(ref input, "kind_mismatch");
                             }
@@ -1897,14 +1987,18 @@ namespace Benchtable
                         if (next == '/')
                         {
                             input.Pos += 2;
+                            int start = input.Pos;
                             while (input.Pos < text.Length && text[input.Pos] != '\n') { input.Pos++; }
+                            if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                             continue;
                         }
                         if (next == '*')
                         {
                             input.Pos += 2;
+                            int start = input.Pos;
                             while (input.Pos + 1 < text.Length && !(text[input.Pos] == '*' && text[input.Pos + 1] == '/')) { input.Pos++; }
                             if (input.Pos + 1 >= text.Length) { input.Bad = true; return; }
+                            if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                             input.Pos += 2;
                             continue;
                         }
@@ -2002,7 +2096,23 @@ namespace Benchtable
             {
                 input.Bad = true;
                 input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+                // A NAMED REFUSAL IS THE PUBLIC VERDICT (docs/SPEC-TABLES.md §16.2): a
+                // changed kind, an out-of-range value, a count or length past its
+                // bound, or text that cannot be stored refuses the load. The rest of
+                // the walk's failures are damage.
+                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+                {
+                    input.Report.Refused = true;
+                }
                 return false;
+            }
+            // THE REPORT CARRIES THE READ'S ANSWER (docs/SPEC-TABLES.md §16.2): a
+            // refusal names itself, damage names itself, and a read is Ok. The return
+            // value is the same answer, so a caller reading either one agrees.
+            static bool TextVerdict(ref In input, TableWire.Verdict verdict)
+            {
+                input.Report.Verdict = verdict;
+                return verdict == TableWire.Verdict.Ok;
             }
             // A decoded string body for the base64 and timestamp readers
             // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
@@ -2128,8 +2238,9 @@ namespace Benchtable
                             return RefuseText(ref input, "string_not_utf8");
                         }
                     }
-                    // Only stored text rejects NUL; skipped values and object field
-                    // names still accept that escape. Map keys opt in before length checks.
+                    // A placed string, an object key and a skipped value take one
+                    // rule (docs/SPEC-TABLES.md §16.3): a text that decodes to U+0000
+                    // refuses the read. Map keys opt in before length checks.
                     if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
                     if (measure)
                     {
@@ -2207,20 +2318,104 @@ namespace Benchtable
                 return true;
             }
 
-            // the same production, with the token kept for conversion. The token is
-            // ASCII by that grammar, so it widens into chars a digit at a time and the
-            // conversions below need no encoder.
-            static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> token, out int length, out bool integral)
+            // the same production, with the token's extent kept for conversion. The
+            // token is ASCII by that grammar, so it widens into chars a digit at a time
+            // and the conversions below need no encoder. A token longer than the
+            // scratch is kept whole in the document: its own size bounds it, and its
+            // LENGTH is never the reason a read refuses (§16.2 Numbers).
+            static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> scratch, out int length, out bool integral)
             {
                 length = 0;
                 Space(text, ref input);
                 int start = input.Pos;
                 if (!WalkNumber(text, ref input, out integral)) { return false; }
                 int count = input.Pos - start;
-                if (count <= 0 || count >= token.Length) { return false; }
-                for (int i = 0; i < count; i++) { token[i] = (char)text[start + i]; }
+                if (count <= 0) { return false; }
                 length = count;
+                if (count <= scratch.Length)
+                {
+                    for (int i = 0; i < count; i++) { scratch[i] = (char)text[start + i]; }
+                }
                 return true;
+            }
+
+            // A token's value does not depend on how many digits spell its mantissa
+            // (§16.2 Numbers). A long token folds its insignificant zeros into one
+            // exponent and keeps its significant digits inside a conversion's working
+            // precision, with a sticky digit when more followed: the result denotes the
+            // same exact decimal value.
+            static string BoundedFloatToken(ReadOnlySpan<char> token)
+            {
+                const int limit = 799;
+                int i = 0;
+                bool negative = false;
+                if (i < token.Length && token[i] == '-') { negative = true; i++; }
+                int intAt = i;
+                while (i < token.Length && token[i] >= '0' && token[i] <= '9') { i++; }
+                int intEnd = i;
+                int fracAt = i;
+                int fracLength = 0;
+                if (i < token.Length && token[i] == '.')
+                {
+                    i++;
+                    fracAt = i;
+                    while (i < token.Length && token[i] >= '0' && token[i] <= '9') { i++; }
+                    fracLength = i - fracAt;
+                }
+                long exp = 0;
+                if (i < token.Length && (token[i] == 'e' || token[i] == 'E'))
+                {
+                    i++;
+                    bool expNegative = false;
+                    if (i < token.Length && (token[i] == '-' || token[i] == '+')) { expNegative = token[i] == '-'; i++; }
+                    while (i < token.Length && token[i] >= '0' && token[i] <= '9')
+                    {
+                        if (exp < 100000) { exp = exp * 10 + (token[i] - '0'); }
+                        i++;
+                    }
+                    if (expNegative) { exp = -exp; }
+                }
+                int intLength = intEnd - intAt;
+                int total = intLength + fracLength;
+                exp -= fracLength;
+                int first = 0;
+                while (first < total)
+                {
+                    char c = first < intLength ? token[intAt + first] : token[fracAt + first - intLength];
+                    if (c != '0') { break; }
+                    first++;
+                }
+                if (first == total) { return negative ? "-0" : "0"; }
+                int last = total;
+                while (last > first)
+                {
+                    char c = last - 1 < intLength ? token[intAt + last - 1] : token[fracAt + last - 1 - intLength];
+                    if (c != '0') { break; }
+                    last--;
+                }
+                exp += total - last;
+                int count = last - first;
+                Span<char> text = stackalloc char[limit + 40];
+                int n = 0;
+                if (negative) { text[n++] = '-'; }
+                int keep = count < limit ? count : limit;
+                for (int k = 0; k < keep; k++)
+                {
+                    char c = first + k < intLength ? token[intAt + first + k] : token[fracAt + first + k - intLength];
+                    text[n++] = c;
+                }
+                if (count > limit)
+                {
+                    text[n++] = '1';
+                    exp += count - limit - 1;
+                }
+                text[n++] = 'e';
+                if (exp < 0) { text[n++] = '-'; exp = -exp; }
+                Span<char> digits = stackalloc char[20];
+                int dn = 0;
+                do { digits[dn++] = (char)('0' + (int)(exp % 10)); exp /= 10; } while (exp != 0);
+                for (int k = dn - 1; k >= 0; k--) { text[n++] = digits[k]; }
+                return new string(text.Slice(0, n));
             }
 
             // the token's exact double, through the runtime's own converter — under the
@@ -2228,10 +2423,17 @@ namespace Benchtable
             // crosses a locale's own
             static double TokenDouble(ReadOnlySpan<char> token, bool single)
             {
+                ReadOnlySpan<char> bounded = token;
+                string spill = null;
+                if (token.Length > MaxNumber)
+                {
+                    spill = BoundedFloatToken(token);
+                    bounded = spill;
+                }
                 if (single)
                 {
                     float narrow;
-                    if (!float.TryParse(token, System.Globalization.NumberStyles.Float,
+                    if (!float.TryParse(bounded, System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out narrow))
                     {
                         return double.NaN;
@@ -2239,7 +2441,7 @@ namespace Benchtable
                     return narrow;
                 }
                 double value;
-                if (!double.TryParse(token, System.Globalization.NumberStyles.Float,
+                if (!double.TryParse(bounded, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out value))
                 {
                     return double.NaN;
@@ -2293,7 +2495,11 @@ namespace Benchtable
                 if (depth > MaxDepth) { input.Bad = true; return false; }
                 input.Pos++; // the opening bracket
                 bool first = true;
-                Span<byte> key = stackalloc byte[MaxKey];
+                Span<byte> key = stackalloc byte[MaxName];
+                // a skipped object's keys are held to the layer's rule too: a repeated
+                // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
+                // §16.12), the objects this walk skips included
+                System.Collections.Generic.HashSet<string> keys = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2301,9 +2507,11 @@ namespace Benchtable
                     if (c == 0) { input.Bad = true; return false; }
                     if (close == '}')
                     {
-                        if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
+                        keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                        if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
                         if (used > 0 && key[0] == '&' && input.Labels != null)
                         {
                             if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
@@ -2334,7 +2542,7 @@ namespace Benchtable
                     case (byte)'"':
                         {
                             int ignored;
-                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored, stored: true);
                         }
                     case (byte)'t': return Literal(text, ref input, "true");
                     case (byte)'f': return Literal(text, ref input, "false");
@@ -2399,9 +2607,9 @@ namespace Benchtable
                     input.Pos++;
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-                    Span<byte> key = stackalloc byte[MaxKey];
+                    Span<byte> key = stackalloc byte[MaxName];
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int tag = 0;
@@ -2419,7 +2627,7 @@ namespace Benchtable
                         TableUnionArmInfo arm = f.Arms.Arms[tag];
                         TableFieldInfo payload = arm.Field;
                         char wanted = payload == null ? 'z' : Shape(payload);
-                        if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
+                        if (!TableShapeMatches(wanted, ValueShape(text, ref input)) && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -2457,7 +2665,7 @@ namespace Benchtable
                 }
                 if (IsEnum(f))
                 {
-                    Span<byte> name = stackalloc byte[MaxKey];
+                    Span<byte> name = stackalloc byte[MaxName];
                     int nameLength;
                     if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
                     for (int v = 0; v <= f.EnumMax; v++)
@@ -2479,7 +2687,7 @@ namespace Benchtable
                     if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
                     input.Pos++;
                     ulong bits = 0;
-                    Span<byte> name = stackalloc byte[MaxKey];
+                    Span<byte> name = stackalloc byte[MaxName];
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
@@ -2498,6 +2706,8 @@ namespace Benchtable
                             {
                                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)bit)))
                                 {
+                                    // A KNOWN FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+                                    if ((bits & (1ul << bit)) != 0) { return RefuseText(ref input, "duplicate"); }
                                     bits |= 1ul << bit;
                                     found = true;
                                     break;
@@ -2522,19 +2732,47 @@ namespace Benchtable
                     f.SetRaw(owner, index, 0);
                     return true;
                 }
-                Span<char> token = stackalloc char[MaxNumber];
+                if (TableWideJson(f) && Peek(text, ref input) == '"')
+                {
+                    // a wide integer reads as a string OR a number (§16.2); the string
+                    // holds the same digits, judged by the same integer-token rule
+                    if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+                    Span<char> wideToken = stackalloc char[MaxNumber];
+                    if (body.Length <= wideToken.Length)
+                    {
+                        for (int i = 0; i < body.Length; i++) { wideToken[i] = (char)body[i]; }
+                        return ReadNumber(wideToken.Slice(0, body.Length), true, ref input, owner, f, index);
+                    }
+                    return ReadNumber(System.Text.Encoding.ASCII.GetString(body), true, ref input, owner, f, index);
+                }
+                Span<char> scratch = stackalloc char[MaxNumber];
                 int length;
                 bool tokenIntegral;
-                if (!ScanNumber(text, ref input, token, out length, out tokenIntegral))
+                if (!ScanNumber(text, ref input, scratch, out length, out tokenIntegral))
                 {
                     input.Bad = true;
                     return false;
                 }
-                if (f.GetWide != null) { return ReadWide(token.Slice(0, length), ref input, owner, f, index); }
+                if (length <= scratch.Length)
+                {
+                    return ReadNumber(scratch.Slice(0, length), tokenIntegral, ref input, owner, f, index);
+                }
+                return ReadNumber(System.Text.Encoding.ASCII.GetString(text.Slice(input.Pos - length, length)), tokenIntegral, ref input, owner, f, index);
+            }
+
+            // one number token at one field: the token's VALUE decides what lands, not
+            // how many bytes spelled it (§16.2 Numbers).
+            static bool ReadNumber(ReadOnlySpan<char> token, bool tokenIntegral, ref In input, object owner, TableFieldInfo f, int index)
+            {
+                // THE INTEGER TOKEN RULE: an integer field takes an integer token only
+                // — no fraction, no exponent, not -0 — and its range is tested on the
+                // exact value, never through a double (§16.2).
+                if (TableIntegerKind(f) && !TableIntegerToken(token)) { return RefuseText(ref input, "kind_mismatch"); }
+                if (f.GetWide != null) { return ReadWide(token, ref input, owner, f, index); }
                 if (f.Kind == 10 || f.Kind == 11)
                 {
                     bool single = f.Kind == 10;
-                    double value = TokenDouble(token.Slice(0, length), single);
+                    double value = TokenDouble(token, single);
                     // A magnitude the field's format cannot hold is the WRONG SHAPE for
                     // the kind, and it never reaches storage: 1e400 is not a float64
                     // and 1e300 is not a float32. Storing the infinity the conversion
@@ -2575,11 +2813,11 @@ namespace Benchtable
                 long value2 = 0;
                 if (tokenIntegral)
                 {
-                    value2 = TokenInteger(token.Slice(0, length), isSigned, out saturated);
+                    value2 = TokenInteger(token, isSigned, out saturated);
                 }
                 else
                 {
-                    double d = TokenDouble(token.Slice(0, length), false);
+                    double d = TokenDouble(token, false);
                     if (!Finite(d))
                     {
                         return RefuseText(ref input, "kind_mismatch");
@@ -2728,6 +2966,22 @@ namespace Benchtable
                         // the field keeps its default and the event is counted
                         return RefuseText(ref input, "kind_mismatch");
                     }
+                    // The writer's spelling is padded standard base64 with zero pad
+                    // bits (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above
+                    // accepts decodable unpadded input, so hold the text to that exact
+                    // spelling before placing any bytes.
+                    bool canonical = symbols % 4 == 0;
+                    if (pad == 1)
+                    {
+                        int last = Base64Decode[body[body.Length - 2]];
+                        canonical = last >= 0 && (last & 0x03) == 0;
+                    }
+                    else if (pad == 2)
+                    {
+                        int last = Base64Decode[body[body.Length - 3]];
+                        canonical = last >= 0 && (last & 0x0f) == 0;
+                    }
+                    if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
                     byte[] storage = f.GetBuffer(value);
                     Array.Clear(storage, 0, f.ArrayBound);
                     PutCount(value, f, 0);
@@ -2774,7 +3028,7 @@ namespace Benchtable
                     int words = (f.ArrayBound + 63) / 64;
                     Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                     seen.Clear();
-                    Span<byte> key = stackalloc byte[MaxKey];
+                    Span<byte> key = stackalloc byte[MaxName];
                     System.Collections.Generic.HashSet<string> unplaced = null;
                     for (; ; )
                     {
@@ -2782,7 +3036,7 @@ namespace Benchtable
                         if (c == '}') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
                         int keyLength;
-                        if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         int slot = -1;
@@ -2812,7 +3066,7 @@ namespace Benchtable
                             input.Report.Unknown++;
                             if (!SkipValue(text, ref input, depth + 1)) { return false; }
                         }
-                        else if (ValueShape(text, ref input) != shape)
+                        else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -2851,7 +3105,7 @@ namespace Benchtable
                         {
                             return RefuseText(ref input, "count_over_bound");
                         }
-                        else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
+                        else if (!TableShapeMatches(shape, ValueShape(text, ref input)) && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -2903,7 +3157,7 @@ namespace Benchtable
                 int words = (info.NumFields + 63) / 64;
                 Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                 seen.Clear();
-                Span<byte> key = stackalloc byte[MaxKey];
+                Span<byte> key = stackalloc byte[MaxName];
                 System.Collections.Generic.HashSet<string> unknown = null;
                 for (; ; )
                 {
@@ -2911,7 +3165,7 @@ namespace Benchtable
                     if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
                     if (c == 0) { input.Bad = true; return false; }
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int index = -1;
@@ -2963,7 +3217,7 @@ namespace Benchtable
                         }
                         else
                         {
-                            if (got != Shape(f))
+                            if (!TableShapeMatches(Shape(f), got))
                             {
                                 // the wrong JSON type for the kind: skipped, never
                                 // coerced
@@ -3014,16 +3268,16 @@ namespace Benchtable
                     Space(text, ref input);
                     if (input.Pos != text.Length) { input.Bad = true; }
                 }
-                if (input.Report.Refused) { info.Reset(value); return false; }
+                if (input.Report.Refused) { info.Reset(value); return TextVerdict(ref input, TableWire.Verdict.Refused); }
                 if (input.Bad || !ok)
                 {
                     // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
                     // the walk placed before the damage is handed back.
                     input.Report.Damaged = true;
                     info.Reset(value);
-                    return false;
+                    return TextVerdict(ref input, TableWire.Verdict.Damaged);
                 }
-                return true;
+                return TextVerdict(ref input, TableWire.Verdict.Ok);
             }
 
             public static long Write(object value, TableTypeInfo info, Span<byte> buffer, bool measuring)
@@ -3664,6 +3918,7 @@ namespace Benchtable
                 public TableTypeInfo Type;
                 public ulong TypeId;
                 public byte BlobKind;
+                public bool Declared;
                 public int Offset, Length;
                 public long NativeOffset;
                 public byte Mark; // the cycle check's mark: 0 unvisited, 1 open, 2 closed
@@ -3695,7 +3950,15 @@ namespace Benchtable
                     }
                     if (index - 2 >= (ulong)Nodes.Count) { Damage(report); return null; }
                     Node node = Nodes[(int)(index - 2)];
-                    if (node.Value == null) { return null; }
+                    if (node.Value == null)
+                    {
+                        // A record whose type this reader DECLARES is not a type it
+                        // cannot place: naming it from a pointer slot is a wrong-type
+                        // target and damage (docs/SPEC-TABLES.md §3.1). A newer
+                        // writer's type stays lawful: the pointer reads null.
+                        if (node.Declared) { Fail(report, "kind_mismatch"); }
+                        return null;
+                    }
                     if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
                     if (f.BlobKind != 0)
                     {
@@ -3714,7 +3977,7 @@ namespace Benchtable
                 {
                     if (f == null) { return true; }
                     int n = f.IsArray ? Count(value, f) : 1;
-                    if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                     if (f.Map && !MapOrdered(value, f)) { return false; }
                     for (int i = 0; i < n; i++)
                     {
@@ -3913,8 +4176,12 @@ namespace Benchtable
                 TableTypeInfo[] placeable = type.PointerTypes();
                 foreach (Node node in graph.Nodes)
                 {
-                    if (type.BytesEdge && node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
-                    if (type.StringEdge && node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
+                    // The RESERVED blob ids are types this reader names whether or not
+                    // a *bytes/*string edge sits below this root (docs/SPEC-TABLES.md
+                    // §3.1): a blob under a *T slot, or a table under a blob slot, is
+                    // the wrong-type target the pointer resolution refuses.
+                    if (node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
+                    if (node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
                     if (node.BlobKind != 0)
                     {
                         ReadOnlySpan<byte> data = payload.Buffer.Slice(node.Offset, node.Length);
@@ -3923,7 +4190,11 @@ namespace Benchtable
                     }
                     foreach (TableTypeInfo candidate in placeable)
                     { if (candidate.Id == node.TypeId) { node.Type = candidate; break; } }
-                    if (node.Type == null) { report.Unknown++; continue; }
+                    if (node.Type == null)
+                    {
+                        node.Declared = type.DeclaredType(node.TypeId) != null;
+                        report.Unknown++; continue;
+                    }
                     node.Value = node.Type.Create();
                 }
                 foreach (Node node in graph.Nodes)
@@ -3951,18 +4222,34 @@ namespace Benchtable
             }
 
             static long Align(long value, int alignment) { return (value + alignment - 1) & -(long)alignment; }
+            // ExtentTargets is the node table's record types by index: 1 is the root,
+            // 2 and up the records. A zero entry is a type this reader cannot name, so
+            // a pointer naming it is lawful and reads null; any other must be the
+            // pointer slot's own target type (docs/SPEC-TABLES.md §3.1).
+            struct ExtentTargets
+            {
+                public ulong[] Ids;
+                public bool Wrong(ulong index, TableFieldInfo f)
+                {
+                    if (Ids == null || index == 0 || index >= (ulong)Ids.Length) { return false; }
+                    ulong id = Ids[(int)index];
+                    return id != 0 && id != f.PointerTypeId;
+                }
+            }
             static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason)
+            { return ExtentBody(r, type, ref at, ref reason, default); }
+            static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason, ExtentTargets targets)
             {
                 while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
                 {
                     byte kind = r.Byte(); TableFieldInfo field = FindField(type, id);
                     if (field != null && Kind(field) != kind) { field = null; }
                     if (field == null) { if (!r.Skip(kind)) { break; } continue; }
-                    if (!ExtentField(ref r, field, true, ref at, ref reason)) { return false; }
+                    if (!ExtentField(ref r, field, true, ref at, ref reason, targets)) { return false; }
                 }
                 return true;
             }
-            static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
+            static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason, ExtentTargets targets)
             {
                 if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
                 if (f.IsArray)
@@ -3989,12 +4276,19 @@ namespace Benchtable
                         {
                             Reader element = source;
                             if (f.KeyId == null && !a.Slice(out element)) { break; }
-                            if (!ExtentBody(element, f.Table, ref at, ref reason)) { return false; }
+                            if (!ExtentBody(element, f.Table, ref at, ref reason, targets)) { return false; }
                         }
                         else if (f.Kind == 15)
                         {
-                            if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason)) { return false; } }
-                            else if (!ExtentUnion(ref a, f, ref at, ref reason)) { return false; }
+                            if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason, targets)) { return false; } }
+                            else if (!ExtentUnion(ref a, f, ref at, ref reason, targets)) { return false; }
+                        }
+                        else if (f.Kind == 17)
+                        {
+                            Reader p = f.KeyId != null ? source : a;
+                            if (!p.Var(out ulong index)) { break; }
+                            if (f.KeyId == null) { a = p; }
+                            if (targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
                         }
                         else { break; }
                     }
@@ -4005,15 +4299,20 @@ namespace Benchtable
                 {
                     Reader body = r;
                     if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
-                    return ExtentBody(body, f.Table, ref at, ref reason);
+                    return ExtentBody(body, f.Table, ref at, ref reason, targets);
                 }
-                if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
+                if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason, targets); }
+                if (f.Kind == 17)
+                {
+                    Reader p = r;
+                    if (p.Var(out ulong index) && targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
+                }
                 // A value the skip cannot honour ENDS the record's scan, as the reference scan's
                 // does: the reader goes to its end rather than resuming at the bytes after it.
                 if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
                 return true;
             }
-            static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
+            static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason, ExtentTargets targets)
             {
                 // A frame that does not parse ENDS the record's scan, as the reference
                 // scan's does (internal/tablewire/extent.go): the reader goes to its
@@ -4029,7 +4328,7 @@ namespace Benchtable
                 if (tag == 0) { return true; }
                 TableFieldInfo arm = f.Arms.Arms[tag].Field;
                 if (arm == null) { return true; }
-                return ExtentField(ref body, arm, false, ref at, ref reason);
+                return ExtentField(ref body, arm, false, ref at, ref reason, targets);
             }
             // Locate the winning node table and validate its framing with no objects or
             // node list. The returned reader starts at the first record, after count.
@@ -4085,22 +4384,41 @@ namespace Benchtable
                 // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
                 if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
                 long extent = 0;
-                if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
-                long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-                if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
-                Reader scan = payload;
-                for (int i = 0; i < nodes; i++)
+                bool framed = NodeFrames(root, out Reader payload, out int nodes);
+                ulong[] targets = null;
+                try
                 {
-                    scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-                    if ((type.BytesEdge && id == BytesTypeId) || (type.StringEdge && id == StringTypeId))
-                    { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
-                    TableTypeInfo candidate = type.PointerType(id);
-                    if (candidate == null) { continue; }
-                    extent = 0;
-                    if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
-                    size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    ExtentTargets targetIds = default;
+                    if (framed)
+                    {
+                        targets = System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
+                        targets[0] = 0; targets[1] = type.Id;
+                        Reader map = payload;
+                        for (int i = 0; i < nodes; i++)
+                        {
+                            map.Ref(out _, out ulong id); map.Slice(out _);
+                            targets[i + 2] = id == BytesTypeId || id == StringTypeId || type.DeclaredType(id) != null ? id : 0;
+                        }
+                        targetIds.Ids = targets;
+                    }
+                    if (!ExtentBody(root, type, ref extent, ref reason, targetIds)) { return -1; }
+                    long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    if (!framed) { return size + 16; }
+                    Reader scan = payload;
+                    for (int i = 0; i < nodes; i++)
+                    {
+                        scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
+                        if (id == BytesTypeId || id == StringTypeId)
+                        { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
+                        TableTypeInfo candidate = type.PointerType(id);
+                        if (candidate == null) { continue; }
+                        extent = 0;
+                        if (!ExtentBody(body, candidate, ref extent, ref reason, targetIds)) { return -1; }
+                        size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    }
+                    return size + (nodes + 1L) * 16;
                 }
-                return size + (nodes + 1L) * 16;
+                finally { if (targets != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
             }
 
             struct MapKey
@@ -4530,14 +4848,16 @@ namespace Benchtable
                         bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
                         Span<ulong> few = stackalloc ulong[16];
                         int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                        // a walked element of no fixed width that consumes no bits
+                        // refuses the read (docs/SPEC-TABLES.md §3.3), as the
+                        // reference's walk does: a count alone never buys the walk
+                        bool walked = shape.Elem != 0 && shape.Elem != 32 && Width(shape.Elem) == 0;
                         for (ulong i = 0; i < n; i++)
                         {
-                            long at = r.At;
                             if (kind == 16 && (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id))) { return false; }
+                            long at = r.At;
                             if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, nested ? depth + 1 : depth)) { return false; }
-                            // an element that consumed no bits is the rest of the run
-                            // too: a remaining count the bits left cannot back is damage
-                            if (r.At == at) { return n - i - 1 <= (ulong)(r.End - r.At); }
+                            if (walked && r.At == at) { return false; }
                         }
                         return true;
                     case 10:
@@ -4825,7 +5145,7 @@ namespace Benchtable
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-                if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
+                System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
                 if (f.Unbounded)
                 {
@@ -4924,14 +5244,14 @@ namespace Benchtable
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
-                if (f.Unbounded) { int length = f.GetCount(value); if (length < 0 || length > f.GetBuffer(value).Length) { return false; } if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
+                if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {
-                    int count = f.GetCount(value); if (count < 0) { return false; }
+                    int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
                     at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
                 }
                 int n = f.IsArray ? Count(value, f) : 1;
-                if (n < 0 || n > f.ArrayBound && f.IsArray) { return false; }
+                System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
                 for (int i = 0; i < n; i++)
                 {
                     if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
@@ -5041,12 +5361,14 @@ namespace Benchtable
                 {
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
                     int count = Count(child, text);
-                    return count >= 0 && count <= text.ArrayBound && TextValid(text.GetBuffer(child).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+                    return TextValid(text.GetBuffer(child).AsSpan(0, count));
                 }
                 if (!f.IsArray && f.Kind == 12)
                 {
                     int count = Count(value, f);
-                    return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+                    return TextValid(f.GetBuffer(value).AsSpan(0, count));
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
@@ -5075,7 +5397,7 @@ namespace Benchtable
             {
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
-                if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
                 if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
@@ -5095,7 +5417,7 @@ namespace Benchtable
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
                     if (f.Optional && !f.GetPresent(value)) { continue; }
-                    if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                     if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
                 }
                 return true;
@@ -5284,7 +5606,7 @@ namespace Benchtable
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
                 if (f.Optional && !f.GetPresent(value)) { return true; }
-                if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                 return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
             }
             public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)
@@ -6114,6 +6436,171 @@ namespace Benchtable
                 return EntryAt(b, i).Size - UnionArmBytes(b, i);
             }
 
+            // View wraps a layout the BUILD laid down (this unit's own, or a locked
+            // lineage entry's) as the view the walk reads. The bytes were checked when
+            // the lock was built; the load path does not re-walk them.
+            public static TableFixedLayoutView View(ReadOnlySpan<byte> bytes)
+            {
+                TableFixedLayoutView v = default;
+                v.Bytes = bytes;
+                v.Count = bytes.Length >= 4 ? (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes) : 0;
+                return v;
+            }
+
+            // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+            // fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4, §13.10;
+            // docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). DeadDead answers
+            // "wire_damaged" when a byte that is not live is not zero, and null
+            // otherwise. The walk follows the WRITER's layout over the record body and
+            // reads the reader's own rows only for the facts a layout entry cannot
+            // carry: whether an array is counted and whether a byte span is bytes.
+            public static string DeadCheck(TableFixedLayoutView theirs, TableFixedLayoutView mine, ReadOnlySpan<TableFixedDst> dst, ReadOnlySpan<byte> body)
+            {
+                if (theirs.Count == 0 || mine.Count == 0 || body.IsEmpty) { return null; }
+                return DeadEntry(theirs, 0, 0, mine, 0, dst, body);
+            }
+
+            private static string DeadZero(ReadOnlySpan<byte> b)
+            {
+                for (int i = 0; i < b.Length; ++i)
+                {
+                    if (b[i] != 0) { return "wire_damaged"; }
+                }
+                return null;
+            }
+
+            private static string DeadEntry(TableFixedLayoutView theirs, int ti, uint at, TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, ReadOnlySpan<byte> src)
+            {
+                if (ti < 0 || ti >= theirs.Count || mi < 0 || mi >= mine.Count) { return null; }
+                TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                TableFixedLayoutEntry me = EntryAt(mine, mi);
+                if ((long)at + te.Size > src.Length || (uint)mi >= (uint)dst.Length) { return null; }
+                TableFixedDst d = dst[mi];
+                if (te.Kind != me.Kind && me.Kind != 35) { return null; } // a widen or a kind that moved: no dead span here
+                if (me.Kind == 35 && te.Kind != 35) { return DeadEntry(theirs, ti, at, mine, mi + 1, dst, src); }
+                switch (me.Kind)
+                {
+                    case 35: // optional: an absent payload is dead whole
+                        {
+                            byte present = src[(int)at];
+                            if (present > 1) { return "wire_damaged"; }
+                            if (present == 0) { return DeadZero(src.Slice((int)at + 1, (int)te.Size - 1)); }
+                            return DeadEntry(theirs, ti + 1, at + 1, mine, mi + 1, dst, src);
+                        }
+                    case 13: // table: every reader field the writer names, in the writer's order
+                        {
+                            int my_child = mi + 1;
+                            for (uint k = 0; k < me.Children; ++k)
+                            {
+                                TableFixedLayoutEntry mc = EntryAt(mine, my_child);
+                                int tc_i = ti + 1;
+                                uint tc_at = at;
+                                for (uint j = 0; j < te.Children; ++j)
+                                {
+                                    TableFixedLayoutEntry tc = EntryAt(theirs, tc_i);
+                                    if (tc.Id == mc.Id)
+                                    {
+                                        string why = DeadEntry(theirs, tc_i, tc_at, mine, my_child, dst, src);
+                                        if (why != null) { return why; }
+                                        break;
+                                    }
+                                    tc_at += tc.Size;
+                                    tc_i += Subtree(theirs, tc_i);
+                                }
+                                my_child += Subtree(mine, my_child);
+                            }
+                            return null;
+                        }
+                    case 14: // array, and bytes(N) as an array of u8
+                        {
+                            if (d.Arg == TextBytes)
+                            {
+                                if (te.Size < 4 || me.Size < 4) { return null; }
+                                int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                                uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                                if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
+                                return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
+                            }
+                            TableFixedLayoutEntry tel = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mel = EntryAt(mine, mi + 1);
+                            uint head = d.Counted != 0 ? 4u : 0u;
+                            if (tel.Size == 0 || mel.Size == 0 || te.Size < head || me.Size < head) { return null; }
+                            uint their_n = (te.Size - head) / tel.Size;
+                            uint my_n = (me.Size - head) / mel.Size;
+                            uint n = Math.Min(their_n, my_n);
+                            if (d.Counted != 0)
+                            {
+                                int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                                if (count < 0 || (uint)count > n) { return null; } // the live count rule refuses this
+                                string why = DeadZero(src.Slice((int)at + 4 + count * (int)tel.Size, (int)te.Size - 4 - count * (int)tel.Size));
+                                if (why != null) { return why; }
+                                n = (uint)count;
+                            }
+                            for (uint i = 0; i < n; ++i)
+                            {
+                                string why = DeadEntry(theirs, ti + 1, at + head + i * tel.Size, mine, mi + 1, dst, src);
+                                if (why != null) { return why; }
+                            }
+                            return null;
+                        }
+                    case 16: // enum-keyed array: every slot is live, but its elements may carry dead bytes
+                        {
+                            TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
+                            int tel = ti + 1 + Subtree(theirs, ti + 1);
+                            int mel = mi + 1 + Subtree(mine, mi + 1);
+                            TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                            for (uint k = 0; k < mkey.Children; ++k)
+                            {
+                                ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
+                                for (uint j = 0; j < tkey.Children; ++j)
+                                {
+                                    if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
+                                    string why = DeadEntry(theirs, tel, at + j * tee.Size, mine, mel, dst, src);
+                                    if (why != null) { return why; }
+                                    break;
+                                }
+                            }
+                            return null;
+                        }
+                    case 12: // string(N): the bytes past the used length are dead
+                        {
+                            if (te.Size < 4 || me.Size < 4) { return null; }
+                            int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                            uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                            if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
+                            return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
+                        }
+                    case 15: // union: tag 0 names no arm, and the span past a narrower arm is dead
+                        {
+                            uint tag_bytes = TagBytes(theirs, ti);
+                            ulong tag = 0;
+                            if (tag_bytes == 1) { tag = src[(int)at]; }
+                            else if (tag_bytes == 2) { tag = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)at)); }
+                            else if (tag_bytes == 4) { tag = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)at)); }
+                            else if (tag_bytes == 8) { tag = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)at)); }
+                            if (tag == 0) { return DeadZero(src.Slice((int)at + (int)tag_bytes, (int)te.Size - (int)tag_bytes)); }
+                            if (tag > te.Children) { return null; } // a forged tag refuses in the live pass
+                            int their_arm = ti + 1;
+                            for (uint j = 0; j + 1 < (uint)tag; ++j) { their_arm += Subtree(theirs, their_arm); }
+                            TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
+                            uint live = tag_bytes + (ta.Kind == 32 ? 0u : ta.Size);
+                            string why = DeadZero(src.Slice((int)at + (int)live, (int)te.Size - (int)live));
+                            if (why != null) { return why; }
+                            int my_arm = mi + 1;
+                            for (uint k = 0; k < me.Children; ++k)
+                            {
+                                TableFixedLayoutEntry ma = EntryAt(mine, my_arm);
+                                if (ma.Id == ta.Id) { return DeadEntry(theirs, their_arm, at + tag_bytes, mine, my_arm, dst, src); }
+                                my_arm += Subtree(mine, my_arm);
+                            }
+                            return null;
+                        }
+                    default:
+                        return null;
+                }
+            }
+
             private static bool LeafSize(byte kind, uint size, out bool isLeaf)
             {
                 isLeaf = true;
@@ -6602,7 +7089,14 @@ namespace Benchtable
                             // OWN guard and ordinal — unguarded at top level, guarded
                             // under an outer arm — which is one rule and not two
                             // (§5.9 #13).
-                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
+                            //
+                            // IT ALSO HOLDS THE WRITER'S ARM SET (§4.6): DstSize carries
+                            // THE WRITER'S ARM COUNT and Meta the writer's tag width, and
+                            // the run refuses a raw tag past that count out_of_range, so
+                            // the compiled plan refuses what the identity plan's bounds
+                            // pass refuses. A count past a byte carries 0: no check.
+                            byte their_arms = (te.Children >= 1u && te.Children <= 255u) ? (byte)te.Children : (byte)0;
+                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, their_arms, meta: c.ArgW));
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -7021,9 +7515,10 @@ namespace Benchtable
                 if (e.Op == Const)
                 {
                     // a constant reads no source at all, EXCEPT the union's None
-                    // const, which reads the writer's raw tag to count a clamp
-                    // past DstSize arms — it has a source reach.
-                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
+                    // const, which reads the writer's raw tag, at the writer's tag
+                    // width in Meta, to refuse a tag past DstSize arms — it has a
+                    // source reach.
+                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + ArgWidth(e.Meta) : 0u;
                 }
                 else if (e.Op == Count)
                 {
@@ -7300,6 +7795,10 @@ namespace Benchtable
                             }
                         case Const:
                             {
+                                // THE UNION'S None CONST HOLDS THE WRITER'S ARM SET
+                                // (§4.6): a raw tag past DstSize arms names nothing the
+                                // writer wrote, and the load refuses it out_of_range.
+                                if (p.Aux == 0 && p.DstSize != 0 && TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {
                                     slots[(int)p.Dst].SetRaw(dst, p.Aux);
@@ -7318,9 +7817,10 @@ namespace Benchtable
 
             // TextIllFormed reports whether a text payload's USED units are the text
             // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-            // with no zero byte for string. bytes(N) carries no text rule at all, and
-            // slack past the used bytes is unspecified and never a refusal
-            // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
+            // with no zero byte for string. bytes(N) carries no text rule at all. The
+            // bytes past the used length are dead: the dead-byte check pass refuses
+            // wire_damaged when one is not zero (docs/SPEC-TABLES.md §3.4). The used
+            // argument is the clamped length.
             public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
             {
                 switch (meta)
@@ -7597,8 +8097,8 @@ namespace Benchtable
             return TableEntityLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableEntityMeasureMessages(TableEntity[] values) { return TableWire.MessageSave(values, TableEntityTableType(), Span<byte>.Empty, true); }
-        public static long TableEntitySaveMessages(TableEntity[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableEntityTableType(), bytes, false); }
+        public static long TableEntityMeasureMessages(TableEntity[] values) { long wrote = TableWire.MessageSave(values, TableEntityTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TableEntity v in values) { System.Diagnostics.Debug.Assert(TableEntityFixedWriteAdmits(v)); } } return wrote; }
+        public static long TableEntitySaveMessages(TableEntity[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TableEntityTableType(), bytes, false); if (wrote >= 0) { foreach (TableEntity v in values) { System.Diagnostics.Debug.Assert(TableEntityFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TableEntityLoadMessages(TableEntity[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableEntityTableType(), bytes, vocabulary, report, out count); }
 
         public static long TableEntityCookMeasure(TableEntity value) { return TableWire.Cook(value, TableEntityTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -7695,8 +8195,8 @@ namespace Benchtable
             return TableStatLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableStatMeasureMessages(TableStat[] values) { return TableWire.MessageSave(values, TableStatTableType(), Span<byte>.Empty, true); }
-        public static long TableStatSaveMessages(TableStat[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableStatTableType(), bytes, false); }
+        public static long TableStatMeasureMessages(TableStat[] values) { long wrote = TableWire.MessageSave(values, TableStatTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TableStat v in values) { System.Diagnostics.Debug.Assert(TableStatFixedWriteAdmits(v)); } } return wrote; }
+        public static long TableStatSaveMessages(TableStat[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TableStatTableType(), bytes, false); if (wrote >= 0) { foreach (TableStat v in values) { System.Diagnostics.Debug.Assert(TableStatFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TableStatLoadMessages(TableStat[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableStatTableType(), bytes, vocabulary, report, out count); }
 
         public static long TableStatCookMeasure(TableStat value) { return TableWire.Cook(value, TableStatTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -7762,7 +8262,7 @@ namespace Benchtable
             if (BitConverter.SingleToUInt32Bits(v.ServerTime) != 0x00000000u && !ids.Add(0x3c460475f9be69c6ul)) return false;
             if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
             int count_11 = v.StatsCount;
-            if (count_11 < 0 || count_11 > 80) return false;
+            System.Diagnostics.Debug.Assert(count_11 >= 0 && count_11 <= 80);
             if (count_11 > 0)
             {
                 if (!ids.Add(0xee639cad45b1994cul)) return false;
@@ -8081,8 +8581,8 @@ namespace Benchtable
             return TableMixedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableMixedMeasureMessages(TableMixed[] values) { return TableWire.MessageSave(values, TableMixedTableType(), Span<byte>.Empty, true); }
-        public static long TableMixedSaveMessages(TableMixed[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableMixedTableType(), bytes, false); }
+        public static long TableMixedMeasureMessages(TableMixed[] values) { long wrote = TableWire.MessageSave(values, TableMixedTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TableMixed v in values) { System.Diagnostics.Debug.Assert(TableMixedFixedWriteAdmits(v)); } } return wrote; }
+        public static long TableMixedSaveMessages(TableMixed[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TableMixedTableType(), bytes, false); if (wrote >= 0) { foreach (TableMixed v in values) { System.Diagnostics.Debug.Assert(TableMixedFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TableMixedLoadMessages(TableMixed[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableMixedTableType(), bytes, vocabulary, report, out count); }
 
         public static long TableMixedCookMeasure(TableMixed value) { return TableWire.Cook(value, TableMixedTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -8417,6 +8917,7 @@ namespace Benchtable
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x3161723596c6cba8ul: return TableEntityTableType(); case 0x439ae459d6f88a8eul: return TableMixedTableType(); case 0x296aa8e669b99c95ul: return TableStatTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8466,6 +8967,7 @@ namespace Benchtable
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x3161723596c6cba8ul: return TableEntityTableType(); case 0x439ae459d6f88a8eul: return TableMixedTableType(); case 0x296aa8e669b99c95ul: return TableStatTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8503,6 +9005,7 @@ namespace Benchtable
                 info.RootElemSlots = 88;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x3161723596c6cba8ul: return TableEntityTableType(); case 0x439ae459d6f88a8eul: return TableMixedTableType(); case 0x296aa8e669b99c95ul: return TableStatTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8566,6 +9069,7 @@ namespace Benchtable
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x3161723596c6cba8ul: return TableEntityTableType(); case 0x439ae459d6f88a8eul: return TableMixedTableType(); case 0x296aa8e669b99c95ul: return TableStatTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8605,6 +9109,7 @@ namespace Benchtable
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x3161723596c6cba8ul: return TableEntityTableType(); case 0x439ae459d6f88a8eul: return TableMixedTableType(); case 0x296aa8e669b99c95ul: return TableStatTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8642,6 +9147,7 @@ namespace Benchtable
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x3161723596c6cba8ul: return TableEntityTableType(); case 0x439ae459d6f88a8eul: return TableMixedTableType(); case 0x296aa8e669b99c95ul: return TableStatTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -9025,6 +9531,119 @@ namespace Benchtable
             if (value.IdleTicks < 0 || value.IdleTicks > 15) { clamped++; }
         }
 
+        // TableEntity's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableEntityFixedWriteCheckBody(TableEntity value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.EntityId > 4095) { clamped++; }
+            if (value.PosX < -16383 || value.PosX > 16383) { clamped++; }
+            if (value.PosY < -16383 || value.PosY > 16383) { clamped++; }
+            if (value.PosZ < -16383 || value.PosZ > 16383) { clamped++; }
+            // bits(9) width clamp
+            if (value.Yaw > 511) { clamped++; }
+            // bits(9) width clamp
+            if (value.Pitch > 511) { clamped++; }
+            if (value.VelX < -2048 || value.VelX > 2047) { clamped++; }
+            if (value.VelY < -2048 || value.VelY > 2047) { clamped++; }
+            if (value.VelZ < -2048 || value.VelZ > 2047) { clamped++; }
+            if (value.Health < 0 || value.Health > 1000) { clamped++; }
+            if ((ulong)value.Weapon > 15) { clamped++; }
+        }
+
+        // TableStat's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableStatFixedWriteCheckBody(TableStat value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(8) width clamp
+            if (value.StatId > 255) { clamped++; }
+            if (value.Delta < -512 || value.Delta > 511) { clamped++; }
+        }
+
+        // TableHitEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableHitEventFixedWriteCheckBody(TableHitEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(12) width clamp
+            if (value.TargetId > 4095) { clamped++; }
+            if (value.Damage < 0 || value.Damage > 4095) { clamped++; }
+            if (value.HitKind < 0 || value.HitKind > 7) { clamped++; }
+        }
+
+        // TableChatEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableChatEventFixedWriteCheckBody(TableChatEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Channel < 0 || value.Channel > 3) { clamped++; }
+            // bits(12) width clamp
+            if (value.Speaker > 4095) { clamped++; }
+        }
+
+        // TablePickupEvent's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TablePickupEventFixedWriteCheckBody(TablePickupEvent value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(10) width clamp
+            if (value.ItemId > 1023) { clamped++; }
+            if (value.Amount < 0 || value.Amount > 255) { clamped++; }
+        }
+
+        // TableMixed's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TableMixedFixedWriteCheckBody(TableMixed value, ref int clamped)
+        {
+            if (value == null) return;
+            // bits(16) width clamp
+            if (value.Sequence > 65535) { clamped++; }
+            if (value.AckSequence < 0 || value.AckSequence > 65535) { clamped++; }
+            if (value.Nonce < 1ul || value.Nonce > 9223372036854775807ul) { clamped++; }
+            if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) { clamped++; }
+            // bits(48) width clamp
+            if (value.FrameTick > 281474976710655ul) { clamped++; }
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
+                {
+                    TableEntityFixedWriteCheckBody(value.Entities[i], ref clamped);
+                }
+            }
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < value.StatsCount && i < value.Stats.Length; ++i)
+                {
+                    TableStatFixedWriteCheckBody(value.Stats[i], ref clamped);
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                if ((ulong)value.GameEvent.Type > 3) { clamped++; }
+                switch (value.GameEvent.Type)
+                {
+                    case TableEventType.Hit:
+                        {
+                            TableHitEventFixedWriteCheckBody(value.GameEvent.Hit, ref clamped);
+                            break;
+                        }
+                    case TableEventType.Chat:
+                        {
+                            TableChatEventFixedWriteCheckBody(value.GameEvent.Chat, ref clamped);
+                            break;
+                        }
+                    case TableEventType.Pickup:
+                        {
+                            TablePickupEventFixedWriteCheckBody(value.GameEvent.Pickup, ref clamped);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            if (value.PlayerName != null && value.PlayerNameLength >= 0 && value.PlayerNameLength <= value.PlayerName.Length && !TableWire.TextValid(value.PlayerName.AsSpan(0, value.PlayerNameLength))) { clamped++; }
+            if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) { clamped++; }
+            // bits(24) width clamp
+            if (value.CrcHint > 16777215) { clamped++; }
+            if (value.Extra < 0 || value.Extra > 255) { clamped++; }
+            if (value.IdleTicks < 0 || value.IdleTicks > 15) { clamped++; }
+        }
+
         // TableMixed's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string TableMixedFixedFiniteBody(TableMixed value)
@@ -9051,6 +9670,15 @@ namespace Benchtable
             TableEntityFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TableEntity
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TableEntityFixedWriteAdmits(TableEntity value)
+        {
+            int bad = 0;
+            TableEntityFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TableEntity, the fixed form ----
@@ -9391,6 +10019,7 @@ namespace Benchtable
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TableEntityFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -9495,8 +10124,13 @@ namespace Benchtable
 
         public static long TableEntityFixedSave(ReadOnlySpan<TableEntity> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = TableEntityFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TableEntityFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableEntityFixedHash);
@@ -9625,7 +10259,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -9635,6 +10269,20 @@ namespace Benchtable
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(TableEntityFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, TableEntityFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -9719,6 +10367,15 @@ namespace Benchtable
             TableStatFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TableStat
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TableStatFixedWriteAdmits(TableStat value)
+        {
+            int bad = 0;
+            TableStatFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TableStat, the fixed form ----
@@ -9967,6 +10624,7 @@ namespace Benchtable
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TableStatFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -10030,8 +10688,13 @@ namespace Benchtable
 
         public static long TableStatFixedSave(ReadOnlySpan<TableStat> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = TableStatFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TableStatFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableStatFixedHash);
@@ -10160,7 +10823,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -10170,6 +10833,20 @@ namespace Benchtable
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(TableStatFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, TableStatFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -10254,6 +10931,15 @@ namespace Benchtable
             TableMixedFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TableMixed
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TableMixedFixedWriteAdmits(TableMixed value)
+        {
+            int bad = 0;
+            TableMixedFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TableMixed, the fixed form ----
@@ -11581,6 +12267,7 @@ namespace Benchtable
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TableMixedFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -12026,9 +12713,14 @@ namespace Benchtable
 
         public static long TableMixedFixedSave(ReadOnlySpan<TableMixed> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = TableMixedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (TableMixedFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TableMixedFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableMixedFixedHash);
@@ -12157,7 +12849,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -12167,6 +12859,20 @@ namespace Benchtable
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(TableMixedFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, TableMixedFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the

@@ -42,8 +42,9 @@ const int tableFixedForm = 3;
 /// The guard offset an entry that belongs to no union arm carries.
 const int tableFixedNoGuard = -1;
 
-/// THE OPS ARE THE WHOLE SET. The identity plan carries the first three; the
-/// other four are what a plan compiled from another writer's layout adds.
+/// THE OPS ARE THE WHOLE SET. The identity plan carries copy, count, text and
+/// the two dead-byte checks; the other four move or remap a value from a plan
+/// compiled from another writer's layout.
 abstract final class TableFixedOp {
   static const int copy = 0; // move size bytes
   static const int count = 1; // a count: clamp it to the reader's own bound
@@ -53,6 +54,8 @@ abstract final class TableFixedOp {
   static const int constant = 5; // a constant this reader's storage takes
   static const int widenFloat = 6; // f32 into f64, §4's float rung
   static const int present = 7; // a constant 1 into the reader's present byte
+  static const int dead = 8; // a source range must be zero; lands nothing
+  static const int presentCopy = 9; // the present byte, then its dead payload
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
@@ -1070,6 +1073,7 @@ int tableFixedRun(
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
     final size = plan[b + TableFixedLane.size];
+    final aux = plan[b + TableFixedLane.aux];
     switch (plan[b + TableFixedLane.op]) {
       case TableFixedOp.copy:
         image.setRange(d, d + size, source, s);
@@ -1078,6 +1082,14 @@ int tableFixedRun(
         final counted = sourceView.getInt32(s, Endian.little);
         if (counted < 0 || counted > size) {
           return TableFixedRefusal.countOverBound;
+        }
+        // THE SLOTS PAST THE LIVE COUNT ARE DEAD, and every dead byte is zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). aux is the
+        // element stride, so the check runs over the writer's own bound.
+        for (var i = s + 4 + counted * aux; i < s + 4 + size * aux; i++) {
+          if (source[i] != 0) {
+            return TableFixedRefusal.damaged;
+          }
         }
         imageView.setInt32(d, counted, Endian.little);
         break;
@@ -1099,6 +1111,13 @@ int tableFixedRun(
         )) {
           return TableFixedRefusal.textIllFormed;
         }
+        // THE UNITS PAST THE USED LENGTH ARE DEAD, and every dead byte is zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
+        for (var i = s + 4 + used; i < s + 4 + size; i++) {
+          if (source[i] != 0) {
+            return TableFixedRefusal.damaged;
+          }
+        }
         imageView.setInt32(d, used, Endian.little);
         image.setRange(
           plan[b + TableFixedLane.aux],
@@ -1106,6 +1125,31 @@ int tableFixedRun(
           source,
           s + 4,
         );
+        break;
+      case TableFixedOp.presentCopy:
+        // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/FIXED-FORM-ALGORITHM.md
+        // §3.1, §4.5, §5.3 step 11): aux is the writer's payload span, and a
+        // clear flag requires every byte of it to be zero. The present byte
+        // still lands for the decode's own 0/1 check.
+        final flag = source[s];
+        image[d] = flag;
+        if (flag == 0) {
+          for (var i = s + 1; i < s + 1 + aux; i++) {
+            if (source[i] != 0) {
+              return TableFixedRefusal.damaged;
+            }
+          }
+        }
+        break;
+      case TableFixedOp.dead:
+        // AN INACTIVE UNION ARM, or the bytes past a narrower taken arm, are
+        // DEAD and must be zero (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+        // §5.3 step 11). The entry lands nothing.
+        for (var i = s; i < s + size; i++) {
+          if (source[i] != 0) {
+            return TableFixedRefusal.damaged;
+          }
+        }
         break;
       case TableFixedOp.ordinal:
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
@@ -1199,8 +1243,10 @@ int tableFixedRun(
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
 /// well-formed UTF-8 with no zero byte for string(N). bytes(N) carries no
-/// content rule at all, and the SLACK past the used bytes is unspecified and
-/// never a refusal. used is the clamped length; at is the first byte.
+/// content rule at all. The bytes past the used length are DEAD, and the text
+/// entry holds them to zero in tableFixedRun rather than judging them as
+/// content (docs/rulings.json fixed-dead-bytes-are-zero). used is the clamped
+/// length; at is the first byte.
 bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
     return false;
@@ -1571,7 +1617,20 @@ abstract final class TableFixedCompiler {
     }
     switch (myKind) {
       case 35: // the OPTIONAL wrapper: the present byte, then the payload
-        push(plan, TableFixedOp.copy, theirAt, auxAt, 1, 0, guard, arg, 0);
+        // THE WRITER'S PRESENT BYTE AND ITS DEAD PAYLOAD: aux is the payload
+        // span, so a clear flag holds every byte behind it to zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
+        push(
+          plan,
+          TableFixedOp.presentCopy,
+          theirAt,
+          auxAt,
+          1,
+          theirSize > 0 ? theirSize - 1 : 0,
+          guard,
+          arg,
+          0,
+        );
         compileEntry(
           plan,
           ti + 1,
@@ -1617,7 +1676,7 @@ abstract final class TableFixedCompiler {
             theirAt,
             auxAt,
             theirN,
-            0,
+            theirElem,
             guard,
             arg,
             0,
@@ -1714,6 +1773,38 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
+        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN (docs/FIXED-
+        // FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
+        // every arm byte is dead; a taken arm leaves the bytes past it inside
+        // the widest arm's span dead. Each dead entry reads the writer's
+        // record and lands nothing.
+        final theirWidest = theirSize - theirTag;
+        if (theirWidest > 0) {
+          if (plan.chainLen >= 65) {
+            plan.overflow = true;
+            return;
+          }
+          final savedAt = plan.chainAt;
+          final l = plan.chainLen * 3;
+          plan.chain[l] = theirAt;
+          plan.chain[l + 1] = 0;
+          plan.chain[l + 2] = plan.argw <= 0 ? 1 : plan.argw;
+          plan.chainLen++;
+          plan.chainAt = -1;
+          push(
+            plan,
+            TableFixedOp.dead,
+            theirAt + theirTag,
+            0,
+            theirWidest,
+            0,
+            theirAt,
+            0,
+            0,
+          );
+          plan.chainLen--;
+          plan.chainAt = savedAt;
+        }
         var myArm = mi + 1;
         for (var k = 0; k < myArms; k++) {
           var theirArm = ti + 1;
@@ -1745,6 +1836,20 @@ abstract final class TableFixedCompiler {
                 j + 1,
                 0,
               );
+              final theirArmSize = theirs.size(theirArm);
+              if (theirWidest - theirArmSize > 0) {
+                push(
+                  plan,
+                  TableFixedOp.dead,
+                  theirAt + theirTag + theirArmSize,
+                  0,
+                  theirWidest - theirArmSize,
+                  0,
+                  theirAt,
+                  j + 1,
+                  0,
+                );
+              }
               compileEntry(
                 plan,
                 theirArm,
@@ -1817,14 +1922,11 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
-        // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
-        // would otherwise TEXT every bound slot, and slack lengths would
-        // count. The decode both paths share clamps LIVE used-lengths.
-        // A bound that MOVED still needs the text op (min units).
-        if (theirSize == mySize) {
-          push(plan, TableFixedOp.copy, theirAt, at, mySize, 0, guard, arg, 0);
-          break;
-        }
+        // EVERY TEXT NEEDS THE TEXT OP, same size or not: the bytes past the
+        // used length are DEAD and the op holds them to zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). A counted
+        // array of wrapped strings TEXTS every bound slot for that reason;
+        // the decode both paths share still clamps LIVE used-lengths.
         final units = (mySize - 4) < (theirSize - 4)
             ? (mySize - 4)
             : (theirSize - 4);
@@ -1913,6 +2015,9 @@ abstract final class TableFixedCompiler {
     lands[2] = 0;
     lands[3] = 0;
     switch (plan[b + TableFixedLane.op]) {
+      case TableFixedOp.dead:
+        // a check lands nothing
+        break;
       case TableFixedOp.count:
         lands[1] = dst + 4;
         break;
@@ -2079,6 +2184,14 @@ class TableVocabulary {
   bool announced = false;
   bool attempted = false;
 
+  /// THE BODY'S SEEN SLOTS (docs/SPEC-TABLES.md §3.3, §4): one bitset over
+  /// this vocabulary's announced entries per body nesting level, sized ONCE
+  /// from the announced entry count and cleared by the body that uses it. A
+  /// field or a keyed slot met twice in one body is damage, and a nested body
+  /// keeps its own level so its fields do not shadow its host's.
+  Uint8List seen = Uint8List(0);
+  static const int seenBodyLevels = 129;
+
   /// "THE ONE-ANNOUNCEMENT WORK BUDGET" (§3.3): the caller declares the bound
   /// the payload length and the entry count are held to.
   int maxEntries;
@@ -2134,6 +2247,15 @@ final class TableMessageShape {
   int min = 0;
   int max = 0;
   int elem = 0;
+  int base = 0;
+  int baseLo = 0;
+  int baseHi = 0;
+  /// The quantized triple's derived facts, kept so the SKIP path can hold an
+  /// index to its count and a dequantized value to a finite float, exactly as
+  /// a named read does (docs/SPEC-TABLES.md §3.3, §4).
+  double qMin = 0;
+  double qDelta = 0;
+  int qCount = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -2155,13 +2277,30 @@ final class TableMessageShape {
         at = n.$2;
         if (kind >= 18) {
           if (at + 16 > end) return null;
+          s.baseLo = sig[at] | (sig[at + 1] << 8) | (sig[at + 2] << 16) |
+              (sig[at + 3] << 24) | (sig[at + 4] << 32) |
+              (sig[at + 5] << 40) | (sig[at + 6] << 48) |
+              (sig[at + 7] << 56);
+          s.baseHi = sig[at + 8] | (sig[at + 9] << 8) | (sig[at + 10] << 16) |
+              (sig[at + 11] << 24) | (sig[at + 12] << 32) |
+              (sig[at + 13] << 40) | (sig[at + 14] << 48) |
+              (sig[at + 15] << 56);
+          s.base = s.baseLo;
           return (s, at + 16);
         }
         final b = tableMessageLeb(sig, at, end);
-        return b.$3 ? (s, b.$2) : null;
+        if (!b.$3) return null;
+        var base = b.$1;
+        if (kind >= 2 && kind <= 5) {
+          base = (base >>> 1) ^ -(base & 1);
+        }
+        s.base = base;
+        s.baseLo = base;
+        s.baseHi = base < 0 ? -1 : 0;
+        return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
-        final bits = quantizedBits(sig, at, end);
+        final bits = quantizedBits(sig, at, end, s);
         if (bits == null) return null;
         s.bits = bits;
         return (s, at + 12);
@@ -2200,7 +2339,7 @@ final class TableMessageShape {
   /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
   /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256],
   /// or null where the triple is not conforming.
-  static int? quantizedBits(Uint8List sig, int at, int end) {
+  static int? quantizedBits(Uint8List sig, int at, int end, TableMessageShape s) {
     if (at + 12 > end) return null;
     final view = ByteData.sublistView(sig, at, at + 12);
     final f = Float32List(3);
@@ -2220,10 +2359,14 @@ final class TableMessageShape {
     }
     var count = values.ceil();
     var width = 0;
+    final kept = count;
     while (count != 0) {
       width++;
       count >>= 1;
     }
+    s.qMin = f[0];
+    s.qDelta = delta;
+    s.qCount = kept;
     return width;
   }
 
@@ -2518,6 +2661,8 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   }
   vocabulary.count = seen;
   vocabulary.refBits = seen == 0 ? 1 : tableMessageBits(seen);
+  final stride = seen == 0 ? 1 : (seen + 7) >> 3;
+  vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
   vocabulary.announced = true;
   return true;
 }
@@ -2840,6 +2985,48 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+
+  /// THE SEEN SLOTS FOR THE BODY AT 'seenDepth': a bit per announced entry
+  /// (docs/SPEC-TABLES.md §3.3, §4). The buffer is allocated once from the
+  /// announced vocabulary; a body clears its own level only, so a host body's
+  /// fields survive a nested body's read.
+  Uint8List seen = Uint8List(0);
+  int seenStride = 0;
+  int seenDepth = 0;
+
+  void seenReset() {
+    if (seenStride == 0) return;
+    final at = seenDepth * seenStride;
+    seen.fillRange(at, at + seenStride, 0);
+  }
+
+  bool seenHas(int ref) {
+    if (seenStride == 0) return false;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    return ((seen[bit >> 3] >> (bit & 7)) & 1) != 0;
+  }
+
+  /// A body names a RESOLVED ID at most once, even where the announcement
+  /// carries that id at two shapes (docs/SPEC-TABLES.md §3.3, §4): the seen
+  /// bits at this level are scanned, so the check allocates nothing.
+  bool seenHasId(int id) {
+    if (seenStride == 0) return false;
+    final at = seenDepth * seenStride * 8;
+    for (var k = 0; k < vocabulary.count; k++) {
+      final bit = at + k;
+      if (((seen[bit >> 3] >> (bit & 7)) & 1) != 0 &&
+          vocabulary.entries[k].id == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void seenAdd(int ref) {
+    if (seenStride == 0) return;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    seen[bit >> 3] |= 1 << (bit & 7);
+  }
 }
 
 /// Opens one form-2 batch: the form byte first, then the count, then the
@@ -2859,6 +3046,13 @@ int tableMessageBatchOpen(
   r.bits = TableBitReader(Uint8List.sublistView(data, 2));
   r.vocabulary = vocabulary;
   r.report = report;
+  final stride = vocabulary.count == 0 ? 1 : (vocabulary.count + 7) >> 3;
+  if (vocabulary.seen.length < stride * TableVocabulary.seenBodyLevels) {
+    vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
+  }
+  r.seen = vocabulary.seen;
+  r.seenStride = stride;
+  r.seenDepth = 0;
   return data[1] + 1;
 }
 
@@ -2884,15 +3078,37 @@ bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth
   return tableMessageSkip(r, e.kind, shape, depth);
 }
 
-/// One body at [depth]. Fields of the body are skipped at this same depth.
+/// The widening ladder of §4 (ir.TableKindWidens): an integer kind into a
+/// wider one of the same signedness, and f32 into f64.
+bool tableMessageKindWidens(int from, int declared) {
+  if (declared == 11) return from == 10;
+  if (declared >= 2 && declared <= 5) return from >= 2 && from < declared;
+  if (declared == 18) return from >= 2 && from <= 5;
+  if (declared >= 6 && declared <= 9) return from >= 6 && from < declared;
+  if (declared == 19) return from >= 6 && from <= 9;
+  return false;
+}
+
+/// One body at [depth]. Fields of the body are skipped at this same depth,
+/// held to the same two framing rules a named body applies
+/// (docs/SPEC-TABLES.md §3.1, §3.3): a reserved id is damage, and an id met
+/// twice in one body is damage whether or not this reader can name it.
 bool tableMessageSkipBody(TableMessageReader r, int depth) {
   if (depth > 128) return false;
+  // A BODY'S OWN SEEN SET, the reference's per-body map
+  // (internal/tablewire/messagedecode.go, skipBody): a field id twice in one
+  // body is damage, known or unknown, and a nested body's ids do not shadow
+  // its host's.
+  final seen = <int>{};
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) return false;
     if (ref == 0) return true;
     if (ref > r.vocabulary.count) return false;
-    if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1], depth)) return false;
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) return false;
+    if (!seen.add(entry.id)) return false;
+    if (!tableMessageSkipEntry(r, entry, depth)) return false;
   }
 }
 
@@ -2918,7 +3134,10 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
       final arm = r.vocabulary.entries[ref - 1];
       // bitDecoder.arm: a reserved id or a kind-0 entry is damage
       if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
-      return tableMessageSkipEntry(r, arm, depth + 1);
+      // A UNION WHOSE ARM IS STRUCTURAL is one level deeper; a scalar or
+      // payload-free arm adds no level (docs/SPEC-TABLES.md §4).
+      return tableMessageSkipEntry(
+          r, arm, tableMessageStructural(arm.kind) ? depth + 1 : depth);
     case 13:
       return tableMessageSkipBody(r, depth + 1);
     case 17:
@@ -2928,12 +3147,47 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
     case 12:
       final n = r.bits.get(TableMessageShape.bitsRequired(0, s.max));
       if (r.bits.failed || !r.bits.align()) return false;
-      return r.bits.skip(n * 8);
+      final start = r.bits.offset >> 3;
+      if (!r.bits.skip(n * 8)) return false;
+      // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
+      // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
+      return tableTextValid(r.bits.buffer, start, n);
     case 31:
       if (!r.bits.align()) return false;
       final n = r.bits.get(32);
       if (r.bits.failed) return false;
       return r.bits.skip(n * 8);
+    case 10:
+      // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
+      // a raw NaN or infinity is refused on its bits, and a quantized index
+      // above its count is damage, never reconstructed.
+      if (s.packing == 2) {
+        final index = r.bits.get(s.bits);
+        if (r.bits.failed) return false;
+        if (index > s.qCount) return false;
+        // The announced triple's own float32 arithmetic, the read path's
+        // order (ir.TableMessageDequantize): two roundings on each side.
+        final cell = Float32List(1);
+        cell[0] = index.toDouble();
+        final fi = cell[0];
+        cell[0] = s.qCount.toDouble();
+        final fc = cell[0];
+        cell[0] = fi / fc;
+        final normalized = cell[0];
+        cell[0] = normalized * s.qDelta;
+        final scaled = cell[0];
+        cell[0] = scaled + s.qMin;
+        return cell[0].isFinite;
+      }
+      final b32 = r.bits.get(32);
+      if (r.bits.failed) return false;
+      return (b32 & 0x7f800000) != 0x7f800000;
+    case 11:
+      final b64 = r.bits.get(64);
+      if (r.bits.failed) return false;
+      // The exponent field alone, so no NaN payload is ever assembled: an
+      // all-ones exponent is a NaN or an infinity (§3.3).
+      return ((b64 >> 52) & 0x7ff) != 0x7ff;
     case 14:
     case 16:
       var n = s.min;
@@ -2951,40 +3205,128 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
           n += s.min;
         }
       }
+      // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
+      // announced maximum is damage here as it is at a named field
+      // (docs/SPEC-TABLES.md §3.3, §4).
+      if (n > s.max) return false;
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? TableMessageShape();
-      // elementRunBits + skipRun (internal/codegen/gotable/message.go): a
-      // fixed-width element of an array or keyed entry is stepped
-      // arithmetically; only a walked element recurses at depth + 1.
+      // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
+      // fixed-width element of an ARRAY is stepped arithmetically; a float,
+      // a compressed or ranged element, a keyed entry and a structural
+      // element are walked so their own conditions are held.
       final elem = s.elem;
-      if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
+      if (kind == 14 &&
+          elem != 13 &&
+          elem != 15 &&
+          elem != 17 &&
+          elem != 30 &&
+          elem != 10 &&
+          elem != 11 &&
+          inner.packing == 0) {
         var run = (elem == 0 || elem == 32) ? 0 : TableMessageShape.valueBits(elem, inner);
         if (run >= 0) {
-          if (kind == 16) {
-            run += r.vocabulary.refBits;
-          }
           if (run == 0) return true;
           if (n > 0x7fffffffffffffff ~/ run) return false;
           return r.bits.skip(n * run);
         }
       }
-      for (var i = 0; i < n; i++) {
-        if (kind == 16) {
-          r.bits.get(r.vocabulary.refBits);
-          if (r.bits.failed) return false;
+      // A STRUCTURAL ELEMENT is one level deeper; a scalar element adds no
+      // level (docs/SPEC-TABLES.md §4), so an array or keyed array of
+      // scalars at the depth boundary still reads.
+      final elemDepth = tableMessageStructural(elem) ? depth + 1 : depth;
+      if (kind == 16) {
+        // AN ENUM-KEYED ARRAY'S KEY references a declared no-payload entry,
+        // none repeated (docs/SPEC-TABLES.md §3.2, §3.3): the skip path runs
+        // the same checks a named keyed read does, with the keyed body's own
+        // seen set (internal/tablewire/messagedecode.go, keyedReference).
+        final seen = <int>{};
+        for (var i = 0; i < n; i++) {
+          // The key's own bits are progress (internal/tablewire/messagedecode.go,
+          // skip: the offset is read before keyedReference), so a payload-free
+          // element is still a walked element that advanced.
+          final before = r.bits.offset;
+          final keyRef = r.bits.get(r.vocabulary.refBits);
+          if (r.bits.failed ||
+              keyRef == 0 ||
+              keyRef > r.vocabulary.count) {
+            return false;
+          }
+          final key = r.vocabulary.entries[keyRef - 1];
+          if (tableMessageReservedId(key.id) || key.kind != 0) {
+            return false;
+          }
+          if (!seen.add(key.id)) return false;
+          if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
+          if (r.bits.offset == before) return false;
         }
+        return true;
+      }
+      for (var i = 0; i < n; i++) {
         // A WALKED ELEMENT THAT CONSUMES NO BITS is damage and ends the
-        // walk (internal/codegen/gotable/message.go, tableMessageSkip):
-        // otherwise the announced count alone buys the iterations.
+        // walk (internal/tablewire/messagedecode.go, skip): otherwise the
+        // announced count alone buys the iterations.
         final before = r.bits.offset;
-        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;
+        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
         if (r.bits.offset == before) return false;
       }
       return true;
   }
   final width = TableMessageShape.valueBits(kind, s);
   if (width < 0) return false;
+  if (s.packing == 1) return tableMessageSkipRanged(r, kind, s, width);
   return r.bits.skip(width);
+}
+
+/// A STRUCTURAL kind is one nesting level (docs/SPEC-TABLES.md §4): a table
+/// body, an array, a union, and an enum-keyed body. A scalar, an enum name or
+/// a payload-free entry adds no level.
+bool tableMessageStructural(int kind) =>
+    kind == 13 || kind == 14 || kind == 15 || kind == 16;
+
+/// A RANGED INTEGER ON THE SKIP PATH is read as its offset, rebuilt from the
+/// sender's base, and held to the range its own kind can carry: the offset's
+/// bits can spell a value past the sender's maximum, and no conforming writer
+/// emits one (docs/SPEC-TABLES.md §3.3; the reference's skipRanged and
+/// kindHolds, internal/tablewire/messagedecode.go). The offset rides low 64
+/// bits first, as a named 128-bit read takes it.
+bool tableMessageSkipRanged(
+    TableMessageReader r, int kind, TableMessageShape s, int width) {
+  final lowBits = width < 64 ? width : 64;
+  final lo = r.bits.get(lowBits);
+  if (r.bits.failed) return false;
+  final hi = width > 64 ? r.bits.get(width - 64) : 0;
+  if (r.bits.failed) return false;
+  final offset = (BigInt.from(hi).toUnsigned(64) << 64) |
+      BigInt.from(lo).toUnsigned(64);
+  // The base as ir.DecodeShape holds it: a 16-byte two's complement for the
+  // 128-bit and fixed-point kinds, a zigzag for a signed integer, and an
+  // unsigned 64-bit value otherwise.
+  BigInt base;
+  if (kind >= 18) {
+    base = (BigInt.from(s.baseHi) << 64) | BigInt.from(s.baseLo).toUnsigned(64);
+  } else if (kind >= 2 && kind <= 5) {
+    base = BigInt.from(s.base);
+  } else {
+    base = BigInt.from(s.base).toUnsigned(64);
+  }
+  final value = offset + base;
+  final bits = tableMessageKindWidth(kind) * 8;
+  if (bits == 0) return true;
+  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
+  if (signed) {
+    final top = BigInt.one << (bits - 1);
+    if (value < -top || value >= top) {
+      r.report.Refuse('out_of_range');
+      return false;
+    }
+    return true;
+  }
+  if (value.isNegative || value >= (BigInt.one << bits)) {
+    r.report.Refuse('out_of_range');
+    return false;
+  }
+  return true;
 }
 
 /// A string(N) payload must be well-formed UTF-8 with no zero byte among its
@@ -3118,170 +3460,244 @@ bool tableEntitySaveMessageBody(TableBitWriter w, TableEntity value) {
 
 bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
   initTableEntity(value);
+  r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    switch (ref) {
-      case 3:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case 2593226102015223570: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.entityId = v;
-          value.entityId += 0;
+          if (shape.packing == 1) { value.entityId += shape.base; }
         }
         if (value.entityId > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 4:
+      }
+      case -3797881157997612786: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(15);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posX = v;
-          value.posX += -16383;
-          value.posX = value.posX.toSigned(32);
+          if (shape.packing == 1) { value.posX += shape.base; }
+          if (shape.packing == 0) { value.posX = value.posX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posX < -16383 || value.posX > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 5:
+      }
+      case -3797880058485984575: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(15);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posY = v;
-          value.posY += -16383;
-          value.posY = value.posY.toSigned(32);
+          if (shape.packing == 1) { value.posY += shape.base; }
+          if (shape.packing == 0) { value.posY = value.posY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posY < -16383 || value.posY > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 6:
+      }
+      case -3797883357020869208: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(15);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posZ = v;
-          value.posZ += -16383;
-          value.posZ = value.posZ.toSigned(32);
+          if (shape.packing == 1) { value.posZ += shape.base; }
+          if (shape.packing == 0) { value.posZ = value.posZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posZ < -16383 || value.posZ > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 7:
+      }
+      case -5382489739573192984: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(9);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.yaw = v;
-          value.yaw += 0;
+          if (shape.packing == 1) { value.yaw += shape.base; }
         }
         if (value.yaw > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 8:
+      }
+      case 6028620492700434865: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(9);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.pitch = v;
-          value.pitch += 0;
+          if (shape.packing == 1) { value.pitch += shape.base; }
         }
         if (value.pitch > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 9:
+      }
+      case 7849183398884077159: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velX = v;
-          value.velX += -2048;
-          value.velX = value.velX.toSigned(32);
+          if (shape.packing == 1) { value.velX += shape.base; }
+          if (shape.packing == 0) { value.velX = value.velX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velX < -2048 || value.velX > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 10:
+      }
+      case 7849182299372448948: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velY = v;
-          value.velY += -2048;
-          value.velY = value.velY.toSigned(32);
+          if (shape.packing == 1) { value.velY += shape.base; }
+          if (shape.packing == 0) { value.velY = value.velY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velY < -2048 || value.velY > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 11:
+      }
+      case 7849185597907333581: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velZ = v;
-          value.velZ += -2048;
-          value.velZ = value.velZ.toSigned(32);
+          if (shape.packing == 1) { value.velZ += shape.base; }
+          if (shape.packing == 0) { value.velZ = value.velZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velZ < -2048 || value.velZ > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 12:
+      }
+      case 9181103189905877455: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(10);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.health = v;
-          value.health += 0;
-          value.health = value.health.toSigned(32);
+          if (shape.packing == 1) { value.health += shape.base; }
+          if (shape.packing == 0) { value.health = value.health.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.health < 0 || value.health > 1000) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 13:
+      }
+      case -6866282850657997311: {
+        if (entry.kind != 30 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          final ref = r.bits.get(tableMessageRefBits);
+          final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if (ref == 0) { value.weapon = TableWeapon.none; } else {
-            switch (ref) {
-              case 53: value.weapon = TableWeapon.fists; break;
-              case 54: value.weapon = TableWeapon.pistol; break;
-              case 55: value.weapon = TableWeapon.shotgun; break;
-              case 56: value.weapon = TableWeapon.rifle; break;
-              case 57: value.weapon = TableWeapon.sniper; break;
-              case 58: value.weapon = TableWeapon.smg; break;
-              case 59: value.weapon = TableWeapon.rocket; break;
-              case 60: value.weapon = TableWeapon.grenade; break;
-              case 61: value.weapon = TableWeapon.plasma; break;
-              case 62: value.weapon = TableWeapon.railgun; break;
-              case 63: value.weapon = TableWeapon.flamer; break;
-              case 64: value.weapon = TableWeapon.mine; break;
-              case 65: value.weapon = TableWeapon.turret; break;
-              case 66: value.weapon = TableWeapon.drone; break;
-              case 67: value.weapon = TableWeapon.repair; break;
-              default:
-                if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {
-                  r.report.Damage();
-                  return false;
-                }
-                value.weapon = TableWeapon.none; r.report.unknown++;
-                break;
+            if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+            final named = r.vocabulary.entries[ref - 1];
+            if (tableMessageReservedId(named.id) || named.kind != 0) { r.report.Damage(); return false; }
+            switch (named.id) {
+              case -6372330821933150452: value.weapon = TableWeapon.fists; break;
+              case -6935561395390217098: value.weapon = TableWeapon.pistol; break;
+              case 1768712988339112597: value.weapon = TableWeapon.shotgun; break;
+              case 3185847833948484337: value.weapon = TableWeapon.rifle; break;
+              case 912176952613754358: value.weapon = TableWeapon.sniper; break;
+              case -7467029643251279282: value.weapon = TableWeapon.smg; break;
+              case 2494154474894420565: value.weapon = TableWeapon.rocket; break;
+              case 80074449652715421: value.weapon = TableWeapon.grenade; break;
+              case -8505234340531936929: value.weapon = TableWeapon.plasma; break;
+              case -8250835097599916951: value.weapon = TableWeapon.railgun; break;
+              case -2752528626751932394: value.weapon = TableWeapon.flamer; break;
+              case 350179810443481718: value.weapon = TableWeapon.mine; break;
+              case 3883575963473318423: value.weapon = TableWeapon.turret; break;
+              case 3226873318306908209: value.weapon = TableWeapon.drone; break;
+              case 2358437193313989428: value.weapon = TableWeapon.repair; break;
+              default: value.weapon = TableWeapon.none; r.report.unknown++; break;
             }
           }
         }
         break;
-      case 14:
+      }
+      case 9179190079975030720: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         break;
-      case 15:
+      }
+      case 1271228688681418151: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.moving = v;
         }
         break;
-      case 16:
+      }
+      case 8535675692938965450: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.firing = v;
         }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3305,44 +3721,53 @@ bool tableStatSaveMessageBody(TableBitWriter w, TableStat value) {
 
 bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
   initTableStat(value);
+  r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    switch (ref) {
-      case 51:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -9175110139929313435: {
+        if (entry.kind != 6 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          final v = r.bits.get(8);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.statId = v;
-          value.statId += 0;
+          if (shape.packing == 1) { value.statId += shape.base; }
         }
         if (value.statId > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 52:
+      }
+      case 5910805692604981441: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(10);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.delta = v;
-          value.delta += -512;
-          value.delta = value.delta.toSigned(32);
+          if (shape.packing == 1) { value.delta += shape.base; }
+          if (shape.packing == 0) { value.delta = value.delta.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.delta < -512 || value.delta > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3374,61 +3799,81 @@ bool tableHitEventSaveMessageBody(TableBitWriter w, TableHitEvent value) {
 
 bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
   initTableHitEvent(value);
+  r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    switch (ref) {
-      case 17:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -5207116919359778736: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.targetId = v;
-          value.targetId += 0;
+          if (shape.packing == 1) { value.targetId += shape.base; }
         }
         if (value.targetId > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 18:
+      }
+      case 9179190079975030720: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.damage = v;
-          value.damage += 0;
-          value.damage = value.damage.toSigned(32);
+          if (shape.packing == 1) { value.damage += shape.base; }
+          if (shape.packing == 0) { value.damage = value.damage.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.damage < 0 || value.damage > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 19:
+      }
+      case 142922654710085925: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(3);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hitKind = v;
-          value.hitKind += 0;
-          value.hitKind = value.hitKind.toSigned(32);
+          if (shape.packing == 1) { value.hitKind += shape.base; }
+          if (shape.packing == 0) { value.hitKind = value.hitKind.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.hitKind < 0 || value.hitKind > 7) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 20:
+      }
+      case 1324453635955533101: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crit = v;
         }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3452,44 +3897,53 @@ bool tableChatEventSaveMessageBody(TableBitWriter w, TableChatEvent value) {
 
 bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
   initTableChatEvent(value);
+  r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    switch (ref) {
-      case 1:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -6556890747741999708: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(2);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.channel = v;
-          value.channel += 0;
-          value.channel = value.channel.toSigned(32);
+          if (shape.packing == 1) { value.channel += shape.base; }
+          if (shape.packing == 0) { value.channel = value.channel.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.channel < 0 || value.channel > 3) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 2:
+      }
+      case -292263051557875678: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(12);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.speaker = v;
-          value.speaker += 0;
+          if (shape.packing == 1) { value.speaker += shape.base; }
         }
         if (value.speaker > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3516,44 +3970,53 @@ bool tablePickupEventLoadMessageBody(
   TablePickupEvent value,
 ) {
   initTablePickupEvent(value);
+  r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    switch (ref) {
-      case 49:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case -7025667724851298986: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(10);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.itemId = v;
-          value.itemId += 0;
+          if (shape.packing == 1) { value.itemId += shape.base; }
         }
         if (value.itemId > 1023) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 50:
+      }
+      case -9145686598410475159: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(8);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.amount = v;
-          value.amount += 0;
-          value.amount = value.amount.toSigned(32);
+          if (shape.packing == 1) { value.amount += shape.base; }
+          if (shape.packing == 0) { value.amount = value.amount.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.amount < 0 || value.amount > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -3813,88 +4276,158 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
 
 bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
   initTableMixed(value);
+  r.seenReset();
   while (true) {
-    final ref = r.bits.get(tableMessageRefBits);
+    final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
-    switch (ref) {
-      case 21:
+    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }
+    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }
+    r.seenAdd(ref);
+    final shape = entry.shape;
+    if (shape == null) { r.report.Damage(); return false; }
+    switch (entry.id) {
+      case 7663561793681298941: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(16);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.protocolMagic = v;
+          if (shape.packing == 1) { value.protocolMagic += shape.base; }
         }
         break;
-      case 22:
+      }
+      case -6181000666011064152: {
+        if (entry.kind != 7 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(16);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.sequence = v;
-          value.sequence += 0;
+          if (shape.packing == 1) { value.sequence += shape.base; }
         }
         if (value.sequence > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 23:
+      }
+      case 990229364654832702: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(16);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ackSequence = v;
-          value.ackSequence += 0;
-          value.ackSequence = value.ackSequence.toSigned(32);
+          if (shape.packing == 1) { value.ackSequence += shape.base; }
+          if (shape.packing == 0) { value.ackSequence = value.ackSequence.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.ackSequence < 0 || value.ackSequence > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 24:
+      }
+      case -7228825333587644925: {
+        if (entry.kind != 8 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(32);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ackBits = v;
-          value.ackBits += 0;
+          if (shape.packing == 1) { value.ackBits += shape.base; }
         }
         if (value.ackBits > 4294967295) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 25:
+      }
+      case -5199487799206016251: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(64);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.sessionId = v;
+          if (shape.packing == 1) { value.sessionId += shape.base; }
         }
         break;
-      case 26:
+      }
+      case 7889067272199050878: {
+        if (entry.kind != 8 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(32);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.clientId = v;
+          if (shape.packing == 1) { value.clientId += shape.base; }
         }
         break;
-      case 27:
+      }
+      case 8334276637232054488: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(63);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.nonce = v;
-          value.nonce += 1;
+          if (shape.packing == 1) { value.nonce += shape.base; }
         }
         if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000001 || (value.nonce ^ 0x8000000000000000) > 0xffffffffffffffff) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 28:
+      }
+      case 4534679873638431877: {
+        if (entry.kind != 5 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(41);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.worldTime = v;
-          value.worldTime += -1000000000000;
+          if (shape.packing == 1) { value.worldTime += shape.base; }
+          if (shape.packing == 0) { value.worldTime = value.worldTime.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.worldTime < -1000000000000 || value.worldTime > 1000000000000) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 29:
+      }
+      case 8916005070914257170: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(48);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.frameTick = v;
-          value.frameTick += 0;
+          if (shape.packing == 1) { value.frameTick += shape.base; }
         }
         if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 30:
+      }
+      case 4343163795393112518: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final index = r.bits.get(23);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3912,71 +4445,121 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.serverTime < 0.0 || value.serverTime > 65535.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 31:
+      }
+      case -7828083326636031446: {
+        if (entry.kind != 14 || shape.elem != 13) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          {
-            final v = r.bits.get(3) + 1;
+          var n = shape.min;
+          final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
+          if (countBits > 0) {
+            final raw = r.bits.get(countBits);
             if (r.bits.failed) { r.report.Damage(); return false; }
-            value.entitiesCount = v;
+            n = raw + shape.min;
           }
-            final kept = value.entitiesCount < 8 ? value.entitiesCount : 8;
-            if (kept != value.entitiesCount) { r.report.Refuse('count_over_bound'); return false; }
-            for (var i = 0; i < value.entitiesCount; i++) {
-              if (i < kept) {
-                if (!tableEntityLoadMessageBody(r, value.entities[i])) return false;
-              } else {
-                    final t = TableEntity();
-                  if (!tableEntityLoadMessageBody(r, t)) return false;
-              }
+          if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
+          if (n > 8) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i = 0; i < n; i++) {
+            {
+              r.seenDepth++;
+              final ok = tableEntityLoadMessageBody(r, value.entities[i]);
+              r.seenDepth--;
+              if (!ok) return false;
             }
-            value.entitiesCount = kept;
+          }
+          value.entitiesCount = n;
         }
         break;
-      case 32:
+      }
+      case -1268998401975805620: {
+        if (entry.kind != 14 || shape.elem != 13) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          {
-            final v = r.bits.get(7) + 0;
+          var n = shape.min;
+          final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
+          if (countBits > 0) {
+            final raw = r.bits.get(countBits);
             if (r.bits.failed) { r.report.Damage(); return false; }
-            value.statsCount = v;
+            n = raw + shape.min;
           }
-            final kept = value.statsCount < 80 ? value.statsCount : 80;
-            if (kept != value.statsCount) { r.report.Refuse('count_over_bound'); return false; }
-            for (var i = 0; i < value.statsCount; i++) {
-              if (i < kept) {
-                if (!tableStatLoadMessageBody(r, value.stats[i])) return false;
-              } else {
-                    final t = TableStat();
-                  if (!tableStatLoadMessageBody(r, t)) return false;
-              }
+          if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
+          if (n > 80) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i = 0; i < n; i++) {
+            {
+              r.seenDepth++;
+              final ok = tableStatLoadMessageBody(r, value.stats[i]);
+              r.seenDepth--;
+              if (!ok) return false;
             }
-            value.statsCount = kept;
+          }
+          value.statsCount = n;
         }
         break;
-      case 33:
+      }
+      case 3329809749115557776: {
+        if (entry.kind != 15 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          final ref = r.bits.get(tableMessageRefBits);
+          final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if (ref == 0) { value.gameEvent.type = TableEventType.none; } else {
-            switch (ref) {
-              case 68:
-                value.gameEvent.type = TableEventType.hit;
-                if (!tableHitEventLoadMessageBody(r, value.gameEvent.hit)) return false;
-                break;
-              case 69:
-                value.gameEvent.type = TableEventType.chat;
-                if (!tableChatEventLoadMessageBody(r, value.gameEvent.chat)) return false;
-                break;
-              case 70:
-                value.gameEvent.type = TableEventType.pickup;
-                if (!tablePickupEventLoadMessageBody(r, value.gameEvent.pickup)) return false;
-                break;
-              default:
-                if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {
-                  r.report.Damage();
+            if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+            final arm = r.vocabulary.entries[ref - 1];
+            if (tableMessageReservedId(arm.id) || arm.kind == 0) { r.report.Damage(); return false; }
+            final armShape = arm.shape;
+            if (armShape == null) { r.report.Damage(); return false; }
+            switch (arm.id) {
+              case 3707351006901076138: {
+                if (arm.kind != 13 || armShape.elem != 0) {
+                  r.report.Refuse('kind_mismatch');
                   return false;
                 }
+                value.gameEvent.type = TableEventType.hit;
+                {
+                  r.seenDepth++;
+                  final ok = tableHitEventLoadMessageBody(r, value.gameEvent.hit);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
+                break;
+      }
+              case -962770241226853237: {
+                if (arm.kind != 13 || armShape.elem != 0) {
+                  r.report.Refuse('kind_mismatch');
+                  return false;
+                }
+                value.gameEvent.type = TableEventType.chat;
+                {
+                  r.seenDepth++;
+                  final ok = tableChatEventLoadMessageBody(r, value.gameEvent.chat);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
+                break;
+      }
+              case -6943525758045472923: {
+                if (arm.kind != 13 || armShape.elem != 0) {
+                  r.report.Refuse('kind_mismatch');
+                  return false;
+                }
+                value.gameEvent.type = TableEventType.pickup;
+                {
+                  r.seenDepth++;
+                  final ok = tablePickupEventLoadMessageBody(r, value.gameEvent.pickup);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
+                break;
+      }
+              default:
                 value.gameEvent.type = TableEventType.none; r.report.unknown++;
-                if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+                if (!tableMessageSkipEntry(r, arm)) {
                   r.report.Damage();
                   return false;
                 }
@@ -3985,19 +4568,41 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           }
         }
         break;
-      case 34:
-        if (!r.bits.align()) { r.report.Damage(); return false; }
-        for (var i = 0; i < 4; i++) {
-          {
-            final v = r.bits.get(8);
+      }
+      case 6294288958393922979: {
+        if (entry.kind != 14 || shape.elem != 6) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
+        {
+          var n = shape.min;
+          final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
+          if (countBits > 0) {
+            final raw = r.bits.get(countBits);
             if (r.bits.failed) { r.report.Damage(); return false; }
-            value.loadout[i] = v;
+            n = raw + shape.min;
+          }
+          if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
+          if (n > 4) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i = 0; i < n; i++) {
+            {
+              final bits = TableMessageShape.valueBits(shape.elem, shape.inner!);
+              final v = r.bits.get(bits);
+              if (r.bits.failed) { r.report.Damage(); return false; }
+              value.loadout[i] = v;
+              if (shape.inner!.packing == 1) { value.loadout[i] += shape.inner!.base; }
+            }
           }
         }
         break;
-      case 35:
+      }
+      case 1415871171432867950: {
+        if (entry.kind != 12 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          final n = r.bits.get(4);
+          final n = r.bits.get(TableMessageShape.bitsRequired(shape.min, shape.max));
           if (r.bits.failed || !r.bits.align()) { r.report.Damage(); return false; }
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
@@ -4008,9 +4613,14 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.playerName.setRange(0, kept, r.bits.buffer, start);
         }
         break;
-      case 36:
+      }
+      case -3478843999652550171: {
+        if (entry.kind != 14 || shape.elem != 6) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
-          final n = r.bits.get(5);
+          final n = r.bits.get(TableMessageShape.bitsRequired(shape.min, shape.max));
           if (r.bits.failed || !r.bits.align()) { r.report.Damage(); return false; }
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
@@ -4020,7 +4630,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.payload.setRange(0, kept, r.bits.buffer, start);
         }
         break;
-      case 37:
+      }
+      case -2616736631205226807: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final index = r.bits.get(8);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4038,7 +4653,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.aimX < -1.0 || value.aimX > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 38:
+      }
+      case -2616737730716855018: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final index = r.bits.get(8);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4056,7 +4676,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.aimY < -1.0 || value.aimY > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 39:
+      }
+      case -2616738830228483229: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final index = r.bits.get(8);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4074,7 +4699,12 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.aimZ < -1.0 || value.aimZ > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 40:
+      }
+      case -7138431908913683369: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final b = r.bits.get(32);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4084,8 +4714,19 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (r.bits.failed) { r.report.Damage(); return false; }
         break;
-      case 41:
-        {
+      }
+      case 6535842126802938884: {
+        if (entry.kind != 11 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 11))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
+        if (entry.kind == 10) {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
+          TableBitWriter._float32Words[0] = b;
+          value.drift = TableBitWriter._float32Cell[0];
+        } else {
           final b = r.bits.get(64);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
@@ -4093,23 +4734,42 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.drift = TableBitWriter._float64Cell[0];
         }
         break;
-      case 42:
+      }
+      case -6686572760759554282: {
+        if (entry.kind != 9 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(64);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.wideKey = v;
+          if (shape.packing == 1) { value.wideKey += shape.base; }
         }
         break;
-      case 43:
+      }
+      case -3018575613315307966: {
+        if (entry.kind != 5 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(61);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.flux = v;
-          value.flux += -1000000000000000000;
+          if (shape.packing == 1) { value.flux += shape.base; }
+          if (shape.packing == 0) { value.flux = value.flux.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.flux < -1000000000000000000 || value.flux > 1000000000000000000) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 44:
+      }
+      case -4669986463835551831: {
+        if (entry.kind != 10 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final index = r.bits.get(15);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4127,56 +4787,69 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         }
         if (value.ping < 0.0 || value.ping > 250.0) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 45:
+      }
+      case 6200723483573899615: {
+        if (entry.kind != 8 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(24);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crcHint = v;
-          value.crcHint += 0;
+          if (shape.packing == 1) { value.crcHint += shape.base; }
         }
         if (value.crcHint > 16777215) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 46:
+      }
+      case -4574933642144545166: {
+        if (entry.kind != 1 || shape.elem != 0) {
+          r.report.Refuse('kind_mismatch');
+          return false;
+        }
         {
           final v = r.bits.get(1) != 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hasExtra = v;
         }
         break;
-      case 47:
+      }
+      case -204370544148493463: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(8);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.extra = v;
-          value.extra += 0;
-          value.extra = value.extra.toSigned(32);
+          if (shape.packing == 1) { value.extra += shape.base; }
+          if (shape.packing == 0) { value.extra = value.extra.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.extra < 0 || value.extra > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
-      case 48:
+      }
+      case 8651444298976115966: {
+        if (entry.kind != 4 || shape.elem != 0) {
+          if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
+          r.report.widened++;
+        }
         {
-          final v = r.bits.get(4);
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.idleTicks = v;
-          value.idleTicks += 0;
-          value.idleTicks = value.idleTicks.toSigned(32);
+          if (shape.packing == 1) { value.idleTicks += shape.base; }
+          if (shape.packing == 0) { value.idleTicks = value.idleTicks.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.idleTicks < 0 || value.idleTicks > 15) { r.report.Refuse('out_of_range'); return false; }
         break;
+      }
       default:
-        if (ref > r.vocabulary.count) {
-          r.report.Damage();
-          return false;
-        }
-        final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
-          r.report.Damage();
-          return false;
-        }
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {
+        if (!tableMessageSkipEntry(r, entry)) {
           r.report.Damage();
           return false;
         }
@@ -5304,6 +5977,9 @@ int tableEntityFixedSave(List<TableEntity> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   final view = tableEntityFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -5463,8 +6139,10 @@ int tableEntityFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }
@@ -5761,6 +6439,9 @@ int tableStatFixedSave(List<TableStat> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   final view = tableStatFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -5920,8 +6601,10 @@ int tableStatFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }
@@ -6401,7 +7084,7 @@ final Int32List tableMixedFixedDst = Int32List.fromList(const <int>[
 /// THE IDENTITY PLAN, coalesced HERE rather than at run time: when a record's
 /// hash is this build's own the plan is the one the compiler already wrote.
 /// Because the reader's own storage in this language IS the wire's layout,
-/// source and destination advance together and the walk collapses to 12
+/// source and destination advance together and the walk collapses to 15
 /// entries — the same coalescer the plan compiler runs, reaching its best
 /// case
 /// rather than skipping a step. A COUNT and a TEXT LENGTH keep entries of
@@ -6411,20 +7094,23 @@ final Int32List tableMixedFixedDst = Int32List.fromList(const <int>[
 // dart format off
 final Int32List tableMixedFixedIdentity = Int32List.fromList(const <int>[
   0, 0, 0, 54, 0, -1, 0, 0, 1, 0, 0,
-  1, 54, 54, 8, 0, -1, 0, 0, 1, 0, 0, // entities count
+  1, 54, 54, 8, 51, -1, 0, 0, 1, 0, 0, // entities count
   0, 58, 58, 408, 0, -1, 0, 0, 1, 0, 0, // entities, whole
-  1, 466, 466, 80, 0, -1, 0, 0, 1, 0, 0, // stats count
+  1, 466, 466, 80, 8, -1, 0, 0, 1, 0, 0, // stats count
   0, 470, 470, 641, 0, -1, 0, 0, 1, 0, 0, // stats, whole
   0, 1124, 1124, 4, 0, -1, 0, 0, 1, 0, 0, // loadout, whole
   2, 1128, 1128, 15, 1132, -1, 0, 1, 1, 0, 0, // player_name
   2, 1147, 1147, 16, 1151, -1, 0, 3, 1, 0, 0, // payload
   0, 1167, 1167, 57, 0, -1, 0, 0, 1, 0, 0,
+  8, 1111, 1111, 13, 0, 1110, 0, 0, 1, 0, 0, // tag 0's dead arm
   0, 1111, 1111, 13, 0, 1110, 1, 0, 1, 0, 0,
+  8, 1119, 1119, 5, 0, 1110, 2, 0, 1, 0, 0, // dead past the taken arm
   0, 1111, 1111, 8, 0, 1110, 2, 0, 1, 0, 0,
+  8, 1119, 1119, 5, 0, 1110, 3, 0, 1, 0, 0, // dead past the taken arm
   0, 1111, 1111, 8, 0, 1110, 3, 0, 1, 0, 0,
 ]);
 // dart format on
-const int tableMixedFixedIdentityCount = 12;
+const int tableMixedFixedIdentityCount = 15;
 
 /// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an
 /// entry's guards lanes, (guard, arg, argw) a link, outermost first.
@@ -6607,6 +7293,9 @@ int tableMixedFixedSave(List<TableMixed> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
   // record is asked before the first byte is written, so a refusal
   // leaves the caller's bytes as they were.
@@ -6772,8 +7461,10 @@ int tableMixedFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }

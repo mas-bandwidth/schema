@@ -35,8 +35,8 @@ _M.RenderSprite <- class {
 _M.RenderSpriteMaxBits <- 138;
 _M.RenderSpriteMaxBytes <- 24;
 
-// ReadRenderSprite reads into value's storage in place; false on a refused read.
-_M.ReadRenderSprite <- function(stream, value) {
+// ReadRenderSpriteBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadRenderSpriteBody <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.SortKey = _h.value;
   if (!stream.serializeBits(_h, 32)) return false;
@@ -50,18 +50,24 @@ _M.ReadRenderSprite <- function(stream, value) {
   return true;
 };
 
+// ReadRenderSprite reads one packet into value's storage in place; false on a refused read.
+_M.ReadRenderSprite <- function(stream, value) {
+  if (!_M.ReadRenderSpriteBody(stream, value)) return false;
+  return stream.serializeEnd();
+};
+
 // WriteRenderSprite writes value in declared order; false on a refused value.
 _M.WriteRenderSprite <- function(stream, value) {
   if (typeof value.SortKey != "integer") return false;
   _h.value = value.SortKey;
   if (!stream.serializeBits64(_h, 64)) return false;
-  if (typeof value.MeshId != "integer") return false;
+  if (typeof value.MeshId != "integer" || value.MeshId < 0 || value.MeshId > 4294967295) return false;
   _h.value = value.MeshId;
   if (!stream.serializeBits(_h, 32)) return false;
-  if (typeof value.MaterialId != "integer") return false;
+  if (typeof value.MaterialId != "integer" || value.MaterialId < 0 || value.MaterialId > 4294967295) return false;
   _h.value = value.MaterialId;
   if (!stream.serializeBits(_h, 32)) return false;
-  if (typeof value.Layer != "integer") return false;
+  if (typeof value.Layer != "integer" || value.Layer < 0 || value.Layer > 255) return false;
   _h.value = value.Layer;
   if (!stream.serializeBits(_h, 8)) return false;
   if (typeof value.Team != "integer" || value.Team < 0 || value.Team > 2) return false;
@@ -90,8 +96,8 @@ _M.RenderBlock <- class {
 _M.RenderBlockMaxBits <- 8903;
 _M.RenderBlockMaxBytes <- 1120;
 
-// ReadRenderBlock reads into value's storage in place; false on a refused read.
-_M.ReadRenderBlock <- function(stream, value) {
+// ReadRenderBlockBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadRenderBlockBody <- function(stream, value) {
   if (!stream.serializeBits(_h, 32)) return false;
   value.WorkerIndex = _h.value;
   if (!stream.serializeBits(_h, 32)) return false;
@@ -99,17 +105,23 @@ _M.ReadRenderBlock <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 64)) return false;
   value.SpritesCount = _h.value;
   for (local i = 0; i < value.SpritesCount; i++) {
-    if (!_M.ReadRenderSprite(stream, value.Sprites[i])) return false;
+    if (!_M.ReadRenderSpriteBody(stream, value.Sprites[i])) return false;
   }
   return true;
 };
 
+// ReadRenderBlock reads one packet into value's storage in place; false on a refused read.
+_M.ReadRenderBlock <- function(stream, value) {
+  if (!_M.ReadRenderBlockBody(stream, value)) return false;
+  return stream.serializeEnd();
+};
+
 // WriteRenderBlock writes value in declared order; false on a refused value.
 _M.WriteRenderBlock <- function(stream, value) {
-  if (typeof value.WorkerIndex != "integer") return false;
+  if (typeof value.WorkerIndex != "integer" || value.WorkerIndex < 0 || value.WorkerIndex > 4294967295) return false;
   _h.value = value.WorkerIndex;
   if (!stream.serializeBits(_h, 32)) return false;
-  if (typeof value.SpriteCountHint != "integer") return false;
+  if (typeof value.SpriteCountHint != "integer" || value.SpriteCountHint < 0 || value.SpriteCountHint > 4294967295) return false;
   _h.value = value.SpriteCountHint;
   if (!stream.serializeBits(_h, 32)) return false;
   if (typeof value.SpritesCount != "integer" || value.SpritesCount < 0 || value.SpritesCount > 64) return false;

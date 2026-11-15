@@ -115,6 +115,13 @@ pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Re
 
 #[inline]
 pub fn read_fixed_probe(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> Result {
+    read_fixed_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_fixed_probe_body(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> Result {
     stream.serialize_fixed(&mut value.angle, 16, 16, -180, 180)?;
     stream.serialize_fixed(&mut value.position, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
     stream.serialize_fixed(&mut value.reach, 112, 16, -1000000, 1000000)?;
@@ -195,6 +202,13 @@ pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe)
 
 #[inline]
 pub fn read_unsigned_probe(stream: &mut ReadStream<'_>, value: &mut UnsignedProbe) -> Result {
+    read_unsigned_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_unsigned_probe_body(stream: &mut ReadStream<'_>, value: &mut UnsignedProbe) -> Result {
     stream.serialize_fixed(&mut value.angle, 16, 16, 0, 360)?;
     stream.serialize_fixed(&mut value.span, 48, 16, 0, 281474976710655)?;
     stream.serialize_fixed(&mut value.reach, 112, 16, 0, 2000000)?;
@@ -271,6 +285,13 @@ pub fn write_wide_probe(stream: &mut WriteStream<'_>, value: &WideProbe) -> Resu
 
 #[inline]
 pub fn read_wide_probe(stream: &mut ReadStream<'_>, value: &mut WideProbe) -> Result {
+    read_wide_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_wide_probe_body(stream: &mut ReadStream<'_>, value: &mut WideProbe) -> Result {
     stream.serialize_u128(&mut value.entity_id)?;
     stream.serialize_int128(&mut value.energy, -5000000000, 5000000000)?;
     stream.serialize_int128(&mut value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
@@ -348,13 +369,20 @@ pub fn write_ludicrous_state(stream: &mut WriteStream<'_>, value: &LudicrousStat
 
 #[inline]
 pub fn read_ludicrous_state(stream: &mut ReadStream<'_>, value: &mut LudicrousState) -> Result {
+    read_ludicrous_state_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_ludicrous_state_body(stream: &mut ReadStream<'_>, value: &mut LudicrousState) -> Result {
     {
         let mut enum_value: i32 = 0;
         stream.serialize_int(&mut enum_value, 0, 3)?;
         value.mode = DriveMode(enum_value as u8);
     }
-    read_fixed_probe(stream, &mut value.probe)?;
-    read_wide_probe(stream, &mut value.wide)?;
+    read_fixed_probe_body(stream, &mut value.probe)?;
+    read_wide_probe_body(stream, &mut value.wide)?;
     stream.serialize_int(&mut value.keys_count, 0, 4)?; // the count guards the loop (§6.3)
     for i in 0..value.keys_count as usize {
         stream.serialize_u128(&mut value.keys[i])?;
@@ -412,6 +440,13 @@ pub fn write_degenerate_probe(stream: &mut WriteStream<'_>, value: &DegeneratePr
 
 #[inline]
 pub fn read_degenerate_probe(stream: &mut ReadStream<'_>, value: &mut DegenerateProbe) -> Result {
+    read_degenerate_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_degenerate_probe_body(stream: &mut ReadStream<'_>, value: &mut DegenerateProbe) -> Result {
     value.locked_fixed = -196608_i32;
     value.locked_int = 7_i32;
     value.locked_wide = -12345678901234_i128;
@@ -460,6 +495,13 @@ pub fn write_fixed_vec(stream: &mut WriteStream<'_>, value: &FixedVec) -> Result
 
 #[inline]
 pub fn read_fixed_vec(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Result {
+    read_fixed_vec_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_fixed_vec_body(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Result {
     stream.serialize_fixed(&mut value.x, 48, 16, -100000, 100000)?;
     stream.serialize_fixed(&mut value.y, 48, 16, -100000, 100000)?;
     stream.serialize_fixed(&mut value.z, 48, 16, -100000, 100000)?;
@@ -521,6 +563,13 @@ pub fn write_fixed_quat(stream: &mut WriteStream<'_>, value: &FixedQuat) -> Resu
 
 #[inline]
 pub fn read_fixed_quat(stream: &mut ReadStream<'_>, value: &mut FixedQuat) -> Result {
+    read_fixed_quat_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_fixed_quat_body(stream: &mut ReadStream<'_>, value: &mut FixedQuat) -> Result {
     stream.serialize_fixed(&mut value.x, 2, 30, -1, 1)?;
     stream.serialize_fixed(&mut value.y, 2, 30, -1, 1)?;
     stream.serialize_fixed(&mut value.z, 2, 30, -1, 1)?;

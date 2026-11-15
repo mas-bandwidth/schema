@@ -23,6 +23,12 @@ public final class MixedStatFixed {
 
         /** int32 */
         public int delta;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            statId = 0;
+            delta = 0;
+        }
     }
 
     /**
@@ -46,7 +52,8 @@ public final class MixedStatFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert (v.statId & 0xffffffffffffff00L) == 0;
+        assert v.delta >= -512L && v.delta <= 511L;
         return true;
     }
 
@@ -55,19 +62,35 @@ public final class MixedStatFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true, false);
+    }
+
+    /**
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
+     */
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.statId = TableFixed.get32(b, at + 0);
-        if (v.statId > 255L) {
+        if (Integer.compareUnsigned(v.statId, 255) > 0) {
             v.statId = (int) (255L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(8) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -512L) {
                 q = -512L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 511L) {
                 q = 511L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.delta = (int) (q);
         }

@@ -50,19 +50,25 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 	// file module imports from it at COMPILE time. The fixed form's runtime
 	// loads first too: a fixed module's lineage hook calls it at LOAD time,
 	// before a sorted order would reach it for a name like CaptionFixed.
+	// The Table API modules load LAST: a fixed root's Table load and save call
+	// its <Base>Fixed module, and a module loaded after its caller draws an
+	// "is undefined" warning for a name like V2Fixed that sorts after Table.
 	sort.Strings(names)
 	first := []string{BuildVersionModule + ".ex"}
 	rest := make([]string, 0, len(names))
+	var last []string
 	for _, n := range names {
 		switch n {
 		case BuildVersionModule + ".ex":
 		case "PacketRuntime.ex", "CookRuntime.ex", "FixedRuntime.ex", "TableRuntime.ex":
 			first = append(first, n)
+		case "Table.ex", "RetainTable.ex", "TableMessage.ex", "UnitView.ex":
+			last = append(last, n)
 		default:
 			rest = append(rest, n)
 		}
 	}
-	return append(first, rest...)
+	return append(append(first, rest...), last...)
 }
 
 // runProbe writes probe.exs beside the generated modules and runs it with the

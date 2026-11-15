@@ -73,8 +73,8 @@ fixed table ByRoot
 		t.Fatal(err)
 	}
 	load := string(files["ByRootFixed.java"])
-	if !strings.Contains(load, "TableFixed.holes(") {
-		t.Fatal("load does not prefill holes")
+	if !strings.Contains(load, "final int holeN = pre.count;") {
+		t.Fatal("load does not read the plan's precomputed hole list")
 	}
 	if strings.Contains(load, "System.arraycopy(defaults, 0, image, 0, bodyBytes)") {
 		t.Fatal("load still prefills the whole image")
@@ -473,7 +473,7 @@ func assertOnePathLoad(t *testing.T, src, who string) {
 	if strings.Contains(src, "if (identity)") {
 		t.Errorf("%s: identity flag still forks the record loop", who)
 	}
-	if !strings.Contains(src, "TableFixed.holes(") || !strings.Contains(src, "TableFixed.run(") {
+	if !strings.Contains(src, "final int holeN = pre.count;") || !strings.Contains(src, "TableFixed.run(") {
 		t.Errorf("%s load is not the one-path load", who)
 	}
 	if !strings.Contains(src, "for (int h = 0; h < holeN; h++)") {
