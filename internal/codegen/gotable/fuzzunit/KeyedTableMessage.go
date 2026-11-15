@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"unsafe"
@@ -162,6 +163,16 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if entry.Shape.Packing != 1 && entry.Shape.Bits > 0 && entry.Shape.Bits < 64 {
+						shift := uint(64 - entry.Shape.Bits)
+						wide = wide << shift >> shift
+					}
+					if wide < 0 || wide > 64 {
+						r.Report.Refuse(TableRefuseOutOfRange, "TeamConfig.spawn_count")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1578,6 +1589,16 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if element.Shape.Packing != 1 && element.Shape.Bits > 0 && element.Shape.Bits < 64 {
+								shift := uint(64 - element.Shape.Bits)
+								wide = wide << shift >> shift
+							}
+							if wide < 0 || wide > 100000 {
+								r.Report.Refuse(TableRefuseOutOfRange, "ScoreBoard.per_team")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}

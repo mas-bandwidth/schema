@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"unsafe"
@@ -276,6 +277,12 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if uint64(wide) < 0 || uint64(wide) > 65535 {
+								r.Report.Refuse(TableRefuseOutOfRange, "WideBlob.samples")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}

@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"unsafe"
@@ -649,6 +650,16 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if element.Shape.Packing != 1 && element.Shape.Bits > 0 && element.Shape.Bits < 64 {
+								shift := uint(64 - element.Shape.Bits)
+								wide = wide << shift >> shift
+							}
+							if wide < 0 || wide > 8 {
+								r.Report.Refuse(TableRefuseOutOfRange, "ShipEntry.hardpoints")
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
 							payload8 := TableReader{Buffer: raw[:], Report: &r.Report}
 							if !payload8.Has(tableKindBytes(element.Shape.Kind)) {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -926,6 +937,12 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if uint64(wide) < 1 || uint64(wide) > 240 {
+						r.Report.Refuse(TableRefuseOutOfRange, "GlobalSettings.tick_rate")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1350,6 +1367,12 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if uint64(wide) < 0 || uint64(wide) > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "PackConfig.version")
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					payload29 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload29.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1488,6 +1511,16 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if element.Shape.Packing != 1 && element.Shape.Bits > 0 && element.Shape.Bits < 64 {
+								shift := uint(64 - element.Shape.Bits)
+								wide = wide << shift >> shift
+							}
+							if wide < 0 || wide > 1000 {
+								r.Report.Refuse(TableRefuseOutOfRange, "PackConfig.thresholds")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
