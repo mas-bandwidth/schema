@@ -1,0 +1,8 @@
+[package]
+name = "packet-end-test"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+packetend = { path = "../../../build/packet-end/rust/generated" }
+serialize = { package = "serialize-official", path = "../../../../serialize.rs" }

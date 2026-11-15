@@ -277,9 +277,10 @@ function _M.ZeroVec3(value: any)
   value.Z = 0
 end
 
--- ReadVec3 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadVec3Body reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadVec3(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadVec3 is the one-packet read (SPEC §5).
+function _M.ReadVec3Body(stream: any, value: any): boolean
   if not stream:serializeDouble(STR) then
     return false
   end
@@ -293,6 +294,13 @@ function _M.ReadVec3(stream: any, value: any): boolean
   end
   value.Z = STR.value
   return true
+end
+
+-- ReadVec3 reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadVec3(stream: any, value: any): boolean
+  if not _M.ReadVec3Body(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitQuat resets a value to what NewQuat builds, in place: its declared defaults
@@ -313,9 +321,10 @@ function _M.ZeroQuat(value: any)
   value.W = 0
 end
 
--- ReadQuat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadQuatBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadQuat(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadQuat is the one-packet read (SPEC §5).
+function _M.ReadQuatBody(stream: any, value: any): boolean
   if not stream:serializeDouble(STR) then
     return false
   end
@@ -335,6 +344,13 @@ function _M.ReadQuat(stream: any, value: any): boolean
   return true
 end
 
+-- ReadQuat reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadQuat(stream: any, value: any): boolean
+  if not _M.ReadQuatBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitHandle resets a value to what NewHandle builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -349,9 +365,10 @@ function _M.ZeroHandle(value: any)
   value.ObjectSequence = 0
 end
 
--- ReadHandle reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadHandleBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadHandle(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadHandle is the one-packet read (SPEC §5).
+function _M.ReadHandleBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 9999) then
     return false
   end
@@ -361,6 +378,13 @@ function _M.ReadHandle(stream: any, value: any): boolean
   end
   value.ObjectSequence = BITS.value
   return true
+end
+
+-- ReadHandle reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadHandle(stream: any, value: any): boolean
+  if not _M.ReadHandleBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitQuantizedPosition resets a value to what NewQuantizedPosition builds, in place: its declared defaults
@@ -379,9 +403,10 @@ function _M.ZeroQuantizedPosition(value: any)
   value.Z = 0
 end
 
--- ReadQuantizedPosition reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadQuantizedPositionBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadQuantizedPosition(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadQuantizedPosition is the one-packet read (SPEC §5).
+function _M.ReadQuantizedPositionBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, -8388608, 8388608) then
     return false
   end
@@ -395,6 +420,13 @@ function _M.ReadQuantizedPosition(stream: any, value: any): boolean
   end
   value.Z = BITS.value
   return true
+end
+
+-- ReadQuantizedPosition reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadQuantizedPosition(stream: any, value: any): boolean
+  if not _M.ReadQuantizedPositionBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitQuantizedVelocity resets a value to what NewQuantizedVelocity builds, in place: its declared defaults
@@ -413,9 +445,10 @@ function _M.ZeroQuantizedVelocity(value: any)
   value.Z = 0
 end
 
--- ReadQuantizedVelocity reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadQuantizedVelocityBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadQuantizedVelocity(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadQuantizedVelocity is the one-packet read (SPEC §5).
+function _M.ReadQuantizedVelocityBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, -2097152, 2097152) then
     return false
   end
@@ -429,6 +462,13 @@ function _M.ReadQuantizedVelocity(stream: any, value: any): boolean
   end
   value.Z = BITS.value
   return true
+end
+
+-- ReadQuantizedVelocity reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadQuantizedVelocity(stream: any, value: any): boolean
+  if not _M.ReadQuantizedVelocityBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitQuantizedRotation resets a value to what NewQuantizedRotation builds, in place: its declared defaults
@@ -449,9 +489,10 @@ function _M.ZeroQuantizedRotation(value: any)
   value.W = 0
 end
 
--- ReadQuantizedRotation reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadQuantizedRotationBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadQuantizedRotation(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadQuantizedRotation is the one-packet read (SPEC §5).
+function _M.ReadQuantizedRotationBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, -1024, 1024) then
     return false
   end
@@ -469,6 +510,13 @@ function _M.ReadQuantizedRotation(stream: any, value: any): boolean
   end
   value.W = BITS.value
   return true
+end
+
+-- ReadQuantizedRotation reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadQuantizedRotation(stream: any, value: any): boolean
+  if not _M.ReadQuantizedRotationBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitRigidBody resets a value to what NewRigidBody builds, in place: its declared defaults
@@ -491,13 +539,14 @@ function _M.ZeroRigidBody(value: any)
   _M.ZeroVec3(value.AngularVelocity)
 end
 
--- ReadRigidBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadRigidBodyBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadRigidBody(stream: any, value: any): boolean
-  if not _M.ReadVec3(stream, value.Position) then
+-- It does not end the packet: the public ReadRigidBody is the one-packet read (SPEC §5).
+function _M.ReadRigidBodyBody(stream: any, value: any): boolean
+  if not _M.ReadVec3Body(stream, value.Position) then
     return false
   end
-  if not _M.ReadQuat(stream, value.Orientation) then
+  if not _M.ReadQuatBody(stream, value.Orientation) then
     return false
   end
   if not stream:serializeBool(BOOL) then
@@ -505,10 +554,10 @@ function _M.ReadRigidBody(stream: any, value: any): boolean
   end
   value.AtRest = BOOL.value
   if not value.AtRest then
-    if not _M.ReadVec3(stream, value.LinearVelocity) then
+    if not _M.ReadVec3Body(stream, value.LinearVelocity) then
       return false
     end
-    if not _M.ReadVec3(stream, value.AngularVelocity) then
+    if not _M.ReadVec3Body(stream, value.AngularVelocity) then
       return false
     end
   else
@@ -516,6 +565,13 @@ function _M.ReadRigidBody(stream: any, value: any): boolean
     _M.ZeroVec3(value.AngularVelocity)
   end
   return true
+end
+
+-- ReadRigidBody reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadRigidBody(stream: any, value: any): boolean
+  if not _M.ReadRigidBodyBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitInput resets a value to what NewInput builds, in place: its declared defaults
@@ -554,9 +610,10 @@ function _M.ZeroInput(value: any)
   value.Ping = false
 end
 
--- ReadInput reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadInputBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadInput(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadInput is the one-packet read (SPEC §5).
+function _M.ReadInputBody(stream: any, value: any): boolean
   if not stream:serializeFloat(STR) then
     return false
   end
@@ -612,6 +669,13 @@ function _M.ReadInput(stream: any, value: any): boolean
   return true
 end
 
+-- ReadInput reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadInput(stream: any, value: any): boolean
+  if not _M.ReadInputBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitInputPacket resets a value to what NewInputPacket builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -632,9 +696,10 @@ function _M.ZeroInputPacket(value: any)
   value.InputsCount = 0
 end
 
--- ReadInputPacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadInputPacketBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadInputPacket(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadInputPacket is the one-packet read (SPEC §5).
+function _M.ReadInputPacketBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 16) then
     return false
   end
@@ -652,11 +717,18 @@ function _M.ReadInputPacket(stream: any, value: any): boolean
   end
   value.InputsCount = BITS.value
   for i = 1, value.InputsCount do
-    if not _M.ReadInput(stream, value.Inputs[i]) then
+    if not _M.ReadInputBody(stream, value.Inputs[i]) then
       return false
     end
   end
   return true
+end
+
+-- ReadInputPacket reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadInputPacket(stream: any, value: any): boolean
+  if not _M.ReadInputPacketBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitShipCreate resets a value to what NewShipCreate builds, in place: its declared defaults
@@ -689,20 +761,21 @@ function _M.ZeroShipCreate(value: any)
   value.Pending = 0
 end
 
--- ReadShipCreate reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadShipCreateBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadShipCreate(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadShipCreate is the one-packet read (SPEC §5).
+function _M.ReadShipCreateBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 5) then
     return false
   end
   value.ShipType = BITS.value
-  if not _M.ReadQuantizedPosition(stream, value.Position) then
+  if not _M.ReadQuantizedPositionBody(stream, value.Position) then
     return false
   end
-  if not _M.ReadQuantizedRotation(stream, value.Rotation) then
+  if not _M.ReadQuantizedRotationBody(stream, value.Rotation) then
     return false
   end
-  if not _M.ReadQuantizedVelocity(stream, value.LinearVelocity) then
+  if not _M.ReadQuantizedVelocityBody(stream, value.LinearVelocity) then
     return false
   end
   if not stream:serializeBool(BOOL) then
@@ -736,6 +809,13 @@ function _M.ReadShipCreate(stream: any, value: any): boolean
   return true
 end
 
+-- ReadShipCreate reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadShipCreate(stream: any, value: any): boolean
+  if not _M.ReadShipCreateBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitExpressionProbe resets a value to what NewExpressionProbe builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -750,9 +830,10 @@ function _M.ZeroExpressionProbe(value: any)
   value.SpinRate = 0
 end
 
--- ReadExpressionProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadExpressionProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadExpressionProbe(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadExpressionProbe is the one-packet read (SPEC §5).
+function _M.ReadExpressionProbeBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 31) then
     return false
   end
@@ -762,6 +843,13 @@ function _M.ReadExpressionProbe(stream: any, value: any): boolean
   end
   value.SpinRate = BITS.value
   return true
+end
+
+-- ReadExpressionProbe reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadExpressionProbe(stream: any, value: any): boolean
+  if not _M.ReadExpressionProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitExtremeProbe resets a value to what NewExtremeProbe builds, in place: its declared defaults
@@ -784,9 +872,10 @@ function _M.ZeroExtremeProbe(value: any)
   value.CeilingDefault = 0i
 end
 
--- ReadExtremeProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadExtremeProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadExtremeProbe(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadExtremeProbe is the one-packet read (SPEC §5).
+function _M.ReadExtremeProbeBody(stream: any, value: any): boolean
   if not stream:serializeInt64(BIG, 0x8000000000000000i, 100i) then
     return false
   end
@@ -813,6 +902,13 @@ function _M.ReadExtremeProbe(stream: any, value: any): boolean
   return true
 end
 
+-- ReadExtremeProbe reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadExtremeProbe(stream: any, value: any): boolean
+  if not _M.ReadExtremeProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitExtremeRow resets a value to what NewExtremeRow builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -831,9 +927,10 @@ function _M.ZeroExtremeRow(value: any)
   value.CeilingDef = 0i
 end
 
--- ReadExtremeRow reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadExtremeRowBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadExtremeRow(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadExtremeRow is the one-packet read (SPEC §5).
+function _M.ReadExtremeRowBody(stream: any, value: any): boolean
   if not stream:serializeInt64(BIG, 0x8000000000000000i, 100i) then
     return false
   end
@@ -854,6 +951,13 @@ function _M.ReadExtremeRow(stream: any, value: any): boolean
   end
   value.CeilingDef = BIG.value
   return true
+end
+
+-- ReadExtremeRow reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadExtremeRow(stream: any, value: any): boolean
+  if not _M.ReadExtremeRowBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- Vec3MaxBits is the longest wire path, align padding at its worst case;

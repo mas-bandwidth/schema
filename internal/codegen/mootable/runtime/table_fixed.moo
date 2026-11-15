@@ -874,6 +874,7 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 			if not V.finite32(v) then
 				refuse("non_finite_float", false, fieldName(named))
 			end
+			if not V.floatInRange(f, v) then refuse("invalid_value", false, fieldName(named)) end
 			buffer.writeu32(out, off, v)
 		else
 			if not V.Uint64.is(v) then
@@ -882,6 +883,7 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 			if not V.finite64(v[1], v[2]) then
 				refuse("non_finite_float", false, fieldName(named))
 			end
+			if not V.floatInRange(f, v) then refuse("invalid_value", false, fieldName(named)) end
 			buffer.writeu32(out, off, v[1])
 			buffer.writeu32(out, off + 4, v[2])
 		end
@@ -911,8 +913,8 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 		buffer.writeu32(out, off, #v)
 		buffer.writestring(out, off + COUNT, v)
 	elseif s == "bytes" then
-		local length = extra or 0
-		if type(v) ~= "buffer" or length < 0 or length > f.bound or length > buffer.len(v) then
+		local length = if extra == nil then 0 else extra
+		if type(v) ~= "buffer" or type(length) ~= "number" or length ~= math.floor(length) or length < 0 or length > f.bound or length > buffer.len(v) then
 			refuse("invalid_value", false, fieldName(named))
 		end
 		buffer.writeu32(out, off, length)
@@ -972,6 +974,7 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 			buffer.writeu32(out, off, count)
 			first = COUNT
 		end
+		if type(v) == "buffer" and count > buffer.len(v) then refuse("invalid_value", false, fieldName(named)) end
 		for i = 1, count do
 			writeValue(e, c, dx + first + (i - 1) * c.size, at(i), lenAt(i), out, named)
 		end

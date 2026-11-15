@@ -118,7 +118,7 @@ type Refuse {
 		t.Fatal(err)
 	}
 	wire := string(files["RefuseWire.h"])
-	for _, fn := range []string{"read_inner", "read_pick", "read_refuse"} {
+	for _, fn := range []string{"schema_read_inner_body_", "schema_read_pick_body_", "schema_read_refuse_body_"} {
 		i := strings.Index(wire, "int "+fn+"( ")
 		if i < 0 {
 			t.Fatalf("no %s in:\n%s", fn, wire)
@@ -136,7 +136,7 @@ type Refuse {
 			for k := n - 1; k >= 0 && !strings.Contains(cond, "if ("); k-- {
 				cond = strings.TrimSpace(lines[k])
 			}
-			if !strings.HasPrefix(cond, "if ( !serialize_") && !strings.HasPrefix(cond, "if ( !read_") {
+			if !strings.HasPrefix(cond, "if ( !serialize_") && !strings.HasPrefix(cond, "if ( !schema_read_") {
 				t.Errorf("%s refuses without latching the stream (guard %q): use serialize_read_fail", fn, cond)
 			}
 		}
