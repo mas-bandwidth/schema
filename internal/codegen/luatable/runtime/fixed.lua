@@ -267,15 +267,16 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         refuse_out_of_range()
       end
     end
-    -- a bits(N) field past its mask refuses (§4.6); a declared range on the
-    -- same field already held it
+    -- a bits(N) field past its mask refuses (§4.6), compared unsigned as the
+    -- range above is: an eight-byte slot's high bit is not a sign. A declared
+    -- range on the same field already held it
     if
       d.lo == nil
       and d.bits ~= nil
       and d.bits > 0
       and d.bits < w * 8
       and type(v) == "number"
-      and v > (1 << d.bits) - 1
+      and math.ult((1 << d.bits) - 1, v)
     then
       refuse_out_of_range()
     end
