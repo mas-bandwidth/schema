@@ -13,8 +13,18 @@ SBCL ?= sbcl
 ROADMAP_BASE ?= origin/main
 ROADMAP_HANDTEXT = go run ./tools/roadmap/cmd/roadmap-handtext
 ROADMAP_NC_DIR = build/roadmap-negative-control
+ROADMAP_DATA_DIR = build/roadmap-data-check
 
-.PHONY: roadmap roadmap-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
+# A CARD NEVER COMMITS ROADMAP.md. Two cards' renders touch adjacent rows and
+# the same "complete" line, so a card adds or edits only its own evidence file
+# under docs/roadmap-evidence/ and runs `make roadmap-data-check`: the data
+# renders (every id a task, every state and evidence well formed) into a copy
+# of the page under $(ROADMAP_DATA_DIR), and the committed page and its hand
+# text pass the same block and authorship checks as roadmap-check. The page
+# itself is re-rendered on main in one commit (`make roadmap`), and
+# roadmap-check, which also holds the committed tables to the render, is the
+# gate on every push to main (.github/workflows/roadmap.yml).
+.PHONY: roadmap roadmap-check roadmap-data-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
 roadmap:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp ROADMAP.md
@@ -22,6 +32,14 @@ roadmap:
 roadmap-check:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-check REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp --check docs/roadmap.sexp ROADMAP.md
+	$(ROADMAP_HANDTEXT) -page ROADMAP.md
+	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
+
+roadmap-data-check:
+	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-data-check REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
+	@mkdir -p $(ROADMAP_DATA_DIR)
+	cp ROADMAP.md $(ROADMAP_DATA_DIR)/ROADMAP.md
+	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp $(ROADMAP_DATA_DIR)/ROADMAP.md
 	$(ROADMAP_HANDTEXT) -page ROADMAP.md
 	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
 
