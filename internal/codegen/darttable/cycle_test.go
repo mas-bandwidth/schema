@@ -27,8 +27,8 @@ import (
 // an exponential walk cannot meet.
 //
 // Its negative control, TestCyclicWireIsDamageDartNegativeControl, makes the
-// generated runtime's cyclic() answer false and requires the probe red on the
-// three cyclic rows alone.
+// generated runtime's cyclic() and wireCycle() answer false and requires the
+// probe red on the three cyclic rows alone.
 func TestCyclicWireIsDamageDart(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
@@ -44,12 +44,17 @@ func TestCyclicWireIsDamageDart(t *testing.T) {
 func TestCyclicWireIsDamageDartNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
+	// Both cycle checks answer false: the stored-edge pass and the wire-alone
+	// walk over every kind-17 payload, either of which refuses a cycle alone.
 	const sig = "  bool cyclic() {\n"
+	const wireSig = "  bool wireCycle() {\n"
 	out, err := runCycleProbe(t, func(f map[string][]byte) int {
 		n := 0
 		for name, src := range f {
-			if s := string(src); strings.Contains(s, sig) {
-				f[name] = []byte(strings.Replace(s, sig, sig+"    if (edges.isNotEmpty) return false; // SABOTAGED\n", 1))
+			if s := string(src); strings.Contains(s, sig) && strings.Contains(s, wireSig) {
+				s = strings.Replace(s, sig, sig+"    if (edges.isNotEmpty) return false; // SABOTAGED\n", 1)
+				s = strings.Replace(s, wireSig, wireSig+"    if (data.isNotEmpty) return false; // SABOTAGED\n", 1)
+				f[name] = []byte(s)
 				n++
 			}
 		}

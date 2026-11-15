@@ -80,16 +80,13 @@ table Root {
 	}
 
 	type result struct {
-		OK           bool
-		Unknown      int
-		KindMismatch int
-		Widened      int
-		Clamped      int
-		Duplicate    int
-		Malformed    bool
-		Refused      bool
-		Canon        string
-		Wire         string
+		OK      bool
+		Unknown int
+		Widened int
+		Damaged bool
+		Refused bool
+		Canon   string
+		Wire    string
 	}
 
 	model := tabletext.NewModel(u)
@@ -184,11 +181,8 @@ public static class BomProbe
             Console.WriteLine(
                 "{\"OK\":" + (ok ? "true" : "false") +
                 ",\"Unknown\":" + r.Unknown +
-                ",\"KindMismatch\":" + r.KindMismatch +
                 ",\"Widened\":" + r.Widened +
-                ",\"Clamped\":" + r.Clamped +
-                ",\"Duplicate\":" + r.Duplicate +
-                ",\"Malformed\":" + (r.Malformed ? "true" : "false") +
+                ",\"Damaged\":" + (r.Damaged ? "true" : "false") +
                 ",\"Refused\":" + (r.Refused ? "true" : "false") +
                 ",\"Canon\":" + Esc(canon) +
                 ",\"Wire\":\"" + wire + "\"}");

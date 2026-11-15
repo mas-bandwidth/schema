@@ -357,7 +357,7 @@ fn announce_read_once(
                 return false;
             }
             let (framed, ok) = read_leb(body, &mut at);
-            if !ok || at + (framed as usize) > body.len() {
+            if !ok || at > body.len() || framed > (body.len() - at) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -370,7 +370,7 @@ fn announce_read_once(
             }
             let mut vat = begin + 1;
             let (length, ok) = read_leb(body, &mut vat);
-            if !ok || vat + (length as usize) != end_at {
+            if !ok || vat > end_at || length != (end_at - vat) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -1079,7 +1079,13 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             if !r.align() {
                 return false;
             }
-            r.skip(n * 8)
+            let start = (r.offset / 8) as usize;
+            if !r.skip(n * 8) {
+                return false;
+            }
+            // a skipped string's bytes are held to the text rule a named read
+            // applies to them, and ill-formed text is damage (§3.3, §4)
+            table_message_utf8(&r.buffer[start..start + n as usize])
         }
         31 => {
             if !r.align() {
@@ -1104,12 +1110,26 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 }
                 return r.skip(n * w);
             }
-            for _ in 0..n {
+            for i in 0..n {
                 if e.kind == 16 && !r.skip(v.ref_bits as u64) {
                     return false;
                 }
+                let at = r.offset;
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
+                }
+                // A WALKED ELEMENT THAT CONSUMED NO BITS — a nested array
+                // whose inner run is itself zero-width — is the same run in a
+                // shape the arithmetic above cannot see (§3.3). Every element
+                // after it consumes nothing too, so the rest of the run is
+                // stepped in one, and a remaining count the bits left could
+                // not back is damage. The walk is bounded by the batch's bits
+                // whatever the count says.
+                if r.offset == at {
+                    if n - i - 1 > (r.buffer.len() as u64) * 8 - r.offset {
+                        return false;
+                    }
+                    return true;
                 }
             }
             true

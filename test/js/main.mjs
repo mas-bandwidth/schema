@@ -838,10 +838,8 @@ function pinShape(name, expectedBytes, mod, shape, inp) {
 // goldens AND against the runtime tier (the cross-tier equivalence gate:
 // bytes, fields and verdicts), both directions. The leg runs in BOTH runtime
 // modes (the Makefile's NODE_ENV pair), and both modes compare to the same
-// goldens — so the checked and production flat writers are held
-// byte-identical transitively, every run.
-
-const CHECKED_MODE = process.env.NODE_ENV !== "production";
+// goldens. The flat writer is one writer in every build, and its refusals
+// are asserted in both modes (SPEC §5.1: JavaScript refuses in every build).
 
 // flatCross: runtime write -> flat write byte-compare (+ golden), flat read
 // vs runtime read field-compare, flat re-write byte-compare.
@@ -1039,10 +1037,8 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   flatCross("flat defaultchoice", armDefaults, armDefaultsFlat, "DefaultChoice", choice, null);
   const rogue = new ex.ProbeShape();
   rogue.type = 3;
-  if (CHECKED_MODE) {
-    check(exFlat.WriteProbeShapeFlat(new DataView(new ArrayBuffer(64)), rogue) === -1,
-      "the checked flat writer refuses an out-of-set union tag (SPEC §4.8)");
-  }
+  check(exFlat.WriteProbeShapeFlat(new DataView(new ArrayBuffer(64)), rogue) === -1,
+    "the flat writer refuses an out-of-set union tag in every build (SPEC §4.8)");
   const tagOnly = new Uint8Array(8 + 8);
   tagOnly[0] = 3; // a two-bit tag of 3 is past the count
   check(!exFlat.ReadProbeShapeFlat(new DataView(tagOnly.buffer), 2, new ex.ProbeShape()),
@@ -1139,11 +1135,10 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
     "flat: an out-of-range count is refused before the loop");
 }
 
-// ---- checked-mode write refusals: verdict-identical across tiers ----
-// (production mode: the flat writer is the trusted-writer release shape and
-// these vectors are caller misuse by contract — asserted in checked runs
-// only, which the Makefile's mode pair guarantees happen)
-if (CHECKED_MODE) {
+// ---- write refusals: verdict-identical across tiers, in every build ----
+// (SPEC §5.1: JavaScript refuses in every build; the Makefile's mode pair
+// runs these under NODE_ENV unset and NODE_ENV=production alike)
+{
   const fview = new DataView(new Uint8Array(4096).buffer);
 
   const bad = new ex.ShipCreate();

@@ -168,6 +168,8 @@ Uint8List messageBody(int slot, int bits, int width) {
 }
 
 void main() {
+  final msgVocab = m.TableVocabulary(entries: List<m.TableMessageEntry>.generate(4096, (i) => m.TableMessageEntry(0, 0)));
+  vec('msg-announce', m.announceRead(msgVocab, m.tableAnnouncement, m.TableReport()), 'the announcement is refused');
   // ---- the variable form ----
   varRead('var-read-f32', w.V()..x = 1.5, le32(0x3fc00000), nan32, 'V.x');
   varRead('var-read-f64', w.V()..y = 1.5, le64(0x3ff8000000000000), inf64, 'V.y');
@@ -204,9 +206,9 @@ void main() {
 
   // ---- the message form ----
   {
-    final r = m.TableMessageReader()..bits = m.TableBitReader(messageBody(SLOTX, 0x7fc00001, 32));
+    final r = m.TableMessageReader()..bits = m.TableBitReader(messageBody(SLOTX, 0x7fc00001, 32))..vocabulary = msgVocab;
     vec('msg-read-f32', !m.fLoadMessageBody(r, m.F()) && r.report.reason == 'non_finite_float: F.x', 'reason=${r.report.reason}');
-    final r64 = m.TableMessageReader()..bits = m.TableBitReader(messageBody(SLOTY, 0x7ff0000000000000, 64));
+    final r64 = m.TableMessageReader()..bits = m.TableBitReader(messageBody(SLOTY, 0x7ff0000000000000, 64))..vocabulary = msgVocab;
     vec('msg-read-f64', !m.fLoadMessageBody(r64, m.F()) && r64.report.reason == 'non_finite_float: F.y', 'reason=${r64.report.reason}');
     final out = Uint8List(64);
     vec('msg-write', !m.fSaveMessageBody(m.TableBitWriter(out), m.F()..x = double.nan) &&

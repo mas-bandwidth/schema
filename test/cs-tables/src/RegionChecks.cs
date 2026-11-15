@@ -140,22 +140,22 @@ static partial class Program
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_large",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
-        // a blob two slots name is refused by every read (docs/SPEC-TABLES.md
-        // §2.5, blob_shared): the region measure answers -1 and the region
-        // load refuses before it writes, whatever room it is given
+        // The corpus's shared-blob wire is REFUSED BY NAME by the strict read
+        // (docs/SPEC-TABLES.md §2.5, §6.5): there is no read that keeps the one
+        // node, so its measure is the refusal and no region is produced. Every
+        // writer refuses that graph too, so there is no tolerated load whose
+        // native writer could be asked.
+        byte[] sharedBlob=ReadGolden("blob_shared");
+        Check(Blobdemo.Schema.CatalogLoadMeasure(sharedBlob,out var sharedReason)==-1 && sharedReason==Blobdemo.TableRefuseReason.blob_shared,
+            "blob_shared native region is measurable as its named refusal");
+        byte[] sharedRegion=new byte[sharedBlob.Length+64];
+        sharedRegion.AsSpan().Fill(0xa5);
+        var sharedReport=new Blobdemo.TableReport();
+        fixed(byte* region=sharedRegion)
         {
-            byte[] sharedBlob=ReadGolden("blob_shared");
-            Check(Blobdemo.Schema.CatalogLoadMeasure(sharedBlob)<0,"blob_shared region measure refuses the shared blob");
-            long room=64L*1024+(long)sharedBlob.Length*16;
-            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)room,64);
-            try
-            {
-                new Span<byte>(region,(int)room).Fill(0xa5);
-                Blobdemo.TableReport report=new Blobdemo.TableReport();
-                Check((IntPtr)Blobdemo.Schema.CatalogLoad((IntPtr)region,room,sharedBlob,report)==IntPtr.Zero && report.Refused && region[0]==0xa5,
-                    "blob_shared region load refuses the shared blob before it writes");
-            }
-            finally { NativeMemory.AlignedFree(region); }
+            Check((IntPtr)Blobdemo.Schema.CatalogLoad((IntPtr)region,sharedRegion.Length,sharedBlob,sharedReport)==IntPtr.Zero &&
+                sharedReport.Refused && sharedReport.Reason=="blob_shared","blob_shared native region load refuses by name");
+            Check(sharedRegion[0]==0xa5,"blob_shared native region load refuses before it writes");
         }
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_str8",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);

@@ -1851,6 +1851,27 @@ func TableFixedHasWriteBound(u *Unit) bool {
 	return false
 }
 
+// TableFixedHasWriteCheck answers whether an ASSERT LEG's writers check
+// anything in a debug build (docs/SPEC.md §5.1): a storage bound
+// ([TableFixedHasWriteBound]), or a VALUE BOUND — a range, a bits width, an
+// enum ordinal, a union tag or the text content rule — on a table the fixed
+// form lays out, whose read-side bounds ([TableFixedClampNeeded]) are the
+// same closed list the write contract names. A unit with neither pays for no
+// assert hook at all (§2.2's zero-cost rule).
+func TableFixedHasWriteCheck(u *Unit) bool {
+	if TableFixedHasWriteBound(u) {
+		return true
+	}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if TableFixedEmitted(u, st) && TableFixedClampNeeded(st) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // THE IDENTITY READ'S SHAPE, AND THE PREFILL'S DOMAIN
 //
