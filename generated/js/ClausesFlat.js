@@ -130,6 +130,38 @@ export function ReadW13Flat(view, numBits, value) {
   return true;
 }
 
+// ReadW13FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadW13Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadW13FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xf) >>> 0;
+  if (v > 12) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.itemsCount = v;
+  br = 4;
+  if (br + value.itemsCount * 13 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fff) >>> 0;
+    value.items[i0] = v | 0;
+    br += 13;
+  }
+  return br;
+}
+
 // ---- type W17: the flat codec ----
 
 // WriteW17Flat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -197,6 +229,38 @@ export function ReadW17Flat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadW17FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadW17Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadW17FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xf) >>> 0;
+  if (v > 9) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.itemsCount = v;
+  br = 4;
+  if (br + value.itemsCount * 17 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1ffff) >>> 0;
+    value.items[i0] = v | 0;
+    br += 17;
+  }
+  return br;
 }
 
 // ---- type W26: the flat codec ----
@@ -268,6 +332,38 @@ export function ReadW26Flat(view, numBits, value) {
   return true;
 }
 
+// ReadW26FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadW26Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadW26FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (3 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7) >>> 0;
+  if (v > 6) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.itemsCount = v;
+  br = 3;
+  if (br + value.itemsCount * 26 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3ffffff) >>> 0;
+    value.items[i0] = v | 0;
+    br += 26;
+  }
+  return br;
+}
+
 // ---- type W1: the flat codec ----
 
 // WriteW1Flat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -335,6 +431,38 @@ export function ReadW1Flat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadW1FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadW1Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadW1FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  if (v > 20) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.itemsCount = v;
+  br = 5;
+  if (br + value.itemsCount * 1 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1) >>> 0;
+    value.items[i0] = v | 0;
+    br += 1;
+  }
+  return br;
 }
 
 // ---- type W52: the flat codec ----
@@ -424,6 +552,46 @@ export function ReadW52Flat(view, numBits, value) {
   return true;
 }
 
+// ReadW52FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadW52Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadW52FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (2 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  value.itemsCount = v;
+  br = 2;
+  if (br + value.itemsCount * 52 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xfffff) >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.items[i0] = bg;
+    br += 20;
+  }
+  return br;
+}
+
 // ---- type W50: the flat codec ----
 
 // WriteW50Flat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -511,6 +679,46 @@ export function ReadW50Flat(view, numBits, value) {
   return true;
 }
 
+// ReadW50FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadW50Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadW50FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (2 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  value.itemsCount = v;
+  br = 2;
+  if (br + value.itemsCount * 50 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3ffff) >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.items[i0] = bg;
+    br += 18;
+  }
+  return br;
+}
+
 // ---- type F13: the flat codec ----
 
 // WriteF13Flat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -565,6 +773,28 @@ export function ReadF13Flat(view, numBits, value) {
   return true;
 }
 
+// ReadF13FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadF13Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadF13FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (91 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 7; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fff) >>> 0;
+    value.items[i0] = v | 0;
+    br += 13;
+  }
+  return br;
+}
+
 // ---- type Tri3: the flat codec ----
 
 // WriteTri3Flat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -595,6 +825,23 @@ export function ReadTri3Flat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadTri3FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTri3Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTri3FlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (3 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1) >>> 0;
+  value.a = v;
+  v = (out >>> 1) & 0x3;
+  value.b = v;
+  return 3;
 }
 
 // ---- type ArrTri3: the flat codec ----
@@ -667,6 +914,41 @@ export function ReadArrTri3Flat(view, numBits, value) {
   return true;
 }
 
+// ReadArrTri3FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArrTri3Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArrTri3FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xf) >>> 0;
+  if (v > 10) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.itemsCount = v;
+  br = 4;
+  if (br + value.itemsCount * 3 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1) >>> 0;
+    e0.a = v;
+    v = (out >>> 1) & 0x3;
+    e0.b = v;
+    br += 3;
+  }
+  return br;
+}
+
 // ---- type Eleven: the flat codec ----
 
 // WriteElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -697,6 +979,23 @@ export function ReadElevenFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadElevenFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadElevenFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadElevenFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (11 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7) >>> 0;
+  value.a = v;
+  v = (out >>> 3) & 0xff;
+  value.b = v;
+  return 11;
 }
 
 // ---- type ArrEleven: the flat codec ----
@@ -753,6 +1052,31 @@ export function ReadArrElevenFlat(view, numBits, value) {
   return true;
 }
 
+// ReadArrElevenFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArrElevenFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArrElevenFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (99 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 9; i0++) {
+    const e0 = value.items[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7) >>> 0;
+    e0.a = v;
+    v = (out >>> 3) & 0xff;
+    e0.b = v;
+    br += 11;
+  }
+  return br;
+}
+
 // ---- type EmptyA: the flat codec ----
 
 // WriteEmptyAFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -770,6 +1094,14 @@ export function ReadEmptyAFlat(view, numBits) {
   return true;
 }
 
+// ReadEmptyAFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadEmptyAFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadEmptyAFlatBits() {
+  return 0;
+}
+
 // ---- type EmptyB: the flat codec ----
 
 // WriteEmptyBFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -785,6 +1117,14 @@ export function ReadEmptyBFlat(view, numBits) {
     return false;
   }
   return true;
+}
+
+// ReadEmptyBFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadEmptyBFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadEmptyBFlatBits() {
+  return 0;
 }
 
 // ---- union EmptyUnion: the flat codec ----
@@ -843,6 +1183,33 @@ export function ReadEmptyUnionFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadEmptyUnionFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadEmptyUnionFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadEmptyUnionFlatBits(view, numBits, value) {
+  let v = 0, out = 0, br = 0;
+  if (2 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+    return false;
+  }
+  value.type = v;
+  br = 2;
+  switch (value.type) {
+    case 1: {
+      break;
+    }
+    case 2: {
+      break;
+    }
+  }
+  return br;
 }
 
 // ---- type HoldsEmptyUnion: the flat codec ----
@@ -927,6 +1294,50 @@ export function ReadHoldsEmptyUnionFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadHoldsEmptyUnionFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadHoldsEmptyUnionFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadHoldsEmptyUnionFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  if (7 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+    return false;
+  }
+  value.u.type = v;
+  br = 7;
+  switch (value.u.type) {
+    case 1: {
+      break;
+    }
+    case 2: {
+      break;
+    }
+  }
+  if (br + 7 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7f) >>> 0;
+  value.tail = v;
+  br += 7;
+  return br;
 }
 
 // ---- type Strs: the flat codec ----
@@ -1124,6 +1535,100 @@ export function ReadStrsFlat(view, numBits, value) {
   return true;
 }
 
+// ReadStrsFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadStrsFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadStrsFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  br = 5;
+  if (br + 4 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xf) >>> 0;
+  if (v > 8) { // the length guards the slice — reject, never clamp
+    return false;
+  }
+  value.sLength = v;
+  br += 4;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.sLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.sLength; i0++) {
+    value.s[i0] = view.getUint8(bi + i0);
+  }
+  br += value.sLength * 8;
+  if (!validText(value.s, value.sLength)) {
+    return false;
+  }
+  if (br + 4 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xf) >>> 0;
+  if (v > 8) { // the length guards the slice — reject, never clamp
+    return false;
+  }
+  value.bLength = v;
+  br += 4;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.bLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.bLength; i0++) {
+    value.b[i0] = view.getUint8(bi + i0);
+  }
+  br += value.bLength * 8;
+  if (br + 3 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7) >>> 0;
+  value.tail = v;
+  br += 3;
+  return br;
+}
+
 // ---- type ArrNested: the flat codec ----
 
 // WriteArrNestedFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -1220,6 +1725,58 @@ export function ReadArrNestedFlat(view, numBits, value) {
   return true;
 }
 
+// ReadArrNestedFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArrNestedFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArrNestedFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  if (8 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
+  v = (out & 0x7) >>> 0;
+  if (v > 4) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.itemsCount = v;
+  br = 8;
+  if (br + value.itemsCount * 11 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7) >>> 0;
+    e0.a = v;
+    v = (out >>> 3) & 0xff;
+    e0.b = v;
+    br += 11;
+  }
+  if (br + 3 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7) >>> 0;
+  value.tail = v;
+  br += 3;
+  return br;
+}
+
 // ---- type Sole: the flat codec ----
 
 // WriteSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -1248,5 +1805,20 @@ export function ReadSoleFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadSoleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSoleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSoleFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (13 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1fff) >>> 0;
+  value.only = v;
+  return 13;
 }
 

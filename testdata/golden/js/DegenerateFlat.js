@@ -42,6 +42,25 @@ export function ReadVec2Flat(view, numBits, value) {
   return true;
 }
 
+// ReadVec2FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadVec2Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadVec2FlatBits(view, numBits, value) {
+  if (128 > numBits) {
+    return false;
+  }
+  value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  return 128;
+}
+
 // ---- type SpanF64: the flat codec ----
 
 // WriteSpanF64Flat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -112,6 +131,40 @@ export function ReadSpanF64Flat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadSpanF64FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanF64Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanF64FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.values[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  return br;
 }
 
 // ---- type SpanU64: the flat codec ----
@@ -185,6 +238,39 @@ export function ReadSpanU64Flat(view, numBits, value) {
   return true;
 }
 
+// ReadSpanU64FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanU64Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanU64FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.values[i0] = bg;
+    br += 32;
+  }
+  return br;
+}
+
 // ---- type SpanI64: the flat codec ----
 
 // WriteSpanI64Flat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -254,6 +340,39 @@ export function ReadSpanI64Flat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadSpanI64FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanI64Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanI64FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.values[i0] = BigInt.asIntN(64, bg);
+    br += 32;
+  }
+  return br;
 }
 
 // ---- type SpanOne: the flat codec ----
@@ -327,6 +446,39 @@ export function ReadSpanOneFlat(view, numBits, value) {
   return true;
 }
 
+// ReadSpanOneFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanOneFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanOneFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (64 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 1; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.values[i0] = bg;
+    br += 32;
+  }
+  return br;
+}
+
 // ---- type SpanChunk: the flat codec ----
 
 // WriteSpanChunkFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -375,6 +527,28 @@ export function ReadSpanChunkFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadSpanChunkFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanChunkFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanChunkFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (64 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 4; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xffff) >>> 0;
+    value.values[i0] = v;
+    br += 16;
+  }
+  return br;
 }
 
 // ---- type SpanTail: the flat codec ----
@@ -464,6 +638,48 @@ export function ReadSpanTailFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadSpanTailFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanTailFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanTailFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (160 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.values[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  value.tail = v;
+  br += 32;
+  return br;
 }
 
 // ---- type SpanTwice: the flat codec ----
@@ -581,6 +797,62 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
   return true;
 }
 
+// ReadSpanTwiceFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanTwiceFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanTwiceFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (256 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.a[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.b[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  return br;
+}
+
 // ---- type Trio: the flat codec ----
 
 // WriteTrioFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -616,6 +888,27 @@ export function ReadTrioFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadTrioFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (64 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfffff) >>> 0;
+  value.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.b = v;
+  out = view.getUint32(5, true);
+  v = (out & 0xffffff) >>> 0;
+  value.c = v;
+  return 64;
 }
 
 // ---- type TrioSole: the flat codec ----
@@ -655,6 +948,27 @@ export function ReadTrioSoleFlat(view, numBits, value) {
   return true;
 }
 
+// ReadTrioSoleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioSoleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioSoleFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (64 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.b = v;
+  out = view.getUint32(5, true);
+  v = (out & 0xffffff) >>> 0;
+  value.inner.c = v;
+  return 64;
+}
+
 // ---- type Vec3Sole: the flat codec ----
 
 // WriteVec3SoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -688,6 +1002,29 @@ export function ReadVec3SoleFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadVec3SoleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadVec3SoleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadVec3SoleFlatBits(view, numBits, value) {
+  if (192 > numBits) {
+    return false;
+  }
+  value.v.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.v.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.v.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  return 192;
 }
 
 // ---- type TrioFirst: the flat codec ----
@@ -730,6 +1067,30 @@ export function ReadTrioFirstFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadTrioFirstFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioFirstFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioFirstFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (80 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.b = v;
+  out = view.getUint32(5, true);
+  v = (out & 0xffffff) >>> 0;
+  value.inner.c = v;
+  out = view.getUint32(8, true);
+  v = (out & 0xffff) >>> 0;
+  value.trailer = v;
+  return 80;
 }
 
 // ---- type TrioStraddle: the flat codec ----
@@ -838,5 +1199,70 @@ export function ReadTrioStraddleFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadTrioStraddleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioStraddleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioStraddleFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (408 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad0 = bg;
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad1 = bg;
+  out = view.getUint32(16, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(20, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad2 = bg;
+  out = view.getUint32(24, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(28, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad3 = bg;
+  out = view.getUint32(32, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(36, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad4 = bg;
+  out = view.getUint32(40, true);
+  v = (out & 0xffffff) >>> 0;
+  value.pad5 = v;
+  out = view.getUint32(43, true);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.a = v;
+  out = (view.getUint32(45, true) >>> 4) | (view.getUint32(49, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.b = v;
+  out = view.getUint32(48, true);
+  v = (out & 0xffffff) >>> 0;
+  value.inner.c = v;
+  return 408;
 }
 

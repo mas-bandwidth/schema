@@ -540,6 +540,10 @@ utf8Ok = function(b, at, len) {
   return true;
 };
 
+// THE SAME TEXT TEST THE WRITERS ASK (docs/SPEC.md §5.1 row 8): the variable
+// Save and Measure refuse a string the load's own wire check would refuse.
+_M.utf8Ok <- utf8Ok;
+
 // a fixed-width value's bytes: a bool is 0 or 1, and a float is finite
 local wcScalar = function(c, at, kind) {
   if (kind == 1) {

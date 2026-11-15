@@ -549,8 +549,25 @@ fn json_fail(jr: JsonIn&) -> bool {
     return false;
 }
 
+// json_comment_char advances over one code point inside a comment, refusing a
+// NUL (0x00) and an ill-formed UTF-8 sequence: the bytes inside a comment are
+// text like the rest of the input (docs/SPEC-TABLES.md §16.2).
+fn json_comment_char(jr: JsonIn&) -> bool {
+    let c = jr.text[jr.pos];
+    if c == 0 { return json_fail(jr); }
+    if c < 0x80 {
+        jr.pos += 1;
+        return true;
+    }
+    let code, w = json_utf8(jr.text, jr.pos);
+    if w < 0 || code == 0 { return json_fail(jr); }
+    jr.pos += w;
+    return true;
+}
+
 // json_space skips whitespace and comments: `//` to the end of the line or of
-// the input, `/* */` to its close; an unclosed one is malformed (§16.2).
+// the input, `/* */` to its close; an unclosed one is malformed (§16.2). A
+// comment holds only well-formed UTF-8 and no NUL, in both forms.
 fn json_space(jr: JsonIn&) {
     let t = jr.text;
     while jr.pos < t.len {
@@ -562,17 +579,24 @@ fn json_space(jr: JsonIn&) {
         if c == '/' && jr.pos + 1 < t.len {
             if t[jr.pos + 1] == '/' {
                 jr.pos += 2;
-                while jr.pos < t.len && t[jr.pos] != '\n' { jr.pos += 1; }
+                while jr.pos < t.len && t[jr.pos] != '\n' {
+                    if !json_comment_char(jr) { return; }
+                }
                 continue;
             }
             if t[jr.pos + 1] == '*' {
                 jr.pos += 2;
-                while jr.pos + 1 < t.len && !(t[jr.pos] == '*' && t[jr.pos + 1] == '/') { jr.pos += 1; }
-                if jr.pos + 1 >= t.len {
-                    jr.bad = true;
-                    return;
+                loop {
+                    if jr.pos + 1 >= t.len {
+                        jr.bad = true;
+                        return;
+                    }
+                    if t[jr.pos] == '*' && t[jr.pos + 1] == '/' {
+                        jr.pos += 2;
+                        break;
+                    }
+                    if !json_comment_char(jr) { return; }
                 }
-                jr.pos += 2;
                 continue;
             }
         }
@@ -873,7 +897,12 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
             }
             if d == 0 { return json_fail(jr); }
             if closing == '}' {
-                if !json_skip_string(jr) { return false; }
+                // an object key is a schema name wherever the read meets it,
+                // a skipped value included, so it takes the 255-byte cap
+                // (§16.2). The value under it may be a string of any length.
+                var key: u8[256] = [0; 256];
+                let n, ok = json_key(jr, key);
+                if !ok || n > JsonMaxKey { return false; }
                 if !json_expect(jr, ':') { return false; }
             }
             if !json_skip_value(jr, depth + 1) { return false; }
@@ -1162,13 +1191,15 @@ fn json_b64_sextet(c: u8) -> i64 {
     return -1;
 }
 
-// json_read_bytes places a bytes(N) from base64: the string's escapes are
-// undone first, the body is held to the grammar (standard alphabet, padded or
-// not), a body outside it is kind_mismatch with the field at its default, and
-// past N clamps and counts (§16.2).
+// json_read_bytes places a bytes(N) from CANONICAL base64 (§16.2, §16.8): the
+// string's escapes are undone first, and the body must be the standard
+// alphabet, padded, with zero pad bits — exactly the text the writer writes. A
+// body outside that grammar is kind_mismatch with the field at its default,
+// and past N clamps and counts.
 fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     var symbols: i64 = 0;
     var pads: i64 = 0;
+    var last: i64 = -1;
     var bad = false;
     let start = jr.pos;
     let ok = json_scan(jr, false) { unit, n =>
@@ -1181,6 +1212,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
                 } else if pads > 0 || json_b64_sextet(c) < 0 {
                     bad = true;
                 } else {
+                    last = json_b64_sextet(c);
                     symbols += 1;
                 }
             }
@@ -1190,8 +1222,14 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     if !ok { return false; }
     if !bad {
         if pads > 0 {
-            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 { bad = true; }
-        } else if symbols % 4 == 1 {
+            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 {
+                bad = true;
+            } else if pads == 1 && (last & 3) != 0 {
+                bad = true;
+            } else if pads == 2 && (last & 15) != 0 {
+                bad = true;
+            }
+        } else if symbols % 4 != 0 {
             bad = true;
         }
     }

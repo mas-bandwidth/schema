@@ -256,7 +256,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float, integrity_mismatch, blob_shared }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float, integrity_mismatch, blob_shared, kind_mismatch }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
@@ -905,6 +905,11 @@ public sealed class TableTypeInfo
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;
+    // DeclaredType names every table this reader DECLARES, whether or not a
+    // pointer below this root can place it (docs/SPEC-TABLES.md §3.1): a node
+    // record of a declared type that is not the pointer slot's target is
+    // damage, while a type this reader does not declare stays unknown.
+    internal Func<ulong, TableTypeInfo> DeclaredType;
     public bool BytesEdge, StringEdge;
     public string Name;         // schema type name
     public ulong Id;            // full wire identity of the table name

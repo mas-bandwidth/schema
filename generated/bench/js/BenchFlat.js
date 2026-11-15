@@ -15,6 +15,9 @@
 // refuses an out-of-contract value — in every build, production
 // included. Read<Name>Flat(view, numBits, value) -> bool, the family read
 // verdict; reader obligations ride in every build too.
+// Read<Name>FlatBits(view, numBits, value) -> the bits that read consumed,
+// or false. The framing entry: the same refusals, and not the end-of-packet
+// check, so a later object may follow in the same buffer (SPEC §5, §6.3).
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -279,6 +282,107 @@ export function ReadBenchPacketFlat(view, numBits, value) {
   return true;
 }
 
+// ReadBenchPacketFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadBenchPacketFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadBenchPacketFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (249 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xff) >>> 0;
+  if (v > 200) { // a smuggled offset is refused
+    return false;
+  }
+  value.a = (v + 4294967196) | 0;
+  v = (out >>> 8) & 0xffff;
+  value.b = v | 0;
+  out = view.getUint32(3, true);
+  v = (out & 0x1fffff) >>> 0;
+  if (v > 2000000) { // a smuggled offset is refused
+    return false;
+  }
+  value.c = (v + 4293967296) | 0;
+  v = (out >>> 21) & 0x7f;
+  value.bits7 = v;
+  out = (view.getUint32(6, true) >>> 4) | (view.getUint32(10, true) << 28);
+  v = (out & 0x1fff) >>> 0;
+  value.bits13 = v;
+  out = (view.getUint32(8, true) >>> 1) | (view.getUint32(12, true) << 31);
+  v = (out & 0x7fffff) >>> 0;
+  value.bits23 = v;
+  v = (out >>> 23) & 0x1;
+  value.flag = v !== 0;
+  out = (view.getUint32(11, true) >>> 1) | (view.getUint32(15, true) << 31);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.x = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.x = SC.getFloat32(0, true);
+  }
+  out = (view.getUint32(15, true) >>> 1) | (view.getUint32(19, true) << 31);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.y = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.y = SC.getFloat32(0, true);
+  }
+  out = (view.getUint32(19, true) >>> 1) | (view.getUint32(23, true) << 31);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.z = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.z = SC.getFloat32(0, true);
+  }
+  out = (view.getUint32(23, true) >>> 1) | (view.getUint32(27, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(27, true) >>> 1) | (view.getUint32(31, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.big = bg;
+  if (256 > numBits) {
+    return false;
+  }
+  if ((view.getUint8(31) >>> 1) !== 0) { // nonzero padding is refused
+    return false;
+  }
+  if (392 > numBits) {
+    return false;
+  }
+  br = 256;
+  for (let i0 = 0; i0 < 17; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xff) >>> 0;
+    value.blob[i0] = v;
+    br += 8;
+  }
+  return br;
+}
+
 // ---- type BenchInts: the flat codec ----
 
 // WriteBenchIntsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -388,6 +492,60 @@ export function ReadBenchIntsFlat(view, numBits, value) {
   return true;
 }
 
+// ReadBenchIntsFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadBenchIntsFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadBenchIntsFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (110 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xff) >>> 0;
+  if (v > 200) { // a smuggled offset is refused
+    return false;
+  }
+  value.f0 = (v + 4294967196) | 0;
+  v = (out >>> 8) & 0xffff;
+  value.f1 = v | 0;
+  out = view.getUint32(3, true);
+  v = (out & 0x1fffff) >>> 0;
+  if (v > 2000000) { // a smuggled offset is refused
+    return false;
+  }
+  value.f2 = (v + 4293967296) | 0;
+  v = (out >>> 21) & 0x3;
+  value.f3 = v | 0;
+  v = (out >>> 23) & 0x1f;
+  if (v > 30) { // a smuggled offset is refused
+    return false;
+  }
+  value.f4 = (v + 4294967281) | 0;
+  out = (view.getUint32(6, true) >>> 4) | (view.getUint32(10, true) << 28);
+  v = (out & 0x3ff) >>> 0;
+  if (v > 1000) { // a smuggled offset is refused
+    return false;
+  }
+  value.f5 = v | 0;
+  v = (out >>> 10) & 0xfff;
+  value.f6 = (v + 4294965248) | 0;
+  v = (out >>> 22) & 0xff;
+  value.f7 = v | 0;
+  out = (view.getUint32(10, true) >>> 2) | (view.getUint32(14, true) << 30);
+  v = (out & 0x1fffff) >>> 0;
+  if (v > 1200000) { // a smuggled offset is refused
+    return false;
+  }
+  value.f8 = (v + 4294367296) | 0;
+  v = (out >>> 21) & 0x7f;
+  if (v > 100) { // a smuggled offset is refused
+    return false;
+  }
+  value.f9 = v | 0;
+  return 110;
+}
+
 // ---- type BenchBits: the flat codec ----
 
 // WriteBenchBitsFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -455,6 +613,45 @@ export function ReadBenchBitsFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadBenchBitsFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadBenchBitsFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadBenchBitsFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (156 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7f) >>> 0;
+  value.b7 = v;
+  v = (out >>> 7) & 0x1fff;
+  value.b13 = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0x7fffff) >>> 0;
+  value.b23 = v;
+  v = (out >>> 23) & 0x7;
+  value.b3 = v;
+  out = (view.getUint32(5, true) >>> 6) | (view.getUint32(9, true) << 26);
+  v = out >>> 0;
+  value.b32 = v;
+  out = (view.getUint32(9, true) >>> 6) | (view.getUint32(13, true) << 26);
+  v = (out & 0x7ff) >>> 0;
+  value.b11 = v;
+  v = (out >>> 11) & 0x7ffff;
+  value.b19 = v;
+  out = (view.getUint32(13, true) >>> 4) | (view.getUint32(17, true) << 28);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(17, true) >>> 4) | (view.getUint32(21, true) << 28);
+  v = (out & 0xffff) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.b48 = bg;
+  return 156;
 }
 
 // ---- type MixedEntity: the flat codec ----
@@ -572,6 +769,63 @@ export function ReadMixedEntityFlat(view, numBits, value) {
   return true;
 }
 
+// ReadMixedEntityFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadMixedEntityFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadMixedEntityFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (135 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfff) >>> 0;
+  value.entityId = v;
+  v = (out >>> 12) & 0x7fff;
+  if (v > 32766) { // a smuggled offset is refused
+    return false;
+  }
+  value.posX = (v + 4294950913) | 0;
+  out = (view.getUint32(3, true) >>> 3) | (view.getUint32(7, true) << 29);
+  v = (out & 0x7fff) >>> 0;
+  if (v > 32766) { // a smuggled offset is refused
+    return false;
+  }
+  value.posY = (v + 4294950913) | 0;
+  v = (out >>> 15) & 0x7fff;
+  if (v > 32766) { // a smuggled offset is refused
+    return false;
+  }
+  value.posZ = (v + 4294950913) | 0;
+  out = (view.getUint32(7, true) >>> 1) | (view.getUint32(11, true) << 31);
+  v = (out & 0x1ff) >>> 0;
+  value.yaw = v;
+  v = (out >>> 9) & 0x1ff;
+  value.pitch = v;
+  v = (out >>> 18) & 0xfff;
+  value.velX = (v + 4294965248) | 0;
+  out = (view.getUint32(10, true) >>> 7) | (view.getUint32(14, true) << 25);
+  v = (out & 0xfff) >>> 0;
+  value.velY = (v + 4294965248) | 0;
+  v = (out >>> 12) & 0xfff;
+  value.velZ = (v + 4294965248) | 0;
+  out = (view.getUint32(13, true) >>> 7) | (view.getUint32(17, true) << 25);
+  v = (out & 0x3ff) >>> 0;
+  if (v > 1000) { // a smuggled offset is refused
+    return false;
+  }
+  value.health = v | 0;
+  v = (out >>> 10) & 0xf;
+  value.weapon = v;
+  v = (out >>> 14) & 0xff;
+  value.damage = BigInt(v);
+  v = (out >>> 22) & 0x1;
+  value.moving = v !== 0;
+  v = (out >>> 23) & 0x1;
+  value.firing = v !== 0;
+  return 135;
+}
+
 // ---- type MixedStat: the flat codec ----
 
 // WriteMixedStatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -606,6 +860,23 @@ export function ReadMixedStatFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadMixedStatFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadMixedStatFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadMixedStatFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (18 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xff) >>> 0;
+  value.statId = v;
+  v = (out >>> 8) & 0x3ff;
+  value.delta = (v + 4294966784) | 0;
+  return 18;
 }
 
 // ---- type MixedHitEvent: the flat codec ----
@@ -651,6 +922,27 @@ export function ReadMixedHitEventFlat(view, numBits, value) {
   return true;
 }
 
+// ReadMixedHitEventFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadMixedHitEventFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadMixedHitEventFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (28 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfff) >>> 0;
+  value.targetId = v;
+  v = (out >>> 12) & 0xfff;
+  value.damage = v | 0;
+  v = (out >>> 24) & 0x7;
+  value.hitKind = v | 0;
+  v = (out >>> 27) & 0x1;
+  value.crit = v !== 0;
+  return 28;
+}
+
 // ---- type MixedChatEvent: the flat codec ----
 
 // WriteMixedChatEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -687,6 +979,23 @@ export function ReadMixedChatEventFlat(view, numBits, value) {
   return true;
 }
 
+// ReadMixedChatEventFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadMixedChatEventFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadMixedChatEventFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (14 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  value.channel = v | 0;
+  v = (out >>> 2) & 0xfff;
+  value.speaker = v;
+  return 14;
+}
+
 // ---- type MixedPickupEvent: the flat codec ----
 
 // WriteMixedPickupEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -721,6 +1030,23 @@ export function ReadMixedPickupEventFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadMixedPickupEventFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadMixedPickupEventFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadMixedPickupEventFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (18 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3ff) >>> 0;
+  value.itemId = v;
+  v = (out >>> 10) & 0xff;
+  value.amount = v | 0;
+  return 18;
 }
 
 // ---- union MixedEvent: the flat codec ----
@@ -872,6 +1198,84 @@ export function ReadMixedEventFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadMixedEventFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadMixedEventFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadMixedEventFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (2 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  value.type = v;
+  br = 2;
+  switch (value.type) {
+    case 1: {
+      value.hit.targetId = 0;
+      value.hit.damage = 0;
+      value.hit.hitKind = 0;
+      value.hit.crit = false;
+      if (br + 28 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0xfff) >>> 0;
+      value.hit.targetId = v;
+      v = (out >>> 12) & 0xfff;
+      value.hit.damage = v | 0;
+      v = (out >>> 24) & 0x7;
+      value.hit.hitKind = v | 0;
+      v = (out >>> 27) & 0x1;
+      value.hit.crit = v !== 0;
+      br += 28;
+      break;
+    }
+    case 2: {
+      value.chat.channel = 0;
+      value.chat.speaker = 0;
+      if (br + 14 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x3) >>> 0;
+      value.chat.channel = v | 0;
+      v = (out >>> 2) & 0xfff;
+      value.chat.speaker = v;
+      br += 14;
+      break;
+    }
+    case 3: {
+      value.pickup.itemId = 0;
+      value.pickup.amount = 0;
+      if (br + 18 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x3ff) >>> 0;
+      value.pickup.itemId = v;
+      v = (out >>> 10) & 0xff;
+      value.pickup.amount = v | 0;
+      br += 18;
+      break;
+    }
+  }
+  return br;
 }
 
 // ---- type BenchMixed: the flat codec ----
@@ -1948,5 +2352,517 @@ export function ReadBenchMixedFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadBenchMixedFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadBenchMixedFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadBenchMixedFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0, br = 0;
+  let bg = 0n;
+  if (353 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xffff) >>> 0;
+  if (v !== 49374) { // a read rejects any other value
+    return false;
+  }
+  v = (out >>> 16) & 0xffff;
+  value.sequence = v;
+  out = view.getUint32(4, true);
+  v = (out & 0xffff) >>> 0;
+  value.ackSequence = v | 0;
+  out = view.getUint32(6, true);
+  v = out >>> 0;
+  value.ackBits = v;
+  out = view.getUint32(10, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(14, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.sessionId = bg;
+  out = view.getUint32(18, true);
+  v = out >>> 0;
+  value.clientId = v;
+  out = view.getUint32(22, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(26, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.nonce = bg;
+  out = view.getUint32(30, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(34, true);
+  v = (out & 0x1ff) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 2000000000000n) { // a smuggled offset is refused
+    return false;
+  }
+  value.worldTime = -1000000000000n + bg;
+  out = (view.getUint32(35, true) >>> 1) | (view.getUint32(39, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(39, true) >>> 1) | (view.getUint32(43, true) << 31);
+  v = (out & 0xffff) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.frameTick = bg;
+  out = (view.getUint32(41, true) >>> 1) | (view.getUint32(45, true) << 31);
+  v = (out & 0xffffff) >>> 0;
+  if (v > 16776960) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.serverTime = v;
+  if (356 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(44, true) >>> 1) | (view.getUint32(48, true) << 31);
+  v = (out & 0x7) >>> 0;
+  value.entitiesCount = v + 1;
+  br = 356;
+  if (br + value.entitiesCount * 135 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.entitiesCount; i0++) {
+    const e0 = value.entities[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xfff) >>> 0;
+    e0.entityId = v;
+    v = (out >>> 12) & 0x7fff;
+    if (v > 32766) { // a smuggled offset is refused
+      return false;
+    }
+    e0.posX = (v + 4294950913) | 0;
+    br += 27;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7fff) >>> 0;
+    if (v > 32766) { // a smuggled offset is refused
+      return false;
+    }
+    e0.posY = (v + 4294950913) | 0;
+    v = (out >>> 15) & 0x7fff;
+    if (v > 32766) { // a smuggled offset is refused
+      return false;
+    }
+    e0.posZ = (v + 4294950913) | 0;
+    br += 30;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1ff) >>> 0;
+    e0.yaw = v;
+    v = (out >>> 9) & 0x1ff;
+    e0.pitch = v;
+    v = (out >>> 18) & 0xfff;
+    e0.velX = (v + 4294965248) | 0;
+    br += 30;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xfff) >>> 0;
+    e0.velY = (v + 4294965248) | 0;
+    v = (out >>> 12) & 0xfff;
+    e0.velZ = (v + 4294965248) | 0;
+    br += 24;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3ff) >>> 0;
+    if (v > 1000) { // a smuggled offset is refused
+      return false;
+    }
+    e0.health = v | 0;
+    v = (out >>> 10) & 0xf;
+    e0.weapon = v;
+    v = (out >>> 14) & 0xff;
+    e0.damage = BigInt(v);
+    v = (out >>> 22) & 0x1;
+    e0.moving = v !== 0;
+    v = (out >>> 23) & 0x1;
+    e0.firing = v !== 0;
+    br += 24;
+  }
+  if (br + 7 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7f) >>> 0;
+  if (v > 80) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.statsCount = v;
+  br += 7;
+  if (br + value.statsCount * 18 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.statsCount; i0++) {
+    const e0 = value.stats[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xff) >>> 0;
+    e0.statId = v;
+    v = (out >>> 8) & 0x3ff;
+    e0.delta = (v + 4294966784) | 0;
+    br += 18;
+  }
+  if (br + 2 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3) >>> 0;
+  value.gameEvent.type = v;
+  br += 2;
+  switch (value.gameEvent.type) {
+    case 1: {
+      value.gameEvent.hit.targetId = 0;
+      value.gameEvent.hit.damage = 0;
+      value.gameEvent.hit.hitKind = 0;
+      value.gameEvent.hit.crit = false;
+      if (br + 28 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0xfff) >>> 0;
+      value.gameEvent.hit.targetId = v;
+      v = (out >>> 12) & 0xfff;
+      value.gameEvent.hit.damage = v | 0;
+      v = (out >>> 24) & 0x7;
+      value.gameEvent.hit.hitKind = v | 0;
+      v = (out >>> 27) & 0x1;
+      value.gameEvent.hit.crit = v !== 0;
+      br += 28;
+      break;
+    }
+    case 2: {
+      value.gameEvent.chat.channel = 0;
+      value.gameEvent.chat.speaker = 0;
+      if (br + 14 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x3) >>> 0;
+      value.gameEvent.chat.channel = v | 0;
+      v = (out >>> 2) & 0xfff;
+      value.gameEvent.chat.speaker = v;
+      br += 14;
+      break;
+    }
+    case 3: {
+      value.gameEvent.pickup.itemId = 0;
+      value.gameEvent.pickup.amount = 0;
+      if (br + 18 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x3ff) >>> 0;
+      value.gameEvent.pickup.itemId = v;
+      v = (out >>> 10) & 0xff;
+      value.gameEvent.pickup.amount = v | 0;
+      br += 18;
+      break;
+    }
+  }
+  if (br + 32 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 4; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xff) >>> 0;
+    value.loadout[i0] = v;
+    br += 8;
+  }
+  if (br + 4 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xf) >>> 0;
+  value.playerNameLength = v;
+  br += 4;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.playerNameLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.playerNameLength; i0++) {
+    value.playerName[i0] = view.getUint8(bi + i0);
+  }
+  br += value.playerNameLength * 8;
+  if (!validText(value.playerName, value.playerNameLength)) {
+    return false;
+  }
+  if (br + 5 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1f) >>> 0;
+  if (v > 16) { // the length guards the slice — reject, never clamp
+    return false;
+  }
+  value.payloadLength = v;
+  br += 5;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.payloadLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.payloadLength; i0++) {
+    value.payload[i0] = view.getUint8(bi + i0);
+  }
+  br += value.payloadLength * 8;
+  if (br + 370 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xff) >>> 0;
+  if (v > 200) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.aimX = Math.fround(Math.fround(Math.fround(Math.fround(v) / 200.0) * 2.0) + -1.0);
+  v = (out >>> 8) & 0xff;
+  if (v > 200) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.aimY = Math.fround(Math.fround(Math.fround(Math.fround(v) / 200.0) * 2.0) + -1.0);
+  v = (out >>> 16) & 0xff;
+  if (v > 200) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.aimZ = Math.fround(Math.fround(Math.fround(Math.fround(v) / 200.0) * 2.0) + -1.0);
+  br += 24;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  br += 32;
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.recoil = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.recoil = SC.getFloat32(0, true);
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.drift = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
+  value.wideKey = bg;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  nw = v;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3f) >>> 0;
+  nw = v * 4294967296 + nw;
+  if (nw > 137438953472 || (nw === 137438953472 && bg > 0n)) { // a smuggled offset is refused
+    return false;
+  }
+  nw += -68719476736;
+  nl = nw >>> 0;
+  SC.setUint32(0, nl, true);
+  SC.setInt32(4, (nw - nl) / 4294967296, true);
+  value.flux = (SC.getBigInt64(0, true) << 64n) + bg;
+  v = (out >>> 6) & 0xffff;
+  if (v > 64000) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.ping = v;
+  v = (out >>> 22) & 0xf;
+  if (v !== 0) { // reserved bits must read zero
+    return false;
+  }
+  br += 26;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + 37 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xffffff) >>> 0;
+  value.crcHint = v;
+  v = (out >>> 24) & 0x1;
+  value.hasExtra = v !== 0;
+  br += 25;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xff) >>> 0;
+  value.extra = v | 0;
+  v = (out >>> 8) & 0xf;
+  value.idleTicks = v | 0;
+  br += 12;
+  return br;
 }
 

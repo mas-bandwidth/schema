@@ -47,6 +47,29 @@ export function ReadVec3Flat(view, numBits, value) {
   return true;
 }
 
+// ReadVec3FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadVec3Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadVec3FlatBits(view, numBits, value) {
+  if (192 > numBits) {
+    return false;
+  }
+  value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  return 192;
+}
+
 // ---- type Quat: the flat codec ----
 
 // WriteQuatFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -87,6 +110,33 @@ export function ReadQuatFlat(view, numBits, value) {
   return true;
 }
 
+// ReadQuatFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadQuatFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadQuatFlatBits(view, numBits, value) {
+  if (256 > numBits) {
+    return false;
+  }
+  value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.w = view.getFloat64(24, true);
+  if ((view.getUint32(28, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  return 256;
+}
+
 // ---- type Handle: the flat codec ----
 
 // WriteHandleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -124,6 +174,26 @@ export function ReadHandleFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadHandleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadHandleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadHandleFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (22 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3fff) >>> 0;
+  if (v > 9999) { // a smuggled offset is refused
+    return false;
+  }
+  value.objectId = v | 0;
+  v = (out >>> 14) & 0xff;
+  value.objectSequence = v;
+  return 22;
 }
 
 // ---- type QuantizedPosition: the flat codec ----
@@ -187,6 +257,36 @@ export function ReadQuantizedPositionFlat(view, numBits, value) {
   return true;
 }
 
+// ReadQuantizedPositionFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadQuantizedPositionFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadQuantizedPositionFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (75 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 16777216) { // a smuggled offset is refused
+    return false;
+  }
+  value.x = (v + 4286578688) | 0;
+  out = (view.getUint32(3, true) >>> 1) | (view.getUint32(7, true) << 31);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 16777216) { // a smuggled offset is refused
+    return false;
+  }
+  value.y = (v + 4286578688) | 0;
+  out = (view.getUint32(6, true) >>> 2) | (view.getUint32(10, true) << 30);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 16777216) { // a smuggled offset is refused
+    return false;
+  }
+  value.z = (v + 4286578688) | 0;
+  return 75;
+}
+
 // ---- type QuantizedVelocity: the flat codec ----
 
 // WriteQuantizedVelocityFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -246,6 +346,36 @@ export function ReadQuantizedVelocityFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadQuantizedVelocityFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadQuantizedVelocityFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadQuantizedVelocityFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (69 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7fffff) >>> 0;
+  if (v > 4194304) { // a smuggled offset is refused
+    return false;
+  }
+  value.x = (v + 4292870144) | 0;
+  out = (view.getUint32(2, true) >>> 7) | (view.getUint32(6, true) << 25);
+  v = (out & 0x7fffff) >>> 0;
+  if (v > 4194304) { // a smuggled offset is refused
+    return false;
+  }
+  value.y = (v + 4292870144) | 0;
+  out = (view.getUint32(5, true) >>> 6) | (view.getUint32(9, true) << 26);
+  v = (out & 0x7fffff) >>> 0;
+  if (v > 4194304) { // a smuggled offset is refused
+    return false;
+  }
+  value.z = (v + 4292870144) | 0;
+  return 69;
 }
 
 // ---- type QuantizedRotation: the flat codec ----
@@ -308,6 +438,40 @@ export function ReadQuantizedRotationFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadQuantizedRotationFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadQuantizedRotationFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadQuantizedRotationFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (48 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfff) >>> 0;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.x = (v + 4294966272) | 0;
+  v = (out >>> 12) & 0xfff;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.y = (v + 4294966272) | 0;
+  out = view.getUint32(3, true);
+  v = (out & 0xfff) >>> 0;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.z = (v + 4294966272) | 0;
+  v = (out >>> 12) & 0xfff;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.w = (v + 4294966272) | 0;
+  return 48;
 }
 
 // ---- type RigidBody: the flat codec ----
@@ -629,6 +793,182 @@ export function ReadRigidBodyFlat(view, numBits, value) {
   return true;
 }
 
+// ReadRigidBodyFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadRigidBodyFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadRigidBodyFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (449 > numBits) {
+    return false;
+  }
+  value.position.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.position.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.position.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.orientation.x = view.getFloat64(24, true);
+  if ((view.getUint32(28, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.orientation.y = view.getFloat64(32, true);
+  if ((view.getUint32(36, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.orientation.z = view.getFloat64(40, true);
+  if ((view.getUint32(44, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.orientation.w = view.getFloat64(48, true);
+  if ((view.getUint32(52, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  out = view.getUint32(56, true);
+  v = (out & 0x1) >>> 0;
+  value.atRest = v !== 0;
+  br = 449;
+  if (!value.atRest) {
+    if (br + 384 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.linearVelocity.x = SC.getFloat64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.linearVelocity.y = SC.getFloat64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.linearVelocity.z = SC.getFloat64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.angularVelocity.x = SC.getFloat64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.angularVelocity.y = SC.getFloat64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.angularVelocity.z = SC.getFloat64(0, true);
+    br += 32;
+  } else {
+    value.linearVelocity.x = 0;
+    value.linearVelocity.y = 0;
+    value.linearVelocity.z = 0;
+    value.angularVelocity.x = 0;
+    value.angularVelocity.y = 0;
+    value.angularVelocity.z = 0;
+  }
+  return br;
+}
+
 // ---- type Input: the flat codec ----
 
 // WriteInputFlat(view, value) -> bytes written (>= 0). Nothing here is a
@@ -794,6 +1134,95 @@ export function ReadInputFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadInputFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadInputFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadInputFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (168 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.stickX = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.stickX = SC.getFloat32(0, true);
+  }
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.stickY = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.stickY = SC.getFloat32(0, true);
+  }
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.throttle = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.throttle = SC.getFloat32(0, true);
+  }
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.yaw = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.yaw = SC.getFloat32(0, true);
+  }
+  out = view.getUint32(16, true);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.pitch = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.pitch = SC.getFloat32(0, true);
+  }
+  out = view.getUint32(20, true);
+  v = (out & 0x1) >>> 0;
+  value.fire = v !== 0;
+  v = (out >>> 1) & 0x1;
+  value.altFire = v !== 0;
+  v = (out >>> 2) & 0x1;
+  value.boost = v !== 0;
+  v = (out >>> 3) & 0x1;
+  value.brake = v !== 0;
+  v = (out >>> 4) & 0x1;
+  value.aim = v !== 0;
+  v = (out >>> 5) & 0x1;
+  value.lockOn = v !== 0;
+  v = (out >>> 6) & 0x1;
+  value.zoom = v !== 0;
+  v = (out >>> 7) & 0x1;
+  value.ping = v !== 0;
+  return 168;
 }
 
 // ---- type InputPacket: the flat codec ----
@@ -1103,6 +1532,161 @@ export function ReadInputPacketFlat(view, numBits, value) {
   return true;
 }
 
+// ReadInputPacketFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadInputPacketFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadInputPacketFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (144 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xffff) >>> 0;
+  value.synchronizeSequence = v;
+  out = view.getUint32(2, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(6, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.currentFrame = bg;
+  out = view.getUint32(10, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(14, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.startFrame = bg;
+  if (149 > numBits) {
+    return false;
+  }
+  out = view.getUint32(18, true);
+  v = (out & 0x1f) >>> 0;
+  if (v > 16) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.inputsCount = v;
+  br = 149;
+  if (br + value.inputsCount * 168 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.inputsCount; i0++) {
+    const e0 = value.inputs[i0];
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      e0.stickX = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      e0.stickX = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      e0.stickY = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      e0.stickY = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      e0.throttle = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      e0.throttle = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      e0.yaw = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      e0.yaw = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      e0.pitch = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      e0.pitch = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1) >>> 0;
+    e0.fire = v !== 0;
+    v = (out >>> 1) & 0x1;
+    e0.altFire = v !== 0;
+    v = (out >>> 2) & 0x1;
+    e0.boost = v !== 0;
+    v = (out >>> 3) & 0x1;
+    e0.brake = v !== 0;
+    v = (out >>> 4) & 0x1;
+    e0.aim = v !== 0;
+    v = (out >>> 5) & 0x1;
+    e0.lockOn = v !== 0;
+    v = (out >>> 6) & 0x1;
+    e0.zoom = v !== 0;
+    v = (out >>> 7) & 0x1;
+    e0.ping = v !== 0;
+    br += 8;
+  }
+  return br;
+}
+
 // ---- type ShipCreate: the flat codec ----
 
 // WriteShipCreateFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -1330,6 +1914,124 @@ export function ReadShipCreateFlat(view, numBits, value) {
   return true;
 }
 
+// ReadShipCreateFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadShipCreateFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadShipCreateFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (196 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7) >>> 0;
+  if (v > 5) { // headroom above the wire range is refused
+    return false;
+  }
+  value.shipType = v;
+  v = (out >>> 3) & 0x1ffffff;
+  if (v > 16777216) { // a smuggled offset is refused
+    return false;
+  }
+  value.position.x = (v + 4286578688) | 0;
+  out = (view.getUint32(3, true) >>> 4) | (view.getUint32(7, true) << 28);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 16777216) { // a smuggled offset is refused
+    return false;
+  }
+  value.position.y = (v + 4286578688) | 0;
+  out = (view.getUint32(6, true) >>> 5) | (view.getUint32(10, true) << 27);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 16777216) { // a smuggled offset is refused
+    return false;
+  }
+  value.position.z = (v + 4286578688) | 0;
+  out = (view.getUint32(9, true) >>> 6) | (view.getUint32(13, true) << 26);
+  v = (out & 0xfff) >>> 0;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.rotation.x = (v + 4294966272) | 0;
+  v = (out >>> 12) & 0xfff;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.rotation.y = (v + 4294966272) | 0;
+  out = (view.getUint32(12, true) >>> 6) | (view.getUint32(16, true) << 26);
+  v = (out & 0xfff) >>> 0;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.rotation.z = (v + 4294966272) | 0;
+  v = (out >>> 12) & 0xfff;
+  if (v > 2048) { // a smuggled offset is refused
+    return false;
+  }
+  value.rotation.w = (v + 4294966272) | 0;
+  out = (view.getUint32(15, true) >>> 6) | (view.getUint32(19, true) << 26);
+  v = (out & 0x7fffff) >>> 0;
+  if (v > 4194304) { // a smuggled offset is refused
+    return false;
+  }
+  value.linearVelocity.x = (v + 4292870144) | 0;
+  out = (view.getUint32(18, true) >>> 5) | (view.getUint32(22, true) << 27);
+  v = (out & 0x7fffff) >>> 0;
+  if (v > 4194304) { // a smuggled offset is refused
+    return false;
+  }
+  value.linearVelocity.y = (v + 4292870144) | 0;
+  out = (view.getUint32(21, true) >>> 4) | (view.getUint32(25, true) << 28);
+  v = (out & 0x7fffff) >>> 0;
+  if (v > 4194304) { // a smuggled offset is refused
+    return false;
+  }
+  value.linearVelocity.z = (v + 4292870144) | 0;
+  v = (out >>> 23) & 0x1;
+  value.hasFlags = v !== 0;
+  br = 196;
+  if (value.hasFlags) {
+    if (br + 4 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xf) >>> 0;
+    value.flags = BigInt(v);
+    br += 4;
+  } else {
+    value.flags = 0n;
+  }
+  if (br + 19 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // headroom above the wire range is refused
+    return false;
+  }
+  value.team = v;
+  v = (out >>> 2) & 0x3ff;
+  if (v > 1000) { // a smuggled offset is refused
+    return false;
+  }
+  value.health = v | 0;
+  v = (out >>> 12) & 0x7f;
+  if (v > 100) { // a smuggled offset is refused
+    return false;
+  }
+  value.thrust = v | 0;
+  value.pending = 0;
+  br += 19;
+  return br;
+}
+
 // ---- type ExpressionProbe: the flat codec ----
 
 // WriteExpressionProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -1367,6 +2069,26 @@ export function ReadExpressionProbeFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadExpressionProbeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadExpressionProbeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadExpressionProbeFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (16 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.hardpointIndex = v | 0;
+  v = (out >>> 5) & 0x7ff;
+  if (v > 1024) { // a smuggled offset is refused
+    return false;
+  }
+  value.spinRate = (v + 1024) | 0;
+  return 16;
 }
 
 // ---- type ExtremeProbe: the flat codec ----
@@ -1476,6 +2198,68 @@ export function ReadExtremeProbeFlat(view, numBits, value) {
   return true;
 }
 
+// ReadExtremeProbeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadExtremeProbeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadExtremeProbeFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (320 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 9223372036854775908n) { // a smuggled offset is refused
+    return false;
+  }
+  value.floorBound = -9223372036854775808n + bg;
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 9223372036854775908n) { // a smuggled offset is refused
+    return false;
+  }
+  value.doubledFloor = -9223372036854775808n + bg;
+  out = view.getUint32(16, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(20, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 18446744073709551614n) { // a smuggled offset is refused
+    return false;
+  }
+  value.ceilingRange = 1n + bg;
+  out = view.getUint32(24, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(28, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.floorDefault = BigInt.asIntN(64, bg);
+  out = view.getUint32(32, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(36, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.ceilingDefault = bg;
+  return 320;
+}
+
 // ---- type ExtremeRow: the flat codec ----
 
 // WriteExtremeRowFlat(view, value) -> bytes written (>= 0), or -1 on a refused
@@ -1562,5 +2346,56 @@ export function ReadExtremeRowFlat(view, numBits, value) {
     return false;
   }
   return true;
+}
+
+// ReadExtremeRowFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadExtremeRowFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadExtremeRowFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (256 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 9223372036854775908n) { // a smuggled offset is refused
+    return false;
+  }
+  value.clampedFloor = -9223372036854775808n + bg;
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 18446744073709551613n) { // a smuggled offset is refused
+    return false;
+  }
+  value.clampedCeiling = 1n + bg;
+  out = view.getUint32(16, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(20, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.floorDef = BigInt.asIntN(64, bg);
+  out = view.getUint32(24, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(28, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.ceilingDef = bg;
+  return 256;
 }
 
