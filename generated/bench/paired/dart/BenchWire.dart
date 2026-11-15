@@ -6310,7 +6310,12 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
+      // AN UNKNOWN KEY AND ITS VALUE are held to the text and grammar rules a
+      // placed one is held to (docs/SPEC-TABLES.md §16.3, §4): a key or a
+      // string inside the value that decodes to U+0000 refuses the read.
+      _jsonText(entry.key);
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
+      _jsonSkipValue(entry.value);
       r.unknown++;
       continue;
     }

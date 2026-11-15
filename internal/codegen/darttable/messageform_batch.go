@@ -1243,7 +1243,10 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
       final arm = r.vocabulary.entries[ref - 1];
       // bitDecoder.arm: a reserved id or a kind-0 entry is damage
       if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
-      return tableMessageSkipEntry(r, arm, depth + 1);
+      // A UNION WHOSE ARM IS STRUCTURAL is one level deeper; a scalar or
+      // payload-free arm adds no level (docs/SPEC-TABLES.md §4).
+      return tableMessageSkipEntry(
+          r, arm, tableMessageStructural(arm.kind) ? depth + 1 : depth);
     case 13:
       return tableMessageSkipBody(r, depth + 1);
     case 17:
@@ -1337,16 +1340,16 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
           return r.bits.skip(n * run);
         }
       }
+      // A STRUCTURAL ELEMENT is one level deeper; a scalar element adds no
+      // level (docs/SPEC-TABLES.md §4), so an array or keyed array of
+      // scalars at the depth boundary still reads.
+      final elemDepth = tableMessageStructural(elem) ? depth + 1 : depth;
       if (kind == 16) {
         // AN ENUM-KEYED ARRAY'S KEY references a declared no-payload entry,
         // none repeated (docs/SPEC-TABLES.md §3.2, §3.3): the skip path runs
         // the same checks a named keyed read does, with the keyed body's own
         // seen set (internal/tablewire/messagedecode.go, keyedReference).
         final seen = <int>{};
-        // A STRUCTURAL ELEMENT is one level deeper; a scalar element adds no
-        // level (docs/SPEC-TABLES.md §4), so a keyed array of scalars at the
-        // depth boundary still reads.
-        final structural = elem == 13 || elem == 14 || elem == 15 || elem == 16;
         for (var i = 0; i < n; i++) {
           // The key's own bits are progress (internal/tablewire/messagedecode.go,
           // skip: the offset is read before keyedReference), so a payload-free
@@ -1363,10 +1366,7 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
             return false;
           }
           if (!seen.add(key.id)) return false;
-          if (!tableMessageSkip(
-              r, elem, inner, structural ? depth + 1 : depth)) {
-            return false;
-          }
+          if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
           if (r.bits.offset == before) return false;
         }
         return true;
@@ -1376,14 +1376,66 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
         // walk (internal/tablewire/messagedecode.go, skip): otherwise the
         // announced count alone buys the iterations.
         final before = r.bits.offset;
-        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;
+        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
         if (r.bits.offset == before) return false;
       }
       return true;
   }
   final width = TableMessageShape.valueBits(kind, s);
   if (width < 0) return false;
+  if (s.packing == 1) return tableMessageSkipRanged(r, kind, s, width);
   return r.bits.skip(width);
+}
+
+/// A STRUCTURAL kind is one nesting level (docs/SPEC-TABLES.md §4): a table
+/// body, an array, a union, and an enum-keyed body. A scalar, an enum name or
+/// a payload-free entry adds no level.
+bool tableMessageStructural(int kind) =>
+    kind == 13 || kind == 14 || kind == 15 || kind == 16;
+
+/// A RANGED INTEGER ON THE SKIP PATH is read as its offset, rebuilt from the
+/// sender's base, and held to the range its own kind can carry: the offset's
+/// bits can spell a value past the sender's maximum, and no conforming writer
+/// emits one (docs/SPEC-TABLES.md §3.3; the reference's skipRanged and
+/// kindHolds, internal/tablewire/messagedecode.go). The offset rides low 64
+/// bits first, as a named 128-bit read takes it.
+bool tableMessageSkipRanged(
+    TableMessageReader r, int kind, TableMessageShape s, int width) {
+  final lowBits = width < 64 ? width : 64;
+  final lo = r.bits.get(lowBits);
+  if (r.bits.failed) return false;
+  final hi = width > 64 ? r.bits.get(width - 64) : 0;
+  if (r.bits.failed) return false;
+  final offset = (BigInt.from(hi).toUnsigned(64) << 64) |
+      BigInt.from(lo).toUnsigned(64);
+  // The base as ir.DecodeShape holds it: a 16-byte two's complement for the
+  // 128-bit and fixed-point kinds, a zigzag for a signed integer, and an
+  // unsigned 64-bit value otherwise.
+  BigInt base;
+  if (kind >= 18) {
+    base = (BigInt.from(s.baseHi) << 64) | BigInt.from(s.baseLo).toUnsigned(64);
+  } else if (kind >= 2 && kind <= 5) {
+    base = BigInt.from(s.base);
+  } else {
+    base = BigInt.from(s.base).toUnsigned(64);
+  }
+  final value = offset + base;
+  final bits = tableMessageKindWidth(kind) * 8;
+  if (bits == 0) return true;
+  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
+  if (signed) {
+    final top = BigInt.one << (bits - 1);
+    if (value < -top || value >= top) {
+      r.report.Refuse('out_of_range');
+      return false;
+    }
+    return true;
+  }
+  if (value.isNegative || value >= (BigInt.one << bits)) {
+    r.report.Refuse('out_of_range');
+    return false;
+  }
+  return true;
 }
 
 /// A string(N) payload must be well-formed UTF-8 with no zero byte among its
