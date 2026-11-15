@@ -233,6 +233,8 @@ the text after "Before: " and the tier):
 - `relax/ci-time-js-tables-2`: median 135 s.
 - `relax/ci-time-base-3-3`: median 126 s.
 - `relax/ci-time-java-wire-fuzz-2`: median 123 s.
+- `relax/ci-time-java-wire-fuzz-retain`: 109 to 125 s, killed at 120 s twice.
+- `relax/ci-time-java-wire-fuzz-map-count`: 112 to 125 s, killed at 120 s twice.
 - `relax/ci-time-java-tables-a`: median 123 s.
 - `relax/ci-time-java-tables-more-a`: median 117 s.
 - `relax/ci-time-base-c-write-refusal-a`: median 116 s.
