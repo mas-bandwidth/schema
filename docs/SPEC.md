@@ -2358,7 +2358,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C**: 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build
 
-- **C#**: 1–4 debug, except that every build still refuses a negative text-list element length (`TextFits`) and a count past its bound in the region `Save`'s node walk; 5–8 every build; 9 unchecked; 10 every build for `required` fields only
+- **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
 - **Rust**: 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build
 
@@ -2421,9 +2421,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
 - **C#**
 
-  - `FixedSave`: 1–6 and 8 debug; 7 every build
+  - `FixedSave`: 1–8 debug
 
-  - `SaveMessages`: 1–2 debug; 3–8 every build
+  - `SaveMessages`: 1–8 debug
 
   - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked
 
