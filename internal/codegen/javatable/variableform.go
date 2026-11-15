@@ -5548,6 +5548,37 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		b.WriteString("        }\n")
 	case f.IsTextList():
 		target := f.Type.Ref.(*ir.Struct)
+		// The text writer keeps its own count and length verdicts (docs/SPEC.md
+		// §5.1 rows 3 and 4): the save's graph walk does not refuse them in a
+		// release build, but toJson still answers null for a value its reader
+		// would refuse.
+		b.WriteString("        {\n")
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "            if (v.%s.size() > %d) { throw new TableJson.Refused(%q); }\n", m, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
+		}
+		elementBound := int64(-1)
+		if !ir.TextListUnbounded(f) {
+			elementBound = int64(ir.TextListValue(f).Type.Size)
+		}
+		if elementBound >= 0 || f.TextTotal > 0 {
+			b.WriteString("            long spent = 0L;\n")
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
+			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", target.Name, m)
+			if ir.TextListOptional(f) {
+				b.WriteString("                long elemBytes = (e == null || !e.valuePresent || e.value == null) ? 0L : TableVariable.utf8Len(e.value);\n")
+			} else {
+				b.WriteString("                long elemBytes = (e == null || e.value == null) ? 0L : TableVariable.utf8Len(e.value);\n")
+			}
+			if elementBound >= 0 {
+				fmt.Fprintf(b, "                if (elemBytes > %dL) { throw new TableJson.Refused(%q); }\n", elementBound, "length_over_bound: "+f.TextListElem().MapEntryOf)
+			}
+			if f.TextTotal > 0 {
+				b.WriteString("                spent += elemBytes;\n")
+				fmt.Fprintf(b, "                if (spent > %dL) { throw new TableJson.Refused(%q); }\n", f.TextTotal, "length_over_bound: "+f.TextListElem().MapEntryOf)
+			}
+			b.WriteString("            }\n")
+		}
+		b.WriteString("        }\n")
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
 		b.WriteString("            b.append('[');\n")
 		fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)

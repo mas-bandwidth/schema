@@ -369,14 +369,17 @@ public final class Main {
             }
         }
 
-        // 4. Writer preflight refusal on total overflow
+        // 4. Writer preflight on total overflow: the debug contract asserts,
+        // and the text writer still refuses the same value
         TotalsVariable.Value badA = new TotalsVariable.Value();
         for (int i = 0; i < 2; i++) {
             TotalsATextVariable.Value e = new TotalsATextVariable.Value();
             e.value = "abc";
             badA.a.add(e);
         }
-        if (TotalsVariable.save(badA) != null || TotalsVariable.toJson(badA) != null) {
+        boolean aAsserted = false;
+        try { TotalsVariable.save(badA); } catch (AssertionError e) { aAsserted = true; }
+        if (!aAsserted || TotalsVariable.toJson(badA) != null) {
             throw new AssertionError("writer accepted total overflow on a");
         }
         TotalsVariable.Value badB = new TotalsVariable.Value();
@@ -386,7 +389,9 @@ public final class Main {
             e.valuePresent = true;
             badB.b.add(e);
         }
-        if (TotalsVariable.save(badB) != null || TotalsVariable.toJson(badB) != null) {
+        boolean bAsserted = false;
+        try { TotalsVariable.save(badB); } catch (AssertionError e) { bAsserted = true; }
+        if (!bAsserted || TotalsVariable.toJson(badB) != null) {
             throw new AssertionError("writer accepted total overflow on b");
         }
 
