@@ -27,6 +27,7 @@ import (
 )
 
 func TestFixedDeadBytesAreZero(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "dart (it runs the generated reader over the dead-byte corpus)")
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
