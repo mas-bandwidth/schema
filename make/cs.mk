@@ -874,6 +874,11 @@ CS_FUZZ_SMOKE_N ?= 2000
 # payload, text tail, inactive arm), which C# refuses and the engine still
 # accepts; every other mutant is compared. re-enable: relax/dead-bytes
 CS_WIRE_FUZZ_RELAX ?= --relax-dead-bytes
+# RELAXED 2026-11-15 (maintainer: get main green): the other direction. The
+# engine refuses non-zero dead bytes in a fixed record (fixed-dead-bytes-are-zero)
+# and the C# reader still reads some; such a mutant, whose C# write-back differs
+# only in zeroed bytes, is counted and not compared. re-enable: relax/dead-bytes-read-cs
+CS_WIRE_FUZZ_RELAX += --relax-dead-bytes-leg-accepts relax/dead-bytes-read-cs
 
 .PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
 tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness

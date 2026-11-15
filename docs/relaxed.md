@@ -31,6 +31,35 @@ relaxed cell whose slug has no entry here.
   `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
   then drop the flag. WIP: `fix/main-red/dead-bytes`.
+- The other direction, one slug per leg. Since sm-a1-engine-fixed-dead-bytes-refused-2
+  the engine refuses a fixed record whose dead bytes are not zero
+  (docs/rulings.json fixed-dead-bytes-are-zero), and four legs still read
+  some such records. Each leg's wire fuzz passes
+  `--relax-dead-bytes-leg-accepts <its slug>`, so a fixed-class mutant
+  (not the message form) that the leg ACCEPTS and the oracle refuses is
+  counted and not compared, but only when the leg's write-back has the
+  input's length, differs from it only in bytes the leg wrote as zero, and
+  is a record the oracle reads and writes back unchanged: the mutant's one
+  fault is its dead bytes. Every other mutant is compared. Files:
+  `test/conformance/harness/main.go`, `test/conformance/harness/wirefuzz.go`
+  and the leg's make file. Real fix, per leg: its fixed read refuses
+  non-zero dead bytes (an absent optional's payload, a counted array's slots
+  past its count, a text's or bytes' units past its used length, an inactive
+  union arm); then drop the flag from that leg.
+  - `relax/dead-bytes-read-cs`: `make/cs.mk` (`CS_WIRE_FUZZ_RELAX`, the
+    wire fuzz and its smoke). Re-enable card: "cs fixed read refuses
+    non-zero dead bytes".
+  - `relax/dead-bytes-read-java`: `make/java.mk` (`JAVA_WIRE_FUZZ_RELAX`,
+    the plain and retain arms of `tables-java-wire-fuzz`). Re-enable card:
+    "java fixed read refuses non-zero dead bytes".
+  - `relax/dead-bytes-read-rust`: `make/rust.mk` (`RUST_WIRE_FUZZ_RELAX`,
+    `tables-rust-wire-fuzz-all` and `tables-rust-wire-fuzz-negative-control`'s
+    sabotaged run and clean replay). Re-enable card: "rust fixed read refuses
+    non-zero dead bytes".
+  - `relax/dead-bytes-read-lobster`: `make/lobster-fuzz.mk`
+    (`LOBSTER_WIRE_FUZZ_RELAX`, the plain and builder arms of
+    `tables-lobster-wire-fuzz`). Re-enable card: "lobster fixed read refuses
+    non-zero dead bytes".
 - `relax/unknown-arm-text-c`: the C wire fuzz (`make tables-c-wire-fuzz`,
   `tables-c-retain`, and the release gate's C runs) passes
   `--relax-vector unknown_arm_text_nul` (`C_RELAX_VECTORS` in `make/c.mk`).

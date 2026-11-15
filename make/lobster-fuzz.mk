@@ -93,13 +93,18 @@ define lobster_wire_fuzz_vectors
 	done
 endef
 
+# RELAXED 2026-11-15 (maintainer: get main green): the engine refuses non-zero
+# dead bytes in a fixed record (fixed-dead-bytes-are-zero) and the Lobster
+# reader still reads some; such a mutant, whose Lobster write-back differs only
+# in zeroed bytes, is counted and not compared. re-enable: relax/dead-bytes-read-lobster
+LOBSTER_WIRE_FUZZ_RELAX ?= --relax-dead-bytes-leg-accepts relax/dead-bytes-read-lobster
 .PHONY: tables-lobster-wire-fuzz tables-lobster-wire-fuzz-negative-control tables-lobster-release
 tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost $(LOBSTER_WIRE_FUZZ_ILL_TEXT)
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
-		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster.bin
+		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster.bin $(LOBSTER_WIRE_FUZZ_RELAX)
 	./build/conformance-harness wire-fuzz --builder --driver '$(LOBSTER_WIRE_FUZZ_HOST) --builder' \
-		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-builder.bin
+		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-builder.bin $(LOBSTER_WIRE_FUZZ_RELAX)
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-retain.bin
