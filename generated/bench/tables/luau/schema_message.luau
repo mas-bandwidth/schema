@@ -466,19 +466,46 @@ local function countOf(r: any, s: any): (number, boolean)
 end
 
 skipBody = function(r: any, st: any, desc: any, dep: any): boolean
+	-- A BODY HAS ONE ENCODING FOR ITS VALUE (§3.3): its field references follow
+	-- the announcement's declaration order, and a body with no field at all
+	-- omits every field the announcement declares.
+	local lastRef = 0
 	while true do
 		local ref, ok = get(r, st.refBits)
-			if not ok then return false end
-		if ref == 0 then return true end
+		if not ok then return false end
+		if ref == 0 then return lastRef ~= 0 end
+		if ref <= lastRef then return false end
+		lastRef = ref
 		local e = entryOf(st.v, ref)
 		if e == nil or reserved(e.id) then return false end
 		if dep ~= nil and desc ~= nil then dep.table = desc.name end
 		if desc ~= nil then st.owner = desc.name end
-		if not skipShape(r, st, e, fieldById(desc, e.id), dep) then return false end
+		if not skipShape(r, st, e, fieldById(desc, e.id), dep, true) then return false end
 	end
 end
 
-skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
+-- A SCALAR FIELD AT THE DEFAULT ITS WRITER ELIDES (§3.3 (a)): the reader peeks
+-- the announced payload without consuming it, because a non-default value is
+-- stepped over by the ordinary skip. A plain float is left to the skip; its
+-- bits are not an integer default.
+local function messageFieldDefault(fd: any, r: any, e: any): boolean
+	if fd == nil or fd.required == true or fd.present ~= nil then return false end
+	if (e.shape.packing or 0) ~= 0 then return false end
+	local k = e.shape.kind
+	if k == 10 or k == 11 then return false end
+	local w = kindBits(k)
+	if w <= 0 or w > 32 or (e.shape.bits or 0) ~= w then return false end
+	local raw, ok = get(r, w)
+	if not ok then return false end
+	if k == 1 then return (raw ~= 0) == (fd.def == true) end
+	local def = fd.def or 0
+	if typeof(def) ~= "number" then return false end
+	local m = 2 ^ w
+	if def < 0 then def = def + m end
+	return raw == def % m
+end
+
+skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boolean?): boolean
 	local k = e.shape.kind
 	if k == 0 or k == 32 then return true end
 	if k == 30 then
@@ -517,7 +544,13 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 	elseif k == 15 then
 		local ref, ok = get(r, st.refBits)
 		if not ok then return false end
-		if ref == 0 then return true end
+		if ref == 0 then
+			-- A UNION FIELD WRITTEN WITH THE NONE REFERENCE IS NOT THE ONE
+			-- ENCODING (§3.3 (c)): a conforming writer elides it. An element
+			-- or a nested arm keeps its positional None.
+			if fieldEntry == true then return false end
+			return true
+		end
 		local arm = entryOf(st.v, ref)
 		if arm == nil or reserved(arm.id) or arm.shape.kind == 0 then return false end
 		local armFd = nil
@@ -590,6 +623,12 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		return ok and skip(r, n * 8)
 	end
 	if plainFloat(e.shape, fd) then return floatStep(r, st, k, fd) end
+	if fieldEntry == true and fd ~= nil then
+		local at = r.off
+		local def = messageFieldDefault(fd, r, e)
+		r.off = at
+		if def then return false end
+	end
 	return skip(r, e.shape.bits)
 end
 
