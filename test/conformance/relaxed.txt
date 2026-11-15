@@ -179,14 +179,6 @@ js write-refusal-json jref_zero_byte relax/hostile-rows-js
 lobster write-refusal-json jref_zero_byte relax/hostile-rows-lobster
 lua write-refusal-json jref_zero_byte relax/hostile-rows-lua
 #
-# relax/rust-json-fixed-rows: the Rust JSON read of fixed-point and int128
-# text disagrees with the corpus on five json-hostile rows.
-rust json-hostile fixed-at-bound relax/rust-json-fixed-rows
-rust json-hostile fixed-exact-fraction relax/rust-json-fixed-rows
-rust json-hostile fixed-integral-token relax/rust-json-fixed-rows
-rust json-hostile fixed-fraction-too-fine relax/rust-json-fixed-rows
-rust json-hostile int128-fractional relax/rust-json-fixed-rows
-#
 # The go leg (the generated Go API driver): its cook writer still writes the
 # element defaults into dead counted slots (relax/cook-dead-slots-zero-ports),
 # its JSON walk reads a zero escape in a skipped value, and its text writer
