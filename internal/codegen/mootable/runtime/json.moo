@@ -335,7 +335,7 @@ end
 -- Q * 2^e, e >= EMIN (the subnormal floor). P is 24 or 53.
 ----------------------------------------------------------------------------
 
-local function roundBinary(A: Big, B: Big, t: number, P: number, EMIN: number): (number, number, number)
+local function roundBinary(A: Big, B: Big, t: number, P: number, EMIN: number, sticky: boolean?): (number, number, number)
 	local e = t + bnBitLen(A) - bnBitLen(B) - P
 	if e < EMIN then
 		e = EMIN
@@ -358,9 +358,12 @@ local function roundBinary(A: Big, B: Big, t: number, P: number, EMIN: number): 
 		ql = ql // 2 + (qh % 2) * HALFBASE
 		qh = qh // 2
 		e += 1
-		up = odd == 1 and (#R > 0 or ql % 2 == 1)
+		up = odd == 1 and (#R > 0 or ql % 2 == 1 or sticky == true)
 	else
 		local c = bnCmp(bnShl(R, 1), D)
+		if c == 0 and sticky == true then
+			c = 1 -- a non-zero digit past the kept ones breaks the exact tie upward
+		end
 		up = c > 0 or (c == 0 and ql % 2 == 1)
 	end
 	if up then
@@ -416,6 +419,16 @@ local function float64Bits(qh: number, ql: number, e: number): (number, number)
 	return biased * 1048576 + qh // 256, (qh % 256) * BASE + ql
 end
 
+-- DECIMAL_KEEP: the significant digits a float conversion needs. Every
+-- binary32/binary64 rounding boundary has a finite decimal expansion of at
+-- most 768 significant digits (the finest half ulp is 2^-1075, and 5^1075 has
+-- 752 digits), so 1024 keeps the truncated value on the same decimal grid as
+-- every boundary: a boundary the kept digits do not spell is at least one
+-- kept digit away, and the dropped run can only break an exact tie, which the
+-- sticky bit records. The scan is linear in the token and the conversion's
+-- cost is constant (§16.12: a number token has no length limit in the verdict).
+local DECIMAL_KEEP = 1024
+
 -- decimalBinary(digits, q, fmt): the value digits * 10^q (digits a nonempty
 -- run with no leading zero) rounded once to the format: 0 and nothing for a
 -- zero, 2 for an infinity, or 1 and (qh, ql, e).
@@ -427,6 +440,12 @@ local function decimalBinary(digits: string, q: number, fmt: Format): (number, n
 	if nd + q <= fmt.zero then
 		return 0, 0, 0, 0
 	end
+	local sticky = false
+	if nd > DECIMAL_KEEP then
+		digits = string.sub(digits, 1, DECIMAL_KEEP)
+		q += nd - DECIMAL_KEEP
+		sticky = true -- the digits carry no trailing zero, so the dropped run is nonzero
+	end
 	local A = bnFromDigits(digits)
 	local B: Big = { 1 }
 	if q >= 0 then
@@ -434,7 +453,7 @@ local function decimalBinary(digits: string, q: number, fmt: Format): (number, n
 	else
 		bnMulPow5(B, -q)
 	end
-	local qh, ql, e = roundBinary(A, B, q, fmt.P, fmt.EMIN)
+	local qh, ql, e = roundBinary(A, B, q, fmt.P, fmt.EMIN, sticky)
 	return 1, qh, ql, e
 end
 
@@ -958,6 +977,13 @@ local function parseWide(token: string, signed: boolean, frac: number): (boolean
 		return true, false, hi, true
 	end
 	if point < -DECIMAL_BAND then
+		return false, false, {}, false
+	end
+	-- A significant digit below the point is a fraction: 10^-q must divide the
+	-- digits times 2^frac, and the digits carry no trailing zero, so more than
+	-- frac of them cannot (§16.2). The verdict is known without the digits, so
+	-- a token's length never drives the conversion's cost.
+	if q < 0 and -q > frac then
 		return false, false, {}, false
 	end
 	local raw = bnShl(bnFromDigits(digits), frac)
