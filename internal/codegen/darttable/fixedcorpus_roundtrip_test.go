@@ -7,10 +7,11 @@ package darttable
 // §3.1: the write is a template and a store, and the cell stores what the
 // record held; docs/SPEC-TABLES.md §3: no float is canonicalised).
 //
-// FIVE FILES ARE NOT IDENTITY ROWS, AND EACH SAYS WHY BY CITATION. Their bytes
+// SOME FILES ARE NOT IDENTITY ROWS, AND EACH SAYS WHY BY CITATION. Their bytes
 // hold a value the reader's own declaration does not, so the standard asks the
 // read to CLAMP it, or the file was written by an OLDER writer whose layout the
-// rewrite (always in the reader's own layout) does not restore. For those the
+// rewrite (always in the reader's own layout) does not restore, or the record
+// holds a compressed float's -0, which lands and is written as +0. For those the
 // test asserts the bytes the standard says the rewrite is — derived from the
 // reference's own files and the manifest, never from this leg's output — and
 // the counters the read must make. Nothing is skipped: every manifest row is a
@@ -99,6 +100,16 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 				t.Fatalf("past_cfloat_range_widen.bin: the forged aim %#08x is not past the reader's max %v", forged, f.FMax)
 			}
 			return fixedCorpusNewWithAim(t, corpus, data, at, math.Float32bits(float32(f.FMax)))
+		},
+	},
+	// The reference writer's record with a compressed float's -0 (the sign
+	// bit alone) in `value`: it lands as +0, uncounted, and the rewrite
+	// writes +0, so the bytes are the file's with that cell all zero.
+	fixedvector.NegativeZeroFile: {
+		reader: "FNZ", refuses: false,
+		cite: "docs/SPEC-TABLES.md §3.3 (a compressed float's -0 is +0: it lands as the value 0 and is written as +0)",
+		expect: func(t *testing.T, corpus string, data []byte) []byte {
+			return fixedCorpusZeroedCell(t, "FNZ", data, "value")
 		},
 	},
 }
@@ -271,6 +282,24 @@ func fixedCorpusManifestRaw(t *testing.T, corpus, file, key string) int64 {
 	}
 	t.Fatalf("the manifest carries no row for %s", file)
 	return 0
+}
+
+// fixedCorpusZeroedCell answers a one-record file's bytes with the named root
+// field's cell all zero: what the rule's +0 writes there.
+func fixedCorpusZeroedCell(t *testing.T, base string, data []byte, name string) []byte {
+	t.Helper()
+	st := versionRoot(t, versionSchema(t, base))
+	off := int64(len(data)) - fixedTypeBytes(st)
+	for _, g := range st.Fields {
+		if g.Name == name {
+			out := slices.Clone(data)
+			clear(out[off : off+fixedStorageBytes(g.Type)])
+			return out
+		}
+		off += fixedFieldBytes(g)
+	}
+	t.Fatalf("%s's root declares no %s", base, name)
+	return nil
 }
 
 // fixedCorpusClampedCell is the reference's one-record file with one fixed
