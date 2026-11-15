@@ -25,6 +25,16 @@ public final class TableRetain {
     // every retaining load.
     final java.util.IdentityHashMap<Object, Integer> nodeKeys = new java.util.IdentityHashMap<>();
 
+    // §4's ONE NESTING BOUND, which the resolving walk shares (§6.6): the root
+    // body is depth 0, a framed table, array or keyed body is one level deeper,
+    // and a union adds a level when its arm is structural. 128 levels pass and
+    // 129 refuse.
+    static final int WALK_DEPTH = 128;
+
+    static boolean structural(int kind) {
+        return kind == 13 || kind == 14 || kind == 15 || kind == 16;
+    }
+
     // §6.6: an accepted replacement discards the old body's retained tail,
     // including descendants, without moving either cumulative report counter.
     void discardField(int[] path, int depth, int field) {
@@ -337,7 +347,7 @@ public final class TableRetain {
     }
 
     static boolean resolvePayload(Resolver r, int kind, byte[] out, int[] o, int depth) {
-        if (depth > 64 || r.bad) {
+        if (depth > WALK_DEPTH || r.bad) {
             r.bad = true;
             return false;
         }
@@ -381,6 +391,9 @@ public final class TableRetain {
                         return false;
                     }
                     out8(out, o, armKind);
+                    if (structural(armKind)) {
+                        depth++;
+                    }
                     return resolveFramed(r, armKind, out, o, depth);
                 }
             case 13:
@@ -415,7 +428,10 @@ public final class TableRetain {
         out64(out, o, 0L);
         Resolver sub = new Resolver(r.buf, r.ids, r.off, r.off + (int) n);
         r.off += (int) n;
-        if (!resolveContent(sub, kind, out, o, depth + 1)) {
+        if (kind == 13 || kind == 14 || kind == 16) {
+            depth++;
+        }
+        if (!resolveContent(sub, kind, out, o, depth)) {
             return false;
         }
         if (sub.off != sub.limit || sub.bad) {
@@ -427,7 +443,7 @@ public final class TableRetain {
     }
 
     static boolean resolveContent(Resolver c, int kind, byte[] out, int[] o, int depth) {
-        if (depth > 64 || c.bad) {
+        if (depth > WALK_DEPTH || c.bad) {
             c.bad = true;
             return false;
         }
