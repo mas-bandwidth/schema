@@ -1456,6 +1456,10 @@ C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx
 	build/tables-generated-c-fixed/v1/V1Table.c build/tables-generated-c-fixed/v2/V2Table.c \
 	build/tables-generated-c-fixed/ut1/UT1Table.c build/tables-generated-c-fixed/ut2/UT2Table.c \
 	build/tables-generated-c-fixed/fu1/FU1Table.c build/tables-generated-c-fixed/fu2/FU2Table.c
+# THE GENERATED SOURCES ARE THE STAMP'S OUTPUT: an empty rule ties each to it,
+# so a fresh tree never asks for a rule to make them (CI 43720354440)
+$(filter build/tables-generated-c-fixed/%,$(C_FIXEDFORM_SOURCES)): build/tables-generated-c-fixed/.stamp ;
+
 C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
 	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 \
 	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 \
