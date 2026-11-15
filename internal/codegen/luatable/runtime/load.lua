@@ -282,6 +282,19 @@ local function width_of(kind)
   return 0
 end
 
+-- THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+-- 14) opens with 1–13, 15, 17 or 18–30, and an enum-keyed body (kind 16) with
+-- 1–11, 13 or 18–30. Any other element kind is damage under any count, a count
+-- of 0 included, in a declared field and in an unknown one alike. The header's
+-- element kind byte is judged before any comparison with the reader's own.
+local function array_elem_kind_allowed(kind)
+  return (kind >= 1 and kind <= 13) or kind == 15 or kind == 17 or (kind >= 18 and kind <= 30)
+end
+
+local function keyed_elem_kind_allowed(kind)
+  return (kind >= 1 and kind <= 11) or kind == 13 or (kind >= 18 and kind <= 30)
+end
+
 -- skipping a field the reader cannot name (§3): fixed widths first, then
 -- references, then lengths, and a unknown kind is damage (not skippable).
 local function skip(r, kind)
@@ -1033,6 +1046,15 @@ end
 -- the elements of an array body, read from the reader sub, bounded to the body
 array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
   local report = ctx.report
+
+  -- THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+  -- with the field's declaration (docs/SPEC-TABLES.md §3, §4).
+  local allowed = array_elem_kind_allowed
+  if fd.keyed ~= nil then allowed = keyed_elem_kind_allowed end
+  if not allowed(ek) then
+    report.damaged = true
+    return nil, false
+  end
 
   if fd.shape == "bytes" then
     local expected = 6
@@ -2328,6 +2350,9 @@ end
 local function wc_array(c, b, at, lim)
   local ek, count, off = wc_header(c, b, at, lim)
   if ek == nil then return nil end
+  -- THE ELEMENT KIND IS CLOSED, judged under any count, a count of 0 included
+  -- (docs/SPEC-TABLES.md §3, §4).
+  if not array_elem_kind_allowed(ek) then return wc_fail(c, "wire_damaged") end
   for _ = 1, count do
     off = wc_payload(c, b, off, lim, ek)
     if off == nil then return nil end
@@ -2339,6 +2364,9 @@ end
 local function wc_keyed(c, b, at, lim)
   local ek, count, off = wc_header(c, b, at, lim)
   if ek == nil then return nil end
+  -- THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+  -- count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+  if not keyed_elem_kind_allowed(ek) then return wc_fail(c, "wire_damaged") end
   local seen = wc_set(c.slots, c.depth)
   for _ = 1, count do
     local key, nx = wc_leb(b, off, lim)
