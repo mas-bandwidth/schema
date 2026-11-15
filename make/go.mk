@@ -1328,7 +1328,7 @@ GO_DISCARD_NC := build/go-discard-nc
 .PHONY: tables-go-discard-negative-control
 tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
-	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {/if false {/' \
+	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || rest == 0 {/if false {/' \
 		-e 's/n := rest \/ recordBytes/_ = rest; n := int64(1); for len(at) < int(recordBytes) { at = append(at, 0) }/' \
 		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
 	@grep -q 'if false {' $(GO_DISCARD_NC)/fixedform.go.txt && grep -q '_ = rest; n := int64(1)' $(GO_DISCARD_NC)/fixedform.go.txt || \
