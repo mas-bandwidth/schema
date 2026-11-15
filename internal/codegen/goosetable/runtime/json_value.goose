@@ -1103,6 +1103,7 @@ struct JvIn {
     labels: JsonLabel[>..]&,
     scratch: i64[>..<]&,
     graph: bool, // the root is variable: `&node` is the form's own construct
+    keys: JsonKeyEntry[>..]&, // the object key sets' pool, owned by the read
 }
 
 fn jr_reserve(c: JvIn&, n: i64) -> i64 {
@@ -1318,6 +1319,7 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
     if depth > JsonMaxDepth { return json_fail(c.jr); }
     let closing: u8 = if ch == '{' { '}' } else { ']' };
     c.jr.pos += 1;
+    var keys: JsonKeys = JsonKeys { .. };
     var first = true;
     loop {
         let d = json_peek(c.jr);
@@ -1331,6 +1333,8 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
             var key: u8[256] = [0; 256];
             let n, ok = jr_key(c, key);
             if !ok { return false; }
+            // A SKIPPED OBJECT'S KEYS ARE HELD TO THE RULE TOO (§16.2, §16.12).
+            if json_keys_seen(keys, c.jr.keys, key[..n]) { return json_fail(c.jr); }
             if n > 0 && key[0] == '&' && c.graph {
                 // a definition in a dropped value keeps its label, with no node
                 if !first || key[..n] != "&node" { return json_fail(c.jr); }
@@ -1389,6 +1393,7 @@ fn jr_required(c: JvIn&, tab: i64, rec: i64, seen: const u64[8]&) -> bool {
 // (`first`, when has_first), its colon consumed.
 recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:], has_first: bool) -> bool {
     var seen: u64[8] = [0; 8];
+    var keys: JsonKeys = JsonKeys { .. };
     var pending = has_first;
     loop {
         var key: u8[256] = [0; 256];
@@ -1423,6 +1428,7 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
             }
         }
         if index < 0 {
+            if json_keys_seen(keys, c.jr.keys, key[..n]) { c.jr.rep.repeated += 1; }
             c.jr.rep.unknown += 1;
             if !jr_skip(c, depth + 1) { return false; }
         } else {
@@ -1788,8 +1794,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
+    var unk: JsonKeys = JsonKeys { .. };
     var dup_unk = false;
     loop {
         let ch = json_peek(c.jr);
@@ -1815,21 +1820,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
-            var kh: u64 = 0xcbf29ce484222325;
-            var ki: i64 = 0;
-            while ki < n {
-                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
-                ki += 1;
-            }
-            var ui: i64 = 0;
-            while ui < seen_unk_n {
-                if seen_unk[ui] == kh { dup_unk = true; }
-                ui += 1;
-            }
-            if seen_unk_n < 64 {
-                seen_unk[seen_unk_n] = kh;
-                seen_unk_n += 1;
-            }
+            if json_keys_seen(unk, c.jr.keys, key[..n]) { dup_unk = true; }
             c.jr.rep.unknown += 1;
             if !jr_skip(c, depth + 1) { return false; }
         } else if json_shape(c.jr) != shape {
@@ -1859,7 +1850,7 @@ fn jr_map_key(c: JvIn&, ks: i64, kd: FieldDesc, off: i64) -> i64 {
         return 0;
     }
     let tok = c.data[off..];
-    var probe = json_in(tok);
+    var probe = json_in(tok, c.jr.keys);
     json_space(probe);
     if probe.pos != 0 { return 2; }
     let whole, ok = json_walk_number(probe);
@@ -2195,10 +2186,11 @@ fn json_load_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], text:
         report.damaged = true;
         return -1;
     }
-    var jr = json_in(text);
+    var keys: JsonKeyEntry[>..] = [];
+    var jr = json_in(text, keys);
     var labels: JsonLabel[>..] = [];
     var scratch: i64[>..<] = [];
-    var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable };
+    var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable, keys: keys };
     let rec = jr_new_record(c, t);
     let ok = jr_table(c, t, rec, 0);
     if !json_finish(jr, ok, report) { return -1; }

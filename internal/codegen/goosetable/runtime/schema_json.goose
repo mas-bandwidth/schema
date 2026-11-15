@@ -505,6 +505,78 @@ fn json_report() -> JsonReport {
     return JsonReport { unknown: 0, mismatch: 0, widened: 0, oor: 0, repeated: 0, damaged: false, reason: 0, oor_name: [0; 256], oor_len: 0 };
 }
 
+// JsonKeys is ONE OBJECT's decoded keys: a hash set whose collisions are
+// resolved by comparing the decoded bytes, never treated as a repeat
+// (docs/SPEC-TABLES.md §16.2, §16.12). One is built per object walked or
+// skipped, so the same key in sibling objects stays lawful; its storage is
+// the object's own keys, in the caller's pool, never the whole text.
+struct JsonKeyEntry {
+    hash: u64,
+    len: i64,
+    key: u8[256],
+}
+
+struct JsonKeys {
+    base: i64,
+    slots: i64,
+    used: i64,
+}
+
+fn json_key_hash(key: const u8[:]) -> u64 {
+    var h: u64 = 0xcbf29ce484222325;
+    for b in key { h = (h ^ (b as u64)) * 0x100000001b3; }
+    return h;
+}
+
+fn json_keys_grow(k: JsonKeys&, pool: JsonKeyEntry[>..]&) {
+    let cap = if k.slots == 0 { 16 } else { k.slots * 2 };
+    let old = k.slots;
+    let base = pool.len;
+    var i: i64 = 0;
+    while i < cap {
+        pool.push(JsonKeyEntry { hash: 0, len: -1, key: [0; 256] });
+        i += 1;
+    }
+    i = 0;
+    while i < old {
+        let e = pool[k.base + i];
+        if e.len >= 0 {
+            var j = (e.hash % (cap as u64)) as! i64;
+            while pool[base + j].len >= 0 { j = (j + 1) % cap; }
+            pool[base + j] = e;
+        }
+        i += 1;
+    }
+    k.base = base;
+    k.slots = cap;
+}
+
+// json_keys_seen records key and answers whether this object already held it.
+fn json_keys_seen(k: JsonKeys&, pool: JsonKeyEntry[>..]&, key: const u8[:]) -> bool {
+    if k.slots == 0 || (k.used + 1) * 4 >= k.slots * 3 { json_keys_grow(k, pool); }
+    let hash = json_key_hash(key);
+    var i = (hash % (k.slots as u64)) as! i64;
+    loop {
+        let at = k.base + i;
+        if pool[at].len < 0 {
+            pool[at].hash = hash;
+            pool[at].len = key.len as i64;
+            var b: i64 = 0;
+            for c in key {
+                pool[at].key[b] = c;
+                b += 1;
+            }
+            k.used += 1;
+            return false;
+        }
+        if pool[at].hash == hash && pool[at].len == key.len as i64 &&
+           pool[at].key[..pool[at].len] == key {
+            return true;
+        }
+        i = (i + 1) % k.slots;
+    }
+}
+
 // json_oor names the field a clamp oor, `<table>.<field>`, in the
 // report's oor-field slot: the first clamp named wins (§6.5), and a name
 // past the slot keeps its first 256 bytes.
@@ -534,10 +606,11 @@ struct JsonIn {
     bad: bool,
     zero: bool,
     rep: JsonReport,
+    keys: JsonKeyEntry[>..]&,
 }
 
-fn json_in(text: const u8[:]) -> JsonIn {
-    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report() };
+fn json_in(text: const u8[:], keys: JsonKeyEntry[>..]&) -> JsonIn {
+    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), keys: keys };
     // a leading UTF-8 byte-order mark is skipped, there and nowhere else
     // (docs/SPEC-TABLES.md §16.2, §16.12)
     if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF { jr.pos = 3; }
@@ -865,6 +938,7 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
         if depth > JsonMaxDepth { return json_fail(jr); }
         let closing: u8 = if c == '{' { '}' } else { ']' };
         jr.pos += 1;
+        var keys: JsonKeys = JsonKeys { .. };
         loop {
             let d = json_peek(jr);
             if d == closing {
@@ -873,7 +947,11 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
             }
             if d == 0 { return json_fail(jr); }
             if closing == '}' {
-                if !json_skip_string(jr) { return false; }
+                var key: u8[256] = [0; 256];
+                let n, ok = json_key(jr, key);
+                if !ok { return false; }
+                // A SKIPPED OBJECT'S KEYS ARE HELD TO THE RULE TOO (§16.2, §16.12).
+                if json_keys_seen(keys, jr.keys, key[..n]) { return json_fail(jr); }
                 if !json_expect(jr, ':') { return false; }
             }
             if !json_skip_value(jr, depth + 1) { return false; }
@@ -1345,8 +1423,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
+    var unk: JsonKeys = JsonKeys { .. };
     var dup_unk = false;
     loop {
         let c = json_peek(jr);
@@ -1374,21 +1451,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
-            var kh: u64 = 0xcbf29ce484222325;
-            var ki: i64 = 0;
-            while ki < n {
-                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
-                ki += 1;
-            }
-            var ui: i64 = 0;
-            while ui < seen_unk_n {
-                if seen_unk[ui] == kh { dup_unk = true; }
-                ui += 1;
-            }
-            if seen_unk_n < 64 {
-                seen_unk[seen_unk_n] = kh;
-                seen_unk_n += 1;
-            }
+            if json_keys_seen(unk, jr.keys, key[..n]) { dup_unk = true; }
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if json_shape(jr) != shape {
@@ -1476,6 +1539,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
     }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
+    var keys: JsonKeys = JsonKeys { .. };
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1501,6 +1565,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
             return json_fail(jr);
         }
         if index < 0 {
+            if json_keys_seen(keys, jr.keys, key[..n]) { jr.rep.repeated += 1; }
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else {
@@ -1836,7 +1901,8 @@ fn json_write_table<T, F>(out: u8[>..]&, rec: const T&, d: const TableDesc&, dep
 // §16.1): false (and report.damaged) when the text is not JSON or a value
 // is refused by name; the caller then puts the record back at its defaults.
 fn json_from<T, F>(rec: T&, d: const TableDesc&, shapes: const u8[:], text: const u8[:], report: JsonReport&) -> bool {
-    var jr = json_in(text);
+    var keys: JsonKeyEntry[>..] = [];
+    var jr = json_in(text, keys);
     let ok = json_read_table(jr, rec, d, shapes, 0, F);
     return json_finish(jr, ok, report);
 }
