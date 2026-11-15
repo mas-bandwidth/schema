@@ -11,10 +11,8 @@ name: schema-cs-runs-hostile-corpus
 # the gate has a blade rather than the corpus's content.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: "47 3 * * *"
   workflow_dispatch:

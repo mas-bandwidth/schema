@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -219,6 +220,69 @@ func strictGatePinned(analyze string) error {
 		return fmt.Errorf("the moo beside the analyzer %s reports %q, not the pinned %q", analyze, got, strictGateRelease)
 	}
 	return nil
+}
+
+// TestMooStrictGateResolvesThePinnedAnalyzer holds the moo row to the analyzer
+// .github/actions/moo installs. Every target in make/negative-controls.json's
+// moo group names MOO and MOO_ANALYZE under MOO_DIST, which is where the action
+// puts the pin, so a runner environment that names another moo cannot select
+// it. The row runs its controls in one make invocation, and moo.mk exports
+// both variables to the tests that resolve them.
+func TestMooStrictGateResolvesThePinnedAnalyzer(t *testing.T) {
+	t.Parallel()
+	var plan struct {
+		Groups []struct {
+			Name    string   `json:"name"`
+			Targets []string `json:"targets"`
+		} `json:"groups"`
+	}
+	body, err := os.ReadFile(repo("make", "negative-controls.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(body, &plan); err != nil {
+		t.Fatal(err)
+	}
+	var targets []string
+	for _, g := range plan.Groups {
+		if g.Name == "moo" {
+			targets = g.Targets
+			break
+		}
+	}
+	if len(targets) == 0 {
+		t.Fatal("make/negative-controls.json names no moo group: the row this test holds has no targets")
+	}
+	mk, err := os.ReadFile(repo("make", "schema-moo-generated-analyze-strict-gate.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		for _, want := range []string{
+			target + ": MOO := $(MOO_DIST)/moo\n",
+			target + ": MOO_ANALYZE := $(MOO_DIST)/moo-analyze\n",
+		} {
+			if !strings.Contains(string(mk), want) {
+				t.Errorf("make/schema-moo-generated-analyze-strict-gate.mk does not carry %q, so %s can resolve a moo the runner's environment names", want, target)
+			}
+		}
+	}
+	// The assignments name the same place moo.mk's defaults look, which is
+	// where the action puts the pin it checks.
+	moo, err := os.ReadFile(repo("make", "moo.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"MOO_DIST        := $(CURDIR)/dist/moo\n",
+		"MOO            ?= $(MOO_DIST)/moo\n",
+		"MOO_ANALYZE    ?= $(MOO_DIST)/moo-analyze\n",
+		"export MOO MOO_ANALYZE\n",
+	} {
+		if !strings.Contains(string(moo), want) {
+			t.Errorf("make/moo.mk does not carry %q", want)
+		}
+	}
 }
 
 // strictGateAnalyze runs ONE analyzer process over files (paths relative to

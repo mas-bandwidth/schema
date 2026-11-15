@@ -36,12 +36,11 @@ name: Nightly conformance
 # guard every job carries (ci-fast.yml, "ONLY THE TABLE PUSHES").
 
 on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '41 5 * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/nightly-conformance.yml
 
 concurrency:
   group: nightly-conformance-${{ github.ref }}

@@ -249,6 +249,30 @@ func docJSON(t testing.TB, v *Document) map[string]any {
 	return decode(t, b)
 }
 
+// integerDigits is the §16.2 integer token: optional minus, digits, no
+// leading zero, and not -0. A wide integer is written as that token inside
+// a JSON string.
+func integerDigits(s string) bool {
+	i := 0
+	neg := false
+	if i < len(s) && s[i] == '-' {
+		neg = true
+		i++
+	}
+	if i >= len(s) {
+		return false
+	}
+	if s[i] == '0' {
+		return !neg && i+1 == len(s)
+	}
+	for ; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // normal makes numbers comparable exactly (a rational's string) and every
 // instant comparable as UTC.
 func normal(v any, key string) any {
@@ -272,6 +296,11 @@ func normal(v any, key string) any {
 		}
 		return "num:" + r.RatString()
 	case string:
+		// A wide integer's JSON spelling is a string of digits (§16.2). The
+		// value is still the integer, compared exactly, the same as a number.
+		if r, ok := new(big.Rat).SetString(x); ok && integerDigits(x) {
+			return "num:" + r.RatString()
+		}
 		if key == "time" {
 			if at, err := time.Parse(time.RFC3339Nano, x); err == nil {
 				return "time:" + at.UTC().Format(time.RFC3339Nano)

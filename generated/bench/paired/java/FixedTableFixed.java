@@ -21,6 +21,11 @@ public final class FixedTableFixed {
     public static final class Value {
         /** BenchMixed */
         public final BenchMixedFixed.Value value = new BenchMixedFixed.Value();
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            value.reset();
+        }
     }
 
     /**
@@ -52,16 +57,17 @@ public final class FixedTableFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
-        BenchMixedFixed.scatter(b, at + 0, v.value, r, live);
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
+        BenchMixedFixed.scatter(b, at + 0, v.value, r, live, checkDead);
     }
 
     /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */
@@ -419,11 +425,14 @@ public final class FixedTableFixed {
         // selected plan (§4.3), so this loop reads them and allocates nothing;
         // the list is empty when the plan is the identity plan.
         final int holeN = pre.count;
+        // Identity scatter sees the writer image; compiled scatter sees reader defaults.
+        // The per-call flag controls image checks; plans check source spans before landing.
         // STEP 11, TOTAL OVER THE BATCH (§5.3): pass 0 checks EVERY record — its
-        // hash first, then its counts, lengths, text, bool and present bytes —
-        // by landing it in a scratch value the caller never sees; only then does
-        // pass 1 land the records, values already known good. A refusal at
-        // record k leaves values[0..k-1] exactly as untouched as values[k].
+        // hash first, then its counts, lengths, text, bool and present bytes, and
+        // that every dead byte is zero — by landing it in a scratch value the
+        // caller never sees; only then does pass 1 land the records, values
+        // already known good. A refusal at record k leaves values[0..k-1] exactly
+        // as untouched as values[k].
         final Value scratch = loadScratch.get();
         final int widenedBefore = report.widened;
         for (int pass = 0; pass < 2; pass++) {
@@ -441,12 +450,12 @@ public final class FixedTableFixed {
                     System.arraycopy(defaults, off, image, off, hn);
                 }
                 TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
-                scatter(image, 0, pass == 0 ? scratch : values[k], report);
+                scatter(image, 0, pass == 0 ? scratch : values[k], report, true, fileHash == hash);
                 // DAMAGE DISCARDS THE WHOLE LOAD (§4)
                 if (report.refused || report.damaged) {
                     if (pass == 1) {
                         for (int j = 0; j <= k; j++) {
-                            scatter(defaults, 0, values[j], TableFixed.discard());
+                            scatter(defaults, 0, values[j], TableFixed.discard(), true, false);
                         }
                     }
                     report.widened = widenedBefore;
