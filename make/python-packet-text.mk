@@ -16,12 +16,17 @@ python-packet-text-negative-control: python-toolchain-check deps-go
 # packet-utf8-python: the shared packet-text sweep (test/packet-text/README.md)
 # against the C++ oracle: the 33 corpus rows and every bit flip of every
 # accepted row, through test/packet-text/python/main.py on the current pin.
+# The C++ oracle compiles against the pinned serialize.h beside the checkout,
+# so serialize-siblings stages it where no sibling is present; the order-only
+# line holds the oracle build behind it under make -j.
+build/packet-text/cpp/driver: | serialize-siblings
+
 build/packet-text/python/.stamp: build/schema-python test/packet-text/Narrow.schema
 	@rm -rf build/packet-text/python && mkdir -p build/packet-text/python
 	./build/schema-python generate --lang python --out build/packet-text/python/generated test/packet-text/Narrow.schema
 	@touch $@
 
-packet-utf8-python: python-toolchain-check build/packet-text/python/.stamp build/packet-text/cpp/driver build/packet-text/harness
+packet-utf8-python: python-toolchain-check serialize-siblings build/packet-text/python/.stamp build/packet-text/cpp/driver build/packet-text/harness
 	./build/packet-text/harness $(PYTHON) -W error -I -B test/packet-text/python/main.py $(CURDIR)/build/packet-text/python/generated
 
 # The sweep's control: the strict UTF-8 decode in a copy of the generated
