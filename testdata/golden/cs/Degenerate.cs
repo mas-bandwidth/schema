@@ -144,6 +144,15 @@ namespace Example
 
         public static bool ReadVec2(ReadStream stream, ref Vec2 value)
         {
+            if (!ReadVec2Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadVec2Body(ReadStream stream, ref Vec2 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadVec2Batch(ref batch, ref value);
             batch.End();
@@ -202,6 +211,15 @@ namespace Example
 
         public static bool ReadSpanF64(ReadStream stream, ref SpanF64 value)
         {
+            if (!ReadSpanF64Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanF64Body(ReadStream stream, ref SpanF64 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadSpanF64Batch(ref batch, ref value);
             batch.End();
@@ -258,6 +276,15 @@ namespace Example
         }
 
         public static bool ReadSpanU64(ReadStream stream, ref SpanU64 value)
+        {
+            if (!ReadSpanU64Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanU64Body(ReadStream stream, ref SpanU64 value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadSpanU64Batch(ref batch, ref value);
@@ -319,6 +346,15 @@ namespace Example
 
         public static bool ReadSpanI64(ReadStream stream, ref SpanI64 value)
         {
+            if (!ReadSpanI64Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanI64Body(ReadStream stream, ref SpanI64 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadSpanI64Batch(ref batch, ref value);
             batch.End();
@@ -367,6 +403,15 @@ namespace Example
         }
 
         public static bool ReadSpanOne(ReadStream stream, ref SpanOne value)
+        {
+            if (!ReadSpanOneBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanOneBody(ReadStream stream, ref SpanOne value)
         {
             for (int i = 0; i < 1; i++)
             {
@@ -417,6 +462,15 @@ namespace Example
         }
 
         public static bool ReadSpanChunk(ReadStream stream, ref SpanChunk value)
+        {
+            if (!ReadSpanChunkBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanChunkBody(ReadStream stream, ref SpanChunk value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadSpanChunkBatch(ref batch, ref value);
@@ -483,6 +537,15 @@ namespace Example
         }
 
         public static bool ReadSpanTail(ReadStream stream, ref SpanTail value)
+        {
+            if (!ReadSpanTailBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanTailBody(ReadStream stream, ref SpanTail value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadSpanTailBatch(ref batch, ref value);
@@ -552,6 +615,15 @@ namespace Example
         }
 
         public static bool ReadSpanTwice(ReadStream stream, ref SpanTwice value)
+        {
+            if (!ReadSpanTwiceBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSpanTwiceBody(ReadStream stream, ref SpanTwice value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadSpanTwiceBatch(ref batch, ref value);
@@ -623,6 +695,15 @@ namespace Example
 
         public static bool ReadTrio(ReadStream stream, ref Trio value)
         {
+            if (!ReadTrioBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTrioBody(ReadStream stream, ref Trio value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTrioBatch(ref batch, ref value);
             batch.End();
@@ -686,6 +767,15 @@ namespace Example
 
         public static bool ReadTrioSole(ReadStream stream, ref TrioSole value)
         {
+            if (!ReadTrioSoleBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTrioSoleBody(ReadStream stream, ref TrioSole value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTrioSoleBatch(ref batch, ref value);
             batch.End();
@@ -736,6 +826,15 @@ namespace Example
         }
 
         public static bool ReadVec3Sole(ReadStream stream, ref Vec3Sole value)
+        {
+            if (!ReadVec3SoleBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadVec3SoleBody(ReadStream stream, ref Vec3Sole value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadVec3SoleBatch(ref batch, ref value);
@@ -792,6 +891,15 @@ namespace Example
         }
 
         public static bool ReadTrioFirst(ReadStream stream, ref TrioFirst value)
+        {
+            if (!ReadTrioFirstBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTrioFirstBody(ReadStream stream, ref TrioFirst value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTrioFirstBatch(ref batch, ref value);
@@ -877,6 +985,15 @@ namespace Example
         }
 
         public static bool ReadTrioStraddle(ReadStream stream, ref TrioStraddle value)
+        {
+            if (!ReadTrioStraddleBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTrioStraddleBody(ReadStream stream, ref TrioStraddle value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTrioStraddleBatch(ref batch, ref value);
