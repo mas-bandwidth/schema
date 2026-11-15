@@ -270,6 +270,10 @@ func stripOwedC(s string) string {
 	// DELETED rather than widened and the gate holds both legs to both rows.
 	s = reOwedKnownRange.ReplaceAllString(s, "")
 	s = stripFuncsWithPrefix(s, "inline void TableFixedClampKnownRanges")
+	// The native-order load exists only for that clamp, which reads a value
+	// back out of the reader's own storage; the C leg clamps each known range
+	// by value in emitted code and needs no such load. It goes with the clamp.
+	s = stripFuncsWithPrefix(s, "inline uint64_t TableFixedLoadNative")
 	return s
 }
 

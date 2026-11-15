@@ -887,9 +887,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 			min32 := float32(f.FMin)
-			delta := float32(f.FMax) - min32
+			max32 := float32(f.FMax)
+			delta := max32 - min32
 			// a temp so the wire quantization cannot write back into the input
 			g.sf("%s{\n%s    float compressedValue = %s;\n", ind, ind, name)
+			// SPEC §5.1 row 10: the packet writer holds the value to finite and
+			// inside [min, max] before quantizing. Write-side checks are caller
+			// error, so this one is a Debug.Assert like every other.
+			msg := fmt.Sprintf("%s out of range [%s, %s]", name,
+				formatFloat32(float64(min32)), formatFloat32(float64(max32)))
+			g.writeAssert(ind+"    ",
+				fmt.Sprintf("float.IsFinite(compressedValue) && compressedValue >= %s && compressedValue <= %s",
+					formatFloat32(float64(min32)), formatFloat32(float64(max32))), msg, "")
 			g.call(ind+"    ", fmt.Sprintf("%s.SerializeCompressedFloatPrecomputed(ref compressedValue, %du, %d, %s, %s)",
 				g.rv(), steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32))), "")
 			g.sf("%s}\n", ind)

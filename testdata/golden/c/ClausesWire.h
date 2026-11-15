@@ -46,7 +46,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w13( serialize_writ
 }
 
 /* Reads W13. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w13( serialize_read_stream_t * stream, EXAMPLE_W13 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_w13_body_( serialize_read_stream_t * stream, EXAMPLE_W13 * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 12 ) )
     {
@@ -69,6 +69,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w13( serialize_read_s
         }
     }
     return 1;
+}
+
+/* Reads W13 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w13( serialize_read_stream_t * stream, EXAMPLE_W13 * value )
+{
+    if ( !schema_example_read_w13_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes W17. */
@@ -94,7 +104,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w17( serialize_writ
 }
 
 /* Reads W17. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w17( serialize_read_stream_t * stream, EXAMPLE_W17 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_w17_body_( serialize_read_stream_t * stream, EXAMPLE_W17 * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 9 ) )
     {
@@ -117,6 +127,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w17( serialize_read_s
         }
     }
     return 1;
+}
+
+/* Reads W17 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w17( serialize_read_stream_t * stream, EXAMPLE_W17 * value )
+{
+    if ( !schema_example_read_w17_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes W26. */
@@ -142,7 +162,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w26( serialize_writ
 }
 
 /* Reads W26. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w26( serialize_read_stream_t * stream, EXAMPLE_W26 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_w26_body_( serialize_read_stream_t * stream, EXAMPLE_W26 * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 6 ) )
     {
@@ -165,6 +185,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w26( serialize_read_s
         }
     }
     return 1;
+}
+
+/* Reads W26 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w26( serialize_read_stream_t * stream, EXAMPLE_W26 * value )
+{
+    if ( !schema_example_read_w26_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes W1. */
@@ -190,7 +220,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w1( serialize_write
 }
 
 /* Reads W1. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w1( serialize_read_stream_t * stream, EXAMPLE_W1 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_w1_body_( serialize_read_stream_t * stream, EXAMPLE_W1 * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 20 ) )
     {
@@ -213,6 +243,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w1( serialize_read_st
         }
     }
     return 1;
+}
+
+/* Reads W1 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w1( serialize_read_stream_t * stream, EXAMPLE_W1 * value )
+{
+    if ( !schema_example_read_w1_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes W52. */
@@ -245,7 +285,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w52( serialize_writ
 }
 
 /* Reads W52. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w52( serialize_read_stream_t * stream, EXAMPLE_W52 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_w52_body_( serialize_read_stream_t * stream, EXAMPLE_W52 * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 3 ) )
     {
@@ -273,6 +313,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w52( serialize_read_s
         }
     }
     return 1;
+}
+
+/* Reads W52 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w52( serialize_read_stream_t * stream, EXAMPLE_W52 * value )
+{
+    if ( !schema_example_read_w52_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes W50. */
@@ -305,7 +355,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_w50( serialize_writ
 }
 
 /* Reads W50. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w50( serialize_read_stream_t * stream, EXAMPLE_W50 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_w50_body_( serialize_read_stream_t * stream, EXAMPLE_W50 * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 3 ) )
     {
@@ -335,6 +385,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w50( serialize_read_s
     return 1;
 }
 
+/* Reads W50 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_w50( serialize_read_stream_t * stream, EXAMPLE_W50 * value )
+{
+    if ( !schema_example_read_w50_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes F13. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_f13( serialize_write_stream_t * stream, const EXAMPLE_F13 * value )
 {
@@ -353,7 +413,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_f13( serialize_writ
 }
 
 /* Reads F13. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_f13( serialize_read_stream_t * stream, EXAMPLE_F13 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_f13_body_( serialize_read_stream_t * stream, EXAMPLE_F13 * value )
 {
     /* fixed 91-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 91 )
@@ -380,6 +440,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_f13( serialize_read_s
     return 1;
 }
 
+/* Reads F13 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_f13( serialize_read_stream_t * stream, EXAMPLE_F13 * value )
+{
+    if ( !schema_example_read_f13_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes Tri3. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_tri3( serialize_write_stream_t * stream, const example_tri3_t * value )
 {
@@ -395,7 +465,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_tri3( serialize_wri
 }
 
 /* Reads Tri3. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_tri3( serialize_read_stream_t * stream, example_tri3_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_tri3_body_( serialize_read_stream_t * stream, example_tri3_t * value )
 {
     /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 3 )
@@ -422,6 +492,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_tri3( serialize_read_
     return 1;
 }
 
+/* Reads Tri3 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_tri3( serialize_read_stream_t * stream, example_tri3_t * value )
+{
+    if ( !schema_example_read_tri3_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArrTri3. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_tri3( serialize_write_stream_t * stream, const example_arr_tri3_t * value )
 {
@@ -444,7 +524,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_tri3( serialize
 }
 
 /* Reads ArrTri3. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_tri3( serialize_read_stream_t * stream, example_arr_tri3_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arr_tri3_body_( serialize_read_stream_t * stream, example_arr_tri3_t * value )
 {
     if ( !serialize_read_int( stream, &value->items_count, 0, 10 ) )
     {
@@ -454,13 +534,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_tri3( serialize_r
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( !example_read_tri3( stream, &value->items[i] ) )
+            if ( !schema_example_read_tri3_body_( stream, &value->items[i] ) )
             {
                 return 0;
             }
         }
     }
     return 1;
+}
+
+/* Reads ArrTri3 as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_tri3( serialize_read_stream_t * stream, example_arr_tri3_t * value )
+{
+    if ( !schema_example_read_arr_tri3_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes Eleven. */
@@ -478,7 +568,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_eleven( serialize_w
 }
 
 /* Reads Eleven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_eleven( serialize_read_stream_t * stream, example_eleven_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_eleven_body_( serialize_read_stream_t * stream, example_eleven_t * value )
 {
     /* fixed 11-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 11 )
@@ -505,6 +595,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_eleven( serialize_rea
     return 1;
 }
 
+/* Reads Eleven as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_eleven( serialize_read_stream_t * stream, example_eleven_t * value )
+{
+    if ( !schema_example_read_eleven_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArrEleven. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_eleven( serialize_write_stream_t * stream, const example_arr_eleven_t * value )
 {
@@ -522,7 +622,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_eleven( seriali
 }
 
 /* Reads ArrEleven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_eleven( serialize_read_stream_t * stream, example_arr_eleven_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arr_eleven_body_( serialize_read_stream_t * stream, example_arr_eleven_t * value )
 {
     /* fixed 99-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 99 )
@@ -534,13 +634,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_eleven( serialize
         int32_t i;
         for ( i = 0; i < 9; i++ )
         {
-            if ( !example_read_eleven( stream, &value->items[i] ) )
+            if ( !schema_example_read_eleven_body_( stream, &value->items[i] ) )
             {
                 return 0;
             }
         }
     }
     return 1;
+}
+
+/* Reads ArrEleven as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_eleven( serialize_read_stream_t * stream, example_arr_eleven_t * value )
+{
+    if ( !schema_example_read_arr_eleven_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes EmptyA. */
@@ -552,11 +662,21 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_empty_a( serialize_
 }
 
 /* Reads EmptyA. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_a( serialize_read_stream_t * stream, example_empty_a_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_empty_a_body_( serialize_read_stream_t * stream, example_empty_a_t * value )
 {
     (void) stream;
     (void) value;
     return 1;
+}
+
+/* Reads EmptyA as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_a( serialize_read_stream_t * stream, example_empty_a_t * value )
+{
+    if ( !schema_example_read_empty_a_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes EmptyB. */
@@ -568,11 +688,21 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_empty_b( serialize_
 }
 
 /* Reads EmptyB. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_b( serialize_read_stream_t * stream, example_empty_b_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_empty_b_body_( serialize_read_stream_t * stream, example_empty_b_t * value )
 {
     (void) stream;
     (void) value;
     return 1;
+}
+
+/* Reads EmptyB as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_b( serialize_read_stream_t * stream, example_empty_b_t * value )
+{
+    if ( !schema_example_read_empty_b_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes EmptyUnion. */
@@ -595,7 +725,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_empty_union( serial
 }
 
 /* Reads EmptyUnion. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_union( serialize_read_stream_t * stream, example_empty_union_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_empty_union_body_( serialize_read_stream_t * stream, example_empty_union_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -613,13 +743,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_union( serializ
     {
         case 1:
             memset( &value->as.a, 0, sizeof( value->as.a ) );
-            return example_read_empty_a( stream, &value->as.a );
+            return schema_example_read_empty_a_body_( stream, &value->as.a );
         case 2:
             memset( &value->as.b, 0, sizeof( value->as.b ) );
-            return example_read_empty_b( stream, &value->as.b );
+            return schema_example_read_empty_b_body_( stream, &value->as.b );
         default:
             return 1; /* None */
     }
+}
+
+/* Reads EmptyUnion as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_union( serialize_read_stream_t * stream, example_empty_union_t * value )
+{
+    if ( !schema_example_read_empty_union_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes HoldsEmptyUnion. */
@@ -641,7 +781,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_holds_empty_union( 
 }
 
 /* Reads HoldsEmptyUnion. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_empty_union( serialize_read_stream_t * stream, example_holds_empty_union_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_holds_empty_union_body_( serialize_read_stream_t * stream, example_holds_empty_union_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -651,7 +791,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_empty_union( se
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !example_read_empty_union( stream, &value->u ) )
+    if ( !schema_example_read_empty_union_body_( stream, &value->u ) )
     {
         return 0;
     }
@@ -664,6 +804,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_empty_union( se
         value->tail = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads HoldsEmptyUnion as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_empty_union( serialize_read_stream_t * stream, example_holds_empty_union_t * value )
+{
+    if ( !schema_example_read_holds_empty_union_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes Strs. */
@@ -705,7 +855,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_strs( serialize_wri
 }
 
 /* Reads Strs. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_strs( serialize_read_stream_t * stream, example_strs_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_strs_body_( serialize_read_stream_t * stream, example_strs_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -751,6 +901,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_strs( serialize_read_
     return 1;
 }
 
+/* Reads Strs as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_strs( serialize_read_stream_t * stream, example_strs_t * value )
+{
+    if ( !schema_example_read_strs_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArrNested. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_nested( serialize_write_stream_t * stream, const example_arr_nested_t * value )
 {
@@ -781,7 +941,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_nested( seriali
 }
 
 /* Reads ArrNested. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_nested( serialize_read_stream_t * stream, example_arr_nested_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arr_nested_body_( serialize_read_stream_t * stream, example_arr_nested_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -799,7 +959,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_nested( serialize
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( !example_read_eleven( stream, &value->items[i] ) )
+            if ( !schema_example_read_eleven_body_( stream, &value->items[i] ) )
             {
                 return 0;
             }
@@ -816,6 +976,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_nested( serialize
     return 1;
 }
 
+/* Reads ArrNested as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_nested( serialize_read_stream_t * stream, example_arr_nested_t * value )
+{
+    if ( !schema_example_read_arr_nested_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes Sole. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_sole( serialize_write_stream_t * stream, const example_sole_t * value )
 {
@@ -827,7 +997,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_sole( serialize_wri
 }
 
 /* Reads Sole. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_sole( serialize_read_stream_t * stream, example_sole_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_sole_body_( serialize_read_stream_t * stream, example_sole_t * value )
 {
     /* fixed 13-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 13 )
@@ -844,6 +1014,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_sole( serialize_read_
         value->only = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads Sole as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_sole( serialize_read_stream_t * stream, example_sole_t * value )
+{
+    if ( !schema_example_read_sole_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

@@ -23,6 +23,12 @@ public final class MixedChatEventFixed {
 
         /** bits(12) */
         public int speaker;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            channel = 0;
+            speaker = 0;
+        }
     }
 
     /**
@@ -55,15 +61,16 @@ public final class MixedChatEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         {
             long q = TableFixed.get32(b, at + 0);
             if (q < 0L) {
