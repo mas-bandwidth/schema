@@ -474,18 +474,27 @@ table T
 }
 `
 
-// TestPythonTableCoreRefusesPacketThroughUnion requires a packet type reached
-// through a union arm to be refused by name, as a direct field is.
-func TestPythonTableCoreRefusesPacketThroughUnion(t *testing.T) {
+// TestPythonTableCoreCarriesPacketThroughUnion requires a packet type reached
+// through a union arm to be carried by value, as a direct field is
+// (docs/PORT-PYTHON.md, THE TABLE FRAME): the blanket refusal is gone, and the
+// packet class and its table descriptor are emitted.
+func TestPythonTableCoreCarriesPacketThroughUnion(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, packetUnionSchema)
-	_, err := Generate(u)
-	if err == nil {
-		t.Fatal("Generate accepted a packet type reached through a union arm")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate refused a packet type reached through a union arm: %v", err)
 	}
-	for _, want := range []string{"P", "packet type"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not name %q: %v", want, err)
-		}
+	if _, ok := files["packetunion/Core.py"]; !ok {
+		t.Fatalf("the generated module is missing: %v", sortedFileNames(files))
 	}
+}
+
+func sortedFileNames(files map[string][]byte) []string {
+	out := make([]string, 0, len(files))
+	for name := range files {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }

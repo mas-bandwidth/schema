@@ -133,7 +133,11 @@ var catalog = []Entry{
 	e("internal/codegen/luautable", "Luau table emitter (docs/PORT-LUAU.md)", "go test ./internal/codegen/luautable", "go test ./internal/codegen/luautable"),
 	e("internal/codegen/moo", "moo packet emitter", "make test-moo", "make test-moo"),
 	e("internal/codegen/python", "Python emitter and runtime (docs/PORT-PYTHON.md)", "make test-python", "make test-python"),
+<<<<<<< HEAD
 	e("internal/codegen/pythontable", "Python table emitter and runtime (docs/PORT-PYTHON.md)", "go test ./internal/codegen/pythontable", "go test ./internal/codegen/pythontable"),
+=======
+	e("internal/codegen/pythontable", "Python table emitter (docs/PORT-PYTHON.md)", "go test ./internal/codegen/pythontable", "make test-python"),
+>>>>>>> e957ec15d8341de4a2763f278a0873d587057b06
 	e("internal/codegen/mootable", "moo table emitter", "make test-moo-tables", "make test-moo-tables"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
