@@ -307,6 +307,287 @@ func (g *Gen) Imports() []string {
 
 // Assemble returns the module: header, imports, namespace, forward class
 // declarations, body.
+// localMark is appended to every generated parameter and local name in a
+// module. Schema identifiers are [A-Za-z_][A-Za-z0-9_]* (SPEC §4.1), so no
+// schema const can spell a marked name; Lobster's identifiers accept any byte
+// at or above 0x80, which is what the mark is. A schema const is emitted as a
+// namespace-level let with the name the schema spells, so the mark is what
+// keeps a generated binding from shadowing one.
+const localMark = "·"
+
+// markGeneratedLocals appends localMark to every parameter, local and loop
+// variable in body. The set is read from the emitted declarations, so a name a
+// later emitter writes is covered without a second registry. Only function
+// bodies are marked: a namespace-level let is a schema const, a class field is
+// not a variable, and a data literal's keys are not bindings.
+func markGeneratedLocals(body string) string {
+	lines := strings.Split(body, "\n")
+	names := map[string]bool{}
+	var scopes []int
+	for _, line := range lines {
+		ind := indentWidth(line)
+		for len(scopes) > 0 && ind <= scopes[len(scopes)-1] {
+			scopes = scopes[:len(scopes)-1]
+		}
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "def ") {
+			for _, name := range defParamNames(trim) {
+				names[name] = true
+			}
+			scopes = append(scopes, ind)
+			continue
+		}
+		if len(scopes) == 0 {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(trim, "let "), strings.HasPrefix(trim, "var "):
+			for _, name := range bindingNames(trim[4:]) {
+				names[name] = true
+			}
+		case strings.HasPrefix(trim, "for("):
+			for _, name := range forNames(trim) {
+				names[name] = true
+			}
+		}
+	}
+	if len(names) == 0 {
+		return body
+	}
+	scopes = scopes[:0]
+	for i, line := range lines {
+		ind := indentWidth(line)
+		for len(scopes) > 0 && ind <= scopes[len(scopes)-1] {
+			scopes = scopes[:len(scopes)-1]
+		}
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "def ") {
+			lines[i] = markLine(line, names, true)
+			scopes = append(scopes, ind)
+			continue
+		}
+		if len(scopes) > 0 {
+			lines[i] = markLine(line, names, strings.HasPrefix(trim, "for("))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func indentWidth(line string) int {
+	n := 0
+	for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
+		n++
+	}
+	return n
+}
+
+func identStartByte(c byte) bool {
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80
+}
+
+func identPartByte(c byte) bool {
+	return identStartByte(c) || (c >= '0' && c <= '9')
+}
+
+// defParamNames reads the names a def's parameter list binds.
+func defParamNames(line string) []string {
+	open := strings.IndexByte(line, '(')
+	if open < 0 {
+		return nil
+	}
+	depth := 0
+	close := -1
+	for i := open; i < len(line); i++ {
+		switch line[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				close = i
+			}
+		}
+		if close >= 0 {
+			break
+		}
+	}
+	if close < 0 {
+		return nil
+	}
+	var names []string
+	for _, part := range strings.Split(line[open+1:close], ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		end := 0
+		for end < len(part) && identPartByte(part[end]) {
+			end++
+		}
+		if end > 0 {
+			names = append(names, part[:end])
+		}
+	}
+	return names
+}
+
+// bindingNames reads the names a let/var list binds, stopping at the = that
+// starts the initializer. A binding's type annotation is skipped to the next
+// top-level comma or the =.
+func bindingNames(s string) []string {
+	var names []string
+	i := 0
+	for {
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i >= len(s) || s[i] == '=' {
+			break
+		}
+		start := i
+		if !identStartByte(s[i]) {
+			break
+		}
+		for i < len(s) && identPartByte(s[i]) {
+			i++
+		}
+		names = append(names, s[start:i])
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i < len(s) && s[i] == ':' {
+			i++
+			depth := 0
+			for i < len(s) {
+				c := s[i]
+				switch c {
+				case '[', '(', '<':
+					depth++
+				case ']', ')', '>':
+					if depth > 0 {
+						depth--
+					}
+				case ',', '=':
+					if depth == 0 {
+						goto typed
+					}
+				}
+				i++
+			}
+		typed:
+		}
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i < len(s) && s[i] == ',' {
+			i++
+			continue
+		}
+		break
+	}
+	return names
+}
+
+// forNames reads the loop variables a for(expr) list binds.
+func forNames(line string) []string {
+	open := strings.IndexByte(line, '(')
+	if open < 0 {
+		return nil
+	}
+	depth := 0
+	close := -1
+	for i := open; i < len(line); i++ {
+		switch line[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				close = i
+			}
+		}
+		if close >= 0 {
+			break
+		}
+	}
+	if close < 0 {
+		return nil
+	}
+	rest := line[close+1:]
+	if colon := strings.IndexByte(rest, ':'); colon >= 0 {
+		rest = rest[:colon]
+	}
+	return bindingNames(rest)
+}
+
+// markLine appends localMark to the local/parameter identifiers in one line.
+// String literals and comments are copied verbatim; an identifier after a dot
+// is a namespaced or field name, and an identifier followed by a colon after
+// an opening brace, a comma or the line start is a literal key, so neither is
+// a binding.
+func markLine(line string, names map[string]bool, defLine bool) string {
+	var b strings.Builder
+	prev := byte(0)
+	for i := 0; i < len(line); {
+		c := line[i]
+		if c == '/' && i+1 < len(line) && line[i+1] == '/' {
+			b.WriteString(line[i:])
+			break
+		}
+		if c == '"' {
+			b.WriteByte(c)
+			i++
+			for i < len(line) {
+				b.WriteByte(line[i])
+				if line[i] == '\\' && i+1 < len(line) {
+					i++
+					b.WriteByte(line[i])
+				} else if line[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			prev = '"'
+			continue
+		}
+		if identStartByte(c) {
+			start := i
+			for i < len(line) && identPartByte(line[i]) {
+				i++
+			}
+			name := line[start:i]
+			if names[name] && prev != '.' && (defLine || !literalKey(line, i, prev)) {
+				b.WriteString(name)
+				b.WriteString(localMark)
+			} else {
+				b.WriteString(name)
+			}
+			prev = name[len(name)-1]
+			continue
+		}
+		b.WriteByte(c)
+		if c != ' ' && c != '\t' {
+			prev = c
+		}
+		i++
+	}
+	return b.String()
+}
+
+// literalKey reports whether the identifier ending at i is a data literal's
+// key: it sits at the line start or after an opening brace or comma, and a
+// colon follows.
+func literalKey(line string, i int, prev byte) bool {
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i >= len(line) || line[i] != ':' {
+		return false
+	}
+	return prev == 0 || prev == '{' || prev == ','
+}
+
 func (g *Gen) Assemble() []byte {
 	var h strings.Builder
 	fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.File.Base)
@@ -331,7 +612,7 @@ func (g *Gen) Assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
-	h.WriteString(g.body.String())
+	h.WriteString(markGeneratedLocals(g.body.String()))
 	return []byte(strings.TrimRight(h.String(), "\n") + "\n")
 }
 

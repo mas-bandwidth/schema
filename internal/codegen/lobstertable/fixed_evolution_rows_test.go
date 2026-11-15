@@ -257,7 +257,7 @@ func TestLobsterFixedRowScalarBounds(t *testing.T) {
 		}
 	}
 	nc := rowLoad(t, u, "T", nil, fixedproof.MakeFixedFile(e.Wire, e.Layout, body(-6, 0, 10)), plantBounds(t, "T",
-		"    if (v.X < -5) or (v.X > 5):\n        return false\n", ""))
+		"    if (v·.X < -5) or (v·.X > 5):\n        return false\n", ""))
 	if nc.head() == "refused out_of_range" {
 		t.Errorf("the negative control: the dropped range check still refuses")
 	}
@@ -505,7 +505,7 @@ func TestLobsterFixedRowText(t *testing.T) {
 	}
 	if got := rowLoad(t, u, "T", nil, cases[2].file, func(files map[string][]byte) {
 		plantRow(t, rowsFixedevolve, "        return not fixed_utf8_valid_no_nul(p, base, used)\n", "        return false\n")(files)
-		plantBounds(t, "T", " or not schema_rt.fixed_utf8_valid_no_nul(v.S, 0, v.SLength):\n", ":\n")(files)
+		plantBounds(t, "T", " or not schema_rt.fixed_utf8_valid_no_nul(v·.S, 0, v·.SLength):\n", ":\n")(files)
 	}); got.count != 1 {
 		t.Errorf("the negative control: with the UTF-8 checks gone ill-formed text still refuses: %s", got.head())
 	}
@@ -602,7 +602,7 @@ func TestLobsterFixedRowHostileInput(t *testing.T) {
 	if got := rowLoad(t, u, "Host", nil, two, nil).head(); got != "refused no_layout" {
 		t.Errorf("P3: the last record's hash: %s", got)
 	}
-	if got := sweep(plantBounds(t, "Host", "    if (v.Small < 0) or (v.Small > 1000):\n        return false\n", "")); strings.HasPrefix(got, "0 ") {
+	if got := sweep(plantBounds(t, "Host", "    if (v·.Small < 0) or (v·.Small > 1000):\n        return false\n", "")); strings.HasPrefix(got, "0 ") {
 		t.Errorf("the negative control: the sweep without the range check finds nothing: %s", got)
 	}
 
