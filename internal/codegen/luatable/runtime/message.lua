@@ -346,7 +346,7 @@ rides_table = function(T, name, v)
 end
 
 -- ---- the read side ----
-local read_value, load_body, variant_index, skip_entry
+local read_value, load_body, variant_index, skip_entry, skip_body
 
 local function widens(kind, declared)
   if declared == 3 or declared == 4 or declared == 5 then return kind >= 2 and kind < declared end
@@ -455,7 +455,28 @@ local function read_scalar(R, d, e)
   return 0, false
 end
 
-skip_entry = function(R, e, ctx)
+-- THE SKIP WALK IS BOUNDED AT DEPTH 128 (docs/SPEC-TABLES.md §3.3,
+-- message_skip_depth): the root body is depth 0, a nested body, an array or a
+-- keyed body, and a union arm are one level deeper, and past 128 levels the
+-- batch is refused as damage. A fixed-width scalar element rides at its
+-- array's level.
+skip_body = function(R, ctx, depth)
+  if depth > 128 then return false end
+  while true do
+    local ref, ok = R:get(ctx.refBits)
+    if not ok then return false end
+    if ref == 0 then return true end
+    local fe = ctx.vocab[ref]
+    if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
+      return false
+    end
+    if not skip_entry(R, fe, ctx, depth) then return false end
+  end
+end
+
+skip_entry = function(R, e, ctx, depth)
+  depth = depth or 0
+  if depth > 128 then return false end
   local k = e.kind
   if k == 0 or k == 32 then
     return true
@@ -518,18 +539,9 @@ skip_entry = function(R, e, ctx)
     if ae == nil or ae.kind == 0 or ae.id == NODE_ID or ae.id == 0xfffffffffffffffe or ae.id == 0xfffffffffffffffd then
       return false
     end
-    return skip_entry(R, ae, ctx)
+    return skip_entry(R, ae, ctx, depth + 1)
   elseif k == 13 then
-    while true do
-      local ref, ok = R:get(ctx.refBits)
-      if not ok then return false end
-      if ref == 0 then return true end
-      local fe = ctx.vocab[ref]
-      if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
-        return false
-      end
-      if not skip_entry(R, fe, ctx) then return false end
-    end
+    return skip_body(R, ctx, depth + 1)
   elseif k == 14 or k == 16 then
     local n = e.min or 0
     local w = bits_range(n, e.max or 0)
@@ -551,6 +563,14 @@ skip_entry = function(R, e, ctx)
     end
     if k == 14 and e.elem == 6 and not R:align() then return false end
     local inner = e.inner or { kind = e.elem }
+    -- A STRING, A TABLE, A NESTED ARRAY OR KEYED BODY, A UNION AND AN ENUM
+    -- ARE WALKED ONE LEVEL DEEPER; a fixed-width scalar element rides at the
+    -- array body's level (§3.3, message_skip_depth).
+    local walked = inner.kind == 12
+      or inner.kind == 13
+      or (inner.kind >= 14 and inner.kind <= 17)
+      or inner.kind == 30
+      or inner.kind == 31
     for _ = 1, n do
       if k == 16 then
         local kref, kok = R:get(ctx.refBits)
@@ -566,7 +586,7 @@ skip_entry = function(R, e, ctx)
           return false
         end
       end
-      if not skip_entry(R, inner, ctx) then return false end
+      if not skip_entry(R, inner, ctx, walked and depth + 1 or depth) then return false end
     end
     return true
   elseif k == 31 then
