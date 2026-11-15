@@ -69,7 +69,7 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 		ev := ciEvent{
 			Name:     "pull_request",
 			Branch:   base,
-			HeadRef:  "sprint/schema-go",
+			HeadRef:  "sprint-group/schema-go",
 			Repo:     "mas-bandwidth/schema",
 			HeadRepo: "mas-bandwidth/schema",
 			PlanPkgs: "./internal/codegen/gotable",
@@ -95,7 +95,7 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 	if ok, err := jobRunsInWorkflow(mutated, "go-test-touched", ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint/schema-go",
+		HeadRef:  "sprint-group/schema-go",
 		Repo:     "mas-bandwidth/schema",
 		HeadRepo: "mas-bandwidth/schema",
 		PlanPkgs: "./internal/codegen/gotable",
