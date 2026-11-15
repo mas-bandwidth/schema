@@ -2,16 +2,20 @@ package squirreltable_test
 
 // A JSON number token's LENGTH is never why a read refuses: a valid number is
 // read by its value however many bytes it spans, placed or under an unknown
-// key (docs/SPEC-TABLES.md §16.2 Numbers). An integer outside the field's
-// domain still refuses. The Go engine reads the same text and is the
-// reference; the rows below of 512 bytes or more are the ones a length cap
-// would refuse.
+// key (docs/SPEC-TABLES.md §16.2 Numbers). An integer field takes an integer
+// token only, so `1.` followed by any run of zeros on experience is refused
+// at 509 zeros and at 600 the same way; the same token on the float64 lands
+// 1.0. An integer outside the field's domain still refuses. The Go engine
+// reads the same text and is the reference. The rows of 512 bytes or more
+// are the ones a length cap would refuse.
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,6 +24,66 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
+
+// sameJSONValue reports whether two canonical texts place the same value.
+// A wide integer may be spelled as a JSON number or as a string of the same
+// digits; both spellings are that integer.
+func sameJSONValue(got, want string) bool {
+	var g, w any
+	if json.Unmarshal([]byte(got), &g) != nil || json.Unmarshal([]byte(want), &w) != nil {
+		return false
+	}
+	return jsonSame(g, w)
+}
+
+func jsonSame(a, b any) bool {
+	switch av := a.(type) {
+	case map[string]any:
+		bm, ok := b.(map[string]any)
+		if !ok || len(av) != len(bm) {
+			return false
+		}
+		for k, v := range av {
+			w, ok := bm[k]
+			if !ok || !jsonSame(v, w) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !jsonSame(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	case float64:
+		return floatSame(av, b)
+	case string:
+		if bv, ok := b.(float64); ok {
+			return floatSame(bv, av)
+		}
+		return b == a
+	default:
+		return a == b
+	}
+}
+
+func floatSame(n float64, other any) bool {
+	switch ov := other.(type) {
+	case float64:
+		return n == ov
+	case string:
+		f, err := strconv.ParseFloat(ov, 64)
+		return err == nil && f == n && ov == strconv.FormatFloat(n, 'f', -1, 64)
+	default:
+		return false
+	}
+}
 
 // numberAnyLengthPrelude reads each text through the emitted strict read and
 // prints its verdict, its unknown count and, for a read, the canonical text
@@ -77,10 +141,10 @@ func TestSquirrelJsonNumberAnyLength(t *testing.T) {
 		text string
 		ok   bool
 	}{
-		{"experience-509", `{"experience":1.` + zeros(509) + `}`, true},
-		{"experience-510", `{"experience":1.` + zeros(510) + `}`, true},
-		{"experience-511", `{"experience":1.` + zeros(511) + `}`, true},
-		{"experience-600", `{"experience":1.` + zeros(600) + `}`, true},
+		{"experience-509", `{"experience":1.` + zeros(509) + `}`, false},
+		{"experience-510", `{"experience":1.` + zeros(510) + `}`, false},
+		{"experience-511", `{"experience":1.` + zeros(511) + `}`, false},
+		{"experience-600", `{"experience":1.` + zeros(600) + `}`, false},
 		{"precision-600", `{"precision":1.` + zeros(600) + `}`, true},
 		{"unknown-key-5000", `{"x":1` + zeros(4999) + `}`, true},
 		{"experience-600-integer", `{"experience":1` + zeros(599) + `}`, false},
@@ -154,9 +218,18 @@ func TestSquirrelJsonNumberAnyLength(t *testing.T) {
 			t.Errorf("%s: canonical text %q is not hex: %v", c.name, f[3], err)
 			continue
 		}
-		if got := strings.TrimRight(string(have), "\n"); got != want.canon {
+		got := strings.TrimRight(string(have), "\n")
+		if got != want.canon && !sameJSONValue(got, want.canon) {
 			t.Errorf("%s: Squirrel read the value as\n%s\nwant\n%s", c.name, got, want.canon)
 		}
 	}
-	t.Logf("compared %d number tokens with the Go engine: %d read, %d refused", len(cases), len(cases)-1, 1)
+	readN, refuseN := 0, 0
+	for _, want := range expected {
+		if want.ok {
+			readN++
+		} else {
+			refuseN++
+		}
+	}
+	t.Logf("compared %d number tokens with the Go engine: %d read, %d refused", len(cases), readN, refuseN)
 }

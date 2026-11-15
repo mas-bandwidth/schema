@@ -91,18 +91,6 @@ local probe = function(name, setup) {
 };
 `
 
-type offContractSaveCase struct {
-	name string
-	// goBad and goGood are the same value in the Go engine's model; nil where
-	// the engine has no way to hold it (a wrong Squirrel type) or where its
-	// writer does not refuse it today (a zero byte in a *string). goGood is nil
-	// for the enum-keyed array row, whose twin is held on the Squirrel side.
-	goBad   func(*tabletext.Model, *tabletext.Instance)
-	goGood  func(*tabletext.Model, *tabletext.Instance)
-	nutBad  string
-	nutGood string
-}
-
 // TestSquirrelVariableSaveRefusesOffContract holds the variable form's Save
 // and Measure to the write contract (docs/SPEC.md §5.1 rows 1-8 and 10): a
 // value the declaration does not admit answers null and writes nothing, with
@@ -218,7 +206,7 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 		}
 	}
 
-	cases := []offContractSaveCase{
+	cases := []offContractCase{
 		{
 			name:   "ranged_over",
 			goBad:  func(_ *tabletext.Model, inst *tabletext.Instance) { setU(inst, "ranged", 50) },
@@ -364,7 +352,7 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 	}
 	for _, location := range []string{"name", "text", "names", "lookup"} {
 		for _, text := range texts {
-			c := offContractSaveCase{
+			c := offContractCase{
 				name:    location + "_" + text.name,
 				nutBad:  nutTextField(location, text.data),
 				nutGood: nutTextTwin(location),

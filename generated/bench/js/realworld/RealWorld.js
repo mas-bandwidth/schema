@@ -932,7 +932,7 @@ export function WriteRealPacket(stream, value) {
   return true;
 }
 
-export function ReadRealPacket(stream, value) {
+export function ReadRealPacket(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -805495, 805495)) {
     return false;
   }
@@ -1351,6 +1351,6 @@ export function ReadRealPacket(stream, value) {
     return false;
   }
   value.f097Bits = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
