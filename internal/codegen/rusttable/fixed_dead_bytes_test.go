@@ -195,6 +195,19 @@ fn write_old_optional() {
 `, file)
 	reader := fmt.Sprintf(`
 #[test]
+fn counted_tail_keeps_following_field() {
+    let entries = [
+        TableFixedEntry { src: 0, dst: 0, size: 1, aux: 4, op: TableFixedOp::Count, ..Default::default() },
+        TableFixedEntry { src: 4, dst: 4, size: 8, op: TableFixedOp::Copy, ..Default::default() },
+    ];
+    let src = [0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0];
+    let mut image = [0u8; 12];
+    let mut report = TableFixedReport::default();
+    table_fixed_run(&entries, &[], &[], &src, &mut image, &mut report);
+    assert_eq!(image[8], 17, "the field following an unused array slot lands");
+}
+
+#[test]
 fn old_optional_dead_payload() {
     let clean = std::fs::read(%[1]q).expect("older layout");
     let block = u32::from_le_bytes(clean[16..20].try_into().unwrap()) as usize;

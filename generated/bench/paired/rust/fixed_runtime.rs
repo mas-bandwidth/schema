@@ -492,7 +492,7 @@ pub fn table_fixed_run(
     // unguarded entries first, so the split is the first guarded index.
     let split = plan.iter().take_while(|p| p.guard_count == 0).count();
     for (i, p) in plan.iter().enumerate() {
-        match table_fixed_in_dead(plan, guards, src, u64::from(p.src)) {
+        match table_fixed_in_absent(plan, guards, src, u64::from(p.src)) {
             None => { report.damaged = true; return; }
             Some(true) => continue,
             Some(false) => {}
@@ -842,6 +842,31 @@ fn table_fixed_chain_arg(e: &TableFixedEntry, guards: &[TableFixedGuard], tag_at
         }
     }
     None
+}
+
+/// A plan entry inside an absent optional must not be run as a live value.
+fn table_fixed_in_absent(
+    entries: &[TableFixedEntry],
+    guards: &[TableFixedGuard],
+    body: &[u8],
+    at: u64,
+) -> Option<bool> {
+    for e in entries {
+        if e.op != TableFixedOp::Copy || e.aux <= 1 {
+            continue;
+        }
+        match table_fixed_guard_holds(e, guards, body) {
+            None => return None,
+            Some(false) => continue,
+            Some(true) => {}
+        }
+        let from = u64::from(e.src) + 1;
+        let to = u64::from(e.src) + u64::from(e.aux);
+        if at >= from && at < to && *body.get(e.src as usize)? == 0 {
+            return Some(true);
+        }
+    }
+    Some(false)
 }
 
 /// The source offset sits in a counted array's slots past the live count.
