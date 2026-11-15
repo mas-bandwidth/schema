@@ -1384,10 +1384,18 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s    %s.%s = ks;\n", in, ent, keyName)
 	} else {
-		fmt.Fprintf(b, "%s    match ks.parse::<%s>() {\n", in, scalarRust(key))
-		fmt.Fprintf(b, "%s        Ok(n) => %s.%s = n,\n", in, ent, keyName)
-		fmt.Fprintf(b, "%s        Err(_) => { jr.damaged = true; jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
-		fmt.Fprintf(b, "%s    }\n", in)
+		// an integer key is read by the integer rule and nothing else
+		// (docs/SPEC-TABLES.md §16.2, **Numbers**): the same digits a wide
+		// integer field writes, and its range tested on the exact value
+		lo, hi := textIntRange(key)
+		fmt.Fprintf(b, "%s    let key_ok = match json_integer_literal(ks.as_bytes(), %v) {\n", in, key.Type.Signed)
+		fmt.Fprintf(b, "%s        Some(raw) => {\n", in)
+		fmt.Fprintf(b, "%s            let x = raw as i128;\n", in)
+		fmt.Fprintf(b, "%s            if x < %si128 || x > %si128 { jr.damaged = true; false } else { %s.%s = x as %s; true }\n", in, lo, hi, ent, keyName, scalarRust(key))
+		fmt.Fprintf(b, "%s        }\n", in)
+		fmt.Fprintf(b, "%s        None => { jr.damaged = true; false }\n", in)
+		fmt.Fprintf(b, "%s    };\n", in)
+		fmt.Fprintf(b, "%s    if !key_ok { jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
 	}
 	g.emitTextReadValue(b, val, ent+"."+valName, in+"    ")
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)

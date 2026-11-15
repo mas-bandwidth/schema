@@ -1318,7 +1318,7 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
             "channel" => {
                 if seen[0] { jr.damaged = true; }
                 seen[0] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 3i128 { x = 3i128; jr.damaged = true; }
                     v.channel = x as i32;
@@ -1327,7 +1327,7 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
             "speaker" => {
                 if seen[1] { jr.damaged = true; }
                 seen[1] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.speaker = x as u16;
@@ -1443,7 +1443,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "entity_id" => {
                 if seen[0] { jr.damaged = true; }
                 seen[0] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.entity_id = x as u16;
@@ -1452,7 +1452,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "pos_x" => {
                 if seen[1] { jr.damaged = true; }
                 seen[1] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -16383i128 { x = -16383i128; jr.damaged = true; } else if x > 16383i128 { x = 16383i128; jr.damaged = true; }
                     v.pos_x = x as i32;
@@ -1461,7 +1461,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "pos_y" => {
                 if seen[2] { jr.damaged = true; }
                 seen[2] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -16383i128 { x = -16383i128; jr.damaged = true; } else if x > 16383i128 { x = 16383i128; jr.damaged = true; }
                     v.pos_y = x as i32;
@@ -1470,7 +1470,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "pos_z" => {
                 if seen[3] { jr.damaged = true; }
                 seen[3] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -16383i128 { x = -16383i128; jr.damaged = true; } else if x > 16383i128 { x = 16383i128; jr.damaged = true; }
                     v.pos_z = x as i32;
@@ -1479,7 +1479,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "yaw" => {
                 if seen[4] { jr.damaged = true; }
                 seen[4] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 511i128 { x = 511i128; jr.damaged = true; }
                     v.yaw = x as u16;
@@ -1488,7 +1488,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "pitch" => {
                 if seen[5] { jr.damaged = true; }
                 seen[5] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 511i128 { x = 511i128; jr.damaged = true; }
                     v.pitch = x as u16;
@@ -1497,7 +1497,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "vel_x" => {
                 if seen[6] { jr.damaged = true; }
                 seen[6] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -2048i128 { x = -2048i128; jr.damaged = true; } else if x > 2047i128 { x = 2047i128; jr.damaged = true; }
                     v.vel_x = x as i32;
@@ -1506,7 +1506,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "vel_y" => {
                 if seen[7] { jr.damaged = true; }
                 seen[7] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -2048i128 { x = -2048i128; jr.damaged = true; } else if x > 2047i128 { x = 2047i128; jr.damaged = true; }
                     v.vel_y = x as i32;
@@ -1515,7 +1515,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "vel_z" => {
                 if seen[8] { jr.damaged = true; }
                 seen[8] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -2048i128 { x = -2048i128; jr.damaged = true; } else if x > 2047i128 { x = 2047i128; jr.damaged = true; }
                     v.vel_z = x as i32;
@@ -1524,7 +1524,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "health" => {
                 if seen[9] { jr.damaged = true; }
                 seen[9] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 1000i128 { x = 1000i128; jr.damaged = true; }
                     v.health = x as i32;
@@ -1697,7 +1697,7 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             "target_id" => {
                 if seen[0] { jr.damaged = true; }
                 seen[0] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.target_id = x as u16;
@@ -1706,7 +1706,7 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             "damage" => {
                 if seen[1] { jr.damaged = true; }
                 seen[1] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.damage = x as i32;
@@ -1715,7 +1715,7 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             "hit_kind" => {
                 if seen[2] { jr.damaged = true; }
                 seen[2] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 7i128 { x = 7i128; jr.damaged = true; }
                     v.hit_kind = x as i32;
@@ -1838,7 +1838,7 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
             "item_id" => {
                 if seen[0] { jr.damaged = true; }
                 seen[0] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 1023i128 { x = 1023i128; jr.damaged = true; }
                     v.item_id = x as u16;
@@ -1847,7 +1847,7 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
             "amount" => {
                 if seen[1] { jr.damaged = true; }
                 seen[1] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 255i128 { x = 255i128; jr.damaged = true; }
                     v.amount = x as i32;
@@ -1963,7 +1963,7 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
             "stat_id" => {
                 if seen[0] { jr.damaged = true; }
                 seen[0] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 255i128 { x = 255i128; jr.damaged = true; }
                     v.stat_id = x as u8;
@@ -1972,7 +1972,7 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
             "delta" => {
                 if seen[1] { jr.damaged = true; }
                 seen[1] = true;
-                if let Some(n) = jr.read_int() {
+                if let Some(n) = jr.read_int(false) {
                     let mut x = n;
                     if x < -512i128 { x = -512i128; jr.damaged = true; } else if x > 511i128 { x = 511i128; jr.damaged = true; }
                     v.delta = x as i32;

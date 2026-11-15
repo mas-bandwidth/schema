@@ -2080,6 +2080,56 @@ pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
     }
 }
 
+/// An INTEGER TOKEN's exact value (docs/SPEC-TABLES.md §16.2, **Numbers**):
+/// digits with an optional minus, no fraction, no exponent, no negative zero
+/// and no leading zero. The signed flag names the kind's domain, so a magnitude
+/// past i128's or u128's own ends is refused. The value is two's complement in a
+/// u128 for a signed kind and the magnitude for an unsigned one, with no
+/// binary floating-point step anywhere on the path.
+#[allow(dead_code)]
+pub fn json_integer_literal(t: &[u8], signed: bool) -> Option<u128> {
+    let mut i = 0usize;
+    let negative = t.first() == Some(&b'-');
+    if negative {
+        i += 1;
+    }
+    if i >= t.len() {
+        return None;
+    }
+    if t[i] == b'0' {
+        // "0" is the one spelling of zero; "-0" and "00" are not integer tokens
+        if i + 1 != t.len() || negative {
+            return None;
+        }
+        return Some(0);
+    }
+    let mut mag: u128 = 0;
+    while i < t.len() {
+        let b = t[i];
+        if !b.is_ascii_digit() {
+            return None;
+        }
+        let d = u128::from(b - b'0');
+        mag = match mag.checked_mul(10).and_then(|m| m.checked_add(d)) {
+            Some(m) => m,
+            None => return None,
+        };
+        i += 1;
+    }
+    if signed {
+        let limit = if negative { 1u128 << 127 } else { (1u128 << 127) - 1 };
+        if mag > limit {
+            return None;
+        }
+        Some(if negative { mag.wrapping_neg() } else { mag })
+    } else {
+        if negative {
+            return None;
+        }
+        Some(mag)
+    }
+}
+
 /// A float by docs/SPEC-TABLES.md §16.14's W12: %.*g at the first precision
 /// whose text reads back as the same value at the field's own width, exactly
 /// as the reference writes it. A non-finite value has no JSON spelling; the
@@ -2400,71 +2450,86 @@ impl<'a> Jr<'a> {
         self.p = p;
         Some(String::from_utf8_lossy(&b[s..p]).into_owned())
     }
-    /// An integer field's value (docs/SPEC-TABLES.md §16.2): any token whose
-    /// VALUE is integral, saturating past what 64 bits hold; a fractional one
-    /// is kind_mismatch, and a value of another JSON type is kind_mismatch,
-    /// skipped.
-    pub fn read_int(&mut self) -> Option<i128> {
+    /// An integer field's value (docs/SPEC-TABLES.md §16.2, **Numbers**): an
+    /// INTEGER TOKEN only — digits with an optional minus, no fraction, no
+    /// exponent, not -0 — and, for a kind wider than 32 bits, the same digits
+    /// as a JSON string. The value is exact and never passes through a double.
+    /// A value of another JSON type, or a token that is not an integer token,
+    /// is kind_mismatch, skipped.
+    pub fn read_int(&mut self, allow_string: bool) -> Option<i128> {
         let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.damaged = true;
-            self.skip_value();
-            return None;
-        }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            let neg = t.starts_with('-');
-            let digits = t.strip_prefix('-').unwrap_or(&t);
-            let mut mag: u64 = 0;
-            for b in digits.bytes() {
-                let d = (b - b'0') as u64;
-                if mag > (u64::MAX - d) / 10 {
-                    mag = u64::MAX;
-                    self.damaged = true;
-                    break;
-                }
-                mag = mag * 10 + d;
+        let token: String;
+        if c == b'"' {
+            if !allow_string {
+                self.damaged = true;
+                self.skip_value();
+                return None;
             }
-            if mag == 0 {
-                return Some(0);
-            }
-            return Some(if neg { -(mag as i128) } else { mag as i128 });
-        }
-        let f: f64 = t.parse().ok()?;
-        if !f.is_finite() || f.fract() != 0.0 {
-            self.damaged = true;
-            return None;
-        }
-        let neg = f.is_sign_negative();
-        let whole = f.abs();
-        let mag = if whole >= 18446744073709551616.0 {
-            self.damaged = true;
-            u64::MAX
+            let Some(s) = self.read_string() else { self.damaged = true; return None; };
+            token = s;
         } else {
-            whole as u64
-        };
-        if mag == 0 {
-            return Some(0);
+            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+                self.damaged = true;
+                self.skip_value();
+                return None;
+            }
+            token = self.number_token()?;
+            if token.contains(['.', 'e', 'E']) {
+                self.damaged = true;
+                return None;
+            }
         }
-        Some(if neg { -(mag as i128) } else { mag as i128 })
+        match json_integer_literal(token.as_bytes(), true) {
+            Some(raw) => Some(raw as i128),
+            None => {
+                self.damaged = true;
+                None
+            }
+        }
     }
-    /// A WIDE value (docs/SPEC-TABLES.md §16.2): a 128-bit integer (frac 0)
-    /// or a fixed(I, F)'s raw integer, read EXACTLY from any number token whose
-    /// value the Q I.F grid holds — `2`, `2.0` and `20e-1` are one value —
-    /// with no binary float between, as two's complement in a u128. A digit
-    /// the grid cannot hold is kind_mismatch, the wrong shape, never rounded;
-    /// a magnitude past 128 bits saturates and counts held; a value of
-    /// another JSON type is kind_mismatch, skipped. The caller clamps to the
-    /// field's raw range.
-    pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
+    /// A WIDE value (docs/SPEC-TABLES.md §16.2, §16.14): a 128-bit integer's
+    /// exact value, or a fixed(I, F)'s raw integer. An INTEGER takes an
+    /// integer token only — from a number token, or, for a kind wider than 32
+    /// bits, from a JSON string of the same digits. A FIXED value is read
+    /// EXACTLY from a string or a number token whose value the Q I.F grid
+    /// holds — `2`, `2.0` and `20e-1` are one value — with no binary
+    /// float between, as two's complement in a u128. A digit the grid cannot
+    /// hold is kind_mismatch, the wrong shape, never rounded; a magnitude past
+    /// 128 bits saturates and counts held; a value of another JSON type is
+    /// kind_mismatch, skipped. The caller clamps to the field's raw range.
+    pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, allow_string: bool) -> Option<u128> {
         let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.damaged = true;
-            self.skip_value();
-            return None;
+        let token: String;
+        if c == b'"' {
+            if !allow_string {
+                self.damaged = true;
+                self.skip_value();
+                return None;
+            }
+            let Some(s) = self.read_string() else { self.damaged = true; return None; };
+            token = s;
+        } else {
+            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+                self.damaged = true;
+                self.skip_value();
+                return None;
+            }
+            token = self.number_token()?;
         }
-        let token = self.number_token()?;
         let t = token.as_bytes();
+        if integer {
+            if c != b'"' && (t.contains(&b'.') || t.contains(&b'e') || t.contains(&b'E')) {
+                self.damaged = true;
+                return None;
+            }
+            return match json_integer_literal(t, signed) {
+                Some(raw) => Some(raw),
+                None => {
+                    self.damaged = true;
+                    None
+                }
+            };
+        }
         let negative = t.first() == Some(&b'-');
         let mut i = usize::from(negative);
         let int_start = i;
@@ -2474,7 +2539,9 @@ impl<'a> Jr<'a> {
         let int_len = i - int_start;
         let mut frac_start = i;
         let mut frac_len = 0;
+        let mut has_point = false;
         if i < t.len() && t[i] == b'.' {
+            has_point = true;
             i += 1;
             frac_start = i;
             while i < t.len() && t[i].is_ascii_digit() {
@@ -2483,7 +2550,10 @@ impl<'a> Jr<'a> {
             frac_len = i - frac_start;
         }
         let mut exp: i64 = 0;
+        let mut has_exp = false;
+        let mut exp_digits = 0usize;
         if i < t.len() && (t[i] == b'e' || t[i] == b'E') {
+            has_exp = true;
             i += 1;
             let mut eneg = false;
             if i < t.len() && (t[i] == b'-' || t[i] == b'+') {
@@ -2494,11 +2564,21 @@ impl<'a> Jr<'a> {
                 if exp < 100000 {
                     exp = exp * 10 + i64::from(t[i] - b'0');
                 }
+                exp_digits += 1;
                 i += 1;
             }
             if eneg {
                 exp = -exp;
             }
+        }
+        if int_len == 0
+            || i != t.len()
+            || (has_point && frac_len == 0)
+            || (has_exp && exp_digits == 0)
+            || (int_len > 1 && t[int_start] == b'0')
+        {
+            self.damaged = true;
+            return None;
         }
         let digit = |k: usize| if k < int_len { t[int_start + k] } else { t[frac_start + k - int_len] };
         let (mut start, mut end) = (0usize, int_len + frac_len);
