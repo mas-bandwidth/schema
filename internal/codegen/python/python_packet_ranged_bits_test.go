@@ -88,7 +88,7 @@ func rangedBitsProbe(u *ir.Unit, root, base string, fields []rangedBitsField) st
 	fmt.Fprintf(&b, "if again != data:\n")
 	fmt.Fprintf(&b, "    print(\"FAILED: write-back differs\")\n    sys.exit(1)\n")
 	for _, f := range fields {
-		bad := []string{f.min.String(), f.max.String()}
+		var bad []string
 		if f.kind == "int" {
 			bad = []string{new(big.Int).Sub(f.min, big.NewInt(1)).String(), new(big.Int).Add(f.max, big.NewInt(1)).String()}
 		} else {
@@ -676,7 +676,7 @@ func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]b
 		t.Fatalf("the generated Go reference: %v\n%s", err, out)
 	}
 	got := map[string][]byte{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "CASE|")
 		if !ok {
 			continue
