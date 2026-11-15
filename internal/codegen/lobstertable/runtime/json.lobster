@@ -2788,8 +2788,11 @@ def j_escape(w:JsonWriter, c:int) -> bool:
         return false
     return true
 
-// j_write_string emits one JSON string. Storage holding a byte outside a
-// well-formed UTF-8 sequence has no text spelling: the writer refuses it as
+// j_write_string emits one JSON string. A zero byte is storage that is not
+// text (docs/SPEC.md §5.1 row 8, docs/SPEC-TABLES.md §16.14 W0, W8): the
+// writer refuses the whole value as invalid_value rather than spelling the
+// \u0000 its own reader refuses. Storage holding a byte outside a well-formed
+// UTF-8 sequence has no text spelling either: the writer refuses it as
 // text_ill_formed (W0, docs/SPEC-TABLES.md §16.14), never a U+FFFD.
 def j_write_string(w:JsonWriter, s:string):
     j_raw(w, "\"")
@@ -2807,6 +2810,9 @@ def j_write_string(w:JsonWriter, s:string):
         if i >= n:
             break
         let c = s[i]
+        if c == 0:
+            j_fail(w, "invalid_value")
+            return
         if j_escape(w, c):
             i++
         else:
