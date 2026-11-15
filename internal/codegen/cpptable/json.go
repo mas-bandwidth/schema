@@ -2939,7 +2939,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         int32_t kept_len = 0;
         int32_t i = 0;
         bool negative = false;
-        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        if ( i < length && token[i] == '-' )
+        {
+            negative = true;
+            i++;
+        }
         int32_t fraction = 0;
         bool after_point = false;
         int32_t digits = 0;
@@ -2948,7 +2952,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         for ( ; i < length; i++ )
         {
             char c = token[i];
-            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == '.' )
+            {
+                after_point = true;
+                continue;
+            }
             if ( c == 'e' || c == 'E' ) { break; }
             if ( after_point ) { fraction++; }
             if ( !nonzero )
@@ -2958,7 +2966,10 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
             }
             digits++;
             if ( c == '0' ) { trailing++; }
-            else { trailing = 0; }
+            else
+            {
+                trailing = 0;
+            }
             if ( kept_len < limit ) { kept[kept_len++] = c; }
         }
         int64_t exponent = 0;
@@ -3001,7 +3012,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
                 scale--;
             }
             work[n++] = 'e';
-            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            if ( scale < 0 )
+            {
+                work[n++] = '-';
+                scale = -scale;
+            }
             char reversed[24];
             int32_t rn = 0;
             if ( scale == 0 ) { reversed[rn++] = '0'; }

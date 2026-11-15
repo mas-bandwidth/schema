@@ -517,8 +517,8 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%[1]s    if ( width%[2]s < 0 || width%[3]s > 64 || !r.get( raw%[4]s, width%[5]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx, sfx)
 		if signed {
 			g.pf("%s    if ( %s != 1 && width%s > 0 && width%s < 64 )\n%s    {\n", ind, packing, sfx, sfx, ind)
-			g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
-			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t(1) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
+			g.pf("%s        const uint64_t sign%s = uint64_t( 1 ) << ( width%s - 1 );\n", ind, sfx, sfx)
+			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t( 1 ) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 			g.pf("%s    }\n", ind)
 			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( (int64_t) raw%s < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
 		} else {
@@ -558,8 +558,8 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	g.pf("%s    if ( %s == 1 ) { decoded_wide%s = (int64_t) ( raw%s + (uint64_t) %s ); }\n", ind, packing, sfx, sfx, base)
 	if signed {
 		g.pf("%s    else if ( width%s > 0 && width%s < 64 )\n%s    {\n", ind, sfx, sfx, ind)
-		g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
-		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t(1) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
+		g.pf("%s        const uint64_t sign%s = uint64_t( 1 ) << ( width%s - 1 );\n", ind, sfx, sfx)
+		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t( 1 ) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 		g.pf("%s    }\n", ind)
 	}
 	// THE BOUND APPLIES WHILE THE VALUE IS STILL WIDE, and the narrowing

@@ -7492,8 +7492,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -16383ll )
                             {
@@ -7534,8 +7534,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -16383ll )
                     {
@@ -7575,8 +7575,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -16383ll )
                             {
@@ -7617,8 +7617,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -16383ll )
                     {
@@ -7658,8 +7658,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -16383ll )
                             {
@@ -7700,8 +7700,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -16383ll )
                     {
@@ -7887,8 +7887,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2048ll )
                             {
@@ -7929,8 +7929,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -2048ll )
                     {
@@ -7970,8 +7970,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2048ll )
                             {
@@ -8012,8 +8012,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -2048ll )
                     {
@@ -8053,8 +8053,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2048ll )
                             {
@@ -8095,8 +8095,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -2048ll )
                     {
@@ -8136,8 +8136,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -8178,8 +8178,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -8856,8 +8856,8 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -512ll )
                             {
@@ -8898,8 +8898,8 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -512ll )
                     {
@@ -9626,8 +9626,8 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -9668,8 +9668,8 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -9709,8 +9709,8 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -9751,8 +9751,8 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -10308,8 +10308,8 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -10350,8 +10350,8 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -11029,8 +11029,8 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -11071,8 +11071,8 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -13707,8 +13707,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -13749,8 +13749,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -14010,8 +14010,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -1000000000000ll )
                             {
@@ -14052,8 +14052,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < -1000000000000ll )
                     {
@@ -14161,8 +14161,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -14913,8 +14913,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             }
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t(1) << width ) - 1 ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t( 1 ) << width ) - 1 ); }
                             }
                             serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
                             if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
@@ -15127,8 +15127,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -15169,8 +15169,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {
@@ -15210,8 +15210,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < 0ll )
                             {
@@ -15252,8 +15252,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
+                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     if ( decoded_wide < 0ll )
                     {

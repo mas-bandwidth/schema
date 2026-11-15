@@ -768,7 +768,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     {
         i++;
         bool exp_negative = false;
-        if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { exp_negative = s[i] == '-'; i++; }
+        if ( i < length && ( s[i] == '-' || s[i] == '+' ) )
+        {
+            exp_negative = s[i] == '-';
+            i++;
+        }
         int64_t e = 0;
         while ( i < length && s[i] >= '0' && s[i] <= '9' )
         {
@@ -784,7 +788,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     };
     int32_t start = 0;
     int64_t point = int_len + exp;
-    while ( start < total && digit( start ) == 0 ) { start++; point--; }
+    while ( start < total && digit( start ) == 0 )
+    {
+        start++;
+        point--;
+    }
     int32_t end = total;
     while ( end > start && digit( end - 1 ) == 0 ) { end--; }
     if ( start == end ) { return true; }
