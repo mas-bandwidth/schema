@@ -507,19 +507,12 @@ local function skip_container(inp, close, depth, graph)
       return false
     end
     if close == "}" then
-<<<<<<< HEAD
-      -- A SKIPPED OBJECT'S KEY IS HELD TO THE TEXT RULES OF A PLACED VALUE
-      -- (§16.3): one that decodes to U+0000 refuses the read.
-      local key, _, ok, nul = scan_string(inp, MAX_KEY)
+      -- A SKIPPED OBJECT'S KEY IS HELD TO THE GRAMMAR AND TEXT RULES OF A
+      -- PLACED VALUE (§16.2, §16.3): one past 255 decoded bytes, or one that
+      -- decodes to U+0000, refuses the read.
+      local key, over_bound, ok, nul = scan_string(inp, MAX_KEY)
       if not ok then return false end
-      if nul then
-=======
-      -- §16.2: a key is a schema name in every object, a skipped one
-      -- included, so one past 255 decoded bytes refuses the read
-      local key, over_bound, ok = scan_string(inp, MAX_KEY)
-      if not ok then return false end
-      if over_bound then
->>>>>>> 972d517c1cadf93bb79ec6f9761d9cbd9b43eb49
+      if over_bound or nul then
         inp.bad = true
         return false
       end
@@ -1917,26 +1910,15 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     inp.p = inp.p + 1
     return { tag = 0 }
   end
-<<<<<<< HEAD
   -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3);
-  -- a key past the bound names no arm
+  -- §16.2: a key past 255 decoded bytes, or one that decodes to U+0000,
+  -- refuses the read
   local name, over_bound, ok, nul = scan_string(inp, MAX_KEY)
   if not ok then return nil end
-  if nul then
+  if over_bound or nul then
     inp.bad = true
     return nil
   end
-  if over_bound then name = nil end
-=======
-  -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3)
-  local name, over_bound, ok = scan_string(inp, MAX_KEY)
-  if not ok then return nil end
-  if over_bound then
-    -- §16.2: an arm key past 255 decoded bytes refuses the read
-    inp.bad = true
-    return nil
-  end
->>>>>>> 972d517c1cadf93bb79ec6f9761d9cbd9b43eb49
   if peek(inp) ~= ":" then
     inp.bad = true
     return nil
