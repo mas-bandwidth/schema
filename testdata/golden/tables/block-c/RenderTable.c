@@ -34,9 +34,16 @@
 /* A key longer than this cannot name a field, so it is skipped as unknown. */
 #define BLOCKDEMO_K_TABLE_JSON_MAX_KEY 256
 
-/* The longest numeric token the walk will convert. Anything longer is a
-   value no field can hold and counts as a kind mismatch. */
-#define BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER 512
+/* The longest spelling handed to the runtime's number converter. A number
+   TOKEN has no length limit (§16.2): the document's own size bounds the scan,
+   and the token is read where it lies in the text. A token too long to hand
+   over whole is handed over as the same value in at most
+   kTableJsonMaxNumber - 32 significant digits: every digit past them is folded
+   into the exponent, and a non-zero one is kept as one sticky digit so the
+   rounding is the token's own. A point halfway between two doubles spells in
+   at most 767 significant digits, so no such point lies between the token and
+   the digits the converter is handed. */
+#define BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER 800
 
 /* The decimal point the C runtime is CURRENTLY using. Number conversion is
    the one locale-sensitive corner of the grammar — JSON's point is always
@@ -1031,17 +1038,40 @@ typedef struct blockdemo_table_json_in_t
     void * graph;
 } blockdemo_table_json_in_t;
 
+/* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
+   or block comment are well-formed UTF-8 and hold no NUL. A comment carrying an
+   ill-formed sequence or a zero byte is not JSON and refuses the read, exactly
+   as a byte at a string site does. Linear in the comment's length. */
+static SCHEMA_UNUSED int blockdemo_table_json_comment_text( const char * s, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        unsigned char c = (unsigned char) s[i];
+        int32_t width = 0;
+        int64_t left = length - i;
+        if ( c == 0 ) { return 0; }
+        if ( c < 0x80 ) { i++; continue; }
+        if ( blockdemo_table_json_utf8( s + i, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { return 0; }
+        i += width;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED void blockdemo_table_json_space( blockdemo_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        /* SPEC-TABLES 16.2: comments are whitespace on read, and their bytes are text. */
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
         {
+            int64_t start;
             in->pos += 2;
+            start = in->pos;
             while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            if ( !blockdemo_table_json_comment_text( in->text + start, in->pos - start ) ) { in->bad = 1; return; }
             continue;
         }
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
@@ -1049,6 +1079,7 @@ static SCHEMA_UNUSED void blockdemo_table_json_space( blockdemo_table_json_in_t 
             int64_t at = in->pos + 2;
             while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
             if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            if ( !blockdemo_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) ) { in->bad = 1; return; }
             in->pos = at + 2;
             continue;
         }
@@ -1115,21 +1146,35 @@ static SCHEMA_UNUSED int blockdemo_table_json_hex4( blockdemo_table_json_in_t * 
    c is the body byte just taken (at in->pos - 1). -1, with in->bad set, when
    it is not JSON: a raw byte below 0x20, a backslash that begins no escape,
    or a byte at or above 0x80 that begins no UTF-8 sequence (string_not_utf8,
-   §16.3). 0 when it begins valid JSON that is never a base64 symbol, an
-   escape or a UTF-8 sequence, consumed whole so an escaped quote cannot end
-   the body. 1 when the byte stands alone for the base64 grammar to judge. */
-static SCHEMA_UNUSED int blockdemo_table_json_base64_step( blockdemo_table_json_in_t * in, char c )
+   §16.3). 0 when it begins valid JSON whose decoded character is never a
+   base64 symbol, a UTF-8 sequence or an escape of a character at or above
+   U+0080, consumed whole. 1, with *decoded set, when it decodes to one ASCII
+   character, the byte alone or an escape consumed whole (\/ is a solidus, so an
+   escaped quote cannot end the body): the base64 grammar judges the string's
+   DECODED value. */
+static SCHEMA_UNUSED int blockdemo_table_json_base64_step( blockdemo_table_json_in_t * in, char c, char * decoded )
 {
     if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
     if ( c == '\\' )
     {
         char escape;
+        int code;
         if ( in->pos >= in->size ) { in->bad = 1; return -1; }
         escape = in->text[in->pos++];
         switch ( escape )
         {
-            case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't': return 0;
-            case 'u': if ( blockdemo_table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
+            case '"': case '\\': case '/': *decoded = escape; return 1;
+            case 'b': *decoded = '\b'; return 1;
+            case 'f': *decoded = '\f'; return 1;
+            case 'n': *decoded = '\n'; return 1;
+            case 'r': *decoded = '\r'; return 1;
+            case 't': *decoded = '\t'; return 1;
+            case 'u':
+                code = blockdemo_table_json_hex4( in );
+                if ( code < 0 ) { in->bad = 1; return -1; }
+                if ( code >= 0x80 ) { return 0; }
+                *decoded = (char) code;
+                return 1;
             default: in->bad = 1; return -1;
         }
     }
@@ -1141,7 +1186,89 @@ static SCHEMA_UNUSED int blockdemo_table_json_base64_step( blockdemo_table_json_
         in->pos += width - 1;
         return 0;
     }
+    *decoded = c;
     return 1;
+}
+
+/* A base64 body (docs/SPEC-TABLES.md §16.2, §16.8): the JSON string at the
+   cursor, decoded first, then held to CANONICAL base64, the standard alphabet,
+   padded, pad bits zero, exactly the text the writer writes. -1, with in->bad
+   set, when the text is not JSON. 0 when the decoded value is not canonical,
+   with *reason the refusal: the wrong kind when it does not decode at all,
+   base64_not_canonical when it decodes but is another spelling. 1 when it is
+   canonical, with *mark its first body byte and *length its decoded bytes.
+   On 0 and 1 the cursor is past the closing quote. Nothing is stored. */
+static SCHEMA_UNUSED int blockdemo_table_json_base64_scan( blockdemo_table_json_in_t * in, int64_t * mark, int64_t * length, int * reason )
+{
+    int64_t symbols = 0;
+    int64_t pad = 0;
+    int32_t last = 0;
+    int damaged = 0;
+    if ( blockdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return -1; }
+    in->pos++;
+    *mark = in->pos;
+    for ( ;; )
+    {
+        char c;
+        char decoded = 0;
+        int32_t val;
+        int step;
+        if ( in->pos >= in->size ) { in->bad = 1; return -1; }
+        c = in->text[in->pos++];
+        if ( c == '"' ) { break; }
+        step = blockdemo_table_json_base64_step( in, c, &decoded );
+        if ( step < 0 ) { return -1; }
+        if ( step == 0 ) { damaged = 1; continue; }
+        if ( damaged ) { continue; }
+        if ( decoded == '=' ) { pad++; continue; }
+        if ( pad > 0 ) { damaged = 1; continue; }
+        val = blockdemo_table_json_base64_value( (uint8_t) decoded );
+        if ( val < 0 ) { damaged = 1; continue; }
+        last = val;
+        symbols++;
+    }
+    if ( damaged || symbols % 4 == 1 || ( pad > 0 && ( pad > 2 || ( symbols + pad ) % 4 != 0 ) ) )
+    {
+        *reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        return 0;
+    }
+    /* it decodes; the canonical spelling pads the last group whole and
+       leaves the bits its last symbol carries past the last byte zero */
+    if ( ( symbols + pad ) % 4 != 0 || ( symbols % 4 == 2 && ( last & 0x0f ) != 0 ) || ( symbols % 4 == 3 && ( last & 0x03 ) != 0 ) )
+    {
+        *reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL;
+        return 0;
+    }
+    *length = symbols * 6 / 8;
+    return 1;
+}
+
+/* The bytes of a body table_json_base64_scan held canonical, decoded again
+   from mark: at most capacity of them into out. The cursor is left where the
+   scan left it. */
+static SCHEMA_UNUSED void blockdemo_table_json_base64_decode( blockdemo_table_json_in_t * in, int64_t mark, uint8_t * out, int64_t capacity )
+{
+    int64_t end = in->pos;
+    int64_t placed = 0;
+    uint32_t accumulator = 0;
+    int32_t held = 0;
+    in->pos = mark;
+    for ( ;; )
+    {
+        char c = in->text[in->pos++];
+        char decoded = 0;
+        if ( c == '"' ) { break; }
+        (void) blockdemo_table_json_base64_step( in, c, &decoded );
+        if ( decoded == '=' ) { break; }
+        accumulator = ( accumulator << 6 ) | (uint32_t) blockdemo_table_json_base64_value( (uint8_t) decoded );
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+        }
+    }
+    in->pos = end;
 }
 
 static SCHEMA_UNUSED int32_t blockdemo_table_json_encode_utf8( uint32_t code, char * unit )
@@ -1369,39 +1496,90 @@ static SCHEMA_UNUSED int blockdemo_table_json_walk_number( blockdemo_table_json_
     return 1;
 }
 
-/* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int blockdemo_table_json_scan_number( blockdemo_table_json_in_t * in, char * token, int32_t capacity, int32_t * length, int * integral )
+/* the same production, with the token kept for conversion: it is read where
+   it lies in the text, so its length is never a reason to refuse it */
+static SCHEMA_UNUSED int blockdemo_table_json_scan_number( blockdemo_table_json_in_t * in, const char ** token, int64_t * length, int * integral )
 {
     int64_t start;
-    int64_t count;
     blockdemo_table_json_space( in );
     start = in->pos;
     if ( !blockdemo_table_json_walk_number( in, integral ) ) { return 0; }
-    count = in->pos - start;
-    if ( count <= 0 || count >= capacity ) { return 0; }
-    memcpy( token, in->text + start, (size_t) count );
-    token[count] = 0;
-    *length = (int32_t) count;
+    if ( in->pos <= start ) { return 0; }
+    *token = in->text + start;
+    *length = in->pos - start;
     return 1;
 }
 
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
-   character on its way in */
-static SCHEMA_UNUSED double blockdemo_table_json_token_double( const char * token, int32_t length, int single )
+   character on its way in. A token too long to copy whole is handed over as
+   the same value, [-]0.<significant digits>e<exponent>: leading zeros move
+   the exponent, digits past kTableJsonMaxNumber - 32 are folded into it, and
+   a non-zero one among them leaves one sticky digit behind. */
+static SCHEMA_UNUSED double blockdemo_table_json_token_double( const char * token, int64_t length, int single )
 {
     char work[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER];
-    char point;
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
-    point = blockdemo_table_json_decimal_point();
-    if ( point != '.' )
+    char point = blockdemo_table_json_decimal_point();
+    if ( length < (int64_t) sizeof( work ) )
     {
-        int32_t i;
-        for ( i = 0; i < length; i++ )
+        memcpy( work, token, (size_t) length );
+        work[length] = 0;
+        if ( point != '.' )
         {
-            if ( work[i] == '.' ) { work[i] = point; }
+            int64_t i;
+            for ( i = 0; i < length; i++ )
+            {
+                if ( work[i] == '.' ) { work[i] = point; }
+            }
         }
+    }
+    else
+    {
+        int64_t i = 0;
+        int64_t exponent = 0;    /* the point's place after the digits kept: 0.<digits> times ten to this */
+        int64_t written = 0;     /* the exponent the token spells */
+        int fraction = 0;
+        int seen = 0;            /* a non-zero digit has been read */
+        int sticky = 0;          /* a non-zero digit was dropped */
+        int32_t kept = 0;
+        int32_t n = 0;
+        if ( token[i] == '-' ) { work[n++] = '-'; i++; }
+        work[n++] = '0';
+        work[n++] = point;
+        for ( ; i < length && token[i] != 'e' && token[i] != 'E'; i++ )
+        {
+            const char c = token[i];
+            if ( c == '.' ) { fraction = 1; continue; }
+            if ( !seen && c == '0' )
+            {
+                if ( fraction ) { exponent--; }
+                continue;
+            }
+            seen = 1;
+            if ( !fraction ) { exponent++; }
+            if ( kept < BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER - 32 ) { work[n++] = c; kept++; }
+            else if ( c != '0' ) { sticky = 1; }
+        }
+        if ( i < length )
+        {
+            int negative = 0;
+            i++;
+            if ( token[i] == '-' || token[i] == '+' ) { negative = token[i] == '-'; i++; }
+            for ( ; i < length; i++ )
+            {
+                /* past this no document holds enough digits to bring the
+                   value back from overflow or underflow */
+                if ( written < 100000000000000000LL ) { written = written * 10 + ( token[i] - '0' ); }
+            }
+            exponent += negative ? -written : written;
+        }
+        if ( !seen ) { work[n++] = '0'; exponent = 0; }
+        if ( sticky ) { work[n++] = '1'; }
+        /* ten to the 99999 overflows and ten to the -99999 underflows whatever
+           seven hundred digits stand in front of it */
+        if ( exponent > 99999 ) { exponent = 99999; }
+        if ( exponent < -99999 ) { exponent = -99999; }
+        snprintf( work + n, sizeof( work ) - (size_t) n, "e%d", (int) exponent );
     }
     if ( single ) { return (double) strtof( work, NULL ); }
     return strtod( work, NULL );
@@ -1547,7 +1725,7 @@ typedef struct blockdemo_table_json_integer_t
 // THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
 // no locale can move it, and through the runtime's converter only where the
 // spelling carries a fraction or an exponent
-static SCHEMA_UNUSED blockdemo_table_json_integer_t blockdemo_table_json_interpret( const char * token, int32_t length, int integral )
+static SCHEMA_UNUSED blockdemo_table_json_integer_t blockdemo_table_json_interpret( const char * token, int64_t length, int integral )
 {
     blockdemo_table_json_integer_t out;
     out.magnitude = 0;
@@ -1557,7 +1735,7 @@ static SCHEMA_UNUSED blockdemo_table_json_integer_t blockdemo_table_json_interpr
     out.finite = 1;
     if ( integral )
     {
-        int32_t i = 0;
+        int64_t i = 0;
         if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
         {
             out.negative = 1;
@@ -1640,18 +1818,18 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_integer_in_domain( blockdemo_t
 }
 
 
-static SCHEMA_UNUSED int blockdemo_table_json_read_wide( blockdemo_table_json_in_t * in, const char * token, int32_t length, void * storage, const blockdemo_table_field_info_t * f )
+static SCHEMA_UNUSED int blockdemo_table_json_read_wide( blockdemo_table_json_in_t * in, const char * token, int64_t length, void * storage, const blockdemo_table_field_info_t * f )
 {
     int is_signed = blockdemo_table_json_kind_wide_signed( f->kind );
     int frac = f->frac_bits;
-    int32_t i = 0;
+    int64_t i = 0;
     int negative = 0;
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
-    int32_t int_len = 0;
+    int64_t int_len = 0;
     while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
     const char * frac_digits = token + i;
-    int32_t frac_len = 0;
+    int64_t frac_len = 0;
     if ( i < length && token[i] == '.' )
     {
         i++;
@@ -1666,14 +1844,15 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_wide( blockdemo_table_json_in
         if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
         while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
-            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            // held past any count of digits a document can put in front
+            if ( exp < 100000000000000000LL ) { exp = exp * 10 + ( token[i] - '0' ); }
             i++;
         }
         if ( exp_negative ) { exp = -exp; }
     }
     // the digits, with the point after "point" of them; leading and trailing
     // zeros stripped. digit( k ) reads the k-th of the int and frac runs.
-    int32_t start = 0, end = int_len + frac_len;
+    int64_t start = 0, end = int_len + frac_len;
     int64_t point = int_len + exp;
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
@@ -1704,10 +1883,19 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_wide( blockdemo_table_json_in
         // its magnitude: its digits, with the zeros a negative point puts in
         // front, doubled F times; each doubling's carry is the next bit, and
         // the value is exact iff nothing is left after the last one
-        char fd[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER + 48];
+        char fd[256];
         int32_t fn = 0;
+        // a fraction exact in F bits spells in at most F decimal digits (its
+        // last digit is not zero, so 10^n divides digits * 2^F only for n <= F):
+        // a longer one is inexact without being doubled out
+        const int64_t fraction_digits = ( point < 0 ? -point : 0 ) + ( end - start - ( point > 0 ? point : 0 ) );
+        if ( fraction_digits > frac || fraction_digits > (int64_t) sizeof( fd ) )
+        {
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
@@ -1956,8 +2144,8 @@ static SCHEMA_UNUSED int schema_blockdemo_table_json_text_total_keep_( blockdemo
 
 static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
-    char token[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER];
-    int32_t length = 0;
+    const char * token = NULL;
+    int64_t length = 0;
     int integral = 0;
     if ( f->text_list != 0 ) { return schema_blockdemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
@@ -2073,6 +2261,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
                     const char * variant = blockdemo_table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
+                        /* a known variant named twice is a repeated key, refused like one
+                           (§16.2): a conforming writer writes each set bit's name once */
+                        if ( ( bits & ( (uint64_t) 1 << bit ) ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                         bits |= (uint64_t) 1 << bit;
                         found = 1;
                         break;
@@ -2104,7 +2295,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
         blockdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !blockdemo_table_json_scan_number( in, token, BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
+    if ( !blockdemo_table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -2200,84 +2391,29 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
     }
     if ( blockdemo_table_json_is_bytes( f ) )
     {
-        /* The JSON layer decides first (table_json_base64_step): a body that
-           is not a JSON string is damaged, and one that is JSON but carries
-           an escape or a non-ASCII character is simply not base64. Validate the
-           stream and its padding before touching storage, so a body that is not
-           base64 leaves the declared default. */
-        int64_t mark;
-        int64_t symbols = 0;
-        int64_t pad = 0;
-        int damaged = 0;
-        int64_t at;
-        int32_t placed = 0;
-        uint32_t accumulator = 0;
-        int32_t held = 0;
-        int out_of_range = 0;
-        if ( blockdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
-        in->pos++;
-        mark = in->pos;
-        for ( ;; )
+        /* The JSON layer decides first (table_json_base64_scan): a body that
+           is not a JSON string is damaged; the string's decoded value is then
+           held to canonical base64 before storage is touched, so a body that
+           is not the canonical spelling leaves the declared default. */
+        int64_t mark = 0;
+        int64_t length = 0;
+        int reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
+        int scanned = blockdemo_table_json_base64_scan( in, &mark, &length, &reason );
+        if ( scanned < 0 ) { return 0; }
+        if ( scanned == 0 )
         {
-            char c;
-            int32_t val;
-            int step;
-            if ( in->pos >= in->size ) { in->bad = 1; return 0; }
-            c = in->text[in->pos++];
-            if ( c == '"' ) { break; }
-            step = blockdemo_table_json_base64_step( in, c );
-            if ( step < 0 ) { return 0; }
-            if ( step == 0 ) { damaged = 1; continue; }
-            if ( damaged ) { continue; }
-            if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { damaged = 1; continue; }
-            val = blockdemo_table_json_base64_value( (uint8_t) c );
-            if ( val < 0 ) { damaged = 1; continue; }
-            symbols++;
-        }
-        if ( !damaged )
-        {
-            if ( pad > 0 )
-            {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { damaged = 1; }
-            }
-            else if ( symbols % 4 == 1 )
-            {
-                damaged = 1;
-            }
-        }
-        if ( damaged )
-        {
-            /* a body that is not base64 is the wrong shape for the kind: the
-               field keeps its default and the event is counted */
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            /* the field keeps its default and the event is counted */
+            in->report->refused=1, in->report->refuse_reason=reason;
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        blockdemo_table_json_set_count( base, f, 0 );
-        for ( at = mark; ; at++ )
+        blockdemo_table_json_base64_decode( in, mark, storage, f->array_bound );
+        if ( length > f->array_bound )
         {
-            char c = in->text[at];
-            int32_t symbol;
-            if ( c == '"' || c == '=' ) { break; }
-            symbol = blockdemo_table_json_base64_value( (uint8_t) c );
-            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
-            held += 6;
-            if ( held >= 8 )
-            {
-                held -= 8;
-                if ( placed < f->array_bound )
-                {
-                    storage[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff );
-                }
-                else
-                {
-                    out_of_range = 1;
-                }
-            }
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+            length = f->array_bound;
         }
-        if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-        blockdemo_table_json_set_count( base, f, placed );
+        blockdemo_table_json_set_count( base, f, (int32_t) length );
         return 1;
     }
     if ( blockdemo_table_json_is_keyed( f ) )
