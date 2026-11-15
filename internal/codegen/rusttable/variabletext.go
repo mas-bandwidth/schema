@@ -328,16 +328,29 @@ impl<'a> Jr<'a> {
                 b' ' | b'\t' | b'\n' | b'\r' => self.p += 1,
                 b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'/' => {
                     self.p += 2;
+                    let start = self.p;
                     while self.p < self.b.len() && self.b[self.p] != b'\n' {
                         self.p += 1;
+                    }
+                    // §16.3: a comment's bytes are well-formed UTF-8 and hold
+                    // no NUL, on the same terms a string site's are.
+                    if std::str::from_utf8(&self.b[start..self.p]).is_err() || self.b[start..self.p].contains(&0) {
+                        self.damaged = true;
+                        return;
                     }
                 }
                 b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'*' => {
                     self.p += 2;
+                    let start = self.p;
                     let mut closed = false;
                     while self.p + 1 < self.b.len() {
                         if self.b[self.p] == b'*' && self.b[self.p + 1] == b'/' {
+                            let end = self.p;
                             self.p += 2;
+                            if std::str::from_utf8(&self.b[start..end]).is_err() || self.b[start..end].contains(&0) {
+                                self.damaged = true;
+                                return;
+                            }
                             closed = true;
                             break;
                         }
