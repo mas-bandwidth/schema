@@ -756,6 +756,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
 		g.writeAssert(ind, fmt.Sprintf("%s_length >= 0 && %s_length <= %d", name, name, f.Type.Size),
 			fmt.Sprintf("%s_length out of range [0, %d]", assertLabel(name), f.Type.Size))
+		if f.Type.Kind == ir.TString {
+			// ill-formed text is caller misuse on write (SPEC §5.1 row 8): the
+			// read side's own checks, as debug asserts over the used bytes
+			g.writeAssert(ind, fmt.Sprintf("!%s[..%s_length as usize].contains(&0)", name, name),
+				fmt.Sprintf("%s holds a zero byte", assertLabel(name)))
+			g.writeAssert(ind, fmt.Sprintf("std::str::from_utf8(&%s[..%s_length as usize]).is_ok()", name, name),
+				fmt.Sprintf("%s is not well-formed UTF-8", assertLabel(name)))
+		}
 		g.emitWriteRangedFold32(name+"_length", false, "0", true,
 			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind)
 		// the write side borrows the used bytes in place: WriteStream::write_bytes
