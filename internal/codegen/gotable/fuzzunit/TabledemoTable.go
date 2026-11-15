@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xad5850dc4545aec9)
-const _ = uint64(0xad5850dc4545aec9 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x41dce6b6d2d9e7ca)
+const _ = uint64(0x41dce6b6d2d9e7ca - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -172,8 +172,6 @@ type TableFixedEntry = goruntime.TableFixedEntry
 type TableFixedGuardLink = goruntime.TableFixedGuardLink
 
 type TableFixedDst = goruntime.TableFixedDst
-
-const tableFixedDstDeprecated = goruntime.TableFixedDstDeprecated
 
 type tableFixedPlan = goruntime.TableFixedPlan
 
@@ -2103,9 +2101,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
