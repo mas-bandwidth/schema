@@ -3610,6 +3610,7 @@ static SCHEMA_UNUSED void graphdemo_table_mark_framed( graphdemo_table_reader_t 
             }
             return;
         case 15: { graphdemo_table_reader_t rr = sub; graphdemo_table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: graphdemo_table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }
