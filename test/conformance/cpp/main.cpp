@@ -1281,6 +1281,10 @@ static int surface_json_read( const std::string & out )
     return 0;
 }
 
+// A CASE THE DRIVER CANNOT ANSWER IS THAT CASE'S FAILURE, NAMED: the driver
+// says why on stderr, writes no answer for it, and goes on to the next row, so
+// the harness scores the case as "the driver wrote nothing" and every later
+// row is still compared. Only a file it cannot read or write stops the run.
 static int surface_json_write( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1296,23 +1300,23 @@ static int surface_json_write( const std::string & out )
             std::vector<uint8_t> region;
             Report report;
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
-            if ( root == NULL ) return 1;
+            if ( root == NULL ) { fprintf( stderr, "driver: json-write %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); continue; }
             std::vector<char> text;
-            if ( !variable->to_json( root, text ) ) return 1;
+            if ( !variable->to_json( root, text ) ) { fprintf( stderr, "driver: json-write %s: ToJson refused the value\n", f[1].c_str() ); continue; }
             if ( !spill( out, f[1] + ".json", text.data(), text.size() ) ) return 1;
             continue;
         }
         const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) return 1;
+        if ( codec == NULL ) { fprintf( stderr, "driver: json-write %s: no codec for %s.%s\n", f[1].c_str(), f[2].c_str(), f[3].c_str() ); continue; }
 
         void * value = codec->make();
         codec->reset( value );
         Report report;
-        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) return 1;
+        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: json-write %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); continue; }
         int64_t size = codec->to_json_measure( value );
-        if ( size < 0 ) return 1;
+        if ( size < 0 ) { fprintf( stderr, "driver: json-write %s: ToJsonMeasure refused the value\n", f[1].c_str() ); continue; }
         std::vector<char> text( (size_t) size + 1 );
-        if ( codec->to_json( value, text.data(), size ) != size ) return 1;
+        if ( codec->to_json( value, text.data(), size ) != size ) { fprintf( stderr, "driver: json-write %s: ToJson did not write ToJsonMeasure's answer\n", f[1].c_str() ); continue; }
         if ( !spill( out, f[1] + ".json", text.data(), (size_t) size ) ) return 1;
     }
     return 0;
@@ -1356,7 +1360,7 @@ static int surface_json_write_refusal( const std::string & out )
             if ( f[5] != "none" ) { fprintf( stderr, "driver: %s: a region root takes no damage\n", f[1].c_str() ); return 1; }
             std::vector<uint8_t> region;
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
-            if ( root == NULL ) { fprintf( stderr, "driver: %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); return 1; }
+            if ( root == NULL ) { fprintf( stderr, "driver: json-write-refusal %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); continue; }
             wrote = variable->to_json( root, text );
         }
         else
@@ -1365,7 +1369,7 @@ static int surface_json_write_refusal( const std::string & out )
             if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
             void * value = codec->make();
             codec->reset( value );
-            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); return 1; }
+            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: json-write-refusal %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); continue; }
             if ( !damage_text( f[2], f[3], value, f[5] ) ) return 1;
             wrote = codec_text( codec, value, text );
         }
