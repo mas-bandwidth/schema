@@ -137,30 +137,54 @@ struct Codec
     Run run;
 };
 
-// one FIXED-class root: Load into a value, Measure, Save
-template <typename T, typename Report>
+// one FIXED-class root: a fixed table's file is FORM 3 (docs/SPEC-TABLES.md
+// §3.4), so the codec reads it through <T>FixedLoad — the plain strict read of
+// that form, one record — and writes it back through FixedMeasure and
+// FixedSave. The plan storage is the caller's (§3.4), roomy enough for any
+// writer's layout the corpus carries; no cache is shared.
+static const int32_t kFixedPlanCapacity = 4096;
+
+template <typename T, typename Report, typename Entry, typename Cache>
 struct Fixed
 {
-    template <bool ( *load )( T &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *measure )( const T & ),
-              int64_t ( *save )( const T &, uint8_t *, int64_t )>
+    template <int64_t ( *load )( T *, int64_t, const uint8_t *, int64_t, Entry *, int32_t, Cache *, Report * ),
+              int64_t ( *measure )( int64_t ),
+              int64_t ( *save )( const T *, int64_t, uint8_t *, int64_t )>
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
         static T * value = new T();
         new ( value ) T();
+        static Entry * plan = new Entry[ kFixedPlanCapacity ];
         Report report;
-        bool ok = load( *value, wire, bytes, &report );
+        const int64_t n = load( value, 1, wire, bytes, plan, kFixedPlanCapacity, NULL, &report );
         copy_report( report, reply );
         // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not carry
-        // moves no counter and reports nothing, so it must not fold into the flag
-        reply.malformed = reply.malformed || ( !ok && !reply.refused );
-        reply.loaded = true;
+        // moves no counter and reports nothing, so it must not fold into the
+        // flag; a read that returned no record without a named refusal is
+        // damage, folded into malformed from the read's own false.
+        reply.malformed = reply.malformed || ( n < 0 && !reply.refused );
+        reply.loaded = n == 1;
         reply.measure = -1;
-        int64_t size = measure( *value );
+        if ( n != 1 ) { reply.saved = -1; return; }
+        int64_t size = measure( 1 );
         if ( size < 0 ) { reply.saved = -1; return; }
         reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
-        if ( save( *value, reply.bytes, size ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
+        if ( save( value, 1, reply.bytes, size ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
         reply.saved = size;
+    }
+};
+
+// A FIXED root past §3.4's 65536-byte record bound HAS NO FILE FORM: no form 3
+// carries it, and a reader that expects a fixed table refuses every other form,
+// so every file read of it refuses and nothing is saved.
+struct NoFile
+{
+    static void run( const uint8_t *, int64_t, Reply & reply )
+    {
+        reply.loaded = false;
+        reply.refused = true;
+        reply.measure = -1;
+        reply.saved = -1;
     }
 };
 
@@ -270,7 +294,9 @@ struct VariableRetain
 };
 
 #define FIXED( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
+    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport, ns::TableFixedEntry, ns::TableFixedPlanCache>::run<ns::type##FixedLoad, ns::type##FixedMeasure, ns::type##FixedSave> }
+#define NOFILE( unit_key, ns, type ) \
+    { unit_key, #type, 1, 0, NoFile::run }
 #define VARIABLE( unit_key, ns, type ) \
     { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 #define RETAIN( unit_key, ns, type ) \
@@ -351,7 +377,7 @@ static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, RootConfig ),
     FIXED( "tabledemo", tabledemo, ProfileConfig ),
     FIXED( "tabledemo", tabledemo, LoadoutConfig ),
-    FIXED( "tabledemo", tabledemo, WideBlob ),
+    NOFILE( "tabledemo", tabledemo, WideBlob ),
     FIXED( "tabledemo", tabledemo, ArchiveConfig ),
     FIXED( "tabledemo", tabledemo, KeyedConfig ),
     FIXED( "tabledemo", tabledemo, PackConfig ),
