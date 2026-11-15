@@ -21,6 +21,15 @@ type textTarget struct {
 	saveText    func(any) (string, error)
 	jsonMeasure func(any) int64
 	jsonDump    func(any, []byte) int64
+	// noFileForm: as target's (docs/SPEC-TABLES.md §3.4), its SaveText
+	// refuses every value.
+	noFileForm bool
+}
+
+// textWithoutFileForm marks a text target whose root has no file form.
+func textWithoutFileForm(t textTarget) textTarget {
+	t.noFileForm = true
+	return t
 }
 
 // keyedTextOf adapts the fixed-value entry points `<T>LoadText` and
@@ -118,12 +127,17 @@ var textTargets = []textTarget{
 		tabledemo.BuffSaveText, tabledemo.BuffToJSONMeasure, tabledemo.BuffToJSON),
 	keyedTextOf("Debuff", tabledemo.DebuffReset, tabledemo.DebuffLoadText, tabledemo.DebuffFromJSON,
 		tabledemo.DebuffSaveText, tabledemo.DebuffToJSONMeasure, tabledemo.DebuffToJSON),
-	keyedTextOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoadText, tabledemo.WideBlobFromJSON,
-		tabledemo.WideBlobSaveText, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
+	textWithoutFileForm(keyedTextOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoadText, tabledemo.WideBlobFromJSON,
+		tabledemo.WideBlobSaveText, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON)),
 }
 
 func FuzzLoadText(f *testing.F) {
 	seedTextTargets(f, func(target textTarget, value any) ([]byte, error) {
+		if target.noFileForm {
+			// no file, so no text of one (§3.4): seed the form-1 byte's
+			// base64, which its LoadText refuses
+			return []byte("AQ=="), nil
+		}
 		text, err := target.saveText(value)
 		return []byte(text), err
 	})

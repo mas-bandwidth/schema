@@ -17,11 +17,11 @@ import (
 // This row forges the two ends instead. The negative arm was measured on
 // 2026-09-19 to be guarded by NOTHING on five legs — c, cs, dart, elixir, js —
 // whose landed fixed-table tests all stayed green with it deleted, so C1 is the
-// receipt this row exists to hold. clamped is asserted == 1, never >= 1,
-// because a leg that counts once in the count op and again in the bounds pass
-// lands 2 and a looser read is the thing this row catches. And C2's landed
-// count of 4 is the WRITER's bound carried by the plan, never the reader's own
-// 8 and never the forged 9.
+// receipt this row exists to hold. Under the strict read (docs/SPEC-TABLES.md
+// §4, docs/FIXED-FORM-ALGORITHM.md §4.5: a count past the bound is itself
+// refused) both ends refuse the whole load and write nothing: C1 never lands
+// -1 or a clamp to zero, and C2 never lands the writer's 4, the reader's own 8
+// or the forged 9.
 func TestFixedVersioningCountClampEnds(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -54,29 +54,26 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
             TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "count_clamp_ends/c1: n is not 1: " + n);
+                bad += ProbeLog.Fail(@NAME@, "count_clamp_ends/c1: a negative count must refuse the load: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a forged count is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged count is a refusal, never a clamp: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
-            if (back[0].Lead != 0xAAAAAAAAu || back[0].Trail != 0xBBBBBBBBu)
+            if (back[0].Lead != fresh.Lead || back[0].Trail != fresh.Trail)
             {
-                bad += ProbeLog.Fail(@NAME@, "the row moved a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a refusal wrote a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (back[0].ValsCount != 0)
+            if (back[0].ValsCount != fresh.ValsCount)
             {
-                bad += ProbeLog.Fail(@NAME@, "the negative count clamps to ZERO, never -1 nor the writer's 4 nor the reader's 8: " + back[0].ValsCount);
+                bad += ProbeLog.Fail(@NAME@, "a refusal landed a count, never -1 nor zero nor the writer's 4 nor the reader's 8: " + back[0].ValsCount);
             }
-            if (r.Clamped != 1)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: clamped=" + r.Clamped);
-            }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "counters moved on a clean clamped read: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " widened=" + r.Widened + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 		{name: "count_clamp_ends/c2", reader: "VNEW_array_bounded_grow",
 			older: []string{"VOLD_array_bounded_grow"}, suffix: "c2", file: "old_array_bounded_grow.bin",
@@ -103,43 +100,40 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
             TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "count_clamp_ends/c2: n is not 1: " + n);
+                bad += ProbeLog.Fail(@NAME@, "count_clamp_ends/c2: a count past the writer's bound must refuse the load: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a forged count is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged count is a refusal, never a clamp: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
-            if (back[0].Lead != 0xAAAAAAAAu || back[0].Trail != 0xBBBBBBBBu)
+            if (back[0].Lead != fresh.Lead || back[0].Trail != fresh.Trail)
             {
-                bad += ProbeLog.Fail(@NAME@, "the row moved a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a refusal wrote a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (back[0].ValsCount != 4)
+            if (back[0].ValsCount != fresh.ValsCount)
             {
-                bad += ProbeLog.Fail(@NAME@, "the count past both bounds clamps to the WRITER's bound 4, never the reader's own 8 nor the forged 9: " + back[0].ValsCount);
+                bad += ProbeLog.Fail(@NAME@, "a refusal landed a count, never the writer's 4 nor the reader's own 8 nor the forged 9: " + back[0].ValsCount);
             }
             for (int i = 0; i < 4; ++i)
             {
-                if (back[0].Vals[i] != 1000 + i)
+                if (back[0].Vals[i] != fresh.Vals[i])
                 {
-                    bad += ProbeLog.Fail(@NAME@, "vals[" + i + "] did not land its own value: " + back[0].Vals[i] + " != " + (1000 + i));
+                    bad += ProbeLog.Fail(@NAME@, "vals[" + i + "] was written by a refused load: " + back[0].Vals[i] + " != " + fresh.Vals[i]);
                 }
             }
             for (int i = 4; i < 8; ++i)
             {
-                if (back[0].Vals[i] != 0)
+                if (back[0].Vals[i] != fresh.Vals[i])
                 {
                     bad += ProbeLog.Fail(@NAME@, "vals[" + i + "] is not the reader's declared default: " + back[0].Vals[i]);
                 }
             }
-            if (r.Clamped != 1)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: clamped=" + r.Clamped);
-            }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "counters moved on a clean clamped read: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " widened=" + r.Widened + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 	}
 

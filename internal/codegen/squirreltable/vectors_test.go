@@ -61,11 +61,10 @@ var sqVectorCases = []sqVectorCase{
 		"if (_require(\"schema_table_save\").numberForCook(T, rootName, v) == null) report.bodyDamaged = true;"},
 }
 
-// sqVectorWireCheckOff names the cases whose rule the load's wire-alone
-// check (docs/SPEC-TABLES.md §6.5, wireCheck in schema_table_load.nut) also
-// holds: their plant turns that check off too, so the control still shows
-// the walk's own rule is what the vector reaches.
-var sqVectorWireCheckOff = map[string]bool{"pointer_orphan_cycle": true}
+// sqVectorWireCheckOff names cases where the wire-first check would refuse
+// before the negative-control plant can run. Their plant turns that check off
+// too, so the control still reaches the rule it is meant to isolate.
+var sqVectorWireCheckOff = map[string]bool{"pointer_orphan_cycle": true, "wire_length_overflow": true}
 
 // sqVectorVerdict answers the first disagreement between the driver and the
 // engine on the case's vector, or "" when they agree.

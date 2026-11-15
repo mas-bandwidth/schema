@@ -1,0 +1,23 @@
+// The WRITER unit of the pointer-target-type corpus
+// (docs/SPEC-TABLES.md §3.1; docs/rulings.json pointer-target-type-checked).
+// It is the reader unit's successor: beside `Node` and `Quant` it declares a
+// type the reader does not, `Extra`, and its `next` points at it. A save of
+// this unit writes a record the reader cannot DECLARE, so the reader accepts
+// the load, reads the pointer null, and counts the record `unknown` once.
+package pointertargettype
+
+table Node
+{
+    value uint32
+    next  *Extra
+}
+
+table Quant
+{
+    q uint32
+}
+
+table Extra
+{
+    x uint32
+}

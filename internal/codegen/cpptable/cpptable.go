@@ -89,7 +89,12 @@ type tableGen struct {
 	fixedOwner *ir.Struct
 	// fixedCheck makes the clamp walk emit <T>FixedInRange — each clamp's
 	// count expression or'd into `bad`, and no store — instead of the body.
-	fixedCheck  bool
+	fixedCheck bool
+	// fixedWriteCheck, with fixedCheck, makes the same walk emit
+	// <T>FixedWriteAdmits: the write contract's check (docs/SPEC.md §5.1),
+	// walked only inside the storage a caller filled.
+	fixedWriteCheck bool
+
 	unit        *ir.Unit
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
@@ -423,80 +428,6 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 		}
 		for _, f := range st.Fields {
 			if f.KeyEnum != "" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// fixedWriteAssertNeeded reports whether any fixed-emitted table of the unit
-// declares a value a write body checks by schema_assert: the count, length and
-// text checks ir.TableFixedHasWriteBound already names, plus the ranged integer,
-// bits width, enum ordinal and union tag this emitter now checks too
-// (docs/SPEC.md §5.1 rows 1, 2, 5, 6). The assert hook rides on this answer, so
-// a unit whose only write-side checks are the new ones still carries it. It is
-// deliberately one-sided: a unit whose construct the emitter might still drop
-// (a range that fills its storage) answers true anyway, which costs only a
-// harmless hook definition and never a missing one.
-func fixedWriteAssertNeeded(u *ir.Unit) bool {
-	if ir.TableFixedHasWriteBound(u) {
-		return true
-	}
-	field := func(f *ir.Field) bool {
-		switch {
-		case f.HasIntRange, f.Type.Kind == ir.TBits:
-			return true
-		}
-		if f.Type.Kind != ir.TNamed {
-			return false
-		}
-		switch f.Type.Ref.(type) {
-		case *ir.Enum, *ir.Union:
-			return true
-		}
-		return false
-	}
-	seen := map[string]bool{}
-	var has func(st *ir.Struct) bool
-	has = func(st *ir.Struct) bool {
-		if seen[st.Name] {
-			return false
-		}
-		seen[st.Name] = true
-		for _, f := range st.Fields {
-			if field(f) {
-				return true
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if has(r) {
-					return true
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						continue
-					}
-					if field(v.F) {
-						return true
-					}
-					if v.F.Type.Kind == ir.TNamed {
-						if s2, ok := v.F.Type.Ref.(*ir.Struct); ok && has(s2) {
-							return true
-						}
-					}
-				}
-			}
-		}
-		return false
-	}
-	for _, file := range u.Files {
-		for _, st := range file.Tables {
-			if ir.TableFixedEmitted(u, st) && has(st) {
 				return true
 			}
 		}
@@ -2198,8 +2129,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
-		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && fixedWriteAssertNeeded(u) {
+		// them. The §5.1 write contract (range, bits width, enum ordinal,
+		// union tag, ill-formed text) asserts through the same hook. A unit
+		// with nothing to check gets no hook.
+		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteCheck(u) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {
