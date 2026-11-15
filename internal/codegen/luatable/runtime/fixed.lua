@@ -695,8 +695,10 @@ end
 -- THE STRICT SET (docs/SPEC-TABLES.md §6.5, §3.4; docs/FIXED-FORM-ALGORITHM.md
 -- §4.6): the fixed form carries its own rule, and a RANGED integer past the
 -- writer's declared bound (or this reader's when the entry carries no writer
--- range) is the `out_of_range` refusal. The plain name walks what it decoded
--- once.
+-- range) is the `out_of_range` refusal. A bits(N) past its mask, a ranged
+-- 128-bit value and a compressed float past this reader's declared bound
+-- refuse by the same name (the entry carries writer ranges for integers
+-- only). The plain name walks what it decoded once.
 local function strict_value(T, d, v, ranges, wr)
   if v == nil then return end
   local s = d.shape
@@ -711,6 +713,28 @@ local function strict_value(T, d, v, ranges, wr)
       else
         if math.ult(v, lo) or math.ult(hi, v) then error("out_of_range", 0) end
       end
+    elseif d.bits ~= nil and d.bits > 0 and d.bits < 64 then
+      -- a bits(N) past its mask refuses by the same name (§4.6), compared
+      -- unsigned: a bits(N) above 32 bits can land as a negative integer
+      if math.ult((1 << d.bits) - 1, v) then error("out_of_range", 0) end
+    end
+  elseif s == "wide" then
+    -- a 128-bit range is held on its raw halves, compared as the identity
+    -- walk compares them
+    if d.lo ~= nil and d.hi ~= nil then
+      local function lt128(a, b)
+        if a.hi ~= b.hi then
+          if d.signed then return a.hi < b.hi end
+          return math.ult(a.hi, b.hi)
+        end
+        return math.ult(a.lo, b.lo)
+      end
+      if lt128(v, d.lo) or lt128(d.hi, v) then error("out_of_range", 0) end
+    end
+  elseif s == "float" then
+    -- a compressed float is a ranged scalar here (§4.6)
+    if d.fmin ~= nil and d.fmax ~= nil then
+      if v < d.fmin or v > d.fmax then error("out_of_range", 0) end
     end
   elseif s == "table" then
     local desc = T.Tables[d.target]
