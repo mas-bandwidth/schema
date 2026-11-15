@@ -9,6 +9,7 @@ package luatable
 // The verdict is the contract; a refusal's name is the leg's own diagnostic.
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestLuaSkippedValueIsValidated(t *testing.T) {
@@ -140,6 +142,124 @@ end
 			t.Errorf("%s (%s): verdict %s, want %s", r.file, r.form, got[i], r.verdict)
 		}
 	}
+
+	// A nested body names no FIELD ID twice, not merely no vocabulary slot:
+	// one name may take several announced entries at different shapes, and a
+	// body naming two of them repeats the id.
+	const dupBase = uint64(0x5a5a5a5a00000000)
+	same := []ir.TableVocabularyEntry{
+		{Id: dupBase | 1, Kind: ir.TableKindU8},
+		{Id: dupBase | 1, Kind: ir.TableKindU16},
+		{Id: dupBase | 3, Kind: ir.TableKindTable},
+	}
+	distinct := []ir.TableVocabularyEntry{
+		{Id: dupBase | 1, Kind: ir.TableKindU8},
+		{Id: dupBase | 2, Kind: ir.TableKindU16},
+		{Id: dupBase | 3, Kind: ir.TableKindTable},
+	}
+	dupProbe := fmt.Sprintf("local T = require(%q)\n", module) + `local inputs = require("inputs")
+local function load(ann, msg)
+  local vocab = {}
+  for i = 1, T.MessageEntries do vocab[i] = {} end
+  local arep = {}
+  if not T.AnnounceRead(vocab, ann, arep) then return "refused" end
+  local r = {}
+  local got = T.LoadMessages("Root", vocab, msg, r)
+  if got ~= nil and #got == 1 and not r.damaged and (r.refused or 0) == 0 then return "read" end
+  return "refused"
+end
+print("same " .. load(inputs.ann_same, inputs.msg_same))
+print("distinct " .. load(inputs.ann_distinct, inputs.msg_distinct))
+`
+	dupOut, dupStderr, dupErr := try(t, files, dupProbe, map[string][]byte{
+		"ann_same":     luaAnnouncement(same),
+		"msg_same":     luaNestedBodyMessage(len(same)),
+		"ann_distinct": luaAnnouncement(distinct),
+		"msg_distinct": luaNestedBodyMessage(len(distinct)),
+	})
+	if dupErr != nil {
+		t.Fatalf("the duplicate-id probe failed: %v\nout=%s\nstderr=%s", dupErr, dupOut, dupStderr)
+	}
+	wantDup := map[string]string{"same": "refused", "distinct": "read"}
+	gotDup := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(dupOut), "\n") {
+		var name, verdict string
+		if _, err := fmt.Sscanf(line, "%s %s", &name, &verdict); err != nil {
+			t.Fatalf("the duplicate-id probe answered %q: %v", line, err)
+		}
+		gotDup[name] = verdict
+	}
+	for name, want := range wantDup {
+		if gotDup[name] != want {
+			t.Errorf("nested body %s id: verdict %q, want %q", name, gotDup[name], want)
+		}
+	}
+}
+
+// luaAnnouncement builds an announcement carrying exactly entries: a form-1
+// file whose body holds the build version and the vocabulary under the two
+// reserved ids (docs/SPEC-TABLES.md §3.3).
+func luaAnnouncement(entries []ir.TableVocabularyEntry) []byte {
+	vocabulary := ir.TableVocabularyBytes(entries)
+	var field []byte
+	field = append(field, ir.TableKindU8)
+	field = binary.AppendUvarint(field, uint64(len(vocabulary)))
+	field = append(field, vocabulary...)
+	out := []byte{ir.TableWireForm}
+	out = binary.AppendUvarint(out, 1)
+	out = append(out, ir.TableKindU64)
+	out = binary.LittleEndian.AppendUint64(out, 1)
+	out = binary.AppendUvarint(out, 2)
+	out = append(out, ir.TableKindArray)
+	out = binary.AppendUvarint(out, uint64(len(field)))
+	out = append(out, field...)
+	out = append(out, 0)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableBuildVersionWireId)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableMessageVocabularyWireId)
+	out = binary.LittleEndian.AppendUint64(out, 2)
+	return out
+}
+
+// luaNestedBodyMessage is one batch of one Root body that names the skipped
+// table entry at slot 3 and, inside it, slots 1 and 2 before the two
+// terminators. Slot 1 carries a u8 and slot 2 a u16.
+func luaNestedBodyMessage(entries int) []byte {
+	refBits := ir.TableMessageRefBits(entries)
+	var bits luaBits
+	bits.put(0, 8)
+	bits.put(3, refBits)
+	bits.put(1, refBits)
+	bits.put(0, 8)
+	bits.put(2, refBits)
+	bits.put(0, 16)
+	bits.put(0, refBits)
+	bits.put(0, refBits)
+	bits.align()
+	return append([]byte{ir.TableWireMessageForm}, bits.bytes()...)
+}
+
+type luaBits struct{ bits []bool }
+
+func (b *luaBits) put(v uint64, n int) {
+	for i := 0; i < n; i++ {
+		b.bits = append(b.bits, (v>>uint(i))&1 != 0)
+	}
+}
+
+func (b *luaBits) align() {
+	for len(b.bits)%8 != 0 {
+		b.bits = append(b.bits, false)
+	}
+}
+
+func (b *luaBits) bytes() []byte {
+	out := make([]byte, (len(b.bits)+7)/8)
+	for i, bit := range b.bits {
+		if bit {
+			out[i/8] |= 1 << uint(i%8)
+		}
+	}
+	return out
 }
 
 // TestLuaJsonPlacedObjectKeyZero holds every placed-object key scan to §16.3:

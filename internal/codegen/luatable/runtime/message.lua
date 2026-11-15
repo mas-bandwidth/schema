@@ -538,8 +538,8 @@ skip_entry = function(R, e, ctx)
       if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
         return false
       end
-      if seen[ref] then return false end
-      seen[ref] = true
+      if seen[fe.id] then return false end
+      seen[fe.id] = true
       if not skip_entry(R, fe, ctx) then return false end
     end
   elseif k == 14 or k == 16 then
