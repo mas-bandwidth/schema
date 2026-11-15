@@ -2394,7 +2394,7 @@ active, a writer never produces bytes its own reader refuses.
 | Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |
 | JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 every build on the flat and the runtime tier; 8 not yet held |
 | Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
-| Lua | 1–8 every build | 1–8 every build | 1–6 and 10 every build; 7 raises; 8 not yet held |
+| Lua | 1–8 every build | 1–8 every build | 1–6, 10 and 11 every build; 7 raises; 8 not yet held |
 | Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
 | Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 not yet held |
 | MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
