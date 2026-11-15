@@ -6931,6 +6931,7 @@ inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t 
 {
     const int64_t need = PartRowFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PartRowFixedHash );
@@ -7119,7 +7120,7 @@ inline int64_t PartRowFixedLoadWalk( PartRow * values, int64_t capacity, const u
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -10361,6 +10362,7 @@ inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint
 {
     const int64_t need = PartFrameFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PartFrameFixedHash );
@@ -10549,7 +10551,7 @@ inline int64_t PartFrameFixedLoadWalk( PartFrame * values, int64_t capacity, con
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
