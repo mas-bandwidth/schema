@@ -5097,7 +5097,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("            } else ")
 	}
 	b.WriteString("{\n")
-	b.WriteString("                in.skipValue(); in.rep.unknown++;\n")
+	// A key this reader cannot name is skipped one level deeper than the
+	// object that holds it, the same count as a placed value (§16.2):
+	// 128 containers are read and 129 refuse.
+	b.WriteString("                in.skipValue(depth + 1); in.rep.unknown++;\n")
 	b.WriteString("            }\n")
 	b.WriteString("            c = in.peek();\n")
 	b.WriteString("            if (c == ',') { in.p++; continue; }\n")
