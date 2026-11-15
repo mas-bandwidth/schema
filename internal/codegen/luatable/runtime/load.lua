@@ -462,12 +462,21 @@ local function node_scan(bytes, o, report, variable, st)
       report.wireDamaged = true
       return nil
     end
+    local tid = o.table[tref]
+    -- A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+    -- MALFORMED (§3.1, §3.3): a record's type cannot be one of the three ids
+    -- the language holds back. The two blob ids are lawful record types (§2.5).
+    if tid == NODE_TABLE_ID or tid == BUILD_VERSION_ID or tid == MESSAGE_VOCABULARY_ID then
+      report.damaged = true
+      report.wireDamaged = true
+      return nil
+    end
     local entry = rawpool[#raw + 1]
     if entry == nil then
       entry = {}
       rawpool[#raw + 1] = entry
     end
-    entry.tid, entry.at, entry.lim = o.table[tref], rec.at, rec.at + n
+    entry.tid, entry.at, entry.lim = tid, rec.at, rec.at + n
     raw[#raw + 1] = entry
     rec.at = rec.at + n
   end
