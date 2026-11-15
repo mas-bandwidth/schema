@@ -800,7 +800,7 @@ type tableFixedLayoutEntry struct {
 }
 type tableFixedLayoutView struct {
 	Bytes []byte
-	Count int32
+	Count int64
 }
 
 // AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout is
@@ -808,7 +808,7 @@ type tableFixedLayoutView struct {
 // the whole walk inside the buffer is the one place that touches it. An
 // out-of-range index answers kind 0xFF, which is a kind no declaration has and
 // nothing matches, so the walk that asked for it finds nothing and moves on.
-func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
+func tableFixedEntryAt(b tableFixedLayoutView, i int64) tableFixedLayoutEntry {
 	if b.Bytes == nil || i < 0 || i >= b.Count {
 		return tableFixedLayoutEntry{Kind: 0xFF}
 	}
@@ -829,12 +829,12 @@ func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
 // gets to choose; this walk gives it none. The pending counter is the pre-order
 // walk's own arithmetic: one entry is owed at the start, each entry owes its
 // children, and the subtree ends when nothing is owed.
-func tableFixedSubtree(b tableFixedLayoutView, i int32) int32 {
+func tableFixedSubtree(b tableFixedLayoutView, i int64) int64 {
 	if i < 0 || i >= b.Count {
 		return 1
 	}
 	pending := int64(1)
-	n := int32(0)
+	n := int64(0)
 	at := i
 	for pending > 0 && at < b.Count {
 		pending--
@@ -848,7 +848,7 @@ func tableFixedSubtree(b tableFixedLayoutView, i int32) int32 {
 	return n
 }
 
-func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
+func tableFixedUnionArmBytes(b tableFixedLayoutView, i int64) uint32 {
 	e := tableFixedEntryAt(b, i)
 	var widest uint32
 	at := i + 1
@@ -890,7 +890,7 @@ func (c *tableFixedCheck) fail(why string) {
 // tableFixedCheckEntry validates the subtree rooted at i and answers how many
 // entries it occupies, which is the same arithmetic tableFixedSubtree does and
 // is why that walk is safe to run afterwards and only afterwards.
-func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
+func tableFixedCheckEntry(c *tableFixedCheck, i, depth int64) int64 {
 	if c.why != "" {
 		return 0
 	}
@@ -1053,7 +1053,7 @@ func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
 	return at - i
 }
 
-func tableFixedTagBytes(b tableFixedLayoutView, i int32) uint32 {
+func tableFixedTagBytes(b tableFixedLayoutView, i int64) uint32 {
 	return tableFixedEntryAt(b, i).Size - tableFixedUnionArmBytes(b, i)
 }
 
@@ -1078,7 +1078,7 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
-	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count & 0x7fffffff)}
+	view := tableFixedLayoutView{Bytes: bytes, Count: int64(count)}
 	// 2. THE ROOT IS A TABLE, and its size is the record's body
 	root := tableFixedEntryAt(view, 0)
 	if root.Kind != 13 {
@@ -1254,7 +1254,7 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 // census is whether THIS entry is the first time the writer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
 // count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
-func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
+func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int64, theirAt uint32, mine tableFixedLayoutView, mi int64, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
@@ -1292,7 +1292,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	}
 }
 
-func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
+func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int64, theirAt uint32, mine tableFixedLayoutView, mi int64, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
@@ -1369,9 +1369,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
 		for k := range mkey.Children {
-			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).ID
+			keyId := tableFixedEntryAt(mine, mi+2+int64(k)).ID
 			for j := range tkey.Children {
-				if tableFixedEntryAt(theirs, ti+2+int32(j)).ID != keyId {
+				if tableFixedEntryAt(theirs, ti+2+int64(j)).ID != keyId {
 					continue
 				}
 				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg, census && k == 0)
@@ -1452,10 +1452,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		m := make([]uint16, n)
 		for j := range n {
-			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).ID
+			vid := tableFixedEntryAt(theirs, ti+1+int64(j)).ID
 			var landed uint16
 			for k := range me.Children {
-				if tableFixedEntryAt(mine, mi+1+int32(k)).ID == vid {
+				if tableFixedEntryAt(mine, mi+1+int64(k)).ID == vid {
 					landed = uint16(k + 1)
 					break
 				}
