@@ -5666,7 +5666,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		// §16.2: a string that is not base64 is the wrong shape for *bytes —
 		// counted kind_mismatch and left null, never a broken read.
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { byte[] decoded = java.util.Base64.getDecoder().decode(s); if (!java.util.Base64.getEncoder().encodeToString(decoded).equals(s)) { in.rep.refuse(\"base64_not_canonical\"); v.%s = null; } else { v.%s = decoded; } } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m, m)
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -5681,7 +5681,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s, %s);\n", target.Name, m, depth+" + 1")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);if(!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)){in.rep.refuse(\"base64_not_canonical\");}else{int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
