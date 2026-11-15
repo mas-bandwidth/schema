@@ -1532,9 +1532,9 @@ local scanHeldKey = function(r) {
 };
 
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
-// null. "1-2", "+1", "01", ".5" and "3." are not JSON.
-local scanNumber = function(r, ...) {
-  local capped = vargv.len() == 0 || vargv[0];
+// null. Its length is never why a read refuses: the text's own size bounds the
+// scan. "1-2", "+1", "01", ".5" and "3." are not JSON.
+local scanNumber = function(r) {
   space(r);
   local t = r.t, n = r.n, start = r.p;
   local digit = function(i) { return i < n && t[i] >= '0' && t[i] <= '9'; };
@@ -1558,7 +1558,7 @@ local scanNumber = function(r, ...) {
     integral = false;
   }
   local len = r.p - start;
-  if (len <= 0 || (capped && len > MAX_NUMBER)) return null;
+  if (len <= 0) return null;
   local bs = [];
   for (local i = start; i < r.p; i++) bs.append(t[i]);
   return [bytesToString(bs), integral];
@@ -1614,8 +1614,8 @@ skipValue = function(r, depth) {
   if (c == 'f') return literal(r, "false");
   if (c == 'n') return literal(r, "null");
   if (c == 0) { r.bad = true; return false; }
-  // a skipped number is walked, with no length cap (read.go skipValue)
-  if (scanNumber(r, false) == null) { r.bad = true; return false; }
+  // a skipped number is walked like a placed one (read.go skipValue)
+  if (scanNumber(r) == null) { r.bad = true; return false; }
   return true;
 };
 
