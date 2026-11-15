@@ -149,7 +149,7 @@ static void test_default_arm_initialization( void )
             output.as.first.entries[i].preferred = EXAMPLE_WEAPON_LASER;
         }
         serialize_read_stream_init( &rs, oracle, 1 );
-        if ( !example_read_default_choice( &rs, &output ) )
+        if ( !schema_example_read_default_choice_body_( &rs, &output ) )
         {
             check( 0, "read independent DefaultChoice oracle" );
             return;
@@ -164,6 +164,8 @@ static void test_default_arm_initialization( void )
         for ( i = 0; i < 2; i++ )
             check( output.as.first.entries[i].retries == -1 && output.as.first.entries[i].preferred == EXAMPLE_WEAPON_RAILGUN,
                    "DefaultChoice reconstructs both backing entries, including repeated tags" );
+        check( serialize_read_end( &rs ), "DefaultChoice's one-packet read ends cleanly" );
+        check( serialize_read_bits_processed( &rs ) == 8, "the end check reads the final padding bit" );
     }
 }
 
@@ -673,19 +675,25 @@ int main( void )
         memset( &r_trio_first, 0xEF, sizeof( r_trio_first ) );
         memset( &r_straddle, 0xEF, sizeof( r_straddle ) );
 
+        /* The twelve shapes are one written stream: several objects framed in
+           one buffer. Read each through the per-type body, and let the last
+           one's public read run the one end check after the final object
+           (SPEC §5, "Read termination"). */
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( example_read_vec2( &r, &r_vec2 ), "read Vec2" );
-        check( example_read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
-        check( example_read_span_u64( &r, &r_span_u64 ), "read SpanU64" );
-        check( example_read_span_i64( &r, &r_span_i64 ), "read SpanI64" );
-        check( example_read_span_one( &r, &r_span_one ), "read SpanOne" );
-        check( example_read_span_chunk( &r, &r_span_chunk ), "read SpanChunk" );
-        check( example_read_span_tail( &r, &r_span_tail ), "read SpanTail" );
-        check( example_read_span_twice( &r, &r_span_twice ), "read SpanTwice" );
-        check( example_read_trio( &r, &r_trio ), "read Trio" );
-        check( example_read_trio_sole( &r, &r_trio_sole ), "read TrioSole" );
-        check( example_read_trio_first( &r, &r_trio_first ), "read TrioFirst" );
+        check( schema_example_read_vec2_body_( &r, &r_vec2 ), "read Vec2" );
+        check( schema_example_read_span_f64_body_( &r, &r_span_f64 ), "read SpanF64" );
+        check( schema_example_read_span_u64_body_( &r, &r_span_u64 ), "read SpanU64" );
+        check( schema_example_read_span_i64_body_( &r, &r_span_i64 ), "read SpanI64" );
+        check( schema_example_read_span_one_body_( &r, &r_span_one ), "read SpanOne" );
+        check( schema_example_read_span_chunk_body_( &r, &r_span_chunk ), "read SpanChunk" );
+        check( schema_example_read_span_tail_body_( &r, &r_span_tail ), "read SpanTail" );
+        check( schema_example_read_span_twice_body_( &r, &r_span_twice ), "read SpanTwice" );
+        check( schema_example_read_trio_body_( &r, &r_trio ), "read Trio" );
+        check( schema_example_read_trio_sole_body_( &r, &r_trio_sole ), "read TrioSole" );
+        check( schema_example_read_trio_first_body_( &r, &r_trio_first ), "read TrioFirst" );
         check( example_read_trio_straddle( &r, &r_straddle ), "read TrioStraddle" );
+        check( serialize_read_bits_processed( &r ) == serialize_write_bits_processed( &w ),
+               "the shared stream's one end check closes at the final object" );
 
         check( r_vec2.x == 1.5 && r_vec2.y == -2.25, "Vec2 round-trips" );
         check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75, "SpanF64 round-trips" );
