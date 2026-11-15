@@ -54,7 +54,6 @@ func TestDartCookWriteZeroesDeadSlots(t *testing.T) {
 		{"root_full", "rootConfigFromJson", "RootConfigCookWire", "TablesCook.dart"},
 		{"archive", "archiveConfigFromJson", "ArchiveConfigCookWire", "NestedCook.dart"},
 	} {
-		row := row
 		t.Run(row.instance, func(t *testing.T) {
 			t.Parallel()
 			probe := strings.NewReplacer(
