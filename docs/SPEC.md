@@ -2417,7 +2417,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–4 and 8 debug; 5–7 every build
 
-  - packet `Write`: 1–7 and 10 debug; 8 not yet held
+  - packet `Write`: 1–8 and 10 debug
 
 - **C#**
 
@@ -2449,7 +2449,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–5 and 8 debug; 6–7 every build
 
-  - packet `Write`: 1–7 and 10 debug; 8 not yet held
+  - packet `Write`: 1–8 and 10 debug
 
 - **Go**
 
