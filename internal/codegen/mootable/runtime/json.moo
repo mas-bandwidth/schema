@@ -3488,11 +3488,15 @@ countField = function(w: W, d: any, fd: any, rec: any, open: { [any]: boolean })
 		local n = fd.bound
 		if fd.array == "counted" then
 			n = rec[fd.slot .. "Count"]
+			if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return fail(w, "invalid_value") end
 		elseif fd.array == "list" then
 			n = #v
 		end
 		local e = fd.e
-		if e.buf or textListOf(fd) ~= nil and e.s == "str" then
+		if e.buf then
+			if type(v) ~= "buffer" or n > buffer.len(v) then return fail(w, "invalid_value") end
+			return true
+		elseif textListOf(fd) ~= nil and e.s == "str" then
 			return true
 		end
 		for i = 1, n do
@@ -3651,10 +3655,12 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 		emit(w, "]")
 		return true
 	end
+	if s == "int" and V.toRaw(fd, v) == nil then return fail(w, "invalid_value") end
 	if s == "bool" then
 		emit(w, if v then "true" else "false")
 		return true
 	elseif s == "float" then
+		if not V.floatInRange(fd, v) then return fail(w, "invalid_value") end
 		local text: string? = if fd.f32 then J.formatFloat32(v) else J.formatFloat64(v[2], v[1])
 		if text == nil then
 			return fail(w, "a float that is not finite has no JSON spelling (docs/SPEC-TABLES.md §16.3)")
@@ -3692,10 +3698,12 @@ local function writeArray(w: W, fd: any, rec: any, depth: number): boolean
 		if tl ~= nil then
 			local el = v[i]
 			if not tl.opt then
+				if type(el) ~= "string" or (tl.bound >= 0 and #el > tl.bound) then return fail(w, "invalid_value") end
 				writeString(w :: any, el)
 			elseif not el.ValuePresent then
 				emit(w, "null")
 			else
+				if type(el.Value) ~= "string" or (tl.bound >= 0 and #el.Value > tl.bound) then return fail(w, "invalid_value") end
 				writeString(w :: any, el.Value)
 			end
 		elseif e.buf then
@@ -3799,13 +3807,16 @@ writeField = function(w: W, d: any, fd: any, rec: any, depth: number): boolean
 		writeBase64(w :: any, v, buffer.len(v))
 		return true
 	elseif s == "str" then
+		if type(v) ~= "string" or #v > fd.bound then return fail(w, "invalid_value") end
 		writeString(w :: any, v)
 		return true
 	elseif s == "text" then
 		writeString(w :: any, v or "")
 		return true
 	elseif s == "bytes" then
-		writeBase64(w :: any, v, rec[fd.slot .. "Length"])
+		local n = rec[fd.slot .. "Length"]
+		if type(v) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound or n > buffer.len(v) then return fail(w, "invalid_value") end
+		writeBase64(w :: any, v, n)
 		return true
 	elseif s == "map" then
 		return writeMap(w, fd, rec, depth)

@@ -1288,9 +1288,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	cls := classOf(f)
 	widens := cls == vScalar
 	if widens {
-		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	} else {
-		fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
 	}
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1321,12 +1321,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 	switch {
 	case isBytes:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%s%s.push(wire[*off]); *off += 1;\n", i5, field)
 	case ir.TextListPlain(f):
 		emitPlainTextListElement(b, f, field, i5)
 	case cls == vTable:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 		fmt.Fprintf(b, "%sif *off > sub || el > (sub - *off) as u64 { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet eend = *off + el as usize;\n", i5)
@@ -1338,13 +1336,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s*off = eend;\n", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vPointer:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(index) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 		fmt.Fprintf(b, "%sif *off > sub { report.damaged = true; break; }\n", i5)
 		emitPointerResolve(b, f, "let e", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vEnum:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		emitEnumDecode(b, f, "let e", "sub", "break;", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vUnion:
@@ -1383,7 +1379,6 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned()%s); }\n", i4, field, f.ArrayBound, field, field, orElse(fieldDefault(scalarOnly(f))))
 	}
-	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
@@ -1859,10 +1854,17 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 
 	// the root's PLACEABLE set (§3.1): a record whose type id no pointer below
-	// this root can name is a node this reader cannot place
+	// this root can name is a node this reader cannot place. The DECLARED set
+	// is every table this unit declares, whether or not a pointer below the
+	// root targets it: a record of one is a type this reader can NAME, so a
+	// slot that names it at another type is damage (§3.1, §6.5).
 	var placeable []string
 	for _, t := range ir.PointerReachable(st) {
 		placeable = append(placeable, fmt.Sprintf("0x%016x", ir.TableWireId(t.WireName())))
+	}
+	var declared []string
+	for _, name := range slices.Sorted(maps.Keys(g.unit.Tables)) {
+		declared = append(declared, fmt.Sprintf("0x%016x", ir.TableWireId(g.unit.Tables[name].WireName())))
 	}
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
 
@@ -1995,7 +1997,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
-		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
+		fmt.Fprintf(b, "    let declared: &[u64] = &[%s];\n", strings.Join(declared, ", "))
+		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, declared, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
 		fmt.Fprintf(b, "        Some(nodes) => nodes,\n")
 		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() },\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "        None => return None,\n")

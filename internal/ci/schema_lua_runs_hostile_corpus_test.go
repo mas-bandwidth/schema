@@ -540,7 +540,7 @@ func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 	}
 	wf := readCI(t, root, ".github/workflows/schema-lua-runs-hostile-corpus.yml")
 	for _, want := range []string{
-		"cron:", "workflow_dispatch:", "push:", "pull_request:",
+		"cron:", "workflow_dispatch:",
 		"make schema-lua-runs-hostile-corpus-planted",
 		"make schema-lua-runs-hostile-corpus",
 		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
@@ -548,5 +548,13 @@ func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 		if !strings.Contains(wf, want) {
 			t.Errorf("the lua hostile-corpus workflow does not carry %q", want)
 		}
+	}
+	// Nightly and dispatch only (the owner, 2026-11-15: "I want everything that is
+	// not light moved to nightly test now." "no exceptions.").
+	for _, p := range luaHeavyLaneTriggerProblems(wf) {
+		t.Errorf("schema-lua-runs-hostile-corpus.yml: %s", p)
+	}
+	if len(luaHeavyLaneTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored push trigger was not refused")
 	}
 }
