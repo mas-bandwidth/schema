@@ -19,6 +19,13 @@
   is nothing to share, so there is no save-side `blob_shared`. The read keeps
   the wire's indices: one blob record named from two slots refuses the whole
   read as `blob_shared`, a `*bytes` slot naming a `*string` record (or a
-  table) refuses `wire_damaged`, a `*string` record whose bytes are not
+  table this reader declares) refuses `wire_damaged`, one naming a record of a
+  table this reader does not declare reads `None`, a `*string` record whose bytes are not
   well-formed UTF-8 or carry a zero byte refuses `wire_damaged`, and a record
   past the `2^32 - 1` storage cap refuses `blob_over_size_cap`.
+- **The unknown count is the engine's** (§3.1, §6.5). The root places the
+  reserved id of each buffer kind a `*bytes` or `*string` slot below it names,
+  as it places the tables its pointers target (a map's buffer value is not
+  carried, so it places nothing). A blob record of a kind the root cannot
+  place counts one `unknown`; a record of a placeable kind that no known slot
+  names belongs to a skipped field, which counted once already.
