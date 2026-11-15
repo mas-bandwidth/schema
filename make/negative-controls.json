@@ -228,11 +228,12 @@
     {
       "name": "lua-packet",
       "when": "pull-request",
-      "why": "the Lua port's four packet families (constructor defaults, finite-float, UTF-8 read validation and wide pairing) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls.",
+      "why": "the Lua port's five packet families (constructor defaults, finite-float, UTF-8 read validation, wide pairing and the packet end check) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls before the packet-end control joined.",
       "targets": [
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
-        "packet-defaults-lua-negative-control"
+        "packet-defaults-lua-negative-control",
+        "packet-end-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
