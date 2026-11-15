@@ -2747,6 +2747,22 @@ def j_array_count(sl:Slot) -> int:
         return sl.count
     return f.bound
 
+// THE WRITE CONTRACT (docs/SPEC.md §5.1 rows 1 to 4 and 10): the writer
+// refuses, in every build, a value its declaration does not admit, as
+// invalid_value, so it never writes a text its own json_read refuses. Each
+// value is checked once, where the writer branches on its kind: a scalar by
+// scalar_admitted (the save's own test), a counted array's count against its
+// bounds and its elements, a string(N) or bytes(N) length against N, and a
+// map key that is admitted and appears once.
+def j_count_admitted(sl:Slot, count:int) -> bool:
+    let f = sl.fd
+    if f.array == "counted" and (count < f.min or count > f.bound):
+        return false
+    return count >= 0 and count <= length(sl.elems)
+
+def j_length_admitted(f:FieldDescriptor, s:string) -> bool:
+    return (f.s != "str" and f.s != "bytes") or length(s) <= f.bound
+
 def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     let s = f.s
@@ -2765,9 +2781,13 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
             j_write_base64(w, blob)
         return true
     if s == "text" or s == "str":
+        if not j_length_admitted(f, sl.cell.s):
+            return j_fail(w, "invalid_value")
         j_write_string(w, sl.cell.s)
         return true
     if s == "bytes":
+        if not j_length_admitted(f, sl.cell.s):
+            return j_fail(w, "invalid_value")
         j_write_base64(w, sl.cell.s)
         return true
     if s == "map":
@@ -2776,6 +2796,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
         if f.array == "keyed":
             return j_write_keyed(w, sl, depth)
         let count = j_array_count(sl)
+        if not j_count_admitted(sl, count):
+            return j_fail(w, "invalid_value")
         if count == 0:
             j_raw(w, "[]")
             return true
@@ -2793,6 +2815,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
                     let v = t.fields[0]
                     if v.fd.present != "" and not v.present:
                         j_raw(w, "null")
+                    elif not j_length_admitted(v.fd, v.cell.s):
+                        return j_fail(w, "invalid_value")
                     else:
                         j_write_string(w, v.cell.s)
             elif not j_write_scalar(w, sl.elems[i], e, depth + 1):
@@ -2814,9 +2838,13 @@ def j_write_map(w:JsonWriter, sl:Slot, depth:int) -> bool:
         if i > 0:
             j_raw(w, ",")
         j_line(w, depth + 1)
+        if i > 0 and j_entry_order(kf, entries[i - 1], v) == 0:
+            return j_fail(w, "invalid_value")
         let entry = v.tab
         if entry:
             let k = entry.fields[0]
+            if not j_length_admitted(kf, k.cell.s) or not (key_is_string(kf) or scalar_admitted(kf, j_kind(kf), k.cell)):
+                return j_fail(w, "invalid_value")
             if key_is_string(kf):
                 j_write_string(w, k.cell.s)
             elif kf.s == "int" and kf.signed and not j_is_fixed(kf):
@@ -2930,6 +2958,8 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         j_raw(w, "]")
         return true
     let kind = j_kind(f)
+    if kind != 10 and kind != 11 and not scalar_admitted(f, kind, cell):
+        return j_fail(w, "invalid_value")
     if kind == 5:
         // int64 is wider than 32 bits: written as a string of digits (§16.2)
         j_write_string(w, string(cell.i))
@@ -2952,6 +2982,8 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         let v = cell.f
         if v != v or j_is_inf(v):
             return j_fail(w, "a non-finite float has no JSON spelling (docs/SPEC-TABLES.md §16.2)")
+        if not scalar_admitted(f, kind, cell):
+            return j_fail(w, "invalid_value")
         j_raw(w, j_float_text(v, kind == 10))
         return true
     if kind == 36:

@@ -1271,13 +1271,19 @@ def TableEntityFixedPut(b·:string, at·:int, v·:TableEntity) -> string:
     return b·
 
 // TableEntityFixedSave writes values as a form-3 file: the header (TableEntity, §2) once,
-// then one hash-and-body record per value. A NaN or an infinity in any
-// float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
+// then one hash-and-body record per value. It is the checked writer: a
+// value TableEntityFixedCheckBody refuses (off its range or storage width, a
+// count or length past its bound, ill-formed text, an ordinal or tag past
+// its set, a NaN or an infinity) refuses the whole batch in every build,
+// before any byte: the answer is "" (docs/SPEC.md §5.1). A fixed-form
+// file holds at least one record, so an empty batch is refused the same
+// way (docs/SPEC-TABLES.md §22.6).
 def TableEntityFixedSave(values·:[TableEntity]) -> string:
     if length(values·) == 0:
         return ""
+    for(values·) v·:
+        if not TableEntityFixedCheckBody(v·):
+            return ""
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableEntityFixedHash, TableEntityFixedPut(schema_rt.zeros(51), 0, v·))
     return schema_rt.fixed_file(TableEntityFixedLayoutBytes(), TableEntityFixedHash, body·, length(values·))
@@ -1355,13 +1361,19 @@ def TableStatFixedPut(b·:string, at·:int, v·:TableStat) -> string:
     return b·
 
 // TableStatFixedSave writes values as a form-3 file: the header (TableStat, §2) once,
-// then one hash-and-body record per value. A NaN or an infinity in any
-// float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
+// then one hash-and-body record per value. It is the checked writer: a
+// value TableStatFixedCheckBody refuses (off its range or storage width, a
+// count or length past its bound, ill-formed text, an ordinal or tag past
+// its set, a NaN or an infinity) refuses the whole batch in every build,
+// before any byte: the answer is "" (docs/SPEC.md §5.1). A fixed-form
+// file holds at least one record, so an empty batch is refused the same
+// way (docs/SPEC-TABLES.md §22.6).
 def TableStatFixedSave(values·:[TableStat]) -> string:
     if length(values·) == 0:
         return ""
+    for(values·) v·:
+        if not TableStatFixedCheckBody(v·):
+            return ""
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableStatFixedHash, TableStatFixedPut(schema_rt.zeros(8), 0, v·))
     return schema_rt.fixed_file(TableStatFixedLayoutBytes(), TableStatFixedHash, body·, length(values·))
@@ -2702,15 +2714,18 @@ def TableMixedFixedPut(b·:string, at·:int, v·:TableMixed) -> string:
     return b·
 
 // TableMixedFixedSave writes values as a form-3 file: the header (TableMixed, §2) once,
-// then one hash-and-body record per value. A NaN or an infinity in any
-// float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
+// then one hash-and-body record per value. It is the checked writer: a
+// value TableMixedFixedCheckBody refuses (off its range or storage width, a
+// count or length past its bound, ill-formed text, an ordinal or tag past
+// its set, a NaN or an infinity) refuses the whole batch in every build,
+// before any byte: the answer is "" (docs/SPEC.md §5.1). A fixed-form
+// file holds at least one record, so an empty batch is refused the same
+// way (docs/SPEC-TABLES.md §22.6).
 def TableMixedFixedSave(values·:[TableMixed]) -> string:
     if length(values·) == 0:
         return ""
     for(values·) v·:
-        if TableMixedFixedFiniteBody(v·) != "":
+        if not TableMixedFixedCheckBody(v·):
             return ""
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableMixedFixedHash, TableMixedFixedPut(schema_rt.zeros(1224), 0, v·))
@@ -2825,13 +2840,19 @@ def TableHitEventFixedPut(b·:string, at·:int, v·:TableHitEvent) -> string:
     return b·
 
 // TableHitEventFixedSave writes values as a form-3 file: the header (TableHitEvent, §2) once,
-// then one hash-and-body record per value. A NaN or an infinity in any
-// float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
+// then one hash-and-body record per value. It is the checked writer: a
+// value TableHitEventFixedCheckBody refuses (off its range or storage width, a
+// count or length past its bound, ill-formed text, an ordinal or tag past
+// its set, a NaN or an infinity) refuses the whole batch in every build,
+// before any byte: the answer is "" (docs/SPEC.md §5.1). A fixed-form
+// file holds at least one record, so an empty batch is refused the same
+// way (docs/SPEC-TABLES.md §22.6).
 def TableHitEventFixedSave(values·:[TableHitEvent]) -> string:
     if length(values·) == 0:
         return ""
+    for(values·) v·:
+        if not TableHitEventFixedCheckBody(v·):
+            return ""
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableHitEventFixedHash, TableHitEventFixedPut(schema_rt.zeros(13), 0, v·))
     return schema_rt.fixed_file(TableHitEventFixedLayoutBytes(), TableHitEventFixedHash, body·, length(values·))
@@ -2909,13 +2930,19 @@ def TableChatEventFixedPut(b·:string, at·:int, v·:TableChatEvent) -> string:
     return b·
 
 // TableChatEventFixedSave writes values as a form-3 file: the header (TableChatEvent, §2) once,
-// then one hash-and-body record per value. A NaN or an infinity in any
-// float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
+// then one hash-and-body record per value. It is the checked writer: a
+// value TableChatEventFixedCheckBody refuses (off its range or storage width, a
+// count or length past its bound, ill-formed text, an ordinal or tag past
+// its set, a NaN or an infinity) refuses the whole batch in every build,
+// before any byte: the answer is "" (docs/SPEC.md §5.1). A fixed-form
+// file holds at least one record, so an empty batch is refused the same
+// way (docs/SPEC-TABLES.md §22.6).
 def TableChatEventFixedSave(values·:[TableChatEvent]) -> string:
     if length(values·) == 0:
         return ""
+    for(values·) v·:
+        if not TableChatEventFixedCheckBody(v·):
+            return ""
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableChatEventFixedHash, TableChatEventFixedPut(schema_rt.zeros(8), 0, v·))
     return schema_rt.fixed_file(TableChatEventFixedLayoutBytes(), TableChatEventFixedHash, body·, length(values·))
@@ -2993,13 +3020,19 @@ def TablePickupEventFixedPut(b·:string, at·:int, v·:TablePickupEvent) -> stri
     return b·
 
 // TablePickupEventFixedSave writes values as a form-3 file: the header (TablePickupEvent, §2) once,
-// then one hash-and-body record per value. A NaN or an infinity in any
-// float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
+// then one hash-and-body record per value. It is the checked writer: a
+// value TablePickupEventFixedCheckBody refuses (off its range or storage width, a
+// count or length past its bound, ill-formed text, an ordinal or tag past
+// its set, a NaN or an infinity) refuses the whole batch in every build,
+// before any byte: the answer is "" (docs/SPEC.md §5.1). A fixed-form
+// file holds at least one record, so an empty batch is refused the same
+// way (docs/SPEC-TABLES.md §22.6).
 def TablePickupEventFixedSave(values·:[TablePickupEvent]) -> string:
     if length(values·) == 0:
         return ""
+    for(values·) v·:
+        if not TablePickupEventFixedCheckBody(v·):
+            return ""
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TablePickupEventFixedHash, TablePickupEventFixedPut(schema_rt.zeros(8), 0, v·))
     return schema_rt.fixed_file(TablePickupEventFixedLayoutBytes(), TablePickupEventFixedHash, body·, length(values·))
@@ -3199,10 +3232,9 @@ def TableEntityFixedSaveChecked(values·:[TableEntity], buffer·:string) -> int,
     let need· = TableEntityFixedMeasure(length(values·))
     if length(buffer·) < need·:
         return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableEntityFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let wire· = TableEntityFixedSave(values·)
+    if wire· == "":
+        return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let out· = write_substring(buffer·, 0, wire·, false)
     return need·, out·, ""
 
@@ -3370,10 +3402,9 @@ def TableStatFixedSaveChecked(values·:[TableStat], buffer·:string) -> int, str
     let need· = TableStatFixedMeasure(length(values·))
     if length(buffer·) < need·:
         return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableStatFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let wire· = TableStatFixedSave(values·)
+    if wire· == "":
+        return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let out· = write_substring(buffer·, 0, wire·, false)
     return need·, out·, ""
 
@@ -3557,10 +3588,9 @@ def TableHitEventFixedSaveChecked(values·:[TableHitEvent], buffer·:string) -> 
     let need· = TableHitEventFixedMeasure(length(values·))
     if length(buffer·) < need·:
         return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableHitEventFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let wire· = TableHitEventFixedSave(values·)
+    if wire· == "":
+        return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let out· = write_substring(buffer·, 0, wire·, false)
     return need·, out·, ""
 
@@ -3728,10 +3758,9 @@ def TableChatEventFixedSaveChecked(values·:[TableChatEvent], buffer·:string) -
     let need· = TableChatEventFixedMeasure(length(values·))
     if length(buffer·) < need·:
         return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableChatEventFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let wire· = TableChatEventFixedSave(values·)
+    if wire· == "":
+        return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let out· = write_substring(buffer·, 0, wire·, false)
     return need·, out·, ""
 
@@ -3899,10 +3928,9 @@ def TablePickupEventFixedSaveChecked(values·:[TablePickupEvent], buffer·:strin
     let need· = TablePickupEventFixedMeasure(length(values·))
     if length(buffer·) < need·:
         return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TablePickupEventFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let wire· = TablePickupEventFixedSave(values·)
+    if wire· == "":
+        return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let out· = write_substring(buffer·, 0, wire·, false)
     return need·, out·, ""
 
@@ -4461,10 +4489,9 @@ def TableMixedFixedSaveChecked(values·:[TableMixed], buffer·:string) -> int, s
     let need· = TableMixedFixedMeasure(length(values·))
     if length(buffer·) < need·:
         return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableMixedFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let wire· = TableMixedFixedSave(values·)
+    if wire· == "":
+        return -1, buffer·, schema_rt.TableRefuseInvalidValue
     let out· = write_substring(buffer·, 0, wire·, false)
     return need·, out·, ""
 

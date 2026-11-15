@@ -1435,7 +1435,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    return schema_rt.TableFixedHeaderBytes + 4 + %d + count * (8 + %d)%s\n\n",
 		len(layout), bodyBytes, trailer)
 
-	// Checked writer: <Name>FixedSaveChecked(values, buffer) -> int, string, string
+	// Caller-buffer form of the checked writer <Name>FixedSave:
+	// <Name>FixedSaveChecked(values, buffer) -> int, string, string
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md
 	// §22.6): an empty batch is refused in every build, as every other
 	// table write refusal is (docs/SPEC.md §5.1).
@@ -1445,12 +1446,11 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    let need = %sMeasure(length(values))\n", name)
 	g.Pf("    if length(buffer) < need:\n")
 	g.Pf("        return -1, buffer, schema_rt.TableRefuseTruncated\n")
-	if fixedCheckNeededStruct(st, map[string]bool{}) {
-		g.Pf("    for(values) v:\n")
-		g.Pf("        if not %sFixedCheckBody(v):\n", st.Name)
-		g.Pf("            return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
-	}
+	// <Name>FixedSave is the checked writer: its "" is the refusal of a
+	// value <Name>FixedCheckBody refuses, and the buffer is left unwritten.
 	g.Pf("    let wire = %sSave(values)\n", name)
+	g.Pf("    if wire == \"\":\n")
+	g.Pf("        return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
 	g.Pf("    let out = write_substring(buffer, 0, wire, false)\n")
 	if st.Integrity != "" {
 		g.Pf("    let sealed, out2 = schema_rt.fixed_integrity_seal(out, need - 4)\n")

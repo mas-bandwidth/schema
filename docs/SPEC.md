@@ -2382,7 +2382,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
-- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`); 9 unchecked
+- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), and a map key held twice, at every record the save graph reaches; 9 unchecked
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
@@ -2517,9 +2517,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
 - **Lobster**
 
-  - `FixedSave`: 1–8 every build (`SaveChecked`)
+  - `FixedSave`: 1–8 every build (`FixedSave`, which `FixedSaveChecked` calls with a caller buffer)
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–8 and 10 every build
 
   - packet `Write`: 1–6 debug; 7 traps
 
