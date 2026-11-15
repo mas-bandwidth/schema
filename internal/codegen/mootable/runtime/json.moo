@@ -1349,11 +1349,14 @@ local function writeBase64(w: Out, b: buffer?, n: number)
 	put(w, table.concat(parts))
 end
 
--- decodeBase64(s, bound): §16.2's grammar, then the bytes (at most bound,
--- -1 for none) and whether any were dropped; nil when it is not base64
+-- decodeBase64(s, bound): §16.2's and §16.8's CANONICAL grammar — the
+-- standard alphabet, padded, pad bits zero — then the bytes (at most bound,
+-- -1 for none) and whether any were dropped; nil when it is not that exact
+-- spelling. A body that decodes but is not canonical refuses like one that
+-- does not decode at all: the verdict is the contract (§16.2).
 local function decodeBase64(s: string, bound: number): (buffer?, number, boolean)
 	local n = #s
-	local symbols, pad = 0, 0
+	local symbols, pad, last = 0, 0, 0
 	for i = 1, n do
 		local c = string.byte(s, i) :: number
 		if c == 61 then
@@ -1361,6 +1364,7 @@ local function decodeBase64(s: string, bound: number): (buffer?, number, boolean
 		elseif pad > 0 or B64VALUE[c + 1] < 0 then
 			return nil, 0, false
 		else
+			last = B64VALUE[c + 1]
 			symbols += 1
 		end
 	end
@@ -1368,7 +1372,14 @@ local function decodeBase64(s: string, bound: number): (buffer?, number, boolean
 		if pad > 2 or (symbols + pad) % 4 ~= 0 or symbols % 4 < 2 then
 			return nil, 0, false
 		end
-	elseif symbols % 4 == 1 then
+		-- The last group's spare bits are the pad bits; canonical leaves them
+		-- zero (§16.8): four spare when two symbols ride, two when three.
+		if (pad == 2 and last % 16 ~= 0) or (pad == 1 and last % 4 ~= 0) then
+			return nil, 0, false
+		end
+	elseif symbols % 4 ~= 0 then
+		-- padded: a group of two or three symbols without its `=` is not the
+		-- text the writer writes, so it is not canonical (§16.2, §16.8)
 		return nil, 0, false
 	end
 	local total = symbols * 6 // 8
