@@ -292,7 +292,8 @@ generated class per table and per map entry, each with its descriptor
   each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
   (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
   `kind_pointer.py`; the directory is the list). A later card adds its module
-  and one registration line, never an edit to the body walk.
+  and one registration line in it, never an edit to the body walk; `kinds.py`
+  imports every `kind_*.py` itself, so no other file names a new module.
   `kind_unsupported.py` is the named placeholder for a construct whose
   descriptor exists but whose codec has not landed; a read or write that
   reaches it refuses by name.
