@@ -1054,6 +1054,11 @@ class PointerShape : Shape
         if not ok:
             r.st.report.malformed = true
             return false
+        // AN EXPLICIT NULL POINTER IS NON-CANONICAL (§3.1, §4): null elides,
+        // except a `| required` null pointer, whose index 0 is its one
+        // spelling (§22.2).
+        if index == 0 and not sl.fd.required:
+            return read_refuse(r.st.report, "wire_damaged")
         return resolve_cell(r, sl.cell, sl.fd, index)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         let index, ok = leb(r)
@@ -1108,6 +1113,11 @@ let string_shape = register_shape(StringShape { key: "str" })
 def nested_body(r:Reader, sl:Slot, i:int) -> bool:
     let n, ok = leb(r)
     if not ok or not has(r, n):
+        return read_refuse(r.st.report, "wire_damaged")
+    // A BY-VALUE BODY THAT IS ITS TERMINATOR ALONE IS ELIDED by a conforming
+    // writer (§3, §4), so a field that carries one is non-canonical. A
+    // required field never elides, and a PRESENT optional always rides (§2.3).
+    if i < 0 and not sl.fd.required and sl.fd.present == "" and n <= 1:
         return read_refuse(r.st.report, "wire_damaged")
     let rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
     if i < 0:
@@ -1347,7 +1357,7 @@ def arm_read(r:Reader, cell:Value, a:FieldDescriptor, tag:int, n:int) -> bool:
     cell.arm = fv
     return true
 
-def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
+def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, field:bool) -> bool:
     // A UNION WRITTEN AGAIN takes the earlier arm's retained fields with it
     // (Go's forgetArm), and the discard moves no counter
     forget_value(cell)
@@ -1359,6 +1369,12 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
         rep.malformed = true
         return false
     if ref == 0:
+        // A UNION FIELD WRITTEN WITH ARM REFERENCE 0 IS NON-CANONICAL (§3,
+        // §4): None elides, except a `| required` union, whose None is its
+        // one spelling (§22.2). An array element's None is positional and
+        // stays lawful.
+        if field and not fd.required:
+            return read_refuse(rep, "wire_damaged")
         reset_union(cell)
         return true
     let arm_id, named = rid(r, ref)
@@ -1424,7 +1440,7 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
 
 class UnionShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
-        return union_cell(r, sl.cell, sl.fd)
+        return union_cell(r, sl.cell, sl.fd, true)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         // an element of an array of unions is an arm header, reset the
         // moment its arm id is read (§3)
@@ -1433,9 +1449,9 @@ class UnionShape : Shape
             return false
         sl.elems[i].i = 0
         sl.elems[i].tab = nil
-        return union_cell(r, sl.elems[i], elem_of(sl.fd))
+        return union_cell(r, sl.elems[i], elem_of(sl.fd), false)
     def arm(r:Reader, fv:Slot, n:int) -> bool:
-        return union_cell(r, fv.cell, fv.fd)
+        return union_cell(r, fv.cell, fv.fd, false)
 
 let union_shape = register_shape(UnionShape { key: "union" })
 
@@ -1512,12 +1528,108 @@ class MapShape : Shape
 
 let map_shape = register_shape(MapShape { key: "map" })
 
-// slot_by_id is the slot a field id names in a record, or nil.
-def slot_by_id(rec:Record, id:int) -> Slot?:
-    for(rec.fields) sl:
+// load_is_default is the declared-default compare a conforming writer
+// elides by (§3, §4; schema_save.lobster's save_is_default, whose read half
+// this is). A plain float compares BIT PATTERNS, so a -0 against a +0 default
+// rides (§3.3).
+def load_is_default(f:FieldDescriptor, v:Value) -> bool:
+    let s = f.s
+    if s == "bool":
+        return v.b == f.def_bool
+    if s == "float":
+        if f.f32:
+            if f.franged:
+                return fround(v.f) == fround(f.def_float)
+            return f32bits(v.f) == f32bits(f.def_float)
+        if f.franged:
+            return v.f == f.def_float
+        return f64bits(v.f) == f64bits(f.def_float)
+    if s == "int":
+        if kind_wide(f.k):
+            return v.w.lo == f.def_int.lo and v.w.hi == f.def_int.hi
+        return v.i == f.def_int.lo
+    if s == "enum":
+        return v.i == f.def_int.lo
+    if s == "str" or s == "text" or s == "bytes":
+        return v.s == f.def_str
+    return false
+
+// load_elem_is_default is an element's own zero, the value an array slot is
+// born at (§2.9; schema_save.lobster's save_elem_is_default).
+def load_elem_is_default(d:FieldDescriptor, kind:int, v:Value) -> bool:
+    let s = d.s
+    if s == "ptr":
+        return not v.node
+    if s == "sblob" or s == "bblob":
+        return not v.blob
+    if s == "tab":
+        return false // a table element's body decides; conservative here
+    if s == "bool":
+        return not v.b
+    if s == "float":
+        if d.f32:
+            if d.franged:
+                return fround(v.f) == 0.0
+            return f32bits(v.f) == 0
+        if d.franged:
+            return v.f == 0.0
+        return f64bits(v.f) == 0
+    if s == "int":
+        if kind_wide(kind):
+            return v.w.lo == 0 and v.w.hi == 0
+        return v.i == 0
+    if s == "enum":
+        return v.i == 0
+    if s == "union":
+        return v.i == 0
+    if s == "str" or s == "text" or s == "bytes":
+        return v.s == ""
+    return false
+
+// load_field_elides is whether a conforming writer would have ELIDED this
+// field at the value the read landed (§3, §4). A required field never
+// elides, and a present optional always rides; a union field's arm 0 and a
+// pointer field's null are refused where they are read, and a by-value body
+// is judged by its length in nested_body.
+def load_field_elides(f:FieldDescriptor, sl:Slot) -> bool:
+    if f.required:
+        return false
+    if f.present != "":
+        return not sl.present
+    let s = f.s
+    if s == "ptr" or s == "sblob" or s == "bblob":
+        return not sl.cell.node and not sl.cell.blob
+    if s == "map":
+        return length(sl.entries) == 0
+    if s == "arr":
+        if f.array == "keyed":
+            let ed = elem_of(f)
+            for(sl.elems) v:
+                if not load_elem_is_default(ed, f.ek, v):
+                    return false
+            return true
+        if f.array == "counted" or f.array == "list":
+            return sl.count == 0
+        if f.ek == 13:
+            return false
+        let ed = elem_of(f)
+        var i = 0
+        while i < f.bound:
+            if i >= length(sl.elems) or not load_elem_is_default(ed, f.ek, sl.elems[i]):
+                return false
+            i++
+        return true
+    if s == "union" or s == "tab":
+        return false
+    return load_is_default(f, sl.cell)
+
+// slot_by_id is the slot a field id names in a record and its declared
+// position, or nil and -1.
+def slot_by_id(rec:Record, id:int) -> Slot?, int:
+    for(rec.fields) sl, i:
         if sl.fd.id == id:
-            return sl
-    return nil
+            return sl, i
+    return nil, -1
 
 // mark_seen records that this body NAMED the slot's field (§2.3): a required
 // field the body names is not missing, whatever its kind or value.
@@ -1543,6 +1655,10 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
     let seen:[bool] = []
     for(rec.fields):
         push(seen, false)
+    // THE WRITER'S DECLARATION ORDER (§3, §4): every named field must appear
+    // after the one before it. A field this reader cannot name is evolution
+    // and keeps no place here, so it does not move the mark.
+    var last_index = -1
     while true:
         if r.st.count_refused:
             return false
@@ -1589,7 +1705,7 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             if not skip(r, kind):
                 return read_refuse(rep, "wire_damaged")
             continue
-        let found = slot_by_id(rec, id)
+        let found, found_index = slot_by_id(rec, id)
         if not found:
             rep.unknown++
             let at0 = r.off
@@ -1611,14 +1727,21 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             continue
         let sl = found
         let f = sl.fd
+        // FIELDS OUT OF THE WRITER'S DECLARATION ORDER ARE NON-CANONICAL
+        // (§3, §4): a conforming writer emits them in declaration order.
+        if found_index <= last_index:
+            return read_refuse(rep, "wire_damaged")
+        last_index = found_index
         if kind != f.k:
             if widens(kind, f.k):
                 if not scalar_at(r, sl.cell, f, f.k, kind):
                     return false
-                if not entry or f.name != "key":
-                    rep.widened++
                 if f.present != "":
                     sl.present = true
+                if f.present == "" and load_field_elides(f, sl):
+                    return read_refuse(rep, "wire_damaged")
+                if not entry or f.name != "key":
+                    rep.widened++
                 mark_seen(rec, sl, seen)
                 continue
             return read_refuse(rep, "kind_mismatch")
@@ -1631,6 +1754,11 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             return false
         if f.present != "" and f.s != "arr":
             sl.present = true
+        // A FIELD STORED AT ITS DECLARED DEFAULT IS NON-CANONICAL (§3, §4):
+        // a conforming writer elides it. A union's arm 0 and a pointer's
+        // null were refused where they were read.
+        if f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+            return read_refuse(rep, "wire_damaged")
     return false
 
 // THE ID TABLE (§3; Go's trailer): the final eight bytes are the entry
@@ -1724,30 +1852,36 @@ class NodeRecord:
 // that disagrees with the scan is malformed. A RESERVED ID IN ANY BODY BUT
 // THE ONE WHOSE TRANSPORT IT IS, IS MALFORMED: a record typed by the
 // node-table, build-version or vocabulary id refuses the load.
-def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
+def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], [int], bool:
     let data = st.data
     let declared, first, ok = read_leb(data, plo, phi)
     if not ok:
-        return [], false
+        return [], [], false
+    // AN EMPTY NODE TABLE IS NON-CANONICAL (§3.1): a root that reaches no
+    // node writes no node-table field at all.
+    if declared <= 0:
+        return [], [], false
     var off = first
     let records = []
+    let refs = []
     while off < phi:
         let ref, next, good = read_leb(data, off, phi)
         if not good or ref == 0 or ult(length(st.ids), ref):
-            return [], false
+            return [], [], false
         let tid = st.ids[ref - 1]
         if tid == node_table_id or tid == build_version_id or tid == message_vocabulary_id:
-            return [], false
+            return [], [], false
         let size, after, lgood = read_leb(data, next, phi)
         if not lgood:
-            return [], false
+            return [], [], false
         if size < 0 or size > phi - after:
-            return [], false
+            return [], [], false
+        push(refs, ref)
         push(records, NodeRecord { tid: tid, lo: after, hi: after + size })
         off = after + size
     if off != phi or declared != length(records):
-        return [], false
-    return records, true
+        return [], [], false
+    return records, refs, true
 
 // declares is whether the unit of root descriptor d declares the table type tid.
 def declares(d:TableDescriptor, tid:int) -> bool:
@@ -1766,9 +1900,10 @@ def decode_variable(st:LoadState, root:Record, hi:int):
     st.variable = true
     let plo, phi, present, framed = node_table_bytes(st, hi)
     var records:[NodeRecord] = []
+    var refs:[int] = []
     var scanned = true
     if framed and present:
-        records, scanned = scan_node_records(st, plo, phi)
+        records, refs, scanned = scan_node_records(st, plo, phi)
     if not framed or not scanned:
         read_refuse(rep, "wire_damaged")
         return
@@ -1991,8 +2126,23 @@ class WireCheck:
     node_lo:int = -1
     node_hi:int = -1
     depth:int = 0
+    // first_use is the number of id-table entries the walk has reached in
+    // first-use order: a new reference must be the next entry, a reused one
+    // must name an entry already reached (§3).
+    first_use:int = 0
 
 let binary_max_depth = 128
+
+// wire_ref holds one reference to FIRST-USE ORDER (§3): a writer numbers its
+// id table in the order the walk first names each id, so the first reference
+// to a new id is always the next entry, and a reference past it leaves an
+// entry unused or out of order — a spelling no conforming writer produces.
+def wire_ref(c:WireCheck, ref:int) -> bool:
+    if ref > c.first_use + 1:
+        return read_refuse(c.st.report, "wire_damaged")
+    if ref == c.first_use + 1:
+        c.first_use++
+    return true
 
 def wire_scalar(c:WireCheck, r:Reader, kind:int) -> bool:
     let w = kind_width(kind)
@@ -2016,8 +2166,11 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
             return read_refuse(c.st.report, "wire_damaged")
         if kind == 17:
             push(c.edges, v)
-        elif v < 0 or v > length(c.st.ids):
-            return read_refuse(c.st.report, "wire_damaged")
+        else:
+            if v < 0 or v > length(c.st.ids):
+                return read_refuse(c.st.report, "wire_damaged")
+            if v != 0 and not wire_ref(c, v):
+                return false
         return true
     if kind == 15:
         let arm, ok = leb(r)
@@ -2025,6 +2178,8 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
             return read_refuse(c.st.report, "wire_damaged")
         if arm == 0:
             return true
+        if not wire_ref(c, arm):
+            return false
         if not has(r, 1):
             return read_refuse(c.st.report, "wire_damaged")
         let ak = u8(r)
@@ -2107,6 +2262,8 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
                 let key, good = leb(r)
                 if not good or key <= 0 or key > length(c.st.ids):
                     return read_refuse(c.st.report, "wire_damaged")
+                if not wire_ref(c, key):
+                    return false
                 for(keys) seen:
                     if seen == key:
                         return read_refuse(c.st.report, "wire_damaged")
@@ -2127,12 +2284,20 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
 
 def wire_body(c:WireCheck, r:Reader, root:bool) -> bool:
     let seen:[int] = []
+    var node_seen = false
     while true:
         let ref, ok = leb(r)
         if not ok:
             return read_refuse(c.st.report, "wire_damaged")
         if ref == 0:
             return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
+        // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1, §22.1): a
+        // field after it is a node table out of its place, a spelling no
+        // conforming writer produces.
+        if node_seen:
+            return read_refuse(c.st.report, "wire_damaged")
+        if not wire_ref(c, ref):
+            return false
         let id, named = rid(r, ref)
         if not named or not has(r, 1):
             return read_refuse(c.st.report, "wire_damaged")
@@ -2146,6 +2311,7 @@ def wire_body(c:WireCheck, r:Reader, root:bool) -> bool:
         if id == node_table_id:
             if not root or kind != 12:
                 return read_refuse(c.st.report, "wire_damaged")
+            node_seen = true
             let n, framed = leb(r)
             if not framed or not has(r, n):
                 return read_refuse(c.st.report, "wire_damaged")
@@ -2208,10 +2374,15 @@ def wire_check(st:LoadState, hi:int) -> bool:
     let children:[[int]] = [c.edges]
     let blobs:[bool] = []
     if c.node_lo >= 0:
-        let records, ok = scan_node_records(st, c.node_lo, c.node_hi)
+        let records, refs, ok = scan_node_records(st, c.node_lo, c.node_hi)
         if not ok:
             return read_refuse(st.report, "wire_damaged")
-        for(records) node:
+        for(records) node, i:
+            // THE RECORD'S TYPE ID IS AN ID-TABLE REFERENCE TOO, and the
+            // writer interns it before the record's body (§3.1), so the
+            // first-use walk counts it here.
+            if not wire_ref(c, refs[i]):
+                return false
             c.edges = []
             let blob = node.tid == string_blob_id or node.tid == bytes_blob_id
             if blob:
@@ -2224,6 +2395,11 @@ def wire_check(st:LoadState, hi:int) -> bool:
                 return false
             push(blobs, blob)
             push(children, c.edges)
+    if c.first_use != length(st.ids):
+        // AN UNUSED ID-TABLE ENTRY IS NON-CANONICAL (§3): every entry is
+        // reached in first-use order or the table is a spelling no
+        // conforming writer produces.
+        return read_refuse(st.report, "wire_damaged")
     return wire_graph(c, children, blobs)
 
 // load_walk is the framing walk both reads share (Go's decodeWalk).

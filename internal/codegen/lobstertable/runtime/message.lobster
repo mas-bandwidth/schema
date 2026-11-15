@@ -595,6 +595,9 @@ class MessageRead:
     v:MessageVocabulary
     rep:LoadReport
     index_bits:int = 0
+    // body_fields is the field count of the last body read, so a caller can
+    // tell an all-default body from one that named a field.
+    body_fields:int = 0
 
 def message_count(r:MessageBits, s:MessageShape) -> int, bool:
     let raw, ok = mb_get(r, message_bits(s.max - s.min))
@@ -991,6 +994,12 @@ def message_compatible(f:FieldDescriptor, mine:MessageEntry, e:MessageEntry) -> 
         return e.shape.kind == 14 and widens(e.element.kind, mine.element.kind)
     return e.element.kind == mine.element.kind and widens(e.shape.kind, mine.shape.kind)
 
+// message_same_encoding is whether an announced entry states the same kind
+// and shape this reader's own declaration does, so this reader knows the
+// field's declared default exactly (§3.3 (a)).
+def message_same_encoding(e:MessageEntry, mine:MessageEntry) -> bool:
+    return e.shape.kind == mine.shape.kind and e.element.kind == mine.element.kind and e.shape.packing == mine.shape.packing and e.shape.bits == mine.shape.bits
+
 // message_body decodes one table body: fields until the zero reference that
 // ends it (Go's <Name>LoadMessageBody). A reserved id in a body is malformed.
 def message_body(m:MessageRead, rec:Record) -> bool:
@@ -998,6 +1007,12 @@ def message_body(m:MessageRead, rec:Record) -> bool:
     let v = m.v
     let slots = message_slots_of(message_facts.fields, rec.d.name)
     let seen:[int] = []
+    // THE WRITER'S DECLARATION ORDER (§3.3, §4): the announcement gives every
+    // record's fields in writer order, so a body's references must rise,
+    // unknown fields included — a field this reader cannot name still has its
+    // place in that order.
+    var last_ref = 0
+    var body_fields = 0
     while true:
         let ref, ok = mb_get(m.bits, v.ref_bits)
         if not ok:
@@ -1011,7 +1026,12 @@ def message_body(m:MessageRead, rec:Record) -> bool:
                         if id == sl.fd.id: present = true
                     if not present:
                         return message_refuse(rep, "missing_required")
+            m.body_fields = body_fields
             return true
+        if ref <= last_ref:
+            return message_refuse(rep, "wire_damaged")
+        last_ref = ref
+        body_fields++
         let e = message_entry(v, ref)
         if not e or not ult(e.id, message_vocabulary_id):
             rep.malformed = true
@@ -1039,12 +1059,32 @@ def message_body(m:MessageRead, rec:Record) -> bool:
                 widened = true
             else:
                 return message_refuse(rep, "kind_mismatch")
+        // A UNION FIELD WRITTEN WITH THE NONE REFERENCE IS NON-CANONICAL
+        // (§3.3 (c)): None elides, except a required field, whose None is
+        // its one spelling. An array element's None is positional and stays
+        // lawful, so only a record field is examined here.
+        if f.s == "union" and not f.required:
+            let arm_at = m.bits.off
+            let arm, arm_ok = mb_get(m.bits, v.ref_bits)
+            m.bits.off = arm_at
+            if arm_ok and arm == 0:
+                return message_refuse(rep, "wire_damaged")
         if not message_value(m, sl, e):
             return false
+        // A BY-VALUE BODY THAT NAMED NO FIELD IS THE BODY A WRITER ELIDES
+        // (§3.3 (a)): its field is at its declared default. A required field
+        // never elides and a present optional always rides.
+        if f.s == "tab" and not f.required and f.present == "" and m.body_fields == 0:
+            return message_refuse(rep, "wire_damaged")
         if strict_reason(rep) != "":
             return false
         if f.present != "":
             sl.present = true
+        // A FIELD WRITTEN AT THE DEFAULT THE WRITER ELIDES IS NON-CANONICAL
+        // (§3.3 (a)): the reader knows that default only where it names the
+        // field under the same announced shape at the same build version.
+        if v.build_version == message_facts.build_version and message_same_encoding(e, mine) and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+            return message_refuse(rep, "wire_damaged")
         if widened:
             rep.widened++
     return false
@@ -1105,6 +1145,14 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         let rec = new_record(d)
         push(batch, rec)
         if not message_body(m, rec):
+            for(batch) value: release(value)
+            truncate(batch, 0)
+            return 0, false
+        // A BODY THAT OMITS EVERY FIELD ITS OWN ANNOUNCEMENT DECLARES IS
+        // NON-CANONICAL (§3.3, §4): a body with no field reference at all is
+        // not the one a conforming writer emits for a record with fields.
+        if m.body_fields == 0 and length(rec.fields) > 0:
+            message_refuse(rep, "wire_damaged")
             for(batch) value: release(value)
             truncate(batch, 0)
             return 0, false

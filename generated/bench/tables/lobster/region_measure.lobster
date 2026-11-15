@@ -205,7 +205,7 @@ def load_measure(root:string, data:string) -> int, bool, bool, string:
         return 0, false, false, "wire_damaged"
     var records:[NodeRecord] = []
     if present:
-        let scanned, sok = scan_node_records(st, plo, phi)
+        let scanned, _, sok = scan_node_records(st, plo, phi)
         if not sok:
             return 0, false, false, "wire_damaged"
         records = scanned
