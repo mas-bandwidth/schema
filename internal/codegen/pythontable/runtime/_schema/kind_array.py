@@ -9,16 +9,52 @@ without an edit to this file.
 The count is held to the read's resource bounds. A body shorter than its own
 header, a count above the int32 storage cap, and a count the body cannot cover
 refuse before a list is built, and bytes left inside L after the elements are
-damage. The one read returns the whole list or raises Refused.
+damage. A present plain array with a count of zero is its field's declared
+default, which the writer elides, so it is a non-canonical spelling and refuses
+(§4, docs/rulings.json reads-refuse-non-canonical); an optional array's
+present-empty value is lawful and is not refused here. The one read returns
+the whole list or raises Refused. A write refuses a list longer than the cap,
+so the writer never emits a count its own read refuses.
+
+THE SHAPE IS MEASURED (docs/PORT-PYTHON.md, THE TABLE FRAME, Bench). An
+element of a fixed-width integer kind of 1 to 8 bytes, or a bool, reads and
+writes in bulk: one struct call (or one slice) for the whole body, with the
+range checked once over the decoded values. Every other element walks its kind
+module one element at a time. Both shapes give the same value and the same
+bytes; TestPythonVtUnboundedShapeBench holds them to that and times them.
 """
 
+import struct
 from typing import Any
 
 from . import InvalidValue, Refused
 from . import kinds
 from .descriptor import FieldDesc
 
-_MAX_COUNT = 0x7FFFFFFF
+MAX_COUNT = 0x7FFFFFFF
+
+_INT_WIDTH = {
+    2: 1,
+    3: 2,
+    4: 4,
+    5: 8,
+    6: 1,
+    7: 2,
+    8: 4,
+    9: 8,
+    20: 1,
+    21: 2,
+    22: 4,
+    23: 8,
+    25: 1,
+    26: 2,
+    27: 4,
+    28: 8,
+    36: 8,
+}
+
+_SIGNED_CODE = {1: "b", 2: "h", 4: "i", 8: "q"}
+_UNSIGNED_CODE = {1: "B", 2: "H", 4: "I", 8: "Q"}
 
 
 def _element_kind_allowed(kind: int) -> bool:
@@ -26,10 +62,80 @@ def _element_kind_allowed(kind: int) -> bool:
     return 1 <= kind <= 13 or kind == 15 or kind == 17 or 18 <= kind <= 30
 
 
+def check_count(path: str, count: int, cap: int = MAX_COUNT) -> None:
+    """Refuse a list the int32 storage cap cannot count (§2.9).
+
+    The cap is an argument so a test can hold the check to a small cap without
+    building a list of two billion elements.
+    """
+    if count > cap:
+        raise InvalidValue(path, f"a list of {count} elements is past the int32 storage cap")
+
+
+def _int_code(element: FieldDesc) -> str | None:
+    if element.codec != "int":
+        return None
+    width = _INT_WIDTH.get(element.kind)
+    if width is None:
+        return None
+    return _SIGNED_CODE[width] if element.lo < 0 else _UNSIGNED_CODE[width]
+
+
+def read_walk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any]:
+    """The per-element shape: each element through its own kind module."""
+    codec = kinds._REGISTRY[element.codec]
+    items: list[Any] = []
+    append = items.append
+    for _ in range(count):
+        append(codec.read_element(sub, element, ctx))
+    return items
+
+
+def read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] | None:
+    """The bulk shape, or None for an element it does not carry."""
+    if element.codec == "bool":
+        raw = bytes(sub.take(count))
+        if raw.translate(None, b"\x00\x01"):
+            raise Refused("wire_damaged", "a bool payload is not 0 or 1")
+        return [b == 1 for b in raw]
+    code = _int_code(element)
+    if code is None:
+        return None
+    size = struct.calcsize(code) * count
+    chunk = sub.take(size)
+    values = struct.unpack(f"<{count}{code}", chunk)
+    lo = element.lo
+    hi = element.hi
+    if values and (min(values) < lo or max(values) > hi):
+        bad = next(v for v in values if v < lo or v > hi)
+        raise Refused("out_of_range", f"{bad} is outside [{lo}, {hi}]")
+    return list(values)
+
+
+def write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
+    """The per-element shape: each element through its own kind module."""
+    codec = kinds._REGISTRY[element.codec]
+    for item in value:
+        codec.write_element(w, element, item, ctx)
+
+
+def write_bulk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> bool:
+    """The bulk shape; False for an element it does not carry."""
+    if element.codec == "bool":
+        w.raw(bytes(value))
+        return True
+    code = _int_code(element)
+    if code is None:
+        return False
+    w.raw(struct.pack(f"<{len(value)}{code}", *value))
+    return True
+
+
 class _Array:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
         if not isinstance(value, list):
             raise InvalidValue(path, "not a list")
+        check_count(path, len(value))
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         from .load import Reader
@@ -48,7 +154,7 @@ class _Array:
                 f"{fd.name} rides as an array of kind {ek}, not {fd.elem_kind}",
             )
         count = sub.varint()
-        if count > _MAX_COUNT:
+        if count > MAX_COUNT:
             raise Refused(
                 "count_over_extent_cap",
                 f"an array count of {count} is past the int32 storage cap",
@@ -59,13 +165,16 @@ class _Array:
         element = fd.element
         if element is None:
             raise Refused("unsupported_kind", "an array carries no element descriptor")
-        codec = kinds._REGISTRY[element.codec]
-        items: list[Any] = []
-        append = items.append
-        for _ in range(count):
-            append(codec.read_element(sub, element, ctx))
+        items = read_bulk(sub, element, count, ctx)
+        if items is None:
+            items = read_walk(sub, element, count, ctx)
         if sub.pos != length:
             raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
+        if count == 0 and not fd.optional:
+            raise Refused(
+                "non_canonical",
+                f"{fd.name} rides present and empty, its declared default, which the writer elides",
+            )
         return items
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
@@ -81,9 +190,8 @@ class _Array:
         writer = _writer(body)
         writer.byte(fd.elem_kind)
         writer.varint(len(value))
-        codec = kinds._REGISTRY[element.codec]
-        for item in value:
-            codec.write_element(writer, element, item, ctx)
+        if not write_bulk(writer, element, value, ctx):
+            write_walk(writer, element, value, ctx)
         w.varint(len(body))
         w.raw(body)
 
