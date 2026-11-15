@@ -171,7 +171,9 @@ def fixed_record_codec(name:string) -> FixedRecordCodec:
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
 // cannot name — it keeps its index and every pointer naming it reads null —
-// 1 a table record, 2 a *string blob, 3 a *bytes blob.
+// 1 a table record, 2 a *string blob, 3 a *bytes blob, 4 a record of a type
+// this reader declares but this root cannot place, which no pointer slot
+// may name (§3.1).
 class Node:
     kind:int
     rec:Record?
@@ -1696,9 +1698,17 @@ def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
         return [], false
     return records, true
 
+// declares is whether the unit of root descriptor d declares the table type tid.
+def declares(d:TableDescriptor, tid:int) -> bool:
+    for(d.declared) id:
+        if id == tid:
+            return true
+    return false
+
 // decode_variable reads a pointered root (§3.1; Go's decodeVariable): the
 // node table first, then pass one fills THE FLAT NODE TABLE from the framing
-// (a record this root cannot place is unknown and keeps its index), pass two
+// (a record of a type the unit does not declare is unknown and keeps its
+// index; one it declares but this root cannot place no slot may name), pass two
 // decodes each record's body, then the root body.
 def decode_variable(st:LoadState, root:Record, hi:int):
     let rep = st.report
@@ -1731,6 +1741,10 @@ def decode_variable(st:LoadState, root:Record, hi:int):
                     d = p
             if d:
                 node = Node { kind: 1, rec: new_record(d), blob: nil }
+            elif rec.tid == string_blob_id or rec.tid == bytes_blob_id or declares(root.d, rec.tid):
+                // a type this reader declares is never evolution: every
+                // pointer slot naming it refuses in resolve_cell (§3.1)
+                node = Node { kind: 4, rec: nil, blob: nil }
             else:
                 rep.unknown++
                 let retain = active_retain_capture()
