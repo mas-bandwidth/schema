@@ -307,7 +307,11 @@ generated class per table and per map entry, each with its descriptor
   and the record's body is the bytes themselves. A Python `bytes` or `str` is
   a value, not a boxed node, so the save gives every non-null slot its OWN
   record: a caller's equal strings in two slots are two records with equal
-  bodies, exactly the wire the Go engine writes for `blob_equal_bytes`. There
+  bodies, exactly the wire the Go engine writes for `blob_equal_bytes`. The
+  records are numbered per slot visit in write order, never keyed by the
+  owning table object's identity: one table object placed in two by-value
+  slots, or by value and by pointer, is two visits and writes the same wire
+  as two equal copies. There
   is nothing to share, so there is no save-side `blob_shared`. The read keeps
   the wire's indices: one blob record named from two slots refuses the whole
   read as `blob_shared`, a `*bytes` slot naming a `*string` record (or a

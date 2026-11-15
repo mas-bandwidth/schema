@@ -4,7 +4,9 @@ A `*bytes` or `*string` field is a POINTER to a blob record: kind 17 names a
 node index, and the record's body is the bytes themselves. Python's `bytes`
 and `str` are values, not boxed nodes, so the save numbers ONE record per
 non-null slot BY VALUE: a caller's equal strings in two slots are two records,
-never one shared node. The read keeps the wire's node indices, so a wire that
+never one shared node. Records are numbered per slot VISIT, never by the
+owning table's identity, so one table object placed in two by-value slots (or
+by value and by pointer) writes a record of its own for each. The read keeps the wire's node indices, so a wire that
 names one blob record from two slots is refused by name (`blob_shared`); a
 `*string` record's bytes must be well-formed UTF-8 with no zero byte.
 """
@@ -82,9 +84,12 @@ class _Blob:
         return None
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        index = ctx.blob_index.get((id(ctx.current), fd.field_id))
-        if index is None:
+        # The save numbered each slot visit in write order (save.py, _collect):
+        # the next number is this slot's own record.
+        if ctx.blob_next >= len(ctx.blob_slots):
             raise InvalidValue(fd.name, "the byte buffer slot has no node index")
+        index = ctx.blob_slots[ctx.blob_next]
+        ctx.blob_next += 1
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
         w.varint(index)

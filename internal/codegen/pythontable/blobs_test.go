@@ -12,9 +12,11 @@ package pythontable
 //
 // TestPythonVtBlobs holds every manifest blob instance to the one read on
 // read-then-write under both pinned interpreters, then holds the string
-// identity cases: decoded equal values, built equal values, empty values, and
-// one node named from two slots. TestPythonVtBlobsNegativeControl plants the
-// two identity faults in a COPY of the runtime and requires its rows red.
+// identity cases: decoded equal values, built equal values, empty values, one
+// node named from two slots, and one table object reached twice (in two
+// by-value slots, and by value and by pointer), which saves as two equal copies
+// do. TestPythonVtBlobsNegativeControl plants the identity faults in a COPY of
+// the runtime and requires its rows red.
 
 import (
 	"encoding/binary"
@@ -237,9 +239,26 @@ table Root
     data_a *bytes
     data_b *bytes
 }
+
+table Inner
+{
+    s *string
+}
+
+table Pair
+{
+    a Inner
+    b Inner
+}
+
+table Mixed
+{
+    a Inner
+    p *Inner
+}
 `
 
-const stringIdentityPrelude = `from probe import InvalidValue, Refused, Root
+const stringIdentityPrelude = `from probe import Inner, InvalidValue, Mixed, Pair, Refused, Root
 `
 
 const stringIdentityProbe = `def read_file(name):
@@ -278,19 +297,42 @@ def built_bytes(value_bytes, name):
     reference = read_file(name)
     print(name, "saved", saved.hex(), "same" if saved == reference else "diff", value.measure() == len(saved), value.data_a == a and value.data_b == b)
 
+def built_twice(cls, other, name):
+    inner = Inner()
+    inner.s = "hello"
+    value = cls()
+    value.a = inner
+    setattr(value, other, inner)
+    saved = value.save()
+    reference = read_file(name)
+    try:
+        again = "True" if cls.load(saved).save() == saved else "False"
+    except Refused as err:
+        again = "refused_" + err.reason
+    untouched = inner.s == "hello" and value.a is inner and getattr(value, other) is inner
+    print(name, "saved", saved.hex(), "same" if saved == reference else "diff", value.measure() == len(saved), untouched, again)
+
 for name in ("decoded_string", "decoded_all", "decoded_empty", "shared_string"):
     roundtrip(name)
 built_string("same", "built_same")
 built_string("", "built_empty")
 built_bytes(bytes.fromhex("10203040"), "built_bytes")
+built_twice(Pair, "b", "twice_by_value")
+built_twice(Mixed, "p", "twice_value_and_pointer")
 print("OK")
 `
 
 // stringIdentityReference is the Go engine's form-1 wire of text at Root.
 func stringIdentityReference(t *testing.T, u *ir.Unit, text string) []byte {
 	t.Helper()
+	return stringIdentityReferenceAt(t, u, "Root", text)
+}
+
+// stringIdentityReferenceAt is the Go engine's form-1 wire of text at root.
+func stringIdentityReferenceAt(t *testing.T, u *ir.Unit, root, text string) []byte {
+	t.Helper()
 	m := tabletext.NewModel(u)
-	inst := m.New(u.Tables["Root"])
+	inst := m.New(u.Tables[root])
 	var rep tabletext.Report
 	if !m.Read(inst, []byte(text), &rep) || rep.Refused || rep.Unknown > 0 {
 		t.Fatalf("the Go engine does not read %s cleanly: %+v", text, rep)
@@ -390,6 +432,9 @@ func stringIdentityFailures(t *testing.T, mutate func(*testing.T, map[string][]b
 		"built_empty":    stringIdentityReference(t, u, `{"a":"","b":""}`),
 		"built_bytes":    stringIdentityReference(t, u, `{"data_a":"ECAwQA==","data_b":"ECAwQA=="}`),
 		"shared_string":  sharedStringWire(t, u, "same"),
+		// One Inner object in both slots saves as two equal copies do.
+		"twice_by_value":          stringIdentityReferenceAt(t, u, "Pair", `{"a":{"s":"hello"},"b":{"s":"hello"}}`),
+		"twice_value_and_pointer": stringIdentityReferenceAt(t, u, "Mixed", `{"a":{"s":"hello"},"p":{"s":"hello"}}`),
 	}
 	inputs := map[string][]byte{"main.py": []byte(probe)}
 	for name, data := range references {
@@ -415,6 +460,16 @@ func stringIdentityFailures(t *testing.T, mutate func(*testing.T, map[string][]b
 		if name == "shared_string" {
 			if len(parts) != 3 || parts[1] != "refused" || parts[2] != "blob_shared" {
 				fails = append(fails, fmt.Sprintf("%s: the read gave %q, want refused blob_shared", name, line))
+			}
+			continue
+		}
+		if strings.HasPrefix(name, "twice_") {
+			if len(parts) != 7 || parts[1] != "saved" || parts[3] != "same" || parts[4] != "True" || parts[6] != "True" {
+				fails = append(fails, fmt.Sprintf("%s: the save of one table object in two slots is %q", name, line))
+				continue
+			}
+			if parts[5] != "True" {
+				fails = append(fails, fmt.Sprintf("%s: the caller's objects moved", name))
 			}
 			continue
 		}
@@ -465,6 +520,9 @@ func TestPythonVtBlobs(t *testing.T) {
 //   - BY CONTENT: two slots with equal bytes share one node, so a caller's
 //     equal strings are no longer written by value; blob_equal_bytes and the
 //     built equal-value cases must go red;
+//   - BY OWNER: the write keys a slot's record by the owning table object's
+//     identity, so one object in two slots names one record and orphans the
+//     other; twice_by_value and twice_value_and_pointer must go red;
 //   - NO SHARED REFUSAL: the read accepts a wire that names one blob record
 //     from two slots, so blob_shared and shared_string no longer refuse.
 func TestPythonVtBlobsNegativeControl(t *testing.T) {
@@ -484,14 +542,23 @@ func TestPythonVtBlobsNegativeControl(t *testing.T) {
 	}
 	const saveByContentFrom = `            index = len(ctx.order) + 2
             ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
-            ctx.blob_index[(id(value), field.field_id)] = index
+            blobs.append(index)
 `
 	const saveByContentTo = `            index = ctx.indices.get(body)
             if index is None:
                 index = len(ctx.order) + 2
                 ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
                 ctx.indices[body] = index
-            ctx.blob_index[(id(value), field.field_id)] = index
+            blobs.append(index)
+`
+	// BY OWNER: the write reuses the first record it gave an owner's slot,
+	// keyed by the owning table's identity (the shape that orphaned a record).
+	const byOwnerFrom = `        index = ctx.blob_slots[ctx.blob_next]
+        ctx.blob_next += 1
+`
+	const byOwnerTo = `        index = ctx.blob_slots[ctx.blob_next]
+        ctx.blob_next += 1
+        index = ctx.refs.setdefault((id(ctx.current), fd.field_id), index)
 `
 	const sharedFrom = `        if index in seen_blob:
             raise Refused("blob_shared", "one byte buffer is named from two slots")
@@ -514,6 +581,13 @@ func TestPythonVtBlobsNegativeControl(t *testing.T) {
 			[]string{"built_same", "built_empty", "built_bytes", "decoded_string", "decoded_all"},
 		},
 		{
+			"by-owner",
+			nil,
+			plant("probe/_schema/kind_blob.py", byOwnerFrom, byOwnerTo),
+			nil,
+			[]string{"twice_by_value", "twice_value_and_pointer"},
+		},
+		{
 			"no-shared-refusal",
 			plant("blobdemo/_schema/load.py", sharedFrom, sharedTo),
 			plant("probe/_schema/load.py", sharedFrom, sharedTo),
@@ -523,7 +597,10 @@ func TestPythonVtBlobsNegativeControl(t *testing.T) {
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
-			manifestFails, _ := blobManifestFailures(t, ctl.manifestMutate)
+			var manifestFails []string
+			if ctl.manifestMutate != nil {
+				manifestFails, _ = blobManifestFailures(t, ctl.manifestMutate)
+			}
 			identityFails, _ := stringIdentityFailures(t, ctl.identityMutate)
 			red := map[string]bool{}
 			for _, f := range append(manifestFails, identityFails...) {
