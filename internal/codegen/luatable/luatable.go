@@ -840,8 +840,9 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		s := fmt.Sprintf("shape = \"float\", f32 = %v", t.Kind == ir.TFloat32)
 		if f.HasFloatRange && t.Kind == ir.TFloat32 {
 			// a ranged float32 clamps on the fixed read (§3.4; the variable
-			// form carries the same bound as a fixed-point raw range)
-			s += fmt.Sprintf(", fmin = %s, fmax = %s", lua.FloatLiteral(f.FMin), lua.FloatLiteral(f.FMax))
+			// form carries the same bound as a fixed-point raw range), and
+			// its three facts are what the message form quantizes by (§3.3)
+			s += fmt.Sprintf(", fmin = %s, fmax = %s, res = %s", lua.FloatLiteral(f.FMin), lua.FloatLiteral(f.FMax), lua.FloatLiteral(f.Resolution))
 		}
 		if withDefault {
 			v := 0.0
