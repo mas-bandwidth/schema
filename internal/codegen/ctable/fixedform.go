@@ -460,6 +460,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
 	// width (ir.TableFixedSplitByWidth). The split count is the new guarded split.
 	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
+	dead := fixedDeadMetaOf(g.unit, st)
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for i, e := range split.Plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
@@ -489,9 +490,29 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.GuardCount > 0 {
 			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, /* %s */\n",
+		// THE DEAD-BYTE LANES: a count's element width, an absent optional's
+		// payload width, a union tag's widest arm and width, and an arm's own
+		// width from the writer's layout (docs/FIXED-FORM-ALGORITHM.md §3.1,
+		// §4.5, §5.3 step 11). The check pass holds every dead byte to zero.
+		deadBytes, armBytes, armCount, tagWidth := int64(0), int64(0), int64(0), int64(0)
+		switch e.Op {
+		case ir.TableFixedOpCount:
+			deadBytes = dead.counts[e.Src]
+		case ir.TableFixedOpPresentDefaults:
+			deadBytes = dead.presents[e.Src]
+		case ir.TableFixedOpCopy:
+			if un, ok := dead.unions[e.Src]; ok && e.Size == un.tagWidth {
+				deadBytes, tagWidth, armCount = un.widest, un.tagWidth, int64(len(un.arms)-1)
+			}
+		}
+		if e.Guard != ir.TableFixedNoGuard {
+			if un, ok := dead.unions[e.Guard]; ok && e.Arg >= 0 && e.Arg < len(un.arms) {
+				armBytes = un.arms[e.Arg]
+			}
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d }, /* %s */\n",
 			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, split.Elems[i], e.Note)
+			e.GuardCount, guardIndex, split.Elems[i], deadBytes, armBytes, armCount, tagWidth, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(split.Plan))
@@ -874,6 +895,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.fixedBoolDamagePass(st)
+	g.pf("        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
+	g.pf("           §5.3 step 11): a non-zero one refuses the whole load as\n")
+	g.pf("           wire_damaged in this check pass, before any byte of the record lands. */\n")
+	g.pf("        if ( table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )\n        {\n")
+	g.pf("            int64_t j;\n            for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
+	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
+	g.pf("            return -1;\n        }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	runDefaults := "NULL"
 	if presentDefaults {
