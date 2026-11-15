@@ -231,7 +231,6 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
-<<<<<<< HEAD
 - `relax/dart-announce-refuses-nested-element`:
   `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
   cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
@@ -245,7 +244,6 @@ green)` and its slug.
   at announce time. Real fix: a fixture shape the engine admits, following
   TestMessageSkipRefusesElementWithNoProgress (a text-list element with
   length bound 0).
-=======
 - `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
   TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
   hold (count and log, not compare) the inputs the generated Go fixed read
@@ -253,7 +251,6 @@ green)` and its slug.
   other disagreement is still compared. Real fix: the generated Go fixed read
   refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
   tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
 
 ## Proof cells
 
