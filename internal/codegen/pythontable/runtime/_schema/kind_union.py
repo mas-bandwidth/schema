@@ -20,8 +20,6 @@ from .descriptor import ArmDesc, FieldDesc
 # bytes after that length, so the arm's L is that length.
 _LENGTH_KINDS = frozenset((12, 13, 14, 16, 31, 32))
 
-_EXTENT_CAP = 0x7FFFFFFF
-
 
 def _union_class(name: str) -> type[Any]:
     cls = descriptor._union_by_name(name)
@@ -279,8 +277,9 @@ class _UnionArray:
                 f"{fd.name} carries element kind {element_kind}, not 15",
             )
         count = sub.varint()
-        if count > _EXTENT_CAP:
-            raise Refused("count_over_extent_cap", f"{fd.name} counts {count}, past the int32 storage cap")
+        # A count past the int32 storage cap is past every bound too; the
+        # refusal path's file walk (load.check_file) names it
+        # count_over_extent_cap, as the engine's wire check does.
         if count > fd.bound:
             raise Refused("count_over_bound", f"{fd.name} counts {count}, past its bound {fd.bound}")
         un = _union_class(fd.target)

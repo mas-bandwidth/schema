@@ -634,7 +634,7 @@ var unionControls = []struct {
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
 	{"arm-trailing", "kind_union.py", "    if sub.pos != sub.end:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "    if False:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "case arm-long-width "},
 	{"count-bound-reason", "kind_union.py", "raise Refused(\"count_over_bound\"", "raise Refused(\"out_of_range\"", "case count-over-bound "},
-	{"count-extent-cap", "kind_union.py", "        if count > _EXTENT_CAP:\n", "        if False:\n", "case count-over-extent-cap "},
+	{"count-extent-cap", "load.py", "    if count > _EXTENT_CAP:\n", "    if False:\n", "case count-over-extent-cap "},
 	{"counted-elision", "descriptor.py", "                return len(value) == 0\n", "                return len(value) <= 1 and all(element.type == 0 for element in value)\n", "case counted-one-none "},
 	{"fixed-elision", "descriptor.py", "            return all(element.type == 0 for element in value)\n", "            return bool(value == self.default)\n", "union_elide_inactive True"},
 	{"table-elision", "descriptor.py", "            return all(field.is_default(getattr(value, field.name)) for field in fields)\n", "            return bool(value == new_by_name(self.target))\n", "union_elide_inactive True"},
