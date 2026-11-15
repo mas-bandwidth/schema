@@ -28,6 +28,11 @@ var sqElementKindVectors = []struct {
 	{"array_elem_unassigned_count_0", false},
 	{"array_elem_reserved_count_0", false},
 	{"array_elem_zero_count_0", false},
+	// Valid element kinds do not make a malformed body readable, and a
+	// mismatch with a declared field is still a strict-load refusal.
+	{"array_elem_kind_mismatch", false},
+	{"array_elem_terminator_early", false},
+	{"array_elem_L_past_body", false},
 	// READ CONTROLS: element kind 17 is on the array list, at count 0 and at
 	// count 1 where its node index names a reachable record.
 	{"array_elem_kind_17_count_0", true},
