@@ -95,14 +95,15 @@ func fieldDefaultFloat(f *ir.Field) float64 {
 	return 0
 }
 
-// leafFiniteCondition is a clean float leaf's writer refusal (docs/SPEC-TABLES.md
-// §3.3): a NaN or an infinity refuses the save before any byte is written.
+// leafFiniteCondition is a clean float leaf's writer check (docs/SPEC-TABLES.md
+// §3.3): the value is finite. C# is an assert leg (docs/SPEC.md §5.1), so the
+// writer asserts it in Debug and a Release build carries no check.
 func leafFiniteCondition(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TFloat32:
-		return fmt.Sprintf("!float.IsFinite(v.%s)", member(f))
+		return fmt.Sprintf("float.IsFinite(v.%s)", member(f))
 	case ir.TFloat64:
-		return fmt.Sprintf("!double.IsFinite(v.%s)", member(f))
+		return fmt.Sprintf("double.IsFinite(v.%s)", member(f))
 	}
 	return ""
 }
@@ -117,7 +118,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 		id := ir.TableFieldWireId(f)
 		if isCleanScalarLeaf(f) {
 			if finite := leafFiniteCondition(f); finite != "" {
-				g.pf("    if (%s) return false;\n", finite)
+				g.pf("    System.Diagnostics.Debug.Assert(%s);\n", finite)
 			}
 			cond := leafRideCondition(f)
 			g.pf("    if (%s && !ids.Add(0x%016xul)) return false;\n", cond, id)
@@ -843,34 +844,39 @@ public static partial class TableWire
             object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
             int count = Count(child, text);
             System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-            return TextValid(text.GetBuffer(child).AsSpan(0, count));
+            System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
+            return true;
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = Count(value, f);
             System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-            return TextValid(f.GetBuffer(value).AsSpan(0, count));
+            System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
+            return true;
         }
-        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
-        if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
-        // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
-        // §3.3): collect precedes measure and the first output byte, so Measure
-        // and Save both answer -1.
-        if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }
+        // EVERY WRITE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1, C# is an
+        // assert leg): a required value off its range, a NaN or an infinity
+        // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names.
+        // A Release build carries none of them; correct writes are the
+        // programmer's job.
+        if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
+        if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
+        if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
         if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, i);
             ulong tag = f.Arms.GetTag(union);
             if (tag == 0) { return true; }
-            if (tag > (ulong)f.EnumMax || !Named(f.EnumName(tag))) { return false; }
+            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
             return ids.Add(f.VariantId(tag)) && CollectPayload(union, f.Arms.Arms[(int)tag].Field, ref ids);
         }
         if (f.Kind == 30)
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            return v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && ids.Add(f.VariantId(v));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            return ids.Add(f.VariantId(v));
         }
         return true;
     }
@@ -879,14 +885,15 @@ public static partial class TableWire
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
         if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
-        if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
+        if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
         {
             if (f.KeyId != null)
             {
                 if (DefaultElement(value, f, i)) { continue; }
-                if (!Named(f.KeyName((ulong)i + 1)) || !ids.Add(f.KeyId((ulong)i + 1))) { return false; }
+                System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
             }
             if (!CollectElement(value, f, i, ref ids)) { return false; }
         }

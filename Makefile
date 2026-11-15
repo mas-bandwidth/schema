@@ -3259,20 +3259,12 @@ tables-pack: build/schema_test_pack build/schema_test_pack_asan build/tables-pac
 HOSTILE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2>/dev/null)
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C++ FromJson still reads
-# the rows base64-unpadded (json-base64-canonical) and
-# str-zero-escape-unknown-key (the skipped-value rule), which the MANIFEST and
-# the engine refuse. The gate runs on a copy of the manifest without those two
-# rows. re-enable: relax/hostile-rows-cpp
-HOSTILE_ENGINE_RELAXED := base64-unpadded str-zero-escape-unknown-key
 HOSTILE_GATE_MANIFEST := build/hostile-values/MANIFEST.txt
 
 build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@rm -rf build/hostile-values
 	@mkdir -p build/hostile-values
-	@awk -v skip='$(HOSTILE_ENGINE_RELAXED)' \
-		'BEGIN { n = split( skip, s, " " ); for ( i = 1; i <= n; i++ ) { relaxed[s[i]] = 1 } } !( $$1 == "json-hostile" && ( $$2 in relaxed ) )' \
-		$(HOSTILE_MANIFEST) > $(HOSTILE_GATE_MANIFEST)
+	@cp $(HOSTILE_MANIFEST) $(HOSTILE_GATE_MANIFEST)
 	@grep '^json-hostile ' $(HOSTILE_GATE_MANIFEST) | awk '$$6 != "refused"' | \
 	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin \
