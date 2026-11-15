@@ -2930,7 +2930,7 @@
       "row": "cases tabledemo",
       "lang": "squirrel",
       "status": "relaxed",
-      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
+      "why": "6 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 3 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
     },
     {
