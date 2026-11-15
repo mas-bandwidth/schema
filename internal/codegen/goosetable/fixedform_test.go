@@ -31,6 +31,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -447,7 +448,9 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		t.Logf("%d fixed roots round-tripped through the Goose reader and writer", roots.Load())
-		if roots.Load() < 20 {
+		// every round trip shells out to the Goose toolchain and skips when the
+		// slow half is off, so the floor holds only where the probes ran
+		if slowtest.Enabled() && roots.Load() < 20 {
 			t.Errorf("only %d fixed roots round-tripped: the sweep found too few to stand for every kind", roots.Load())
 		}
 	})

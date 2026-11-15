@@ -115,7 +115,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 	"lobster": {
 		noCount:  "WeaponFireTypeCount",
 		max:      "let WeaponFireTypeMax = 2 // the exported extent (SPEC §4.2)",
-		nameFunc: "def EnumNameWeaponFireType(value:int) -> string:",
+		nameFunc: "def EnumNameWeaponFireType(value·:int) -> string:",
 	},
 	// Lua: the tag is a table of constants, and the name function closes
 	// over its name table, so the claim spans both.

@@ -41,7 +41,7 @@ func jsonWideHexLines(t *testing.T, out string) []string {
 		return nil
 	}
 	var lines []string
-	for _, l := range strings.Split(text, "\n") {
+	for l := range strings.SplitSeq(text, "\n") {
 		b, err := hex.DecodeString(l)
 		if err != nil {
 			t.Fatalf("probe output line %q is not hex: %v\n%s", l, err, out)
