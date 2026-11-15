@@ -1541,9 +1541,10 @@ function TableVariableStrictMark(report) {
 
 // RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
 // (checked against the reader's own root type), k + 1 is record k. A record of
-// another kind than the slot declares is a kind mismatch, an index past the
-// numbering is damaged, and a numbering that could not be read resolves
-// nothing. A *string record named by two or more slots lands as ONE String
+// another kind than the slot declares is a kind mismatch, a record of a
+// declared type the root does not place is a wrong-type target and damaged, an
+// index past the numbering is damaged, and a numbering that could not be read
+// resolves nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
@@ -1558,7 +1559,17 @@ function TableVariableResolve(st, report) {
       } else {
         if (st.reached !== undefined) { st.reached.add(index - 2); }
         const n = st.nodes[index - 2];
-        if (n !== null) {
+        if (n === null) {
+          // A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the reader
+          // cannot name at all it reads null, counted unknown once; of a type
+          // the reader DECLARES, or a blob, that is not the slot's target it
+          // is a wrong-type pointer target, damage (§6.5).
+          const tid = st.nodeTypes[index - 2];
+          const want = d.s === "sblob" ? TableStringBlobId : (d.s === "bblob" ? TableBytesBlobId : d.c.typeId);
+          if (tid !== want && (TableVariableDeclaredTypes.has(tid) || tid === TableStringBlobId || tid === TableBytesBlobId)) {
+            report.damaged = true;
+          }
+        } else {
           if (d.s === "sblob") {
             if (n.kind === "s") { str = n; } else { report.mismatch++; }
           } else if (d.s === "bblob") {
@@ -4908,6 +4919,7 @@ const TableVariableCodecs = {
     place: { tables: [], str: false, bytes: false },
   },
 };
+const TableVariableDeclaredTypes = new Set([0x85df369cdca746b3n]);
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 TableVariableFreeze(TableVariableCodecs);
 TableVariableFreeze(TableVariableUnions);
