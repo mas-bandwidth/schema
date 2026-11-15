@@ -1355,6 +1355,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
 		"ci-full.yml:cpp-lock",
