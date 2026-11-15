@@ -107,12 +107,12 @@ func announceShapeCases() []announceShapeCase {
 func announceShapeBatch(refBits, ref, payloadBits int) []byte {
 	var bits []int
 	put := func(v, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			bits = append(bits, (v>>i)&1)
 		}
 	}
 	put(ref, refBits)
-	for i := 0; i < payloadBits; i++ {
+	for range payloadBits {
 		bits = append(bits, 0)
 	}
 	put(0, refBits)

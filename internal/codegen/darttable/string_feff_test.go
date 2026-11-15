@@ -79,7 +79,7 @@ func runFeffProbe(t *testing.T, files map[string][]byte, source string) error {
 		cmd := exec.Command(dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("feff probe %v: %v\n%s", args, err, out)
+			return fmt.Errorf("feff probe %v: %w\n%s", args, err, out)
 		}
 	}
 	return nil

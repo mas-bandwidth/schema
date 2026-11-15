@@ -577,10 +577,11 @@ const (
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
-	// names, order and spelling agree in all ports. Each member's Error() is its
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the reference's one refusal
+	// enum: every fixed-form refusal name is a TableRefuseReason member, appended
+	// after TableRefuseBlobShared so no existing value renumbers, in §6.5's
+	// recommended table order so a port that follows it spells them alike; the
+	// verdict, not the names, is the contract. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
 	// for a fixed load that refused. The form-byte refusals keep answering
@@ -1337,11 +1338,13 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. The
-	// open-addressed path runs at 8<=n<=4096 with 8192 slots and compares the
-	// stored id, not the hash. n<8 stays pairwise: 21 comparisons at 7 versus
-	// 40 KiB of slot zeroing on every open, including a two-entry trailer. The
-	// mix is C's table_writer_id.
+	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. At
+	// 8<=n<=4096 a sort over a fixed scratch copy compares neighbours, so
+	// the work is n log n whatever the ids are. n<8 stays pairwise: 21
+	// comparisons at 7 versus the scratch array on every open, including a
+	// two-entry trailer. The scratch copy is a fixed array, so the open still
+	// allocates nothing, and the neighbour compare keeps duplicate ids refused.
+	// The 4096-entry cap above still bounds the scratch copy.
 	if n > 1 {
 		if n < 8 {
 			for i := 0; i < len(r.Ids); i += 8 {
@@ -1353,25 +1356,22 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		} else {
-			var seen [8192]uint64
-			var used [8192]uint8
+			var ids [4096]uint64
 			for i := range n {
-				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
-				hash := id
-				hash ^= hash >> 33
-				hash *= 0xff51afd7ed558ccd
-				hash ^= hash >> 33
-				slot := uint32(hash) & 8191
-				for {
-					if used[slot] == 0 {
-						used[slot] = 1
-						seen[slot] = id
-						break
-					}
-					if seen[slot] == id {
-						return r, TableOpenDamaged
-					}
-					slot = (slot + 1) & 8191
+				ids[i] = binary.LittleEndian.Uint64(r.Ids[i*8:])
+			}
+			slices.SortFunc(ids[:n], func(a, b uint64) int {
+				if a < b {
+					return -1
+				}
+				if a > b {
+					return 1
+				}
+				return 0
+			})
+			for i := 1; i < int(n); i++ {
+				if ids[i-1] == ids[i] {
+					return r, TableOpenDamaged
 				}
 			}
 		}
@@ -3838,20 +3838,17 @@ func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 }
 
 func TableEntityMeasure(value *TableEntity) int64 {
-	var ids TableIds
-	body := TableEntityMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !TableEntityFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return TableEntityFixedMeasure(1)
 }
 
 func TableEntityMeasureReason(value *TableEntity) (int64, error) {
-	size := TableEntityMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TableEntityFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TableEntityMeasure(value), nil
 }
 func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	{
@@ -4046,17 +4043,7 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 }
 
 func TableEntitySave(value *TableEntity, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TableEntitySaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableEntityFixedSave([]TableEntity{*value}, buffer)
 }
 
 func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
@@ -4550,9 +4537,8 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 }
 
 // TableEntity is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TableEntityFixedLoad reads form 3.
+// so this Load reads that form through TableEntityFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TableEntityLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -4569,6 +4555,15 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 		read.Refuse(TableRefusePreviousForm, "")
 		TableEntityReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TableEntity
+		if TableEntityFixedLoad(fixed[:], data, TableEntityFixedReadPlan, read) != 1 {
+			TableEntityReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -4627,20 +4622,17 @@ func TableStatMeasureBody(value *TableStat, ids *TableIds) int64 {
 }
 
 func TableStatMeasure(value *TableStat) int64 {
-	var ids TableIds
-	body := TableStatMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !TableStatFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return TableStatFixedMeasure(1)
 }
 
 func TableStatMeasureReason(value *TableStat) (int64, error) {
-	size := TableStatMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TableStatFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TableStatMeasure(value), nil
 }
 func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 	{
@@ -4670,17 +4662,7 @@ func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 }
 
 func TableStatSave(value *TableStat, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TableStatSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableStatFixedSave([]TableStat{*value}, buffer)
 }
 
 func TableStatLoadBody(r *TableReader, value *TableStat) bool {
@@ -4794,9 +4776,8 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 }
 
 // TableStat is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TableStatFixedLoad reads form 3.
+// so this Load reads that form through TableStatFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TableStatLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -4813,6 +4794,15 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		TableStatReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TableStat
+		if TableStatFixedLoad(fixed[:], data, TableStatFixedReadPlan, read) != 1 {
+			TableStatReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -4893,25 +4883,17 @@ func TableMixedMeasureBody(value *TableMixed, ids *TableIds) int64 {
 }
 
 func TableMixedMeasure(value *TableMixed) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !TableMixedSaveBody(&w, value) {
+	if !TableMixedFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableMixedFixedMeasure(1)
 }
 
 func TableMixedMeasureReason(value *TableMixed) (int64, error) {
-	size := TableMixedMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TableMixedFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TableMixedMeasure(value), nil
 }
 func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	var arrayLengths [80]int64
@@ -5470,17 +5452,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 }
 
 func TableMixedSave(value *TableMixed, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TableMixedSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableMixedFixedSave([]TableMixed{*value}, buffer)
 }
 
 func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
@@ -6508,9 +6480,8 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 }
 
 // TableMixed is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TableMixedFixedLoad reads form 3.
+// so this Load reads that form through TableMixedFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TableMixedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -6527,6 +6498,15 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		TableMixedReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TableMixed
+		if TableMixedFixedLoad(fixed[:], data, TableMixedFixedReadPlan, read) != 1 {
+			TableMixedReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -8525,6 +8505,8 @@ var TableEntityFixedPlanMax = func() int32 {
 	return m
 }()
 
+var TableEntityFixedReadPlan = make([]TableFixedEntry, int(TableEntityFixedPlanMax))
+
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TableEntityFixedMeasure(count int64) int64 {
@@ -8778,6 +8760,8 @@ var TableStatFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var TableStatFixedReadPlan = make([]TableFixedEntry, int(TableStatFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9256,6 +9240,8 @@ var TableMixedFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var TableMixedFixedReadPlan = make([]TableFixedEntry, int(TableMixedFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

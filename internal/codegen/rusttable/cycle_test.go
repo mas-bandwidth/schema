@@ -142,7 +142,7 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
         );
 
         let mut rr = TableReport::default();
-        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1024) };
+        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1024), nodes: Default::default() };
         let rv = list_node_load_retain(wire, &mut store, &mut rr);
         check(rr.damaged && rr.cycle_on_save && rv.is_none(), &format!("{row}: retaining load did not refuse cycle as damage"));
         check(store.bytes.is_empty() && store.ids.is_empty(), &format!("{row}: retaining store was not cleared on cycle refusal"));
@@ -164,7 +164,7 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
         let v = list_node_load(&CHAIN_TWO_WIRE, &mut r);
         check(!r.damaged && v.as_ref().is_some_and(|n| n.next.is_some()), "node_chain_two: plain load failed");
         let mut rr = TableReport::default();
-        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1024) };
+        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1024), nodes: Default::default() };
         let rv = list_node_load_retain(&CHAIN_TWO_WIRE, &mut store, &mut rr);
         check(!rr.damaged && rv.as_ref().is_some_and(|n| n.next.is_some()), "node_chain_two: retaining load failed");
     }

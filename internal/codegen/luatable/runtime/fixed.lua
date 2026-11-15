@@ -826,8 +826,9 @@ end
 function F.write(T, name, value)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, value)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, value)
   if refused ~= nil then error(refused, 0) end
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
@@ -857,7 +858,7 @@ function F.save(T, name, values)
   local hPrefix = f.hashPrefix
   for i = 1, #values do
     local v = values[i]
-    local refused = D.refuse_deprecated(T, name, v)
+    local refused = D.refuse_write(T, name, v)
     if refused ~= nil then error(refused, 0) end
     local body = encode_table(T, name, v)
     if #body ~= f.size then error("layout_malformed", 0) end
