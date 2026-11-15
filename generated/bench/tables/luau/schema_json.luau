@@ -1589,7 +1589,15 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         local found = false
         local names = d.variants or {}
         for i, v in ipairs(names) do
-          if v == nm then bits = bor(bits, lshift(1, i - 1)); found = true; break end
+          if v == nm then
+            -- §16.2 flags row: a KNOWN variant named twice in one array is
+            -- malformed, as a repeated key is; a conforming writer writes
+            -- each set bit's name once.
+            if band(bits, lshift(1, i - 1)) ~= 0 then inp.bad = true; return false end
+            bits = bor(bits, lshift(1, i - 1))
+            found = true
+            break
+          end
         end
         if not found then report.unknown = report.unknown + 1 end
       end
