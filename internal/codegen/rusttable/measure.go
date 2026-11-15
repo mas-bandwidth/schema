@@ -126,7 +126,7 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
 		}
 		fmt.Fprint(b, `                            if count > 0x7fffffff { return -1; }
                             let floor = if ek == 13 { 2 } else { table_kind_width(ek).max(1) };
-                            if off > sub || count as usize > (sub - off) / floor { return -1; }
+                            if off > sub || count > ((sub - off) / floor) as u64 { return -1; }
 `)
 		fmt.Fprintf(b, "                            %sat += %s;\n", alignStep(align), scaled("count as i64", size))
 	}

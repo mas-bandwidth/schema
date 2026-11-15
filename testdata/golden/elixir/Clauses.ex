@@ -1916,6 +1916,14 @@ defmodule Example.Clauses do
       raise ArgumentError, "value.s longer than the declared 8-byte bound"
     end
 
+    if not String.valid?(value_s) do
+      raise ArgumentError, "value.s is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_s, <<0>>) != :nomatch do
+      raise ArgumentError, "value.s holds a zero byte (SPEC §4.7)"
+    end
+
     v = byte_size(value_s)
     scratch = scratch ||| v <<< 5
     data = <<scratch::little-size(1)-unit(8)>>
