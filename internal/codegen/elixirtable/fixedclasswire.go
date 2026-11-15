@@ -2,8 +2,10 @@ package elixirtable
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -314,7 +316,10 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   # named only by a skipped field still counts as reached and a node named
   # by no payload at all refuses the whole load. A record of a type this
   # reader cannot name is held to the same rule, and its body's payloads
-  # reach as a known record's do (internal/tablewire's wire check).
+  # reach as a known record's do (internal/tablewire's wire check). The same
+  # walk judges cycles over every pointer payload (§3.1, §6.5 THE GRAPH,
+  # DEFINED ONCE): a pointer naming a node whose descent is still open, the
+  # root included, is damage, whatever field or record type carries it.
   defp strict_wire_reachable!(fields, node_fields, nodes, ids) do
     indexed = Enum.with_index(nodes, 2)
 
@@ -329,19 +334,24 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
         end
       end
 
-    bodies = node_fields |> Map.merge(unknown_fields) |> Map.put(1, fields)
-    seen = wire_reach([1], bodies, MapSet.new(), ids)
+    children =
+      node_fields
+      |> Map.merge(unknown_fields)
+      |> Map.put(1, fields)
+      |> Map.new(fn {idx, fs} -> {idx, wire_field_refs(fs, ids)} end)
 
-    if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
+    marks = wire_walk([{1, Map.get(children, 1, [])}], children, %{1 => :open})
+
+    if Enum.any?(node_indices, fn idx -> not Map.has_key?(marks, idx) end),
       do: throw(:wire_damaged)
 
     # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5): every pointer
     # payload in every body names, a skipped field's too, and each body is
     # counted once however many pointers reach it.
     names =
-      bodies
+      children
       |> Map.values()
-      |> Enum.flat_map(&wire_field_refs(&1, ids))
+      |> Enum.concat()
       |> Enum.frequencies()
 
     # A POINTER PAST THE NODE TABLE is damage wherever it rides (§3.1)
@@ -358,19 +368,34 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   defp blob_node?({:unknown, :blob}), do: true
   defp blob_node?(_node), do: false
 
-  defp wire_reach([], _bodies, seen, _ids), do: seen
+  # wire_walk is the depth-first descent from the root over an explicit
+  # stack of {node, pointers left}, never one recursion per pointer: a legal
+  # chain can be hundreds of thousands of nodes long. A node is :open while
+  # its descent is on the stack and :closed after; a pointer naming an open
+  # node is a cycle. Index 0 is null. The result's keys are the nodes the
+  # walk reached.
+  defp wire_walk([], _children, marks), do: marks
 
-  defp wire_reach([idx | rest], bodies, seen, ids) do
-    if MapSet.member?(seen, idx) do
-      wire_reach(rest, bodies, seen, ids)
-    else
-      refs =
-        case Map.fetch(bodies, idx) do
-          {:ok, fields} -> wire_field_refs(fields, ids)
-          :error -> []
-        end
+  defp wire_walk([{node, []} | stack], children, marks),
+    do: wire_walk(stack, children, Map.put(marks, node, :closed))
 
-      wire_reach(refs ++ rest, bodies, MapSet.put(seen, idx), ids)
+  defp wire_walk([{node, [0 | rest]} | stack], children, marks),
+    do: wire_walk([{node, rest} | stack], children, marks)
+
+  defp wire_walk([{node, [next | rest]} | stack], children, marks) do
+    case Map.get(marks, next) do
+      :open ->
+        throw(:wire_damaged)
+
+      :closed ->
+        wire_walk([{node, rest} | stack], children, marks)
+
+      nil ->
+        wire_walk(
+          [{next, Map.get(children, next, [])}, {node, rest} | stack],
+          children,
+          Map.put(marks, next, :open)
+        )
     end
   end
 
@@ -580,7 +605,67 @@ func fixedClassHelpers(u *ir.Unit) string {
 			unionFrom = fixedClassUnionFromNoVoid
 		}
 	}
-	return fixedClassHelperHead + unionTo + unionFrom + fixedClassHelperTail
+	atoms, tail := fixedClassAtoms(u), fixedClassHelperTail
+	if atoms == "" {
+		// no declared name at all: every name is refused, and an empty
+		// attribute would be a type warning at its lookup
+		if strings.Count(tail, fixedClassEnumFromName) != 1 {
+			panic("elixirtable: fixed-class enum name clause not found exactly once")
+		}
+		tail = strings.Replace(tail, fixedClassEnumFromName, fixedClassEnumFromNoName, 1)
+	}
+	return atoms + fixedClassHelperHead + unionTo + unionFrom + tail
+}
+
+const fixedClassEnumFromName = `  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
+`
+
+const fixedClassEnumFromNoName = `  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
+    do: raise(ArgumentError, "not a variant name: #{inspect(value)}")
+`
+
+// fixedClassAtoms is every enum variant and union arm name the unit declares,
+// mapped at generation time to the atom the fixed form's value carries. A
+// Table save looks a name up in its descriptor first and takes the atom from
+// here, so no caller's string ever becomes an atom: atoms are never collected.
+func fixedClassAtoms(u *ir.Unit) string {
+	atoms := map[string]string{}
+	for _, e := range u.Enums {
+		for _, v := range e.Variants {
+			atoms[v] = elixir.EnumAtom(v)
+		}
+	}
+	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range unions {
+			for _, v := range un.Variants {
+				atoms[v.Name] = elixir.EnumAtom(v.Name)
+			}
+		}
+	}
+	if len(atoms) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(atoms))
+	for name := range atoms {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("%{")
+	for i, name := range names {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%q => %s", name, atoms[name])
+	}
+	b.WriteString("}")
+	return "  # the atom each declared enum variant and union arm name stands for\n" +
+		exAttribute("fixed_class_atoms", b.String()) + "\n"
 }
 
 func hasVoidUnionArm(u *ir.Unit) bool {
@@ -654,13 +739,14 @@ const fixedClassUnionFrom = `
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
+            atom = Map.fetch!(@fixed_class_atoms, arm)
+
             if Map.get(desc, :t) == :void,
               do: atom,
               else: {atom, fixed_class_value_from_table(desc, payload)}
@@ -683,14 +769,13 @@ const fixedClassUnionFromNoVoid = `
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
-            {atom, fixed_class_value_from_table(desc, payload)}
+            {Map.fetch!(@fixed_class_atoms, arm), fixed_class_value_from_table(desc, payload)}
         end
 
       {arm, payload} when is_atom(arm) ->
@@ -941,8 +1026,12 @@ const fixedClassHelperTail = `
 
   defp fixed_class_enum_from_table(_f, "None"), do: :none
 
-  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
-    do: String.to_atom(fixed_class_snake(value))
+  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
 
   defp fixed_class_enum_from_table(_f, value), do: value
 

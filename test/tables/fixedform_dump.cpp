@@ -28,6 +28,7 @@
 #include "FU1Table.h"
 #include "FU2Table.h"
 #include "FD1Table.h"
+#include "DeadBytesTable.h"
 
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
 // THE VERSIONING LAW'S CORPUS (docs/FIXED-FORM-VERSIONING-TESTS.md): `old_<row>.bin`
@@ -756,6 +757,324 @@ static bool fu2_file( const char * dir )
     MS( v[1].extra, -11 );
 
     return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
+}
+
+// ---- the DEAD-BYTE corpus --------------------------------------------------
+// docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 and docs/SPEC-TABLES.md §3.4,
+// §13.10: every dead byte in a fixed record is zero on write and a non-zero one
+// refuses the whole read. One root carries every dead region the rule names; a
+// control is the reference writer's own bytes (every dead byte zero), and each
+// changed file is a control with ONE region made non-zero.
+//
+// THE DUMP WRITES THE BYTES AND SAYS WHAT WENT ONTO THE WIRE; it does not read
+// them back. The verdict belongs to each leg's own reader, and every changed
+// line carries no `expect=` for that reason.
+
+static constexpr int64_t kDeadRecordAt = tbldead::kTableFixedHeaderBytes + 4
+                                       + tbldead::DeadRootFixedLayoutBytes + 8;
+// the record body's offsets, from DeadRootFixedWriteBody's stores
+static constexpr int64_t kDeadOptPresent     = 0;
+static constexpr int64_t kDeadOptN           = 1;
+static constexpr int64_t kDeadOptLabelLength = 5;
+static constexpr int64_t kDeadOptLabel       = 9;
+static constexpr int64_t kDeadOptHeat        = 13;
+static constexpr int64_t kDeadOptFlag        = 17;
+static constexpr int64_t kDeadOptKind        = 18;
+static constexpr int64_t kDeadOptNumsCount   = 19;
+static constexpr int64_t kDeadOptChildPresent = 29;
+static constexpr int64_t kDeadArrCount       = 34;
+static constexpr int64_t kDeadArrFirst       = 38;
+static constexpr int64_t kDeadObjsCount      = 44;
+static constexpr int64_t kDeadObjsFirst      = 48;
+static constexpr int64_t kDeadTextLength     = 72;
+static constexpr int64_t kDeadTextBytes      = 76;
+static constexpr int64_t kDeadBlobLength     = 84;
+static constexpr int64_t kDeadBlobBytes      = 88;
+static constexpr int64_t kDeadPickTag        = 92;
+static constexpr int64_t kDeadPickArm        = 93;
+
+struct DeadPatch { int64_t at; uint64_t value; int width; };
+
+static std::string dead_forged( const char * path, int64_t at, const std::string & value )
+{
+    char b[192];
+    std::snprintf( b, sizeof( b ), "%s@%lld=%s", path, (long long) at, value.c_str() );
+    return b;
+}
+
+// THE CONTROL'S `expect=` IS THE MANIFEST'S OWN INTEGER VALUES: a leg reads the
+// file and lands these. Text and float entries stay in `values=`, where the
+// manifest spells them with their bytes or bits.
+static std::string dead_expect( const std::vector<std::string> & values )
+{
+    std::string out;
+    for ( size_t i = 0; i < values.size(); ++i )
+    {
+        const std::string & entry = values[i];
+        const size_t eq = entry.rfind( '=' );
+        if ( eq == std::string::npos ) { continue; }
+        const std::string v = entry.substr( eq + 1 );
+        bool integer = !v.empty();
+        size_t k = ( v[0] == '-' ) ? 1 : 0;
+        if ( k == v.size() ) { integer = false; }
+        for ( ; integer && k < v.size(); ++k )
+        {
+            if ( v[k] < '0' || v[k] > '9' ) { integer = false; }
+        }
+        if ( !integer ) { continue; }
+        if ( !out.empty() ) { out += ","; }
+        out += entry;
+    }
+    return out;
+}
+
+static void dead_apply( std::vector<uint8_t> & out, const std::vector<DeadPatch> & patches )
+{
+    for ( size_t p = 0; p < patches.size(); ++p )
+    {
+        for ( int i = 0; i < patches[p].width; ++i )
+        {
+            out[(size_t) ( patches[p].at + i )] = (uint8_t) ( patches[p].value >> ( 8 * i ) );
+        }
+    }
+}
+
+static bool dead_check( const std::vector<uint8_t> & out, int64_t at, uint8_t want, const char * what )
+{
+    if ( (size_t) at >= out.size() || out[(size_t) at] != want )
+    {
+        std::fprintf( stderr, "dead bytes: %s is not at byte %lld\n", what, (long long) at );
+        return false;
+    }
+    return true;
+}
+
+static bool dead_save( const tbldead::DeadRoot & value, std::vector<uint8_t> & out )
+{
+    out.assign( (size_t) tbldead::DeadRootFixedMeasure( 1 ), 0 );
+    if ( tbldead::DeadRootFixedSave( &value, 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+    {
+        std::fprintf( stderr, "dead bytes: save refused\n" );
+        g_values.clear();
+        return false;
+    }
+    return true;
+}
+
+static bool dead_write( const char * dir, const char * name, const std::vector<uint8_t> & base,
+                        const std::vector<DeadPatch> & patches, const std::vector<std::string> & values,
+                        const std::string & forged, const std::string & expect )
+{
+    std::vector<uint8_t> out = base;
+    dead_apply( out, patches );
+    g_values = values;
+    g_forged = forged;
+    g_expect = expect;
+    man_finish( name, "DeadRoot", 1 );
+    return spill( dir, name, out );
+}
+
+static bool dead_absent_files( const char * dir )
+{
+    tbldead::DeadRoot v[1];
+    tbldead::DeadRootReset( v[0] );
+    MS( v[0].opt_present, false );
+    MS( v[0].arr_count, 3 );
+    for ( int i = 0; i < 3; ++i ) { MSI( v[0].arr[i], 11 + i, (long long) ( i ) ); }
+    MS( v[0].objs_count, 3 );
+    for ( int i = 0; i < 3; ++i )
+    {
+        MSI( v[0].objs[i].x, 21 + i * 2, (long long) ( i ) );
+        MSI( v[0].objs[i].y, 22 + i * 2, (long long) ( i ) );
+    }
+    MSTR( v[0].text, "abcdefgh" );
+    MS( v[0].text_length, 8 );
+    for ( int i = 0; i < 4; ++i ) { MSI( v[0].blob[i], (uint8_t) ( 0xA0 + i ), (long long) ( i ) ); }
+    MS( v[0].blob_length, 4 );
+    MSE( v[0].pick.type, tbldead::DeadPickType::Wide );
+    MS( v[0].pick.wide.a, 31 );
+    MS( v[0].pick.wide.b, 32 );
+    MS( v[0].pick.wide.c, 33 );
+    const std::vector<std::string> values = g_values;
+    std::vector<uint8_t> base;
+    if ( !dead_save( v[0], base ) ) { return false; }
+    const int64_t at = kDeadRecordAt;
+    if ( !dead_check( base, at + kDeadOptPresent, 0, "the absent optional's present byte" ) ||
+         !dead_check( base, at + kDeadOptN, 0, "the absent optional's ranged int" ) ||
+         !dead_check( base, at + kDeadOptLabelLength, 0, "the absent optional's string length" ) ||
+         !dead_check( base, at + kDeadOptHeat, 0, "the absent optional's float" ) ) { return false; }
+
+    if ( !dead_write( dir, "dead_absent_zero.bin", base, {}, values,
+                      dead_forged( "r0.opt.n", at + kDeadOptN, "0" ), dead_expect( values ) ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_range.bin", base, { { at + kDeadOptN, 150, 4 } }, values,
+                      dead_forged( "r0.opt.n", at + kDeadOptN, man_text( 150 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_string_over.bin", base, { { at + kDeadOptLabelLength, 5, 4 } }, values,
+                      dead_forged( "r0.opt.label_length", at + kDeadOptLabelLength, man_text( 5 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_string_neg.bin", base, { { at + kDeadOptLabelLength, 0xFFFFFFFFull, 4 } }, values,
+                      dead_forged( "r0.opt.label_length", at + kDeadOptLabelLength, man_text( -1 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_string_utf8.bin", base,
+                      { { at + kDeadOptLabel, 0xFF, 1 }, { at + kDeadOptLabel + 1, 0xFE, 1 } }, values,
+                      dead_forged( "r0.opt.label", at + kDeadOptLabel, man_text( (unsigned) 0xFF ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_lawful.bin", base,
+                      { { at + kDeadOptN, 42, 4 }, { at + kDeadOptLabelLength, 2, 4 },
+                        { at + kDeadOptLabel, 'h', 1 }, { at + kDeadOptLabel + 1, 'i', 1 } }, values,
+                      dead_forged( "r0.opt.n", at + kDeadOptN, man_text( 42 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_nan.bin", base, { { at + kDeadOptHeat, 0x7FC00000ull, 4 } }, values,
+                      dead_forged( "r0.opt.heat", at + kDeadOptHeat, man_text( (unsigned) 0x7FC00000u ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_bool.bin", base, { { at + kDeadOptFlag, 2, 1 } }, values,
+                      dead_forged( "r0.opt.flag", at + kDeadOptFlag, man_text( 2 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_enum.bin", base, { { at + kDeadOptKind, 4, 1 } }, values,
+                      dead_forged( "r0.opt.kind", at + kDeadOptKind, man_text( 4 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_array_count.bin", base, { { at + kDeadOptNumsCount, 1, 4 } }, values,
+                      dead_forged( "r0.opt.nums_count", at + kDeadOptNumsCount, man_text( 1 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_absent_nested.bin", base, { { at + kDeadOptChildPresent, 2, 1 } }, values,
+                      dead_forged( "r0.opt.child_present", at + kDeadOptChildPresent, man_text( 2 ) ), "" ) ) { return false; }
+    return true;
+}
+
+static bool dead_array_files( const char * dir )
+{
+    tbldead::DeadRoot v[1];
+    tbldead::DeadRootReset( v[0] );
+    MS( v[0].opt_present, false );
+    MS( v[0].arr_count, 1 );
+    MS( v[0].arr[0], 11 );
+    MS( v[0].objs_count, 1 );
+    MS( v[0].objs[0].x, 21 );
+    MS( v[0].objs[0].y, 22 );
+    MSTR( v[0].text, "abcdefgh" );
+    MS( v[0].text_length, 8 );
+    for ( int i = 0; i < 4; ++i ) { MSI( v[0].blob[i], (uint8_t) ( 0xA0 + i ), (long long) ( i ) ); }
+    MS( v[0].blob_length, 4 );
+    MSE( v[0].pick.type, tbldead::DeadPickType::Wide );
+    MS( v[0].pick.wide.a, 31 );
+    MS( v[0].pick.wide.b, 32 );
+    MS( v[0].pick.wide.c, 33 );
+    const std::vector<std::string> values = g_values;
+    std::vector<uint8_t> base;
+    if ( !dead_save( v[0], base ) ) { return false; }
+    const int64_t at = kDeadRecordAt;
+    if ( !dead_check( base, at + kDeadArrCount, 1, "the counted array's count" ) ||
+         !dead_check( base, at + kDeadArrFirst + 2, 0, "the first slot past the count" ) ||
+         !dead_check( base, at + kDeadObjsCount, 1, "the struct array's count" ) ||
+         !dead_check( base, at + kDeadObjsFirst + 12, 0, "a dead element's nested field" ) ) { return false; }
+
+    if ( !dead_write( dir, "dead_array_zero.bin", base, {}, values,
+                      dead_forged( "r0.arr[1]", at + kDeadArrFirst + 2, "0" ), dead_expect( values ) ) ) { return false; }
+    if ( !dead_write( dir, "dead_array_tail_first.bin", base, { { at + kDeadArrFirst + 2, 1, 1 } }, values,
+                      dead_forged( "r0.arr[1]", at + kDeadArrFirst + 2, man_text( 1 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_array_tail_last.bin", base, { { at + kDeadArrFirst + 4, 1, 1 } }, values,
+                      dead_forged( "r0.arr[2]", at + kDeadArrFirst + 4, man_text( 1 ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_array_tail_struct.bin", base, { { at + kDeadObjsFirst + 12, 1, 1 } }, values,
+                      dead_forged( "r0.objs[1].y", at + kDeadObjsFirst + 12, man_text( 1 ) ), "" ) ) { return false; }
+    return true;
+}
+
+static bool dead_text_files( const char * dir )
+{
+    tbldead::DeadRoot v[1];
+    tbldead::DeadRootReset( v[0] );
+    MS( v[0].opt_present, false );
+    MS( v[0].arr_count, 3 );
+    for ( int i = 0; i < 3; ++i ) { MSI( v[0].arr[i], 11 + i, (long long) ( i ) ); }
+    MS( v[0].objs_count, 3 );
+    for ( int i = 0; i < 3; ++i )
+    {
+        MSI( v[0].objs[i].x, 21 + i * 2, (long long) ( i ) );
+        MSI( v[0].objs[i].y, 22 + i * 2, (long long) ( i ) );
+    }
+    MSTR( v[0].text, "hi" );
+    MS( v[0].text_length, 2 );
+    MS( v[0].blob[0], (uint8_t) 0xAB );
+    MS( v[0].blob_length, 1 );
+    MSE( v[0].pick.type, tbldead::DeadPickType::Wide );
+    MS( v[0].pick.wide.a, 31 );
+    MS( v[0].pick.wide.b, 32 );
+    MS( v[0].pick.wide.c, 33 );
+    const std::vector<std::string> values = g_values;
+    std::vector<uint8_t> base;
+    if ( !dead_save( v[0], base ) ) { return false; }
+    const int64_t at = kDeadRecordAt;
+    if ( !dead_check( base, at + kDeadTextLength, 2, "the text's used length" ) ||
+         !dead_check( base, at + kDeadTextBytes, 'h', "the text's first byte" ) ||
+         !dead_check( base, at + kDeadTextBytes + 2, 0, "the text's slack" ) ||
+         !dead_check( base, at + kDeadBlobLength, 1, "the bytes' used length" ) ||
+         !dead_check( base, at + kDeadBlobBytes, 0xAB, "the bytes' first byte" ) ||
+         !dead_check( base, at + kDeadBlobBytes + 1, 0, "the bytes' slack" ) ) { return false; }
+
+    if ( !dead_write( dir, "dead_text_zero.bin", base, {}, values,
+                      dead_forged( "r0.text", at + kDeadTextBytes + 2, "0" ), dead_expect( values ) ) ) { return false; }
+    if ( !dead_write( dir, "dead_text_tail.bin", base, { { at + kDeadTextBytes + 2, 'X', 1 } }, values,
+                      dead_forged( "r0.text", at + kDeadTextBytes + 2, man_text( 'X' ) ), "" ) ) { return false; }
+    if ( !dead_write( dir, "dead_bytes_tail.bin", base, { { at + kDeadBlobBytes + 1, 1, 1 } }, values,
+                      dead_forged( "r0.blob", at + kDeadBlobBytes + 1, man_text( 1 ) ), "" ) ) { return false; }
+    return true;
+}
+
+static bool dead_union_files( const char * dir )
+{
+    const int64_t at = kDeadRecordAt;
+
+    tbldead::DeadRoot v[1];
+    tbldead::DeadRootReset( v[0] );
+    MS( v[0].opt_present, false );
+    MS( v[0].arr_count, 3 );
+    for ( int i = 0; i < 3; ++i ) { MSI( v[0].arr[i], 11 + i, (long long) ( i ) ); }
+    MS( v[0].objs_count, 3 );
+    for ( int i = 0; i < 3; ++i )
+    {
+        MSI( v[0].objs[i].x, 21 + i * 2, (long long) ( i ) );
+        MSI( v[0].objs[i].y, 22 + i * 2, (long long) ( i ) );
+    }
+    MSTR( v[0].text, "abcdefgh" );
+    MS( v[0].text_length, 8 );
+    for ( int i = 0; i < 4; ++i ) { MSI( v[0].blob[i], (uint8_t) ( 0xA0 + i ), (long long) ( i ) ); }
+    MS( v[0].blob_length, 4 );
+    MSE( v[0].pick.type, tbldead::DeadPickType::None );
+    const std::vector<std::string> values = g_values;
+    std::vector<uint8_t> base;
+    if ( !dead_save( v[0], base ) ) { return false; }
+    if ( !dead_check( base, at + kDeadPickTag, 0, "the inactive union's tag" ) ||
+         !dead_check( base, at + kDeadPickArm, 0, "the inactive union's arm span" ) ) { return false; }
+    if ( !dead_write( dir, "dead_union_zero.bin", base, {}, values,
+                      dead_forged( "r0.pick.arm", at + kDeadPickArm, "0" ), dead_expect( values ) ) ) { return false; }
+    if ( !dead_write( dir, "dead_union_arm.bin", base, { { at + kDeadPickArm, 1, 1 } }, values,
+                      dead_forged( "r0.pick.arm", at + kDeadPickArm, man_text( 1 ) ), "" ) ) { return false; }
+
+    tbldead::DeadRoot n[1];
+    tbldead::DeadRootReset( n[0] );
+    MS( n[0].opt_present, false );
+    MS( n[0].arr_count, 3 );
+    for ( int i = 0; i < 3; ++i ) { MSI( n[0].arr[i], 11 + i, (long long) ( i ) ); }
+    MS( n[0].objs_count, 3 );
+    for ( int i = 0; i < 3; ++i )
+    {
+        MSI( n[0].objs[i].x, 21 + i * 2, (long long) ( i ) );
+        MSI( n[0].objs[i].y, 22 + i * 2, (long long) ( i ) );
+    }
+    MSTR( n[0].text, "abcdefgh" );
+    MS( n[0].text_length, 8 );
+    for ( int i = 0; i < 4; ++i ) { MSI( n[0].blob[i], (uint8_t) ( 0xA0 + i ), (long long) ( i ) ); }
+    MS( n[0].blob_length, 4 );
+    MSE( n[0].pick.type, tbldead::DeadPickType::Narrow );
+    MS( n[0].pick.narrow, 7 );
+    const std::vector<std::string> narrow_values = g_values;
+    std::vector<uint8_t> narrow;
+    if ( !dead_save( n[0], narrow ) ) { return false; }
+    if ( !dead_check( narrow, at + kDeadPickTag, 1, "the narrow union's tag" ) ||
+         !dead_check( narrow, at + kDeadPickArm, 7, "the narrow union's value" ) ||
+         !dead_check( narrow, at + kDeadPickArm + 4, 0, "the span past the narrow arm" ) ) { return false; }
+    if ( !dead_write( dir, "dead_union_narrow_zero.bin", narrow, {}, narrow_values,
+                      dead_forged( "r0.pick.arm", at + kDeadPickArm + 4, "0" ), dead_expect( narrow_values ) ) ) { return false; }
+    if ( !dead_write( dir, "dead_union_narrow_tail.bin", narrow, { { at + kDeadPickArm + 4, 1, 1 } }, narrow_values,
+                      dead_forged( "r0.pick.arm", at + kDeadPickArm + 4, man_text( 1 ) ), "" ) ) { return false; }
+    return true;
+}
+
+static bool dead_bytes_files( const char * dir )
+{
+    return dead_absent_files( dir ) && dead_array_files( dir )
+        && dead_text_files( dir ) && dead_union_files( dir );
 }
 
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
@@ -1535,6 +1854,7 @@ int main( int argc, char ** argv )
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
          !keyed_file( dir ) || !pack_file( dir ) ||
          !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
+    if ( !dead_bytes_files( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: END ----
