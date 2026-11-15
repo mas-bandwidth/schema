@@ -148,6 +148,8 @@ func TestBlobRecordNamedTwiceUnderUnknownFields(t *testing.T) {
 		shared := file(&ids, func(w *TableWriter) { ptr(w, dataField, 2); ptr(w, noteField, 2) }, tc.rec)
 		var r TableReport
 		if NodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("%s: Load accepted a blob record named from two unknown fields: %+v", tc.name, r) }
+		var rr TableReport
+		if NodeLoadRegion(region(1<<16), shared, &rr) != nil { t.Fatalf("%s: LoadRegion accepted a blob record named from two unknown fields: %+v", tc.name, rr) }
 		if _, err := NodeReadStrict(shared); err == nil { t.Fatalf("%s: ReadStrict accepted a blob record named from two unknown fields", tc.name) }
 	}
 }
@@ -161,6 +163,8 @@ func TestBlobRecordNoPointerReachesRefused(t *testing.T) {
 		orphan := file(&ids, func(w *TableWriter) {}, tc.rec)
 		var r TableReport
 		if NodeLoad(region(1<<16), orphan, &r) != nil { t.Fatalf("%s: Load accepted a blob record no pointer reaches: %+v", tc.name, r) }
+		var rr TableReport
+		if NodeLoadRegion(region(1<<16), orphan, &rr) != nil { t.Fatalf("%s: LoadRegion accepted a blob record no pointer reaches: %+v", tc.name, rr) }
 		if _, err := NodeReadStrict(orphan); err == nil { t.Fatalf("%s: ReadStrict accepted a blob record no pointer reaches", tc.name) }
 	}
 }
@@ -230,7 +234,28 @@ func TestDeclaredAndUnknownNameOneStringRecord(t *testing.T) {
 	}, record{blobStringID, []byte("hello")})
 	var r TableReport
 	if BlobNodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("Load accepted a declared and an unknown field naming one string record: %+v", r) }
+	var rr TableReport
+	if BlobNodeLoadRegion(region(1<<16), shared, &rr) != nil { t.Fatalf("LoadRegion accepted a declared and an unknown field naming one string record: %+v", rr) }
 	if _, err := BlobNodeReadStrict(shared); err == nil { t.Fatal("ReadStrict accepted a declared and an unknown field naming one string record") }
+}
+
+// the verdict on a shared or unreachable blob record does not depend on
+// whether this unit stores its type: the stored bytes record is refused the
+// same way as the unstored string record
+func TestStoredBlobRecordSharedOrUnreachableRefused(t *testing.T) {
+	var ids TableIds
+	for _, tc := range []struct { name string; root func(w *TableWriter) }{
+		{"declared and unknown", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1); ptr(w, fieldB(2), 2); ptr(w, noteField, 2) }},
+		{"two unknown", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1); ptr(w, noteField, 2); ptr(w, otherField, 2) }},
+		{"no pointer", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1) }},
+	} {
+		wire := file(&ids, tc.root, record{blobBytesID, []byte("abc")})
+		var r TableReport
+		if BlobNodeLoad(region(1<<16), wire, &r) != nil { t.Fatalf("%s: Load accepted a stored bytes record: %+v", tc.name, r) }
+		var rr TableReport
+		if BlobNodeLoadRegion(region(1<<16), wire, &rr) != nil { t.Fatalf("%s: LoadRegion accepted a stored bytes record: %+v", tc.name, rr) }
+		if _, err := BlobNodeReadStrict(wire); err == nil { t.Fatalf("%s: ReadStrict accepted a stored bytes record", tc.name) }
+	}
 }
 
 func TestStringRecordNamedTwiceUnderUnknownFields(t *testing.T) {
@@ -242,6 +267,8 @@ func TestStringRecordNamedTwiceUnderUnknownFields(t *testing.T) {
 	}, record{blobStringID, []byte("hello")})
 	var r TableReport
 	if BlobNodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("Load accepted a string record named from two unknown fields: %+v", r) }
+	var rr TableReport
+	if BlobNodeLoadRegion(region(1<<16), shared, &rr) != nil { t.Fatalf("LoadRegion accepted a string record named from two unknown fields: %+v", rr) }
 	if _, err := BlobNodeReadStrict(shared); err == nil { t.Fatal("ReadStrict accepted a string record named from two unknown fields") }
 }
 
@@ -250,6 +277,8 @@ func TestStringRecordNoPointerReachesRefused(t *testing.T) {
 	orphan := file(&ids, func(w *TableWriter) {}, record{blobStringID, []byte("hello")})
 	var r TableReport
 	if BlobNodeLoad(region(1<<16), orphan, &r) != nil { t.Fatalf("Load accepted a string record no pointer reaches: %+v", r) }
+	var rr TableReport
+	if BlobNodeLoadRegion(region(1<<16), orphan, &rr) != nil { t.Fatalf("LoadRegion accepted a string record no pointer reaches: %+v", rr) }
 	if _, err := BlobNodeReadStrict(orphan); err == nil { t.Fatal("ReadStrict accepted a string record no pointer reaches") }
 }
 `
