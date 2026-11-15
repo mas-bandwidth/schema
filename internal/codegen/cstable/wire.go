@@ -126,7 +126,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 			childName := childSt.Name
 			if f.CountedOnWire() {
 				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d < 0 || count_%d > %d) return false;\n", i, i, f.ArrayBound)
+				g.pf("    System.Diagnostics.Debug.Assert(count_%d >= 0 && count_%d <= %d);\n", i, i, f.ArrayBound)
 				g.pf("    if (count_%d > 0)\n    {\n", i)
 				g.pf("        if (!ids.Add(0x%016xul)) return false;\n", id)
 				g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
@@ -842,12 +842,14 @@ public static partial class TableWire
         {
             object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
             int count = Count(child, text);
-            return count >= 0 && count <= text.ArrayBound && TextValid(text.GetBuffer(child).AsSpan(0, count));
+            System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+            return TextValid(text.GetBuffer(child).AsSpan(0, count));
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = Count(value, f);
-            return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
+            System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+            return TextValid(f.GetBuffer(value).AsSpan(0, count));
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
@@ -876,7 +878,7 @@ public static partial class TableWire
     {
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
-        if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
         if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
@@ -896,7 +898,7 @@ public static partial class TableWire
         {
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
             if (f.Optional && !f.GetPresent(value)) { continue; }
-            if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
             if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
         }
         return true;
@@ -1085,7 +1087,7 @@ public static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
         if (f.Optional && !f.GetPresent(value)) { return true; }
-        if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
         return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
     }
     public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)
