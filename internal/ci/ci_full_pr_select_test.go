@@ -53,6 +53,7 @@ func TestCIFullPRSelect(t *testing.T) {
 		{"cs emitter", "internal/codegen/cstable/emit.go", "no|yes|yes"},
 		{"cs leg test tree", "test/cs-tables/Program.cs", "no|no|yes"},
 		{"cs make file", "make/cs.mk", "no|yes|yes"},
+		{"cs card make file", "make/cs-packet-write-text.mk", "no|yes|yes"},
 		{"wire pin", "testdata/wire/tables/examples.bin", "no|yes|no"},
 		{"table golden", "testdata/golden/tables/maps/MapsTable.h", "no|yes|no"},
 		{"conformance harness", "test/conformance/harness/main.go", "no|yes|no"},
