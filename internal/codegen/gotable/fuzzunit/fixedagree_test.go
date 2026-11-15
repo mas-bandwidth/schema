@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -21,10 +20,10 @@ import (
 // TestGeneratedFixedAgreesWithEngine is the generated fixed read held to the
 // engine's over every fixed root of the examples unit and 6000 mutants of two
 // records each: one verdict on every input (docs/SPEC-TABLES.md §4, §6.5),
-// slack included (§3.4, THE SLACK RULE: bytes past a count and under an absent
-// optional are never a refusal); and where both accept, the same value, so the
-// generated save and the engine's write the same bytes, and the generated text
-// reads back in the engine to that value.
+// dead bytes included (docs/rulings.json fixed-dead-bytes-are-zero; §3.4: a
+// non-zero dead byte is refused by both); and where both accept, the same
+// value, so the generated save and the engine's write the same bytes, and the
+// generated text reads back in the engine to that value.
 func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	t.Parallel()
 	c := compiler.New()
@@ -45,7 +44,6 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 			ex[k] = append(ex[k], s)
 		}
 	}
-	var relaxedDeadBytes atomic.Int64
 	var wg sync.WaitGroup
 	for ti, target := range fixedTargets {
 		root := m.Lookup(target.name)
@@ -77,16 +75,6 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 					inst := m.New(root)
 					var erep tabletext.Report
 					eok, eerr := tablewire.Decode(m, inst, b, &erep)
-					if gok && !eok {
-						// RELAXED 2026-11-15 (get main green): the engine refuses a
-						// fixed record whose dead bytes are not zero (325796bca) and
-						// the generated Go fixed read does not check them yet, so a
-						// generated accept against an engine refusal is held, not
-						// failed; every other agreement check still runs.
-						// re-enable: relax/go-fixed-read-dead-bytes-zero
-						relaxedDeadBytes.Add(1)
-						continue
-					}
 					if gok != eok {
 						note(fmt.Sprintf("%s verdict gen=%v(n=%d %s) engine=%v", target.name, gok, n, rep.Reason, eok), fmt.Sprintf("in=%s engine-err=%v", hex.EncodeToString(b), eerr))
 						continue
@@ -127,9 +115,6 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 		}
 	}
 	wg.Wait()
-	if n := relaxedDeadBytes.Load(); n > 0 {
-		t.Logf("RELAXED 2026-11-15 (get main green): %d generated accepts the engine refuses for non-zero dead bytes were held; re-enable: relax/go-fixed-read-dead-bytes-zero", n)
-	}
 	keys := make([]string, 0)
 	for k := range hist {
 		keys = append(keys, k)
@@ -143,16 +128,16 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	}
 }
 
-// TestGeneratedFixedSlackNegativeControl makes the generated pre-scan read the
-// slack (every slack span dropped) and requires the differential red on a
+// TestGeneratedFixedSlackNegativeControl drops the generated dead-byte check
+// (every dead span answered zero) and requires the differential red on a
 // verdict the engine does not share.
 func TestGeneratedFixedSlackNegativeControl(t *testing.T) {
 	t.Parallel()
 	out, failed := slowtest.RunSabotaged(t, "../../../..", "./internal/codegen/gotable/fuzzunit", "^TestGeneratedFixedAgreesWithEngine$",
 		slowtest.Sabotage{File: "tables/goruntime/goruntime.go",
-			From: "\tfor _, d := range dead {", To: "\tfor _, d := range dead[:0] {"})
-	if !failed || !strings.Contains(out, "verdict gen=false") {
-		t.Errorf("negative control: the generated read refuses slack and the differential did not go red on a verdict\n%s", out)
+			From: "\treturn [2]uint32{from, to}, TableFixedAllZero(src[from:to])", To: "\treturn [2]uint32{from, to}, true"})
+	if !failed || !strings.Contains(out, "verdict gen=true") {
+		t.Errorf("negative control: the generated read accepts dead bytes and the differential did not go red on a verdict\n%s", out)
 	}
 }
 
