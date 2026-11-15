@@ -12,10 +12,10 @@
 // range, a payload longer than its buffer, a write that does not fit) TRAPS in
 // every run: serialize_abort prints the rule and exits 70, so a write call
 // never answers false and none is checked. What only the schema knows (a
-// counted array's count, a union tag, an enum value, a ranged integer, a
-// string's length and text, a flags mask) is a write-side CONTRACT, held by
-// Lobster's build-removable assert (--runtime-no-asserts drops it), as C++
-// holds it with serialize_assert and C# with Debug.Assert.
+// counted array's count, a union tag, an enum value, a ranged integer, a bare
+// integer's width, a string's length and text, a flags mask) is a write-side
+// CONTRACT, held by Lobster's build-removable assert (--runtime-no-asserts
+// drops it), as C++ holds it with serialize_assert and C# with Debug.Assert.
 package lobster
 
 import (
@@ -290,13 +290,21 @@ func emitCompressedFloat(g *Gen, val string, f *ir.Field, indent string) {
 		indent, val, steps, bits, FormatFloat32(float64(delta)), FormatFloat32(float64(min32)))
 }
 
-// emitWriteBareInt writes a bare integer at its storage width (SPEC §4.3):
-// a signed narrow value narrows through its same-width mask, the bit pattern
-// the Go/C++ targets write.
+// emitWriteBareInt writes a bare integer at its storage width (SPEC §4.3).
+// A signed narrow value narrows through its same-width mask, the bit pattern
+// the Go/C++ targets write, so the runtime's bit primitive checks no range on
+// it; the width contract (SPEC §5.1 row 11) is the generated debug assert that
+// the stored int is a value of the declared N-bit field. An unsigned narrow
+// value reaches the runtime's own range check, and at 64 the storage and the
+// field are the same width, so every int is a value.
 func emitWriteBareInt(g *Gen, val string, t ir.FieldType, indent string) {
 	width := int64(t.Width)
 	expr := val
 	if t.Signed && width < 64 {
+		lo := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width-1)), big.NewInt(1))
+		g.Pf("%sassert %s >= %s and %s <= %s // the value fits the declared %d-bit width (SPEC §5.1 row 11)\n",
+			indent, val, IntLit(lo), val, IntLit(hi), width)
 		expr = fmt.Sprintf("(%s & 0x%x)", val, uint64(1)<<uint(width)-1)
 	}
 	emitBits(g, expr, width, indent, "the storage width (SPEC §4.3)")
