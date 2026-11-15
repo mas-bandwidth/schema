@@ -308,10 +308,20 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  `timestamp`, by-value tables and `*T` pointers to tables, for both the fixed
+  and the variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and
+  unions with table arms have descriptors in this cut and refuse by name
+  through `kind_unsupported.py` until their cards land.
+- **`timestamp` is the int64 it is.** On the form-1 wire a `timestamp` field
+  rides kind `36` with an eight-byte two's-complement little-endian
+  nanosecond count (docs/SPEC-TABLES.md §2.11). Its Python value is an `int`
+  in int64's range, checked on write as every integer is, and the descriptor
+  carries that range. The zero count elides like the int64 zero, a field
+  respelled `int64` (kind `5`) refuses as `kind_mismatch`, and neither
+  spelling widens into the other. The text forms land with the text cards
+  (py-json-2, py-handtext-2) and the fixed form with py-fixed-form-2;
+  `TestPythonVtTimestamp` holds the form-1 read-then-write to the Go engine's
+  wire under both pinned interpreters, with its negative control.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
