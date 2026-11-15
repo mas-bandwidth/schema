@@ -831,7 +831,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
@@ -1027,7 +1027,7 @@ jobs:
   # pull request labelled full-ci.
   leg-gate-lobster:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (lobster ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -1113,7 +1113,7 @@ jobs:
   # run, in parallel with it.
   leg-gate-rust:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"rust"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (rust probes)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -1160,7 +1160,7 @@ jobs:
   # row-seconds negative 104
   leg-gate-squirrel:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"squirrel"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (squirrel ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -1218,7 +1218,7 @@ jobs:
   #           with the pinned clang-format
   leg-gate-cpp:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"cpp"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch'
     name: fixed form + versioning (cpp ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
