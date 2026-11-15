@@ -1553,14 +1553,14 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                         if jr.peek() == b'"' {
                             match jr.read_string() {
                                 Some(s) => match s.as_str() {
-                                    "Bleeding" => bits |= 1u64 << 0,
-                                    "Burning" => bits |= 1u64 << 1,
-                                    "Stunned" => bits |= 1u64 << 2,
-                                    "Slowed" => bits |= 1u64 << 3,
-                                    "Poisoned" => bits |= 1u64 << 4,
-                                    "Shielded" => bits |= 1u64 << 5,
-                                    "Airborne" => bits |= 1u64 << 6,
-                                    "Downed" => bits |= 1u64 << 7,
+                                    "Bleeding" => { let bit = 1u64 << 0; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Burning" => { let bit = 1u64 << 1; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Stunned" => { let bit = 1u64 << 2; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Slowed" => { let bit = 1u64 << 3; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Poisoned" => { let bit = 1u64 << 4; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Shielded" => { let bit = 1u64 << 5; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Airborne" => { let bit = 1u64 << 6; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
+                                    "Downed" => { let bit = 1u64 << 7; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
                                     _ => jr.unknown += 1,
                                 },
                                 None => break,
