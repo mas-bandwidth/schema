@@ -290,6 +290,9 @@ export function WriteProbeSampleFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -180.0 || x > 180.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
@@ -1444,6 +1447,9 @@ export function WriteProbeArrayFlat(view, value) {
     if (!Number.isFinite(x)) {
       return -1;
     }
+    if (x < -180.0 || x > 180.0) {
+      return -1;
+    }
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
@@ -2468,6 +2474,9 @@ export function WriteTestDataFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
@@ -3174,6 +3183,9 @@ export function WriteCompressedProbeFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
@@ -3181,6 +3193,9 @@ export function WriteCompressedProbeFlat(view, value) {
   lo = v;
   x = Math.fround(value.offset);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -5.0 || x > 5.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -5.0) / 10.0);

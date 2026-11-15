@@ -632,6 +632,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			// the holder copy is the write-through temp: the runtime's wire
 			// quantization cannot write back into the input
+			g.pf("%s{\n", ind)
+			g.pf("%s  const x = Math.fround(%s);\n", ind, name)
+			g.pf("%s  if (!Number.isFinite(x) || x < %s || x > %s) {\n",
+				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
+			g.pf("%s    return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)\n", ind)
+			g.pf("%s  }\n%s}\n", ind, ind)
 			g.pf("%s%s.value = %s;\n", ind, scratch, name)
 			g.call(ind, fmt.Sprintf("stream.serializeCompressedFloat(%s, %s, %s, %s)",
 				scratch, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")

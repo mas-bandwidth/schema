@@ -1644,7 +1644,8 @@
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
         "packet-end-js-negative-control",
-        "packet-utf8-js-negative-control"
+        "packet-utf8-js-negative-control",
+        "packet-write-cfloat-js-negative-control"
       ],
       "node": "26"
     },

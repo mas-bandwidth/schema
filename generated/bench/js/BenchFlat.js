@@ -1624,6 +1624,9 @@ export function WriteBenchMixedFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -1.0 || x > 1.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
@@ -1640,6 +1643,9 @@ export function WriteBenchMixedFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -1.0 || x > 1.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
@@ -1654,6 +1660,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   x = Math.fround(value.aimZ);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -1.0 || x > 1.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -1.0) / 2.0);
