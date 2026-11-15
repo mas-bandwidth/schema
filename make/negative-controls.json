@@ -2431,7 +2431,8 @@
         "packet-defaults-goose-negative-control",
         "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
-        "packet-utf8-goose-negative-control"
+        "packet-utf8-goose-negative-control",
+        "packet-write-cfloat-goose-negative-control"
       ]
     },
     {
