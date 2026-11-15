@@ -2304,7 +2304,7 @@ a caller can hold that the declaration does not admit:
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
 own error idiom. No leg silently writes a value off the contract in the build
-where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart)
+where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart, and Lobster packet writes)
 every write check is a debug assert and nothing else, the storage checks
 included** (a count or length that would index past the array it describes):
 correct writes are the programmer's responsibility, and the assert is how the
@@ -2329,7 +2329,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
-| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
+| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
 is the leg's assert, "every build" its refusal. These tables record the code as
