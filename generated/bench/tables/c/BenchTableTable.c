@@ -2328,7 +2328,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
     const char * token = NULL;
     int64_t length = 0;
     int integral = 0;
-    char textbuf[64]; /* a wide integer's string spelling: 128 bits is 40 digits */
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_benchtable_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {

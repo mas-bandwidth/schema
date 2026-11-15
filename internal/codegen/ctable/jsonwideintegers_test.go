@@ -28,6 +28,12 @@ table Integers
     frac    fixed(48, 16) | min = -10, max = 10
     counts  map[uint64]int32
 }
+
+table FixedWide
+{
+    tiny fixed(2, 62) | min = -1, max = 1
+    huge fixed(2, 126) | min = -1, max = 1
+}
 `
 
 type cJsonWideRow struct {
@@ -134,6 +140,8 @@ static int check_fields( const Integers * v )
     return 0;
 }
 
+static int check_fixed_wide( void );
+
 int main( void )
 {
     int failures = 0;
@@ -178,7 +186,78 @@ int main( void )
         }
         integers_builder_shutdown( &b );
     }
+    failures += check_fixed_wide();
     return failures == 0 ? 0 : 1;
+}
+
+/* A wide fixed-point value spells as a string longer than any integer's: the
+   64-bit fixed(2, 62) raw 1 is 64 characters, and the 128-bit fixed(2, 126)
+   raw 1 is 128. The reader must take its own writer's text, and the writer
+   must reproduce the exact spelling. */
+static int check_fixed_wide( void )
+{
+    static const char * input =
+        "{\"tiny\":\"0.00000000000000000021684043449710088680149056017398834228515625\","
+        "\"huge\":\"0.000000000000000000000000000000000000011754943508222875079687365372222456778186655567720875215087517062784172594547271728515625\"}";
+    static const char * canonical =
+        "{\n"
+        "  \"tiny\": \"0.00000000000000000021684043449710088680149056017398834228515625\",\n"
+        "  \"huge\": \"0.000000000000000000000000000000000000011754943508222875079687365372222456778186655567720875215087517062784172594547271728515625\"\n"
+        "}\n";
+    FixedWideBuilder b;
+    TableReport r;
+    const FixedWide * root;
+    int64_t n;
+    char * text;
+    int failures = 0;
+    memset( &r, 0, sizeof( r ) );
+    if ( !fixed_wide_builder_init( &b ) ) { fprintf( stderr, "FAIL fixed: no builder\n" ); return 1; }
+    if ( !fixed_wide_from_json( &b, input, (int64_t) strlen( input ), &r ) || r.refused )
+    {
+        fprintf( stderr, "FAIL fixed: refused its own writer's spelling\n" );
+        fixed_wide_builder_shutdown( &b );
+        return 1;
+    }
+    if ( !fixed_wide_builder_lock( &b ) )
+    {
+        fprintf( stderr, "FAIL fixed: lock\n" );
+        fixed_wide_builder_shutdown( &b );
+        return 1;
+    }
+    root = (const FixedWide *) (const void *) b.region;
+    if ( root == NULL || root->tiny != INT64_C( 1 ) ||
+         !serialize_int128_equal( root->huge, serialize_int128_make( UINT64_C( 0 ), UINT64_C( 1 ) ) ) )
+    {
+        fprintf( stderr, "FAIL fixed: fields\n" );
+        fixed_wide_builder_shutdown( &b );
+        return 1;
+    }
+    n = fixed_wide_to_json_measure( root );
+    if ( n < 0 )
+    {
+        fprintf( stderr, "FAIL fixed: the writer refused\n" );
+        fixed_wide_builder_shutdown( &b );
+        return 1;
+    }
+    text = (char *) malloc( (size_t) n + 1 );
+    if ( text == NULL ) { fprintf( stderr, "FAIL fixed: out of memory\n" ); fixed_wide_builder_shutdown( &b ); return 1; }
+    if ( fixed_wide_to_json( root, text, n + 1 ) != n )
+    {
+        fprintf( stderr, "FAIL fixed: measure and write disagree\n" );
+        free( text );
+        fixed_wide_builder_shutdown( &b );
+        return 1;
+    }
+    text[n] = 0;
+    if ( strcmp( text, canonical ) != 0 )
+    {
+        fprintf( stderr, "FAIL fixed: the text moved (wrote %lu, want %lu)\nwrote:\n%swant:\n%s",
+            (unsigned long) strlen( text ), (unsigned long) strlen( canonical ), text, canonical );
+        failures++;
+    }
+    free( text );
+    fixed_wide_builder_shutdown( &b );
+    return failures;
 }
 `)
 	/* The 128-bit storage a generated C header names is serialize.h's lo/hi
