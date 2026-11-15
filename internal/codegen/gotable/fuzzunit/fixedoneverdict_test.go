@@ -15,7 +15,7 @@ import (
 // TestGeneratedFixedOneVerdictEveryByte substitutes every value of every byte
 // past the header of each fixed root's record, one at a time, and holds the
 // generated fixed read to the engine's verdict on each (docs/SPEC-TABLES.md
-// §4, §6.5; the slack rule of §3.4 included).
+// §4, §6.5; the dead-byte rule of §3.4 included).
 func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
 	t.Parallel()
 	c := compiler.New()

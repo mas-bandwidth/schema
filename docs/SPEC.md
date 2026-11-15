@@ -2284,7 +2284,7 @@ statement of the rule; [CONTRIBUTING.md](CONTRIBUTING.md),
 
 **The contract**, for every writer of both wires — the packet `Write`, the
 table variable-form `Save` and its `Measure`, the fixed-form `FixedSave`, the
-message-form `SaveMessages` and the text writer — is the closed list of values
+message-form `SaveMessages` and its `MeasureMessages`, the text writer — is the closed list of values
 a caller can hold that the declaration does not admit:
 
 | # | the value | the reader's answer to it (§4, SPEC-TABLES §4) |
@@ -2409,7 +2409,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–7 and 10 debug; 8 not yet held
+  - packet `Write`: 1–8 and 10 debug
 
 - **C**
 
@@ -2473,7 +2473,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–6 and 8 every build; 7 unrepresentable
 
-  - packet `Write`: 1–7 every build (`ArgumentError`); 8 and 10 not yet held
+  - packet `Write`: 1–7 and 10 every build (`ArgumentError`); 8 not yet held
 
 - **Lua**
 

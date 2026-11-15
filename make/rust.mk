@@ -1875,7 +1875,8 @@ define rust_wref_control
 	@file=$(1)/generated/$(2); \
 	n=$$(grep -cF '$(3)' $$file); \
 	[ "$$n" -gt 0 ] || { echo "NEGATIVE CONTROL: the $(5) check matches no generated line in $$file"; exit 1; }; \
-	sed -i.orig 's@$(3)@$(4)@g' $$file && rm -f $$file.orig || exit 1; \
+	sed -i.orig 's@$(3)@$(4)@g' $$file && rm -f $$file.orig || { echo "NEGATIVE CONTROL: the $(5) check could not be edited"; exit 1; }; \
+	grep -qF '$(3)' $$file && { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; } || true; \
 	grep -qF '$(4)' $$file || { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; }
 	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
 		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
@@ -1903,11 +1904,11 @@ endef
 # and save through the root's own form's writer, the fixed form's FixedSave
 # (testdata/conformance/tables/FORMAT.md): so the check removed is that
 # writer's finite rule, and wref_non_finite and wref_infinite go red.
-conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-control,tabledemo/src/tables_fixed.rs,!root_config_fixed_finite_body(value).is_empty(),false /* SABOTAGED: a non-finite float writes */,write-refusal,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-fixed
-conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-message

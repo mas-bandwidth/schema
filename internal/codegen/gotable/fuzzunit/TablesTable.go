@@ -6004,6 +6004,9 @@ func WeaponConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
+		out[n] = TableFixedEntry{Src: es + 1, Size: 4, Guard: es, Arg: 0, ArgW: 1, Op: tableFixedSlack} // the inactive arm span
+		links[n] = append(links[n], TableFixedGuardLink{Guard: es, Arg: 0, ArgW: 1})
+		n++
 	}
 	return n
 }
@@ -6877,7 +6880,7 @@ var RootConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 331)
+var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 351)
 
 var RootConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7017,10 +7020,10 @@ func RootConfigFixedMeasure(count int64) int64 {
 }
 
 // RootConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RootConfigFixedSave(values []RootConfig, buffer []byte) int64 {
 	need := RootConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -7139,6 +7142,11 @@ func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -7235,7 +7243,7 @@ var WeaponConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // amount
 }
 
-var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 8)
+var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 9)
 
 var WeaponConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7309,10 +7317,10 @@ func WeaponConfigFixedMeasure(count int64) int64 {
 }
 
 // WeaponConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func WeaponConfigFixedSave(values []WeaponConfig, buffer []byte) int64 {
 	need := WeaponConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -7431,6 +7439,11 @@ func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -7597,7 +7610,7 @@ var LoadoutConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 51)
+var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 54)
 
 var LoadoutConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7705,10 +7718,10 @@ func LoadoutConfigFixedMeasure(count int64) int64 {
 }
 
 // LoadoutConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func LoadoutConfigFixedSave(values []LoadoutConfig, buffer []byte) int64 {
 	need := LoadoutConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -7827,6 +7840,11 @@ func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFix
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -8024,7 +8042,7 @@ var ProfileConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 66)
+var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 69)
 
 var ProfileConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -8148,10 +8166,10 @@ func ProfileConfigFixedMeasure(count int64) int64 {
 }
 
 // ProfileConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func ProfileConfigFixedSave(values []ProfileConfig, buffer []byte) int64 {
 	need := ProfileConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -8270,6 +8288,11 @@ func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFix
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}

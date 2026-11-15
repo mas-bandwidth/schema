@@ -607,9 +607,12 @@ type TableMessageShape struct {
 	QCount        uint32
 }
 
+// An entry also keeps, in the caller's storage, the first slot announcing its
+// id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID             uint64
-	Shape, Element TableMessageShape
+	ID                                   uint64
+	Shape, Element                       TableMessageShape
+	bodyFirst, bodySeenAt, bodySeenBelow uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -620,6 +623,7 @@ type TableVocabulary struct {
 	Announced, Refused bool
 	MaxBytes           int64
 	Strict             bool
+	bodyClock          uint64
 }
 
 type TableMessageReader struct {
@@ -645,6 +649,7 @@ const (
 	TableFixedWidenF
 	TableFixedBool
 	TableFixedTag
+	TableFixedSlack
 )
 
 const (
@@ -655,7 +660,7 @@ const (
 // tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
 // Meta); its Aux is the source bytes of the payload behind it. A count entry's
 // Aux is the source bytes of one element. The pre-scan reads both to know
-// which bytes are slack (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+// dead bytes that must be zero (fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4).
 const TableFixedPresent uint8 = 1
 
 const TableFixedNoGuard uint32 = 0xFFFFFFFF
@@ -748,10 +753,6 @@ type TableFixedDst struct {
 	Dst, Stride, Aux, Min uint32
 	Counted, Arg, Meta    uint8
 }
-
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const TableFixedDstDeprecated uint8 = 0x80
 
 type TableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -1237,8 +1238,8 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-// with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
-// unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
+// with no zero byte for string. bytes(N) carries no text rule. Every byte past used units is dead;
+// the pre-scan refuses non-zero as wire_damaged (fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
 // interior zero (mas-bandwidth/schema internal/codegen/golang/functions.go, the TString arm), so
@@ -1294,8 +1295,8 @@ func TableFixedUTF8Ok(p []byte) bool {
 }
 
 // tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
-// bool, tag and ordinal entries, run before the caller's storage is touched. A
-// count or a text length past the PLAN's bound refuses by name —
+// bool, tag, ordinal and dead-span entries, run before the caller's storage is
+// touched. A count or a text length past the PLAN's bound refuses by name —
 // count_over_bound / length_over_bound — an ill-formed payload refuses
 // text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
 // tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
@@ -1304,11 +1305,12 @@ func TableFixedUTF8Ok(p []byte) bool {
 // written. It walks each entry under its own guards, writes nothing and moves
 // no counter.
 //
-// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
-// SLACK RULE): the bytes past a counted array's count and under an absent
-// optional's present byte are slack, unspecified on read and never a refusal.
-// Each count and present byte it reads adds the slack behind it to dead, and an
-// entry inside dead is not asked.
+// EVERY DEAD BYTE IS ZERO (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero;
+// mas-bandwidth/schema docs/SPEC-TABLES.md §3.4; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3): an
+// absent optional's payload, a counted array's slots past its count, a text's
+// units past its used length, and an inactive union arm. A dead range is
+// checked here before anything lands, and a non-zero one is wire_damaged. Each
+// dead range is added to dead, and an entry inside one is not asked.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -1337,13 +1339,20 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
-				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+				span, zero := TableFixedDeadSpan(src, p.Src+4+uint32(v)*p.Aux, p.Src+4+p.Size*p.Aux)
+				if !zero {
+					return TableRefuseWireDamaged.Error()
+				}
+				dead = append(dead, span)
 			}
 		case TableFixedText:
 			v := int32(TableFixedGet32(src[p.Src:]))
 			capn := p.Size
 			if v < 0 || uint32(v) > capn {
 				return TableRefuseLengthOverBound.Error()
+			}
+			if _, zero := TableFixedDeadSpan(src, p.Src+4+uint32(v), p.Src+4+capn); !zero {
+				return TableRefuseWireDamaged.Error()
 			}
 			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return TableRefuseTextIllFormed.Error()
@@ -1358,9 +1367,21 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 					return TableRefuseWireDamaged.Error()
 				}
 				if p.Meta == TableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
-					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+					span, zero := TableFixedDeadSpan(src, p.Src+k+1, p.Src+k+1+p.Aux)
+					if !zero {
+						return TableRefuseWireDamaged.Error()
+					}
+					dead = append(dead, span)
 				}
 			}
+		case TableFixedSlack:
+			// an inactive union arm: the bytes under tag 0 to the widest arm's
+			// span, or those past a narrower taken arm
+			span, zero := TableFixedDeadSpan(src, p.Src, p.Src+p.Size)
+			if !zero {
+				return TableRefuseWireDamaged.Error()
+			}
+			dead = append(dead, span)
 		case TableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
 			var tag uint64
@@ -1392,6 +1413,35 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 	}
 	return ""
+}
+
+// tableFixedAllZero is whether every byte of a dead range is zero, the
+// writer's image (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero).
+func TableFixedAllZero(b []byte) bool {
+	for _, c := range b {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// tableFixedDeadSpan checks a dead range for zero and answers it clamped to the
+// record the plan is read against. A plan entry past its own record is refused
+// whole when the plan is laid down; the clamp here keeps a damaged plan from
+// reading past the buffer, and reads no byte twice.
+func TableFixedDeadSpan(src []byte, from, to uint32) ([2]uint32, bool) {
+	end := uint32(len(src))
+	if from > end {
+		from = end
+	}
+	if to > end {
+		to = end
+	}
+	if from > to {
+		from = to
+	}
+	return [2]uint32{from, to}, TableFixedAllZero(src[from:to])
 }
 
 // tableFixedDead is whether src offset at lies in one of the slack spans the
@@ -1763,6 +1813,63 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
 
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above seven bits holding that body's level) and a bit for each shallower
+// level whose body had named it: a level's mark still stands when that level's
+// open body began at or before the last naming, and the levels whose bodies
+// were opened since are dropped as the entry is named again. Two slots
+// announcing one id are one entry, the first.
+func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
+	v.bodyClock++
+	starts[depth] = v.bodyClock
+}
+
+func TableMessageSeenFirst(v *TableVocabulary) {
+	for i := range v.Count {
+		for j := range i {
+			if v.Entries[j].ID == v.Entries[i].ID {
+				v.Entries[i].bodyFirst = uint64(j + 1)
+				break
+			}
+		}
+	}
+}
+
+func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
+	}
+	at, last, below := e.bodySeenAt>>7, int(e.bodySeenAt&127), e.bodySeenBelow
+	if starts[depth] <= at {
+		if last == depth || below>>uint(depth)&1 != 0 {
+			return true
+		}
+		below &= 1<<uint(depth) - 1
+	} else {
+		kept, hi := 0, depth
+		for kept < hi {
+			mid := (kept + hi) / 2
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			below |= 1 << uint(last)
+		}
+		below &= 1<<uint(kept) - 1
+	}
+	e.bodySeenBelow = below
+	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
+	return false
+}
+
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
 		return TableMessageEntry{}, false
@@ -1856,10 +1963,14 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
 	case 12:
 		n, ok := TableMessageCount(r, s)
-		if !ok || !r.Align() {
+		if !ok || n > uint64(s.Max) || !r.Align() {
 			return false
 		}
-		return r.Skip(int64(n) * 8)
+		start := r.Offset / 8
+		if !r.Skip(int64(n) * 8) {
+			return false
+		}
+		return TableUTF8Valid(r.Buffer[start : start+int64(n)])
 	case 31:
 		if !r.Align() {
 			return false
@@ -1868,30 +1979,63 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && r.Skip(int64(n)*8)
 	case 14, 16:
 		n, ok := TableMessageCount(r, s)
-		if !ok {
+		if !ok || n > uint64(s.Max) {
 			return false
 		}
 		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
 			return false
 		}
-		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
-			width := e.Element.Bits
-			width = max(width, 0)
-			if s.Kind == 16 {
-				width += v.RefBits
-			}
+		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 || e.Element.Kind == 0 || e.Element.Kind == 32) {
+			width := max(e.Element.Bits, int64(0))
 			return r.Skip(int64(n) * width)
 		}
-		for range n {
-			if s.Kind == 16 && !r.Skip(v.RefBits) {
-				return false
+		if s.Kind == 16 {
+			var seen [64]uint64
+			keys := seen[:0]
+			for range n {
+				ref, ok := r.Get(v.RefBits)
+				if !ok {
+					return false
+				}
+				id, ok := v.Name(ref)
+				if !ok {
+					return false
+				}
+				if slices.Contains(keys, id) {
+					return false
+				}
+				keys = append(keys, id)
+				if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+					return false
+				}
 			}
+			return true
+		}
+		for range n {
 			before := r.Offset
 			if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
 				return false
 			}
 		}
 		return true
+	case 10:
+		if s.Packing == 2 {
+			index, ok := r.Get(s.Bits)
+			return ok && index <= uint64(s.QCount)
+		}
+		raw, ok := r.Get(32)
+		if !ok {
+			return false
+		}
+		f := math.Float32frombits(uint32(raw))
+		return f == f && !math.IsInf(float64(f), 0)
+	case 11:
+		raw, ok := r.Get(64)
+		if !ok {
+			return false
+		}
+		f := math.Float64frombits(raw)
+		return !math.IsNaN(f) && !math.IsInf(f, 0)
 	}
 	return s.Bits >= 0 && r.Skip(s.Bits)
 }
@@ -1901,13 +2045,25 @@ func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 	if depth > 128 {
 		return false
 	}
+	var seen [64]uint64
+	ids := seen[:0]
 	for {
 		ref, ok := r.Get(v.RefBits)
-		if !ok || ref == 0 {
-			return ok
+		if !ok {
+			return false
+		}
+		if ref == 0 {
+			return true
 		}
 		e, ok := v.Entry(ref)
-		if !ok || !TableMessageSkip(r, v, indexBits, e, depth) {
+		if !ok || e.ID >= 0xfffffffffffffffd {
+			return false
+		}
+		if slices.Contains(ids, e.ID) {
+			return false
+		}
+		ids = append(ids, e.ID)
+		if !TableMessageSkip(r, v, indexBits, e, depth) {
 			return false
 		}
 	}
@@ -2018,4 +2174,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xad5850dc4545aec9
+const Version uint64 = 0x11536863a144e917

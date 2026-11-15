@@ -57,7 +57,9 @@ func tableJSONFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0
 // length, a counted array's count. Bounded by the declared extent on the way
 // out, so a storage invariant a caller broke cannot walk off the end. A
 // container with no declared bound has no extent to clamp to: UnboundedContainer
-// is no limit (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1).
+// is no limit (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1). The writer refuses a count outside
+// the contract before it calls this (tableJSONCountInContract); the clamp here
+// keeps the extent it slices safe on every path.
 func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if !f.Counted {
 		return f.ArrayBound
@@ -68,6 +70,19 @@ func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 		count = f.ArrayBound
 	}
 	return count
+}
+
+// tableJSONCountInContract reports whether a counted field's companion is one
+// the declaration admits: never negative, and past its bound only for a
+// container with no declared bound. The binary writers refuse these values
+// (mas-bandwidth/schema docs/SPEC.md §5.1 rows 3 and 4), so the text writer does too rather than
+// write a truncated count or a clamped length.
+func tableJSONCountInContract(base unsafe.Pointer, f *TableFieldInfo) bool {
+	if !f.Counted {
+		return true
+	}
+	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
+	return count >= 0 && (f.UnboundedContainer || count <= f.ArrayBound)
 }
 
 func tableJSONSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
@@ -657,9 +672,18 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		}
 		return true
 	case 10:
-		return tableJSONWriteFloat(out, float64(*(*float32)(storage)), true)
+		// a float32's range is compared in float32, as the binary writers compare it
+		value := *(*float32)(storage)
+		if f.HasRange && (value < float32(f.RangeMin) || value > float32(f.RangeMax)) {
+			return false
+		}
+		return tableJSONWriteFloat(out, float64(value), true)
 	case 11:
-		return tableJSONWriteFloat(out, *(*float64)(storage), false)
+		value := *(*float64)(storage)
+		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
+			return false
+		}
+		return tableJSONWriteFloat(out, value, false)
 	case 2, 3, 4:
 		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
 		return true
@@ -686,6 +710,9 @@ func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldIn
 	}
 	if f.List {
 		return tableJSONWriteList(out, storage, f, depth)
+	}
+	if !tableJSONCountInContract(base, f) {
+		return false
 	}
 	if f.Kind == 12 {
 		tableJSONWriteString(out, tableJSONBytes(storage, tableJSONCount(base, f)))
@@ -2842,13 +2869,7 @@ func (g *tableJSONGraph) setLabel(key uint64, entry tableJSONLabel) bool {
 	g.labels[i] = entry
 	return true
 }
-func (g *tableJSONGraph) close() {
-	if g.memory != nil {
-		g.release(g.memory)
-		g.memory = nil
-		g.labels = nil
-	}
-}
+
 func tableJSONPointerAt(slot *int64) unsafe.Pointer {
 	if *slot == 0 {
 		return nil
@@ -3740,21 +3761,6 @@ func (e TableTimestampError) Error() string {
 	return "timestamp_out_of_range: " + e.Field + " " + e.Time.Format(time.RFC3339Nano) +
 		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
 }
-
-// tableTimestampNanos is the count of a time.Time, and false for a time whose
-// count UnixNano cannot represent. Go's zero Time{} is the zero time.
-func tableTimestampNanos(t time.Time) (int64, bool) {
-	if t.IsZero() {
-		return 0, true
-	}
-	if t.Before(time.Unix(0, -1<<63)) || t.After(time.Unix(0, 1<<63-1)) {
-		return 0, false
-	}
-	return t.UnixNano(), true
-}
-
-// tableTimestampTime is the UTC time of a count; every count is legal.
-func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 

@@ -13869,7 +13869,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedFiniteBody  FixedRefuseBatch
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedFiniteBody  FixedRefuseBatch
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -13934,7 +13934,8 @@ in build version (§20.5).
   infinity before the bounds pass runs; it is claimed on the same rule, because
   a type gains a float as an ordinary edit. `FixedRefuseBatch` is the batch
   save's refusal path, which the JavaScript leg emits at module scope for every
-  fixed table; it is claimed on the same rule.
+  fixed table; it is claimed on the same rule, and so is `FixedCheckDead`,
+  the read's dead-byte check, which the JavaScript leg emits there too.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
@@ -16209,10 +16210,10 @@ written as something else.
 - **A ranged integer, or a `fixed`/`ufixed` raw value, off its `min`/`max`** —
   `invalid_value` (docs/SPEC.md §5.1 row 1).
 - **A `bits(N)` value wider than `N` bits** — `invalid_value` (§5.1 row 2).
-- **A counted array's count past its `Max` or below its `Min`** —
+- **A counted array's count past its `Max`, below its `Min`, or negative** —
   `invalid_value` (§5.1 row 3).
-- **A `string(N)` or `bytes(N)` length past `N`** — `invalid_value` (§5.1
-  row 4).
+- **A `string(N)` or `bytes(N)` length past `N` or negative** —
+  `invalid_value` (§5.1 row 4).
 - **A compressed or ranged float off its range** — `invalid_value` (§5.1
   row 10).
 - **A graph nested past 128** (§16.2): the writer carries the reader's depth

@@ -730,7 +730,7 @@ var ArchiveConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
 }
 
-var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 332)
+var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 352)
 
 var ArchiveConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -872,10 +872,10 @@ func ArchiveConfigFixedMeasure(count int64) int64 {
 }
 
 // ArchiveConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func ArchiveConfigFixedSave(values []ArchiveConfig, buffer []byte) int64 {
 	need := ArchiveConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -994,6 +994,11 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
