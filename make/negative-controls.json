@@ -138,10 +138,11 @@
     {
       "name": "base-packet-3",
       "when": "pull-request",
-      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
+      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), C packet-write-text, packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
       "targets": [
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
+        "packet-write-text-c-negative-control",
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
@@ -238,7 +239,8 @@
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
         "packet-end-lua-negative-control",
-        "packet-write-cfloat-lua-negative-control"
+        "packet-write-cfloat-lua-negative-control",
+        "packet-write-bareint-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1515,7 +1517,8 @@
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
-        "packet-end-rust-negative-control"
+        "packet-end-rust-negative-control",
+        "packet-write-text-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -1901,7 +1904,8 @@
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-end-dart-negative-control",
-        "packet-write-cfloat-dart-negative-control"
+        "packet-write-cfloat-dart-negative-control",
+        "packet-write-text-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
