@@ -415,3 +415,54 @@ section is the current state.
   witness moved from root_full to keyed_config for the same reason (not a
   relaxation: keyed_config holds no unbounded text and no dead slot). Real
   fix: the Lobster cook writer zeroes dead slots; then the map goes.
+
+- `relax/dead-bytes-accepted-lobster`: the same class on the Lobster wire fuzz
+  (`LOBSTER_WIRE_FUZZ_RELAX` in `make/lobster-fuzz.mk`, the plain arm of
+  `tables-lobster-wire-fuzz`; the builder and retain rosters are variable
+  roots): the leg loads the `entry-count` mutant of tabledemo.RootConfig
+  `root_full`. Real fix: the Lobster fixed read refuses a nonzero dead byte;
+  then drop the variable. WIP: none.
+- `relax/dead-bytes-accepted-go`: the generated Go fixed read (the
+  `tables/goruntime` pre-scan skips the slack spans) still loads nonzero dead
+  bytes. `TestGeneratedFixedAgreesWithEngine` and
+  `TestGeneratedFixedOneVerdictEveryByte`
+  (`internal/codegen/gotable/fuzzunit/`) count, and do not fail, a split where
+  the generated read accepts, the engine refuses `wire_damaged`, and the
+  generated save is an image the engine accepts, of the input's length,
+  differing only in bytes the save wrote zero (`fixedDeadBytesAccepted`);
+  every other split fails. Real fix: the generated Go fixed read refuses a
+  nonzero byte in every dead range, as `internal/tablewire/fixed.go`
+  `fixedDead` does; then remove the helper and its two call sites. WIP: none.
+- `relax/dead-bytes-accepted-elixir`: `test/elixir-fixedform/main.exs` keeps
+  its two old-rule identity asserts (an absent optional's payload 0xFF and
+  counted-array slack 0xFF load and move no counter), because the Elixir
+  fixed read still loads them; each pins the old accept, so it goes red the
+  day the read refuses. The present-byte-7 and bool-byte-2 rows, which the
+  Elixir read now refuses as the engine does, assert the refusal (fixed, not
+  relaxed). Real fix: the Elixir fixed read refuses nonzero dead bytes; then
+  both rows assert `{:error, :wire_damaged, _}`. WIP: none.
+- `relax/cpp-warn-dead-features`: `make/cpp-warn-allow.txt` gains the
+  clang++ -Weverything kinds of the generated `dead` and `features` C++ trees
+  (39 file/kind pairs, the emitter's existing kinds: old-style-cast, padded,
+  cast-align, switch-default and the rest every table tree draws), which
+  joined `CPP_CLEAN_TREES`; the `wide` tree's 32 pairs and the
+  `build/wide-generated` tree's 32, no longer observed (the clang-unknown allocator-wrappers entries stay), are deleted. Real
+  fix: the emitter clears those kinds; then their lines go. WIP: none.
+- `relax/cpp-clean-dead-features`: `make/cpp-format-allow.txt` lists six
+  generated C++ files that drift from .clang-format: the `dead` and
+  `features` trees' DeadBytesBlock.h, DeadBytesTable.h, TbldeadView.cpp,
+  FeaturesTable.h (new to `CPP_CLEAN_TREES`), and p2/P2Table.h,
+  widelist/WidesTable.h, which now carry the pointer-graph walk (c0361db4b)
+  whose runtime text in `internal/codegen/cpptable/arena.go` keeps one-line
+  if bodies. The JSON/text number parsing, the sign-extend and the
+  TableGraphWidth case list (json.go, text.go, messageload.go, arena.go) were
+  reformatted in the emitter instead, which cleared 37 Table.cpp files, and
+  the committed `generated/bench/{paired,tables}/cpp` trees are regenerated.
+  Real fix: arena.go's runtime text matches .clang-format; then the six lines
+  go. WIP: none.
+- `relax/c-clean-featurewitnesses`: `make/c-format-allow.txt` lists the four
+  generated C files of the `featurewitnesses` tree (FeaturesTable.c/.h,
+  FeaturewitnessesView.c/.h), which drift from .clang-format like the files
+  already listed; the C fixed-form job first reached `tables-c-clean` on
+  this branch. Real fix: the C emitter's output matches .clang-format; then
+  the four lines go. The six lines of the `wide` C tree, no longer generated, are deleted (the gate asked). WIP: none.

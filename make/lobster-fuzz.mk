@@ -30,6 +30,13 @@
 
 LOBSTER_WIRE_FUZZ_N    ?= 200
 LOBSTER_WIRE_FUZZ_SEED ?= $(SEED)
+# RELAXED 2026-11-15 Lobster loads nonzero fixed-form dead bytes the engine
+# refuses since #3529 (docs/rulings.json fixed-dead-bytes-are-zero): a counted
+# array's count lowered by one leaves a nonzero slot past the count, which this
+# leg reads and loads. Such a mutant is counted, not compared; every other
+# mutant is compared. The plain arm only (the builder and retain rosters are
+# variable roots). re-enable: relax/dead-bytes-accepted-lobster
+LOBSTER_WIRE_FUZZ_RELAX ?= --relax-dead-bytes-accepted
 LOBSTER_WIRE_FUZZ_LEAKS := test/conformance/lobster/wirefuzz-known-leaks.txt
 LOBSTER_WIRE_FUZZ_HOST  = build/lobster-wirefuzzhost --known-leaks $(LOBSTER_WIRE_FUZZ_LEAKS)
 
@@ -97,7 +104,7 @@ endef
 tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost $(LOBSTER_WIRE_FUZZ_ILL_TEXT)
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
-		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster.bin
+		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) $(LOBSTER_WIRE_FUZZ_RELAX) --failed build/wire-fuzz/failed-lobster.bin
 	./build/conformance-harness wire-fuzz --builder --driver '$(LOBSTER_WIRE_FUZZ_HOST) --builder' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-builder.bin
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)

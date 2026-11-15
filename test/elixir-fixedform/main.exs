@@ -1186,8 +1186,17 @@ absent_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: false}]
 present_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: true}])
 present_at = only_diff.(absent_bytes, present_bytes)
 
-{:ok, [seven], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7))
-Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_present, true)
+# THE RULING SINCE #3529 (docs/rulings.json fixed-dead-bytes-are-zero;
+# docs/SPEC-TABLES.md §3.4): a present byte other than 0 or 1 is damage, and
+# the whole load refuses wire_damaged, as the engine's does.
+Leg.eq(
+  "a present byte of 7 REFUSES wire_damaged",
+  match?(
+    {:error, :wire_damaged, _},
+    Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7))
+  ),
+  true
+)
 
 {:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
 Leg.eq("and only 0 is absent", zero.link_present, false)
@@ -1206,6 +1215,11 @@ value_at =
 hostile_opt =
   Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
 
+# RELAXED 2026-11-15 the Elixir fixed read still loads a nonzero byte under
+# an absent optional, which the ruling refuses (docs/rulings.json
+# fixed-dead-bytes-are-zero, #3529); this pins the old accept, so it goes red
+# the day the read refuses, and then it asserts the refusal.
+# re-enable: relax/dead-bytes-accepted-elixir
 {:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
 Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.unknown, 0)
 
@@ -1254,6 +1268,10 @@ hp_at = only_diff.(hp1, hp2)
 hostile_hp =
   Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
 
+# RELAXED 2026-11-15 the Elixir fixed read still loads a nonzero slot past a
+# counted array's count, which the ruling refuses (fixed-dead-bytes-are-zero,
+# #3529); this pins the old accept, so it goes red the day the read refuses.
+# re-enable: relax/dead-bytes-accepted-elixir
 {:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
 Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.unknown, 0)
 
@@ -1292,8 +1310,16 @@ bool_off = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, false)])
 bool_on = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, true)])
 bool_at = only_diff.(bool_off, bool_on)
 
-{:ok, [two], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2))
-Leg.eq("a bool byte of 2 LANDS TRUE", Enum.at(two.ships, 0).gunner.tracking, true)
+# a bool byte other than 0 or 1 is damage (docs/SPEC-TABLES.md §3.4), and the
+# whole load refuses wire_damaged, as the engine's does
+Leg.eq(
+  "a bool byte of 2 REFUSES wire_damaged",
+  match?(
+    {:error, :wire_damaged, _},
+    Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2))
+  ),
+  true
+)
 
 {:ok, [off], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_on, bool_at, 0))
 Leg.eq("and only 0 is false", Enum.at(off.ships, 0).gunner.tracking, false)

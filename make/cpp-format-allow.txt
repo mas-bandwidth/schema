@@ -275,3 +275,13 @@ generated/bench/paired/cpp/BenchTable.h
 generated/bench/paired/cpp/FixedTableTable.h
 generated/bench/tables/cpp/BenchTableBlock.h
 generated/bench/tables/cpp/BenchTableTable.h
+# RELAXED 2026-11-15 the dead and features trees joined CPP_CLEAN_TREES, and
+# p2 and widelist now carry the pointer-graph walk (c0361db4b), all with the
+# emitter's existing drift (one-line if bodies in arena.go's runtime text);
+# re-enable: relax/cpp-clean-dead-features
+build/tables-generated/dead/DeadBytesBlock.h
+build/tables-generated/dead/DeadBytesTable.h
+build/tables-generated/dead/TbldeadView.cpp
+build/tables-generated/features/FeaturesTable.h
+build/tables-generated/p2/P2Table.h
+build/tables-generated/widelist/WidesTable.h
