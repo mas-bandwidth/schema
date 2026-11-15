@@ -1358,6 +1358,10 @@ func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
 		" // the length guards the slice; out-of-contract writes are refused", ind)
+	if f.Type.Kind == ir.TString {
+		g.needText = true
+		emitWriteText(g.pf, name, length, ind, "-1")
+	}
 	g.emitWriteRangedNum(length, 0, f.Type.Size, ind)
 	g.emitWriteAlign(ind) // flushes the pending chunk (the length prefix)
 	g.wDynamic(ind)
