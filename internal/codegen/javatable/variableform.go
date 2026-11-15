@@ -3534,11 +3534,12 @@ public final class TableJson {
 
         // scanName reads one string that NAMES a schema name — an object key
         // naming a field, an enum variant, a flags element, a union arm, an
-        // &node name — and holds it to §16.2's 255-byte cap after decoding.
-        // A longer one refuses the read; a map key and a string value are data
-        // and go through scanString/scanStored, never this.
+        // &node name — holds it to a placed string's text rule (§16.3) and to
+        // §16.2's 255-byte cap after decoding. A longer one refuses the read,
+        // and one that decodes to U+0000 refuses too; a map key and a string
+        // value are data and go through scanStored, never this.
         public String scanName() {
-            String s = scanString();
+            String s = scanStored();
             if (s == null) {
                 return null;
             }
@@ -3778,7 +3779,9 @@ public final class TableJson {
                     skipContainer(']', depth);
                     return;
                 case '"':
-                    scanString();
+                    // A SKIPPED STRING IS HELD TO A PLACED STRING'S TEXT
+                    // RULE (§16.3): one that decodes to U+0000 refuses.
+                    scanStored();
                     return;
                 case 't':
                     lit("true");
@@ -3818,6 +3821,8 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
+                    // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
+                    // (§16.3): one that decodes to U+0000 refuses.
                     String key = scanName();
                     if (bad) {
                         return;
