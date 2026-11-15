@@ -87,7 +87,7 @@ func TestFixedRoadmapJavaT05Bounds(t *testing.T) {
 func t05C1(t *testing.T) {
 	files := t05Files(t, "VNEW_array_bounded_grow.schema")
 	t05Has(t, files, "ArrayBoundedGrowFixed.java",
-		"if (n < 0) { n = 0; r.refuse(TableFixed.Reason.countOverBound); }",
+		"if (n < 0) { n = 0; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 		"C1 a negative count refuses the load as countOverBound")
 }
 
@@ -97,11 +97,11 @@ func t05C1(t *testing.T) {
 func t05C2(t *testing.T) {
 	old := t05Files(t, "VOLD_array_bounded_grow.schema")
 	t05Has(t, old, "ArrayBoundedGrowFixed.java",
-		"else if (n > 4) { n = 4; r.refuse(TableFixed.Reason.countOverBound); }",
+		"else if (n > 4) { n = 4; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 		"C2 a count past the OLD declaration's bound 4 refuses")
 	newer := t05Files(t, "VNEW_array_bounded_grow.schema")
 	t05Has(t, newer, "ArrayBoundedGrowFixed.java",
-		"else if (n > 8) { n = 8; r.refuse(TableFixed.Reason.countOverBound); }",
+		"else if (n > 8) { n = 8; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 		"C2 a count past the NEW declaration's bound 8 refuses")
 }
 
@@ -112,7 +112,7 @@ func t05C2(t *testing.T) {
 func t05C7(t *testing.T) {
 	files := t05Files(t, "VNEW_range_widen.schema")
 	t05Has(t, files, "RangeWidenFixed.java",
-		"if (q < 0L) { q = 0L; r.refuse(TableFixed.Reason.outOfRange); } else if (q > 200L) { q = 200L; r.refuse(TableFixed.Reason.outOfRange); }",
+		"if (q < 0L) { q = 0L; if (live) { r.refuse(TableFixed.Reason.outOfRange); } } else if (q > 200L) { q = 200L; if (live) { r.refuse(TableFixed.Reason.outOfRange); } }",
 		"C7 a ranged scalar outside its declared min and max refuses as outOfRange")
 }
 
@@ -123,7 +123,7 @@ func t05C7(t *testing.T) {
 func t05C9(t *testing.T) {
 	files := t05Files(t, "VNEW_union_append.schema")
 	t05Has(t, files, "PickFixed.java",
-		"if (v.type > 3) { v.type = none; r.refuse(TableFixed.Reason.outOfRange); }",
+		"if (v.type > 3) { v.type = none; if (live) { r.refuse(TableFixed.Reason.outOfRange); } }",
 		"C9 a tag past the arm count refuses as outOfRange")
 }
 
@@ -136,40 +136,44 @@ func t05C10(t *testing.T) {
 		"long q = (b[at + 0] & 0xFF);",
 		"C10 the enum ordinal read into a temporary")
 	t05Has(t, files, "LineageFixed.java",
-		"if (q > 4L) { q = 0L; r.refuse(TableFixed.Reason.outOfRange); }",
+		"if (q > 4L) { q = 0L; if (live) { r.refuse(TableFixed.Reason.outOfRange); } }",
 		"C10 an ordinal past the top variant refuses as outOfRange")
 }
 
-// t05C12 is C12 "bool byte != 0": ALGORITHM §4.5, "a bool ... lands as `byte !=
-// 0`, normalised to the language's own true. 0x02 is not a bool a reader stores
-// verbatim". The emitted scatter writes the field from `!= 0`.
+// t05C12 is C12 "a bool byte other than 0 or 1 refuses": ALGORITHM step 11, "per
+// LIVE datum the plan names: a bool or present byte other than 0 or 1: REFUSE
+// wire_damaged" (fix 2; docs/rulings.json). The emitted scatter checks the byte
+// before it lands the field from `!= 0`, and refuses only on live data.
 func t05C12(t *testing.T) {
 	files := t05Files(t, "VNEW_hostile_bool.schema")
 	t05Has(t, files, "HbbFixed.java",
-		"v.flag = b[at + 0] != 0;",
-		"C12 a bool byte lands as `byte != 0`")
+		"if ((b[at + 0] & 0xFF) > 1) { if (live) { r.refuse(TableFixed.Reason.wireDamaged); } } v.flag = b[at + 0] != 0;",
+		"C12 a bool byte other than 0 or 1 refuses wire_damaged")
 }
 
-// t05C13 is C13 "present flag byte != 0": the same rule for an optional's
-// present flag, which rides as one byte and lands by the same `!= 0`.
+// t05C13 is C13 "a present byte other than 0 or 1 refuses": the same rule for an
+// optional's present flag, which rides as one byte; the payload behind it is
+// walked only when the present byte is live and set.
 func t05C13(t *testing.T) {
 	files := t05Files(t, "VNEW_hostile_bool.schema")
 	t05Has(t, files, "HbbFixed.java",
-		"v.linkPresent = b[at + 1] != 0;",
-		"C13 a present flag byte lands as `byte != 0`")
+		"final int present = b[at + 1] & 0xFF; if (present > 1) { if (live) { r.refuse(TableFixed.Reason.wireDamaged); } } v.linkPresent = present != 0;",
+		"C13 a present byte other than 0 or 1 refuses wire_damaged")
+	t05Has(t, files, "HbbFixed.java",
+		"PayFixed.scatter(b, at + 2, v.link, r, live && v.linkPresent);",
+		"C13 an absent optional's payload is not walked")
 }
 
-// t05R17 is R17 "a bool or present byte that is not 0/1 normalises and counts
-// nothing", asserted on the VALUE and the COUNTERS a real read lands, never on
-// the source text. ALGORITHM §4.5: "a bool ... lands as `byte != 0`, normalised
-// to the language's own true. 0x02 is not a bool a reader stores verbatim".
-// The leg's own OLD writer saves one Hbb record; the scalar `flag` byte, the
-// optional's present byte and one `flags` element are forged to 0x02 at the
-// body offsets §2 and §3 fix (the 20-byte header, the layout of LE(4, b+16)
-// bytes, the record's u64 hash, then the body IN DECLARED ORDER); and both
-// readers take the forged file: the OLD build by identity and the NEW build
-// through a plan COMPILED from the OLD layout. Each must land exactly what it
-// lands from the unforged file — `true` — and move no counter.
+// t05R17 is R17 "a bool or present byte that is not 0/1 refuses", asserted on
+// what a real read does, never on the source text. ALGORITHM step 11: "a bool or
+// present byte other than 0 or 1: REFUSE wire_damaged" (fix 2; the Lua and
+// Lobster legs hold the same row). The leg's own OLD writer saves one Hbb
+// record; the scalar `flag` byte, the optional's present byte and one `flags`
+// element are each forged to 0x02 at the body offsets §2 and §3 fix (the 20-byte
+// header, the layout of LE(4, b+16) bytes, the record's u64 hash, then the body
+// IN DECLARED ORDER); and both readers take each forged file: the OLD build by
+// identity and the NEW build through a plan COMPILED from the OLD layout. Each
+// must read the lawful file and refuse every forged one as wireDamaged.
 func t05R17(t *testing.T) {
 	pkgOld := javaPackageOf(versioningSchemaUnit(t, "VOLD_hostile_bool.schema"))
 	if pkgOld == "" {
@@ -201,37 +205,26 @@ func t05R17(t *testing.T) {
 		binary.LittleEndian.Uint32(raw[body+6:]) != 1 || binary.LittleEndian.Uint32(raw[body+18:]) != 2 {
 		t.Fatalf("R17: the saved record is not the declared-order body this test forges (body at %d of %d): % x", body, len(raw), raw[min(body, len(raw)):])
 	}
-	forged := append([]byte(nil), raw...)
-	forged[body] = 0x02    // flag
-	forged[body+1] = 0x02  // link's present byte
-	forged[body+13] = 0x02 // flags[3]
-	path := filepath.Join(t.TempDir(), "hostile_bool.bin")
-	if err := os.WriteFile(path, forged, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
-		want := runProbe(t, classes, probe, clean)
-		got := runProbe(t, classes, probe, path)
-		if got.n != 1 || got.refused || got.damaged {
-			t.Fatalf("R17 %s: the forged 0x02 bytes must read, never damage: %+v", probe, got)
+		if lawful := runProbe(t, classes, probe, clean); lawful.n != 1 || lawful.refused || lawful.damaged {
+			t.Fatalf("R17 %s: the lawful file must read: %+v", probe, lawful)
 		}
-		// NORMALISES: 0x02 lands as the language's own true.
-		for _, k := range []string{"flag", "linkPresent"} {
-			if got.value[k] != "true" {
-				t.Errorf("R17 %s: %s landed %q from a 0x02 byte, want true — a bool lands as `byte != 0`", probe, k, got.value[k])
+	}
+	for _, forge := range []struct {
+		name string
+		at   int
+	}{{"flag", body}, {"link's present byte", body + 1}, {"flags[3]", body + 13}} {
+		forged := append([]byte(nil), raw...)
+		forged[forge.at] = 0x02
+		path := filepath.Join(t.TempDir(), "hostile_bool.bin")
+		if err := os.WriteFile(path, forged, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
+			got := runProbe(t, classes, probe, path)
+			if got.n != -1 || !got.refused || got.reason != "wireDamaged" {
+				t.Errorf("R17 %s: a 0x02 %s must refuse as wireDamaged: %+v", probe, forge.name, got)
 			}
-		}
-		// ... and exactly as the lawful 0x01 lands: every field of the record.
-		for k, v := range want.value {
-			if got.value[k] != v {
-				t.Errorf("R17 %s: %s landed %q from the forged file, want %q as from the lawful one", probe, k, got.value[k], v)
-			}
-		}
-		// COUNTS NOTHING: a non-0/1 bool or present byte is no clamp and no
-		// damage, so every counter stands at zero.
-		if got.widened != 0 || got.unknown != 0 {
-			t.Errorf("R17 %s: a 0x02 bool or present byte moved a counter: widened=%d unknown=%d, want all 0",
-				probe, got.widened, got.unknown)
 		}
 	}
 }

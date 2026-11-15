@@ -1,0 +1,26 @@
+// Writer.schema — the NEWER WRITER unit of the skipped-value vectors
+// (docs/SPEC-TABLES.md §4, §16.3; docs/rulings.json
+// skipped-value-is-validated). It declares the reader's `known` field and one
+// extra field of each shape the reader does not: a string, a float, a
+// quantized float, a counted array, an enum-keyed array and a nested table. A
+// reader of test/skipped-value/reader/Reader.schema skips each extra field and
+// is held to what a read of it would hold, in the JSON and the message form.
+package skippedwriter
+
+enum Color { Red, Green, Blue }
+
+type Inner
+{
+    n uint8
+}
+
+fixed table Root
+{
+    known        uint8
+    extra_string string(8)
+    extra_float  float32
+    extra_quant  float32 | min = 0, max = 1, resolution = 0.25
+    extra_array  [..4]int16
+    extra_keyed  [Color]uint8
+    extra_nested Inner
+}

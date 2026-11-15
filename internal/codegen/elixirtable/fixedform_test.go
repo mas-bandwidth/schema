@@ -290,7 +290,8 @@ fixed table Live
 		"live_grades_fixed_list(b_grades, min(max(n_grades, 0), 4), c, m)",
 		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNTER: the payload's clamp
 		// lands in a shadow counter the present flag either keeps or drops.
-		"c = if(p_note != 0, do: c_note, else: c)",
+		"p_note = R.flag(p_note)",
+		"c = if(p_note, do: c_note, else: c)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the projection of Live does not carry %q, so a slack slot or an absent payload counts", want)

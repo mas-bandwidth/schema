@@ -78,7 +78,7 @@ fixed table Ranged
             { printf( "strict: the plain read with no report accepted a out_of_range file\n" ); return 1; }
     }
 `
-	out, err := cppRunCapability(t, path, "fxstrict", body)
+	out, err := cppRunForging(t, path, "fxstrict", body, nil)
 	if err != nil {
 		t.Fatalf("plain FixedLoad is strict: %v\n%s", err, out)
 	}

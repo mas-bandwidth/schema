@@ -17,7 +17,9 @@ import (
 // The test rebuilds both batches from the unit's own announcement, so the
 // pinned files cannot drift from what they claim to be, and holds the oracle
 // to the answer the C++ reference gives under strict-only: 128 nested bodies
-// read with one unknown, 129 are refused.
+// read with one unknown, 129 are refused. A refused read's counters are
+// per-language detail (docs/rulings.json refusal-verdict-only), so the
+// over-limit row holds the verdict alone.
 func TestLimitMessageSkipDepthVectors(t *testing.T) {
 	_, _, u := corpus(t)
 	root, err := newWireRoot(u, "backenddemo", "LoginRequest", true, false)
@@ -36,7 +38,7 @@ func TestLimitMessageSkipDepthVectors(t *testing.T) {
 		want     Counts
 	}{
 		{"message_skip_depth_at_limit", 128, true, Counts{Unknown: 1}},
-		{"message_skip_depth_over_limit", 129, false, Counts{Unknown: 1, Refused: true}},
+		{"message_skip_depth_over_limit", 129, false, Counts{Refused: true}},
 	} {
 		built := skipDepthBatch(tc.levels, login, root.vocabulary.RefBits())
 		pinned := pinnedWire(t, filepath.Join("testdata", "wire", "tables", "fuzz-vectors", tc.name+".bin"), built)
@@ -50,8 +52,11 @@ func TestLimitMessageSkipDepthVectors(t *testing.T) {
 		if answer.accepted != tc.accepted {
 			t.Errorf("%s: the oracle accepted=%v, want %v", tc.name, answer.accepted, tc.accepted)
 		}
-		if answer.report != tc.want {
+		if tc.accepted && answer.report != tc.want {
 			t.Errorf("%s: the oracle answers %v, the reference answers %v", tc.name, answer.report, tc.want)
+		}
+		if !tc.accepted && answer.report.Refused != tc.want.Refused {
+			t.Errorf("%s: the oracle answers %v, a refusal is owed", tc.name, answer.report)
 		}
 	}
 }
