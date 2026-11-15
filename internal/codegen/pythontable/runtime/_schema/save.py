@@ -10,7 +10,7 @@ from typing import Any
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_array, kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -115,6 +115,21 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if target is None or not isinstance(current, target):
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
+        elif field.codec == "array":
+            if not isinstance(current, list):
+                raise InvalidValue(where, "not a list")
+            element = field.element
+            if element is None:
+                raise InvalidValue(where, "an array carries no element descriptor")
+            for i, item in enumerate(current):
+                cell = f"{where}[{i}]"
+                if element.codec == "table":
+                    target = descriptor.by_name(element.target)
+                    if target is None or not isinstance(item, target):
+                        raise InvalidValue(cell, f"not a {element.target}")
+                    _validate(item, item.descriptor, cell, seen)
+                else:
+                    kinds._REGISTRY[element.codec].validate(element, item, cell)
         else:
             kinds._REGISTRY[field.codec].validate(field, current, where)
 
@@ -142,6 +157,12 @@ def _collect(value: Any, ctx: Ctx) -> None:
             if field.is_default(current):
                 continue
             _collect(current, ctx)
+        elif field.codec == "array":
+            element = field.element
+            if element is None or element.codec != "table":
+                continue
+            for item in current:
+                _collect(item, ctx)
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:

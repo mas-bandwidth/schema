@@ -7,6 +7,8 @@ id and its fields by declaration order and by wire id. The values are DATA,
 built once at import, so the codec modules only ever read them.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 
@@ -29,6 +31,9 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "elem_kind",
+        "elem_codec",
+        "element",
     )
 
     name: str
@@ -46,6 +51,9 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    elem_kind: int
+    elem_codec: str
+    element: FieldDesc | None
 
     def __init__(
         self,
@@ -64,6 +72,8 @@ class FieldDesc:
         bound: int = 0,
         key_enum: str = "",
         default: Any = None,
+        elem_kind: int = 0,
+        elem_codec: str = "",
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -80,6 +90,22 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.elem_kind = elem_kind
+        self.elem_codec = elem_codec
+        self.element = (
+            FieldDesc(
+                name=name,
+                field_id=0,
+                kind=elem_kind,
+                codec=elem_codec,
+                lo=lo,
+                hi=hi,
+                target=target,
+                pointer=pointer,
+            )
+            if codec == "array" and elem_codec
+            else None
+        )
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
@@ -93,6 +119,8 @@ class FieldDesc:
             if not self.target:
                 return False
             return bool(value == new_by_name(self.target))
+        if self.codec == "array":
+            return len(value) == 0
         return bool(value == self.default)
 
 

@@ -19,6 +19,10 @@ class FieldKind(Protocol):
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None: ...
 
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any: ...
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None: ...
+
 
 _REGISTRY: dict[str, FieldKind] = {}
 

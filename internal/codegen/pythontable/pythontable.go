@@ -366,6 +366,13 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
+		elemKind, elemCodec := 0, ""
+		if f.Array == ir.ArrayList {
+			elemKind = ir.TableWireElemKind(f)
+			elemCodec = elementCodecOf(f)
+		}
+		fmt.Fprintf(b, "            elem_kind=%d,\n", elemKind)
+		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
 		fmt.Fprintf(b, "        ),\n")
 	}
@@ -642,6 +649,15 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 }
 
 func codecOf(f *ir.Field) string {
+	if f.Array == ir.ArrayList {
+		if elementCodecOf(f) == "unsupported" {
+			return "unsupported"
+		}
+		return "array"
+	}
+	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+		return "unsupported"
+	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			return "unsupported"
@@ -651,7 +667,25 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed, ir.TBits:
+		return "int"
+	case ir.TNamed:
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+			return "table"
+		}
+	}
+	return "unsupported"
+}
+
+// elementCodecOf is the codec one array element rides through. An element is an
+// array element and not a field, so a construct an element spelling does not
+// admit is never reached here; a []*T element is the pointer-array layer's and
+// stays unsupported until that card lands.
+func elementCodecOf(f *ir.Field) string {
+	if f.Type.Pointer {
 		return "unsupported"
 	}
 	switch f.Type.Kind {

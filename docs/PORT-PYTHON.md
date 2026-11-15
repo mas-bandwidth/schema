@@ -289,11 +289,14 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_table.py`, `kind_pointer.py` and
+  `kind_array.py` register the kinds this cut carries. A later card adds its
+  module and one registration line, never an edit to the body walk.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name. `kind_array.py` reads and writes an array
+  element through the element's own kind module, so a later element kind
+  arrives without an edit to the array walk.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -308,8 +311,14 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
+  unbounded arrays `[]T` of those and of by-value tables, by-value tables and
+  `*T` pointers to tables, for both the fixed and the variable class. An
+  unbounded array is a kind `14` counted array with no declared bound, so it
+  rides the same bytes a `[..N]T` writes. Its count is held to the read's
+  resource bounds: a body shorter than its header, a count past the int32
+  storage cap, a count the body cannot cover, and bytes left inside its `L`
+  after the elements all refuse, the first two before a list is built.
+  `*bytes`, `*string`, `?T`, `[]*T`, `[E]T`, `[N]T`, `[..N]T`, maps and unions
   with table arms have descriptors in this cut and refuse by name through
   `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
