@@ -1843,7 +1843,7 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
         cell.tab = rec
         return j_read_table(r, rec, depth + 1)
     if s == "enum":
-        let name, _, ok = j_scan_string(r, -1)
+        let name, _, ok = j_scan_string(r, json_max_key)
         if not ok:
             return false
         let v = j_enum_value(f.vs, name)
@@ -2175,7 +2175,7 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
         if c != '\"':
             return j_refuse(r, "kind_mismatch")
         else:
-            let name, _, ok = j_scan_string(r, -1)
+            let name, _, ok = j_scan_string(r, json_max_key)
             if not ok:
                 return false
             var found = false
