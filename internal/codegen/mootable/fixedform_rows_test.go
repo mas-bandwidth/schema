@@ -274,9 +274,11 @@ func TestMooFixedHostileBoolNegativeControl(t *testing.T) {
 // TestMooFixedCfgPresentByteMutant is the wire fuzzer's tblv1.Cfg mutant
 // (testdata/fixed_cfg_present_mutant.bin): the conformance instance v1_cfg
 // with two bytes of its record forged, one of them a present byte of 0x8D.
-// The engine refuses it wire_damaged (internal/tablewire/fixed.go, a present
-// byte other than 0 or 1), so the strict moo read refuses it whole; the
-// untouched instance it was cut from lands.
+// The first is a byte in an absent optional's dead payload, which refuses the
+// whole load on its own; with that byte back to zero, the present byte other
+// than 0 or 1 refuses it wire_damaged (internal/tablewire/fixed.go), so the
+// strict moo read refuses it whole; the untouched instance it was cut from
+// lands.
 func TestMooFixedCfgPresentByteMutant(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -289,7 +291,26 @@ func TestMooFixedCfgPresentByteMutant(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
-	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); got.head != "refused wire_damaged Cfg.tier true -" {
+	st := g.unit.Tables["Cfg"]
+	body := len(mutant) - int(ir.TableFixedTypeBytes(st))
+	var extra *ir.Field
+	extraAt := int64(0)
+	for _, f := range st.Fields {
+		if f.Name == "extra" {
+			extra = f
+			break
+		}
+		extraAt += ir.TableFixedFieldBytes(f)
+	}
+	if extra == nil {
+		t.Fatal("Cfg has no extra field")
+	}
+	presentOnly := clone(mutant)
+	presentOnly[body+int(extraAt)+int(ir.TableFixedFieldBytes(extra))-1] = 0
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); got.head != "refused wire_damaged Cfg.extra true -" {
+		t.Errorf("the dead byte: %s", got.head)
+	}
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", presentOnly); got.head != "refused wire_damaged Cfg.tier true -" {
 		t.Errorf("the forged present byte: %s", got.head)
 	}
 	if got := runFixedLoad(t, g, "V1Table", "Cfg", clean); !strings.HasPrefix(got.head, "ok 1 ") {
@@ -298,9 +319,10 @@ func TestMooFixedCfgPresentByteMutant(t *testing.T) {
 }
 
 // TestMooFixedCfgPresentByteMutantNegativeControl takes the present byte's
-// 0-or-1 check out of the emitted runtime and requires the same mutant to
-// LAND: the vector bites on exactly that check, the one the moo fixed read
-// skipped before the strict cut (a present byte was read as `~= 0`).
+// 0-or-1 check out of the emitted runtime and requires the mutant with its
+// dead byte zeroed to LAND: the vector bites on exactly that check, the one
+// the moo fixed read skipped before the strict cut (a present byte was read as
+// `~= 0`).
 func TestMooFixedCfgPresentByteMutantNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -309,6 +331,22 @@ func TestMooFixedCfgPresentByteMutantNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
+	st := g.unit.Tables["Cfg"]
+	body := len(mutant) - int(ir.TableFixedTypeBytes(st))
+	var extra *ir.Field
+	extraAt := int64(0)
+	for _, f := range st.Fields {
+		if f.Name == "extra" {
+			extra = f
+			break
+		}
+		extraAt += ir.TableFixedFieldBytes(f)
+	}
+	if extra == nil {
+		t.Fatal("Cfg has no extra field")
+	}
+	presentOnly := clone(mutant)
+	presentOnly[body+int(extraAt)+int(ir.TableFixedFieldBytes(extra))-1] = 0
 	src := string(g.files["table_fixed.moo"])
 	const anchor = "\t\t\t\tif b > 1 then\n\t\t\t\t\trefuse(\"wire_damaged\", true, fieldName(f))\n"
 	if strings.Count(src, anchor) != 1 {
@@ -318,7 +356,7 @@ func TestMooFixedCfgPresentByteMutantNegativeControl(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(g.dir, "table_fixed.moo"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); !strings.HasPrefix(got.head, "ok 1 ") {
-		t.Fatalf("without the present byte's 0-or-1 check the mutant still refuses: %s", got.head)
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", presentOnly); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Fatalf("without the present byte's 0-or-1 check the present byte still refuses: %s", got.head)
 	}
 }

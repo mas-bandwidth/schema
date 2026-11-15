@@ -3479,7 +3479,6 @@ static SCHEMA_UNUSED int bench_table_message_skip(bench_table_message_reader_t *
       REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
    if(e->kind==16)memset(seen,0,sizeof(seen));
    for(i=0;i<n;i++) {
-    before=r->bits.offset;
     if(e->kind==16) {
      int64_t key;
      if(!bench_table_message_ref(r,&entry,1)||entry==NULL)return 0;
@@ -3488,6 +3487,7 @@ static SCHEMA_UNUSED int bench_table_message_skip(bench_table_message_reader_t *
      if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
      seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
     }
+    before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
        its own value conditions at the array body's level; only a string, a
        table, a nested array or keyed body, a union or an enum is walked one
@@ -3495,8 +3495,10 @@ static SCHEMA_UNUSED int bench_table_message_skip(bench_table_message_reader_t *
     if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
      if(!bench_table_message_skip(r,&elem))return 0;
     } else if(!bench_table_message_skip_deeper(r,&elem))return 0;
-    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
-    if(r->bits.offset==before)return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). A keyed
+       scalar or no-payload element rides no element bits; its key reference
+       is the payload, and the reference reader's arithmetic run counts it. */
+    if(r->bits.offset==before && elem.value_bits<0 && elem.kind!=0 && elem.kind!=32)return 0;
    }
    return 1;
   }

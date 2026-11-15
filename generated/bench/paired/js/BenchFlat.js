@@ -272,6 +272,13 @@ export function ReadBenchPacketFlat(view, numBits, value) {
     value.blob[i0] = v;
     br += 8;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -476,6 +483,12 @@ export function ReadBenchIntsFlat(view, numBits, value) {
     return false;
   }
   value.f9 = v | 0;
+  if (((110 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(13) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -593,6 +606,12 @@ export function ReadBenchBitsFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.b48 = bg;
+  if (((156 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(19) & 0xf0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -741,6 +760,12 @@ export function ReadMixedEntityFlat(view, numBits, value) {
   value.moving = v !== 0;
   v = (out >>> 23) & 0x1;
   value.firing = v !== 0;
+  if (((135 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(16) & 0x80) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -828,6 +853,12 @@ export function ReadMixedStatFlat(view, numBits, value) {
   value.statId = v;
   v = (out >>> 8) & 0x3ff;
   value.delta = (v + 4294966784) | 0;
+  if (((18 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(2) & 0xfc) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -882,6 +913,12 @@ export function ReadMixedHitEventFlat(view, numBits, value) {
   value.hitKind = v | 0;
   v = (out >>> 27) & 0x1;
   value.crit = v !== 0;
+  if (((28 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(3) & 0xf0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -933,6 +970,12 @@ export function ReadMixedChatEventFlat(view, numBits, value) {
   value.channel = v | 0;
   v = (out >>> 2) & 0xfff;
   value.speaker = v;
+  if (((14 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -980,6 +1023,12 @@ export function ReadMixedPickupEventFlat(view, numBits, value) {
   value.itemId = v;
   v = (out >>> 10) & 0xff;
   value.amount = v | 0;
+  if (((18 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(2) & 0xfc) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1140,6 +1189,13 @@ export function ReadMixedEventFlat(view, numBits, value) {
       br += 18;
       break;
     }
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -2287,6 +2343,14 @@ export function ReadBenchMixedFlat(view, numBits, value) {
   value.extra = v | 0;
   v = (out >>> 8) & 0xf;
   value.idleTicks = v | 0;
+  br += 12;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 

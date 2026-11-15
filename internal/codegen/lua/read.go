@@ -106,6 +106,15 @@ func lastDot(s string) int {
 	return 0
 }
 
+// readBodyName names a type's per-type read body: the reader a nested type
+// calls, so the packet end check runs only after the top-level object
+// (SPEC §5).
+func readBodyName(m *Module, decl string) string {
+	ref := m.Require(decl)
+	i := lastDot(ref)
+	return ref[:i+1] + "Read" + ref[i+1:] + "Body"
+}
+
 // call emits the C++-style early-out around one serialize call: on one line
 // as StyLua keeps a simple conditional (Format expands it when it does not
 // fit), and as a block when it carries a comment, which StyLua never collapses.
@@ -128,9 +137,17 @@ func emitReadStruct(m *Module, d *ir.Struct) {
 	}
 	m.Printf("end\n\n")
 
-	m.Printf("-- Read%s reads the type wire (SPEC §4.3, §6.1); false refuses without a latch\n", d.Name)
-	m.Printf("-- (a stream overflow rides stream:error()).\n")
-	m.Printf("function _M.Read%s(%s, %s)\n", d.Name, unusedIf(len(d.Items) == 0, "stream"), unusedIf(!itemsTouchValue(d.Items), "value"))
+	m.Printf("-- Read%s reads one packet: the type wire (SPEC §4.3, §6.1), then the\n", d.Name)
+	m.Printf("-- end check (SPEC §5). false refuses without a latch (a stream overflow\n")
+	m.Printf("-- rides stream:error()).\n")
+	m.Printf("function _M.Read%s(stream, value)\n", d.Name)
+	m.Printf("  if not _M.Read%sBody(stream, value) then return false end\n", d.Name)
+	m.Printf("  return stream:serializeEnd()\n")
+	m.Printf("end\n\n")
+
+	m.Printf("-- Read%sBody reads the type wire without the end check, for a nested read\n", d.Name)
+	m.Printf("-- (SPEC §5: the end check runs once, after the top-level object).\n")
+	m.Printf("function _M.Read%sBody(%s, %s)\n", d.Name, unusedIf(len(d.Items) == 0, "stream"), unusedIf(!itemsTouchValue(d.Items), "value"))
 	if len(d.Items) == 0 {
 		m.Printf("  -- empty body — presence is the payload (SPEC §4.6)\n")
 	}
@@ -141,7 +158,15 @@ func emitReadStruct(m *Module, d *ir.Struct) {
 func emitReadUnion(m *Module, d *ir.Union) {
 	m.Printf("-- Zero%s resets the union to None; unselected arms are unspecified (SPEC §4.8).\n", d.Name)
 	m.Printf("function _M.Zero%s(value)\n  value.Type = 0\nend\n\n", d.Name)
-	m.Printf("function _M.Read%s(%s, value)\n", d.Name, unusedIf(d.Max == 0, "stream"))
+	m.Printf("-- Read%s reads one packet: the union wire (SPEC §4.8), then the end check\n", d.Name)
+	m.Printf("-- (SPEC §5).\n")
+	m.Printf("function _M.Read%s(stream, value)\n", d.Name)
+	m.Printf("  if not _M.Read%sBody(stream, value) then return false end\n", d.Name)
+	m.Printf("  return stream:serializeEnd()\n")
+	m.Printf("end\n\n")
+	m.Printf("-- Read%sBody reads the union wire without the end check, for a nested read\n", d.Name)
+	m.Printf("-- (SPEC §5: the end check runs once, after the top-level object).\n")
+	m.Printf("function _M.Read%sBody(%s, value)\n", d.Name, unusedIf(d.Max == 0, "stream"))
 	if d.Max == 0 {
 		m.Printf("  value.Type = 0 -- zero wire bits — only None exists (SPEC §4.8)\n")
 		m.Printf("  return true\nend\n\n")
@@ -158,7 +183,7 @@ func emitReadUnion(m *Module, d *ir.Union) {
 		}
 		arm := tableKey(ir.GoExportName(v.Name))
 		m.Printf("    value.%s = %s -- fresh declared defaults on every selection\n", arm, constructor(m, v.Type)+"()")
-		m.Printf("    return %s(stream, value.%s)\n", funcName(m, "Read", v.Type), arm)
+		m.Printf("    return %s(stream, value.%s)\n", readBodyName(m, v.Type), arm)
 		m.Printf("  end\n")
 	}
 	m.Printf("  return true -- None\nend\n\n")
@@ -357,7 +382,7 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 			}
 			m.Printf("%s%s = BITS.value\n", ind, name)
 		case *ir.Struct, *ir.Union:
-			m.call(ind, fmt.Sprintf("%s(stream, %s)", funcName(m, "Read", f.Type.Name), name), "")
+			m.call(ind, fmt.Sprintf("%s(stream, %s)", readBodyName(m, f.Type.Name), name), "")
 		}
 	}
 }
