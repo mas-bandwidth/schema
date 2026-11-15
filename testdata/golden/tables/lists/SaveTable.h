@@ -12955,7 +12955,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBody( ids, cursor_hits[elem_i_hits].point );
-                                if ( arm_body_hitsu < 0 ) { return -1; }
+                                if ( arm_body_hitsu < 0 ) { return false; }
                                 arm_payload_hitsu += arm_body_hitsu; // the arm's own table body (§3)
                             }
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
@@ -12969,7 +12969,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -19324,7 +19324,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBodyRetain( ids, cursor_hits[elem_i_hits].point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i_hits ) ), 2, (uint32_t) ( 0 ) ) );
-                                if ( arm_body_hitsu < 0 ) { return -1; }
+                                if ( arm_body_hitsu < 0 ) { return false; }
                                 arm_payload_hitsu += arm_body_hitsu; // the arm's own table body (§3)
                             }
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
@@ -19338,7 +19338,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }

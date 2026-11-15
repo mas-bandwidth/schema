@@ -967,7 +967,7 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 		g.pf("%s}\n", ind)
 	case tkUnion:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
-		g.emitUnionElementMeasure(f, fmt.Sprintf(access, i), into, ind+"    ", sfx+"u")
+		g.emitUnionElementMeasure(f, fmt.Sprintf(access, i), into, ind+"    ", onBad, sfx+"u")
 		g.pf("%s}\n", ind)
 	default:
 		g.emitEnumElementCheckAt(f, access, n, ind, onBad, sfx)
@@ -1303,7 +1303,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("    if ( value.%s.type != %sType::None ) // None elides — the absence of the field is the None\n    {\n", f.Name, un.Name)
 		g.pf("        bytes += %s;\n", g.hdrBytes(id))
-		g.emitUnionPayloadMeasure(f, "value."+f.Name, "bytes", "        ", "")
+		g.emitUnionPayloadMeasure(f, "value."+f.Name, "bytes", "        ", "return -1;", "")
 		g.pf("    }\n")
 		if f.Required {
 			g.pf("    else { bytes += %s + 1; } // | required: None rides as a 1-byte zero arm ref (§2.3)\n", g.hdrBytes(id))
@@ -1349,7 +1349,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 // emitUnionPayloadMeasure adds a SET union's payload to `into`: the arm id
 // reference, the arm's kind byte, its L and its L bytes (docs/SPEC-TABLES.md
 // §3). The caller has already established that the tag is not None.
-func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx string) {
+func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, onBad, sfx string) {
 	un := f.Type.Ref.(*ir.Union)
 	body := "arm_payload" + sfx
 	wasField := g.unionField
@@ -1362,22 +1362,22 @@ func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx str
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
-		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx) })
+		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx) })
 		g.pf("%s        %s += TableLebBytes( arm_ref%s ) + 1 + %s;\n", ind, into, sfx, framed(body))
 		g.pf("%s        break;\n%s    }\n", ind, ind)
 	}
-	g.pf("%s    default: return -1; // invalid tag — the write side refuses it too\n%s}\n", ind, ind)
+	g.pf("%s    default: %s // invalid tag — the write side refuses it too\n%s}\n", ind, onBad, ind)
 }
 
 // emitUnionElementMeasure adds one element of an ARRAY OF UNIONS to `into`
 // (docs/SPEC-TABLES.md §2.6, §3): the single zero byte for None, and the arm
 // header and payload for a set arm. A tag no arm names measures as -1, exactly
 // as the write side refuses it.
-func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, sfx string) {
+func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, onBad, sfx string) {
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%sif ( %s.type == %sType::None ) { %s += 1; } // a None element is the zero reference in its place\n", ind, expr, un.Name, into)
 	g.pf("%selse\n%s{\n", ind, ind)
-	g.inElementStep(f, func() { g.emitUnionPayloadMeasure(f, expr, into, ind+"    ", sfx) })
+	g.inElementStep(f, func() { g.emitUnionPayloadMeasure(f, expr, into, ind+"    ", onBad, sfx) })
 	g.pf("%s}\n", ind)
 }
 

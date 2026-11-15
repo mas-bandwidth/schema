@@ -9631,7 +9631,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_bodya = LeafMeasureBody( ctx, numbering, ids, value.outer.inner.leaf );
-                                if ( arm_bodya < 0 ) { return -1; }
+                                if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
@@ -9645,7 +9645,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
                 w.header( arm_ref, 15 );
@@ -13138,7 +13138,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_bodya = LeafMeasureBodyRetain( ctx, numbering, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
-                                if ( arm_bodya < 0 ) { return -1; }
+                                if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
@@ -13152,7 +13152,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
                 w.header( arm_ref, 15 );
