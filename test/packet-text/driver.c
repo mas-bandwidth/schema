@@ -48,7 +48,9 @@ int main( void )
         long long consumed, written;
         int count;
         serialize_read_stream_init( &r, data, size );
-        if ( !packettext_read_narrow( &r, &value ) ) { puts( "REFUSE" ); continue; }
+        /* Decode the text object itself; the packet-end corpus owns the
+           one-packet end check. */
+        if ( !schema_packettext_read_narrow_body_( &r, &value ) ) { puts( "REFUSE" ); continue; }
         consumed = (long long) serialize_read_bits_processed( &r );
         serialize_write_stream_init( &w, (unsigned char *) encoded, sizeof( encoded ) );
         if ( !packettext_write_narrow( &w, &value ) ) { return 3; }
