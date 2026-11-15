@@ -78,9 +78,9 @@ func TestLobsterTypeWireReadNegativeControls(t *testing.T) {
 		name, anchor, with string
 		red                []string
 	}{
-		{"reserved", "if rv != 0: return stream.fail(serialize_refusal_value_out_of_range) // reserved(", "if false: return stream.fail(serialize_refusal_value_out_of_range) // reserved(", []string{"refuse reserved"}},
-		{"const", "if rv != 171: return stream.fail(", "if false: return stream.fail(", []string{"refuse const"}},
-		{"text", "if rt != serialize_refusal_none: return stream.fail(rt)", "if false: return stream.fail(rt)", []string{"refuse latched", "refuse nul", "refuse nulutf8", "refuse utf8"}},
+		{"reserved", "if rv· != 0: return stream·.fail(serialize_refusal_value_out_of_range) // reserved(", "if false: return stream·.fail(serialize_refusal_value_out_of_range) // reserved(", []string{"refuse reserved"}},
+		{"const", "if rv· != 171: return stream·.fail(", "if false: return stream·.fail(", []string{"refuse const"}},
+		{"text", "if rt· != serialize_refusal_none: return stream·.fail(rt·)", "if false: return stream·.fail(rt·)", []string{"refuse latched", "refuse nul", "refuse nulutf8", "refuse utf8"}},
 		{"align", "if n > 0 and s.unpack_bits(n) != 0:", "if n > 0 and s.unpack_bits(n) != 0 and false:", []string{"refuse padding"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -352,7 +352,8 @@ ck(pa.Config.Retries == 3 and pa.Config.Preferred == example.WeaponMissile)
 ck(again(paData) w: example.WriteProbeArray(w, pa))
 run("probearray", true)
 
-// ---- degenerate: twelve shapes back to back in one stream ----
+// ---- degenerate: twelve shapes back to back in one stream, each through
+// its body read; the one end check follows the last ----
 bad = 0
 let dgData = load("degenerate.bin")
 let dg = start(dgData)
@@ -368,18 +369,18 @@ let trio = example.NewTrio()
 let trioSole = example.NewTrioSole()
 let trioFirst = example.NewTrioFirst()
 let straddle = example.NewTrioStraddle()
-ck(example.ReadVec2(dg, vec2))
-ck(example.ReadSpanF64(dg, spanF64))
-ck(example.ReadSpanU64(dg, spanU64))
-ck(example.ReadSpanI64(dg, spanI64))
-ck(example.ReadSpanOne(dg, spanOne))
-ck(example.ReadSpanChunk(dg, spanChunk))
-ck(example.ReadSpanTail(dg, spanTail))
-ck(example.ReadSpanTwice(dg, spanTwice))
-ck(example.ReadTrio(dg, trio))
-ck(example.ReadTrioSole(dg, trioSole))
-ck(example.ReadTrioFirst(dg, trioFirst))
-ck(example.ReadTrioStraddle(dg, straddle))
+ck(example.read_body_Vec2(dg, vec2))
+ck(example.read_body_SpanF64(dg, spanF64))
+ck(example.read_body_SpanU64(dg, spanU64))
+ck(example.read_body_SpanI64(dg, spanI64))
+ck(example.read_body_SpanOne(dg, spanOne))
+ck(example.read_body_SpanChunk(dg, spanChunk))
+ck(example.read_body_SpanTail(dg, spanTail))
+ck(example.read_body_SpanTwice(dg, spanTwice))
+ck(example.read_body_Trio(dg, trio))
+ck(example.read_body_TrioSole(dg, trioSole))
+ck(example.read_body_TrioFirst(dg, trioFirst))
+ck(example.read_body_TrioStraddle(dg, straddle))
 ck(dg.serialize_end())
 def write_degenerate(w:serialize_write_stream) -> bool:
     example.WriteVec2(w, vec2)

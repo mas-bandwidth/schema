@@ -47,14 +47,18 @@ do
 	local p = 1
 	for i = 0, 6 do
 		POW7[i] = p
-		p *= 128
+		if i < 6 then
+			p *= 128
+		end
 	end
 end
 
 -- leb(b, at, e): a canonical LEB128 value and the position after it, or nil
 -- (and at) when it does not read: past e, a tenth byte past 1, a non-final
--- zero continuation (docs/SPEC-TABLES.md §3). A value past 2^47 - 1 reads as
--- V.HUGE, which no length, count or index can be.
+-- zero continuation (docs/SPEC-TABLES.md §3). A value at or past 2^47 - 1
+-- reads as V.HUGE, the sticky marker no length, count or index can be. The
+-- room left at this group is tested before the multiply, so no product
+-- leaves moo's number range.
 function V.leb(b: buffer, at: number, e: number): (number?, number)
 	local v = 0
 	local mul = 1
@@ -73,13 +77,10 @@ function V.leb(b: buffer, at: number, e: number): (number?, number)
 				if low ~= 0 then
 					huge = true
 				end
+			elseif low > (V.HUGE - 1 - v) // mul then
+				huge = true
 			else
-				local add = low * mul
-				if v + add > V.HUGE - 1 then
-					huge = true
-				else
-					v += add
-				end
+				v += low * mul
 			end
 		end
 		if x < 128 then
@@ -401,7 +402,7 @@ end
 -- signed), or nil when the value is outside its contract — a wrong storage
 -- type, a fraction where an integer goes, a value its kind cannot hold —
 -- which every writer refuses (docs/PORT-MOO.md, THE WIRE).
-function V.toRaw(fd: any, v: any): any
+local function rawKind(fd: any, v: any): any
 	local kw, signed, cls = fd.kw, fd.signed == true, fd.cls
 	if cls == "fx" then
 		if type(v) ~= "number" then
@@ -457,15 +458,37 @@ function V.toRaw(fd: any, v: any): any
 	if C.is(v) then
 		return v
 	end
-	-- the other class of the same width reinterprets (Int64 storage riding an
-	-- unsigned kind, never in generated descriptors, held for completeness)
+	-- the other class of the same width converts only values both kinds hold
 	if kw == 8 and (Int64.is(v) or Uint64.is(v)) then
+		if not fd.timestamp and v[2] >= 0x80000000 then return nil end
 		return if signed then Uint64.toInt64(v) else Int64.toUint64(v)
 	end
 	if kw == 16 and (Int128.is(v) or Uint128.is(v)) then
+		if v[4] >= 0x80000000 then return nil end
 		return if signed then Uint128.toInt128(v) else Int128.toUint128(v)
 	end
 	return nil
+end
+
+function V.toRaw(fd: any, v: any): any
+	local x = rawKind(fd, v)
+	if x == nil then return nil end
+	local kw, signed = fd.kw, fd.signed == true
+	if fd.lo ~= nil and (V.rawCmp(x, fd.lo, kw, signed) < 0 or V.rawCmp(x, fd.hi, kw, signed) > 0) then return nil end
+	if fd.bits ~= nil and fd.bits < kw * 8 and V.rawCmp(x, V.bitsCap(fd.bits, kw), kw, false) > 0 then return nil end
+	return x
+end
+
+function V.floatInRange(fd: any, v: any): boolean
+	local lo, hi
+	if fd.f32 then
+		if type(v) ~= "number" or v ~= math.floor(v) or v < 0 or v > 0xFFFFFFFF or not V.finite32(v) then return false end
+		lo, hi = V.f32to64(v)
+	else
+		if not Uint64.is(v) or not V.finite64(v[1], v[2]) then return false end
+		lo, hi = v[1], v[2]
+	end
+	return fd.flo == nil or (V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) >= 0 and V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) <= 0)
 end
 
 -- writeRaw(b, at, kw, signed, x): a raw value at its kind's width, little-endian

@@ -177,6 +177,9 @@ export function WriteHandle(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 14)) {
     return false;
   }
+  if (!Number.isInteger(value.objectSequence) || value.objectSequence < 0 || value.objectSequence > 255) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.objectSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
@@ -711,12 +714,21 @@ export function ZeroInputPacket(value) {
 }
 
 export function WriteInputPacket(stream, value) {
+  if (!Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.synchronizeSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
+  if (typeof value.currentFrame !== "bigint" || value.currentFrame < 0n || value.currentFrame > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.currentFrame;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.startFrame !== "bigint" || value.startFrame < 0n || value.startFrame > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.startFrame;
@@ -1015,29 +1027,35 @@ export function ZeroExtremeProbe(value) {
 }
 
 export function WriteExtremeProbe(stream, value) {
-  if (value.floorBound > 100n) {
+  if (value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorBound - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.doubledFloor > 100n) {
+  if (value.doubledFloor < -9223372036854775808n || value.doubledFloor > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.doubledFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.ceilingRange < 1n) {
+  if (value.ceilingRange < 1n || value.ceilingRange > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ceilingRange - 1n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
+  if (typeof value.floorDefault !== "bigint" || value.floorDefault < -9223372036854775808n || value.floorDefault > 9223372036854775807n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDefault);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.ceilingDefault !== "bigint" || value.ceilingDefault < 0n || value.ceilingDefault > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.ceilingDefault;
@@ -1106,7 +1124,7 @@ export function ZeroExtremeRow(value) {
 }
 
 export function WriteExtremeRow(stream, value) {
-  if (value.clampedFloor > 100n) {
+  if (value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.clampedFloor - -9223372036854775808n);
@@ -1120,8 +1138,14 @@ export function WriteExtremeRow(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
+  if (typeof value.floorDef !== "bigint" || value.floorDef < -9223372036854775808n || value.floorDef > 9223372036854775807n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDef);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.ceilingDef !== "bigint" || value.ceilingDef < 0n || value.ceilingDef > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.ceilingDef;

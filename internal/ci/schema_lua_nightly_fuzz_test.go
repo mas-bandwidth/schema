@@ -5,8 +5,9 @@ package ci
 // and a corpus list:
 //
 //   - the make targets the lane is run by and the time budget/pin it carries;
-//   - the heavy run stays on the schedule and off the push lane, while the
-//     replay and the planted control ride the pull request;
+//   - the whole lane is nightly and dispatch only (the owner, 2026-11-15: "I want
+//     everything that is not light moved to nightly test now." "no
+//     exceptions."), and the heavy run stays off the fast replay job;
 //   - the corpus list is the Makefile's own tables_generate corpus (no second
 //     corpus), and the harness is a build artifact because this card may not
 //     add files to the port's test tree (PATHS-PROPOSED in its report).
@@ -15,6 +16,7 @@ package ci
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -112,24 +114,30 @@ func TestLuaNightlyFuzzLane(t *testing.T) {
 		}
 	}
 
-	// The workflow: nightly heavy run, fast replay and control on every push
-	// and pull request, and the pinned interpreter built rather than assumed.
+	// The workflow: nightly and dispatch only, the heavy run on the schedule,
+	// the fast replay and control on dispatch, and the pinned interpreter built
+	// rather than assumed.
 	wf := readCI(t, root, ".github/workflows/schema-lua-nightly-fuzz.yml")
 	for _, want := range []string{
-		"cron:", "workflow_dispatch:", "push:", "pull_request:",
+		"cron:", "workflow_dispatch:",
 		"make dist-lua",
 		"make schema-lua-fuzz-replay",
 		"make schema-lua-fuzz-negative-control",
 		"make schema-lua-nightly-fuzz LUA_FUZZ_SECONDS=600",
-		"github.event_name == 'push' || github.event_name == 'pull_request'",
 		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
 	} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("the lua fuzz workflow does not carry %q", want)
 		}
 	}
-	// The heavy run is guarded by the schedule/dispatch condition; the push
-	// lane must not invoke it.
+	for _, p := range luaHeavyLaneTriggerProblems(wf) {
+		t.Errorf("schema-lua-nightly-fuzz.yml: %s", p)
+	}
+	if len(luaHeavyLaneTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  pull_request:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored pull_request trigger was not refused")
+	}
+	// The heavy run is guarded by the schedule/dispatch condition; the fast
+	// job must not invoke it.
 	at := strings.Index(wf, "  nightly:")
 	if at < 0 {
 		t.Fatal("the lua fuzz workflow has no nightly job")
@@ -223,4 +231,36 @@ func TestLuaNightlyFuzzOracleCarriesEveryRuntimeRefusal(t *testing.T) {
 	if !strings.Contains(readCI(t, root, runtime+"load.lua"), "\n"+plant[1]+"\n") {
 		t.Errorf("the negative control plants against %q, which load.lua no longer carries", plant[1])
 	}
+}
+
+// luaHeavyLaneTriggerProblems holds a lua heavy lane's workflow to the
+// nightly-and-dispatch-only rule (the owner, 2026-11-15: "I want everything that
+// is not light moved to nightly test now." "no exceptions."): no push and no
+// pull request trigger, the nightly job runs on schedule and on dispatch, the
+// fast job (replay and planted control) runs on dispatch, and no job runs on
+// a push or a pull request.
+func luaHeavyLaneTriggerProblems(wf string) []string {
+	problems := nightlyOnlyTriggerProblems(wf)
+	schedule := ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"}
+	dispatch := ciEvent{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"}
+	for _, want := range []struct {
+		job string
+		ev  ciEvent
+	}{{"nightly", schedule}, {"nightly", dispatch}, {"fast", dispatch}} {
+		if ok, err := jobRunsInWorkflow(wf, want.job, want.ev); err != nil || !ok {
+			problems = append(problems, fmt.Sprintf("the %s job does not run on %s (ok=%v err=%v)", want.job, want.ev.Name, ok, err))
+		}
+	}
+	for _, ev := range []ciEvent{
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+	} {
+		for _, job := range []string{"fast", "nightly"} {
+			if ok, _ := jobRunsInWorkflow(wf, job, ev); ok {
+				problems = append(problems, fmt.Sprintf("the %s job runs on a %s to %s; the lane is nightly and dispatch only", job, ev.Name, ev.Branch))
+			}
+		}
+	}
+	return problems
 }

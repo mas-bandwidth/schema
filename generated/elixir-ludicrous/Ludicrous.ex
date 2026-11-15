@@ -453,8 +453,17 @@ defmodule Ludicrous.Ludicrous do
   @spec read_fixed_probe(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedProbe.t()} | :error
   def read_fixed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_probe_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -579,6 +588,18 @@ defmodule Ludicrous.Ludicrous do
       raise ArgumentError, "value.locked must hold the locked value 196608"
     end
 
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 255 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
+
     v = value_tail &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -675,8 +696,17 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.UnsignedProbe.t()} | :error
   def read_unsigned_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_unsigned_probe_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -716,6 +746,18 @@ defmodule Ludicrous.Ludicrous do
       bias: value_bias,
       seed: value_seed
     } = value
+
+    if not is_integer(value_entity_id) do
+      raise ArgumentError, "value.entity_id is not an integer"
+    end
+
+    if value_entity_id < 0 do
+      raise ArgumentError, "value.entity_id is below the wire minimum"
+    end
+
+    if value_entity_id > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.entity_id is above the wire maximum"
+    end
 
     v = value_entity_id &&& 0xFFFFFFFF
     scratch = v
@@ -778,6 +820,19 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_bias + 1000
     scratch = scratch ||| v <<< 40
+
+    if not is_integer(value_seed) do
+      raise ArgumentError, "value.seed is not an integer"
+    end
+
+    if value_seed < 0 do
+      raise ArgumentError, "value.seed is below the wire minimum"
+    end
+
+    if value_seed > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.seed is above the wire maximum"
+    end
+
     v = value_seed &&& 0xFFFFFFFF
     sc7 = scratch
     scratch = scratch >>> 48
@@ -909,8 +964,17 @@ defmodule Ludicrous.Ludicrous do
   @spec read_wide_probe(binary(), non_neg_integer()) :: {:ok, Ludicrous.WideProbe.t()} | :error
   def read_wide_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_probe_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1043,6 +1107,18 @@ defmodule Ludicrous.Ludicrous do
       seed: value_wide_seed
     } = value_wide
 
+    if not is_integer(value_wide_entity_id) do
+      raise ArgumentError, "value.wide.entity_id is not an integer"
+    end
+
+    if value_wide_entity_id < 0 do
+      raise ArgumentError, "value.wide.entity_id is below the wire minimum"
+    end
+
+    if value_wide_entity_id > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.wide.entity_id is above the wire maximum"
+    end
+
     v = value_wide_entity_id &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1133,6 +1209,19 @@ defmodule Ludicrous.Ludicrous do
     v = value_wide_bias + 1000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+
+    if not is_integer(value_wide_seed) do
+      raise ArgumentError, "value.wide.seed is not an integer"
+    end
+
+    if value_wide_seed < 0 do
+      raise ArgumentError, "value.wide.seed is below the wire minimum"
+    end
+
+    if value_wide_seed > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.wide.seed is above the wire maximum"
+    end
+
     v = value_wide_seed &&& 0xFFFFFFFF
     sc10 = scratch
     fl10 = scratch_bits >>> 3
@@ -1196,6 +1285,18 @@ defmodule Ludicrous.Ludicrous do
 
     {data, scratch, scratch_bits} =
       if value_has_target do
+        if not is_integer(value.target_id) do
+          raise ArgumentError, "value.target_id is not an integer"
+        end
+
+        if value.target_id < 0 do
+          raise ArgumentError, "value.target_id is below the wire minimum"
+        end
+
+        if value.target_id > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+          raise ArgumentError, "value.target_id is above the wire maximum"
+        end
+
         v = value.target_id &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
@@ -1421,8 +1522,17 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.LudicrousState.t()} | :error
   def read_ludicrous_state(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_ludicrous_state_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1472,6 +1582,18 @@ defmodule Ludicrous.Ludicrous do
 
     if value_locked_wide != -12_345_678_901_234 do
       raise ArgumentError, "value.locked_wide must hold the locked value -12345678901234"
+    end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 255 do
+      raise ArgumentError, "value.tail is above the wire maximum"
     end
 
     v = value_tail &&& 0xFF
@@ -1536,8 +1658,17 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.DegenerateProbe.t()} | :error
   def read_degenerate_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_degenerate_probe_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1691,8 +1822,17 @@ defmodule Ludicrous.Ludicrous do
   @spec read_fixed_vec(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedVec.t()} | :error
   def read_fixed_vec(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_vec_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1838,8 +1978,17 @@ defmodule Ludicrous.Ludicrous do
   @spec read_fixed_quat(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedQuat.t()} | :error
   def read_fixed_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_quat_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2059,6 +2208,18 @@ defmodule Ludicrous.Ludicrous do
   defp wZludicrous_stateZkeys([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZludicrous_stateZkeys([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32

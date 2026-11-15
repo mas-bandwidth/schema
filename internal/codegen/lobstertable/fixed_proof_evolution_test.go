@@ -20,10 +20,61 @@ import (
 // The shared evolution suite supplies real C++ files, prior locked layouts,
 // retired entries and corrupted controls. The adapter only projects the native
 // result: it does not translate a successful read into a refusal.
+//
+// The shared live-extents row plants non-zero bytes in the counted-array slack
+// and the absent optional's payload and requires a read; the zero rule refuses
+// that file whole (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3;
+// docs/SPEC-TABLES.md §3.4, §13.10; docs/rulings.json
+// fixed-dead-bytes-are-zero). The live-extents subtest below holds the same
+// row to the new rule: the writer's clean file reads its live extents, and
+// the same file with a non-zero dead byte is refused.
 func TestLobsterFixedProofEvolution(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Lobster toolchain and the C++ fixed-form corpus")
-	fixedproof.RunEvolutionSuite(t, filepath.Join("..", "..", ".."), lobsterFixedProofRunner{})
+	repo := filepath.Join("..", "..", "..")
+	fixedproof.RunEvolutionRows(t, repo, lobsterFixedProofRunner{},
+		"fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection",
+		"compiled-plans", "definition-hash", "fixed-closure", "retirement",
+		"retired-runtime", "optional-values", "field-evolution", "writing",
+		"union-guards", "plan-execution", "interoperability")
+
+	t.Run("live-extents", func(t *testing.T) {
+		t.Parallel()
+		u := fixedproof.ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
+		runner := lobsterFixedProofRunner{}
+		file, why := runner.SaveCustom(t, u, "T", "live_extents_base")
+		if why != "" {
+			t.Fatalf("save live_extents_base failed: %s", why)
+		}
+		eOwn, _ := fixedproof.LineageEntryOf(u, "T")
+		lineage := map[string][]fixedproof.LineageEntry{"T": {eOwn}}
+		n, r, f, _, counters := runner.LoadLineage(t, u, "T", lineage, file, -1)
+		if counters != (fixedproof.LoadCounters{}) {
+			t.Errorf("load of T moved counters %s, want u0 k0 c0 w0 d0", counters)
+		}
+		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || (f["r0.opt_present"] != "false" && f["r0.opt_present"] != "0") {
+			t.Errorf("C14/W4: the clean file: n=%d r=%q fields=%v", n, r, f)
+		}
+		body := len(file) - 13
+		file[body+5] = 99
+		file[body+6] = 99
+		file[body+8] = 99
+		if n, r, _, _, _ := runner.LoadLineage(t, u, "T", lineage, file, -1); n != -1 {
+			t.Errorf("C14/W4: a non-zero dead byte read: n=%d r=%q, want a refusal", n, r)
+		}
+		corpus := filepath.Join(repo, "build", "fixedform-corpus")
+		older := fixedproof.LoadRepoUnit(t, repo, "test/tables/VOLD_field_append.schema")
+		newer := fixedproof.LoadRepoUnit(t, repo, "test/tables/VNEW_field_append.schema")
+		rootName := fixedproof.RootOf(t, older)
+		eOld, _ := fixedproof.LineageEntryOf(older, rootName)
+		data, err := os.ReadFile(filepath.Join(corpus, "old_field_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, f, _, _ := runner.LoadLineage(t, newer, rootName, map[string][]fixedproof.LineageEntry{rootName: {eOld}}, data, -1); f["r0.w"] != "77" {
+			t.Errorf("W9: the unwritten field: %v", f)
+		}
+	})
 }
 
 var _ fixedproof.EvoRunner = lobsterFixedProofRunner{}
@@ -127,7 +178,11 @@ else:
     let decoded:[%[1]s.%[2]s] = []
     for(count) i:
         push(decoded, r[i])
-%[4]s    assert write_file("out.bin", %[1]s.%[2]sFixedSave(decoded))
+%[4]s    let resaved = %[1]s.%[2]sFixedSave(decoded)
+    if resaved == "":
+        print("RESAVE refused")
+    else:
+        assert write_file("out.bin", resaved)
 `, pkg, root, capacity, indentLobsterProof(dump.String(), "    "))
 	out, resaved := lobsterEvolutionRun(t, files, script, map[string][]byte{"in.bin": wire})
 	fields := map[string]string{}
@@ -162,6 +217,12 @@ else:
 				t.Fatalf("invalid native field %q", line)
 			}
 			fields[key] = val
+		}
+		// <T>FixedSave is the checked writer: a record a planted break let
+		// the read land off its contract is refused on the way back out, and
+		// the empty re-save matches no file.
+		if line == "RESAVE refused" && resaved == nil {
+			resaved = []byte{}
 		}
 	}
 	if count >= 0 && resaved != nil {
@@ -346,8 +407,8 @@ r[1].Pick.Narrow = 7
 r[1].Pick.Wide = -1
 `, u.Package)
 		if scenario == "writing_slack_unzeroed" {
-			target := "    var body = \"\"\n    for(values) v: body += schema_rt.fixed_record(TFixedHash, TFixedPut(schema_rt.zeros(35), 0, v))"
-			repl := "    var body = \"\"\n    var scratch = schema_rt.zeros(35)\n    for(values) v:\n        scratch = TFixedPut(scratch, 0, v)\n        body += schema_rt.fixed_record(TFixedHash, scratch)"
+			target := "    var body· = \"\"\n    for(values·) v·: body· += schema_rt.fixed_record(TFixedHash, TFixedPut(schema_rt.zeros(35), 0, v·))"
+			repl := "    var body· = \"\"\n    var scratch = schema_rt.zeros(35)\n    for(values·) v·:\n        scratch = TFixedPut(scratch, 0, v·)\n        body· += schema_rt.fixed_record(TFixedHash, scratch)"
 			for name, data := range files {
 				if strings.Contains(string(data), target) {
 					files[name] = []byte(strings.ReplaceAll(string(data), target, repl))

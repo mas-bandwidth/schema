@@ -595,6 +595,7 @@ namespace Example
             }
             {
                 float compressedValue = value.Orientation;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -180.0f && compressedValue <= 180.0f, "value.Orientation out of range [-180.0f, 180.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 36000u, 16, 360.0f, -180.0f))
                 {
                     return false;
@@ -1522,6 +1523,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(TextValid(value.Text[..value.TextLength]), "value.Text holds a zero byte or is not well-formed UTF-8"); // the used bytes hold no zero byte and are well-formed UTF-8 (SPEC §5.1 row 8)
             if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
@@ -1548,32 +1550,9 @@ namespace Example
             {
                 return false;
             }
-            for (int utf8Index = 0; utf8Index < value.TextLength;)
+            if (!TextValid(value.Text[..value.TextLength])) // a zero byte or malformed UTF-8 is content the read refuses (SPEC §4.7)
             {
-                int utf8Lead = value.Text[utf8Index++];
-                if (utf8Lead < 0x80) continue;
-                int utf8Remaining, utf8Point;
-                if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-                else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-                else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-                else return false; // malformed UTF-8 lead (SPEC §4.7)
-                if (utf8Remaining > value.TextLength - utf8Index) return false;
-                for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-                {
-                    int utf8Byte = value.Text[utf8Index++];
-                    if ((utf8Byte & 0xC0) != 0x80) return false;
-                    utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-                }
-                if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-                if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-                if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-            }
-            for (int i = 0; i < value.TextLength; i++)
-            {
-                if (value.Text[i] == 0) // an interior null is content the read refuses (SPEC §4.7)
-                {
-                    return false;
-                }
+                return false;
             }
             return true;
         }
@@ -1742,6 +1721,7 @@ namespace Example
             }
             {
                 float compressedValue = value.CompressedFloatValue;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.CompressedFloatValue out of range [0.0f, 10.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
@@ -1799,6 +1779,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(TextValid(value.Text[..value.TextLength]), "value.Text holds a zero byte or is not well-formed UTF-8"); // the used bytes hold no zero byte and are well-formed UTF-8 (SPEC §5.1 row 8)
             if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
@@ -1920,32 +1901,9 @@ namespace Example
             {
                 return false;
             }
-            for (int utf8Index = 0; utf8Index < value.TextLength;)
+            if (!TextValid(value.Text[..value.TextLength])) // a zero byte or malformed UTF-8 is content the read refuses (SPEC §4.7)
             {
-                int utf8Lead = value.Text[utf8Index++];
-                if (utf8Lead < 0x80) continue;
-                int utf8Remaining, utf8Point;
-                if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-                else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-                else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-                else return false; // malformed UTF-8 lead (SPEC §4.7)
-                if (utf8Remaining > value.TextLength - utf8Index) return false;
-                for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-                {
-                    int utf8Byte = value.Text[utf8Index++];
-                    if ((utf8Byte & 0xC0) != 0x80) return false;
-                    utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-                }
-                if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-                if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-                if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-            }
-            for (int i = 0; i < value.TextLength; i++)
-            {
-                if (value.Text[i] == 0) // an interior null is content the read refuses (SPEC §4.7)
-                {
-                    return false;
-                }
+                return false;
             }
             return true;
         }
@@ -1978,6 +1936,7 @@ namespace Example
         {
             {
                 float compressedValue = value.Boundary;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.Boundary out of range [0.0f, 10.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
@@ -1985,6 +1944,7 @@ namespace Example
             }
             {
                 float compressedValue = value.Offset;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -5.0f && compressedValue <= 5.0f, "value.Offset out of range [-5.0f, 5.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 10.0f, -5.0f))
                 {
                     return false;

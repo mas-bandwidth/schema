@@ -121,7 +121,7 @@ public final class TableVocabulary {
     static final byte[] tableAnnouncement = %%ANNOUNCEMENT%%;
 
     // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
-    // the peer's against (docs/SPEC-TABLES.md §3.3).
+    // the endpoint's against (docs/SPEC-TABLES.md §3.3).
     private static final long tableBuildVersion = %%BUILDVERSION%%;
 
     public static int announceMeasure() {
@@ -168,7 +168,7 @@ public final class TableVocabulary {
         public String reason;
         public int unknown;
         public int widened;
-        // The peer's and the unit's own build versions a strict announcement
+        // The endpoint's and the unit's own build versions a strict announcement
         // refusal carries (docs/SPEC-TABLES.md §3.3).
         public long buildVersionRemote;
         public long buildVersionOwn;
@@ -379,7 +379,7 @@ public final class TableVocabulary {
         }
         // "STRICT MODE IS OPT-IN, and the default is unchanged." With 'strict'
         // set, an announcement whose build version is not the unit's own is
-        // refused by name, sets no vocabulary, keeps the peer's build version,
+        // refused by name, sets no vocabulary, keeps the endpoint's build version,
         // moves no counter, is never damage, and is terminal like every
         // refused first announcement (§3.3).
         if (v.strict && v.buildVersion != tableBuildVersion) {
@@ -668,28 +668,17 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
-            // (§3.3): a string element's shape is the max its kind names.
-            if (!knownKind(elem)) {
+            // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (§3.3): no
+            // declaration produces a list of lists, so an element kind of 14
+            // or 16 is refused before the element shape is decoded.
+            if (!knownKind(elem) || elem == 14 || elem == 16) {
                 return false;
             }
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
             e.element = shapeRead(r, elem);
             if (e.element == null) {
                 return false;
-            }
-            if (elem == 14 || elem == 16) {
-                if (!r.has(1)) {
-                    return false;
-                }
-                int inner = r.u8();
-                if (!knownKind(inner)) {
-                    return false;
-                }
-                // The inner element's own shape follows its kind byte, and a
-                // kind 12 there reads its max like any other announced shape.
-                if (inner == 12 && shapeRead(r, inner) == null) {
-                    return false;
-                }
             }
         }
         return !r.err;
@@ -1003,7 +992,85 @@ public final class TableMessage {
         switch (elem.kind) {
             case 13: case 15: case 30: case 17: return -1L;
         }
-        return valueBits(elem);
+        long width = valueBits(elem);
+        if (width > 0L) {
+            // A FLOAT AND A RANGED OR QUANTIZED ELEMENT CARRY A VALUE
+            // CONDITION (§3.3, §4): finiteness, an index at or below its
+            // count, an offset within its kind's range. Walk them through the
+            // same checks a named field takes.
+            if (elem.kind == 10 || elem.kind == 11) { return -1L; }
+            if (elem.packing == 1 || elem.packing == 2) { return -1L; }
+        }
+        return width;
+    }
+
+    static boolean kindSigned(int kind) {
+        return (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
+    }
+
+    // A RANGED OFFSET IS HELD TO ITS KIND'S OWN DOMAIN (§3.3, §4): the offset's
+    // bits can spell a value past the sender's maximum whenever the range is
+    // not one less than a power of two, and no conforming writer emits one.
+    public static boolean skipRanged(Reader r, TableVocabulary.Shape s) {
+        int width = TableVocabulary.kindWidth(s.kind) * 8;
+        long lo, hi;
+        if (width > 64) {
+            lo = r.get(64);
+            hi = r.get(width - 64);
+        } else {
+            lo = r.get(width);
+            hi = 0L;
+        }
+        if (r.err) { return false; }
+        long baseHi = s.kind >= 18 ? s.baseHi : (kindSigned(s.kind) && s.baseLo < 0L ? -1L : 0L);
+        if (!kindHolds(s.kind, lo, hi, s.baseLo, baseHi)) {
+            r.err = true;
+            return false;
+        }
+        return true;
+    }
+
+    // kindHolds holds base + offset, the offset at its announced width and the
+    // base at its own kind's signedness, inside the kind's own 128-bit domain.
+    static boolean kindHolds(int kind, long offLo, long offHi, long baseLo, long baseHi) {
+        int width = TableVocabulary.kindWidth(kind) * 8;
+        if (width == 0) { return true; }
+        boolean signed = kindSigned(kind);
+        long minLo, minHi, maxLo, maxHi;
+        if (signed) {
+            if (width >= 128) {
+                minLo = 0L; minHi = Long.MIN_VALUE;
+                maxLo = -1L; maxHi = Long.MAX_VALUE;
+            } else {
+                long min = -(1L << (width - 1));
+                long max = (1L << (width - 1)) - 1L;
+                minLo = min; minHi = min < 0L ? -1L : 0L;
+                maxLo = max; maxHi = max < 0L ? -1L : 0L;
+            }
+        } else {
+            minLo = 0L; minHi = 0L;
+            maxLo = width >= 128 ? -1L : (width == 64 ? -1L : (1L << width) - 1L);
+            maxHi = width >= 128 ? -1L : 0L;
+        }
+        int baseMin = signed ? compareSigned128(baseLo, baseHi, minLo, minHi)
+                : compareUnsigned128(baseLo, baseHi, minLo, minHi);
+        int baseMax = signed ? compareSigned128(baseLo, baseHi, maxLo, maxHi)
+                : compareUnsigned128(baseLo, baseHi, maxLo, maxHi);
+        if (baseMax > 0) { return false; }
+        if (baseMin >= 0) {
+            long limLo = maxLo - baseLo;
+            long borrow = Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
+            long limHi = maxHi - baseHi - borrow;
+            return compareUnsigned128(offLo, offHi, limLo, limHi) <= 0;
+        }
+        long loLo = minLo - baseLo;
+        long borrowLo = Long.compareUnsigned(minLo, baseLo) < 0 ? 1L : 0L;
+        long loHi = minHi - baseHi - borrowLo;
+        long hiLo = maxLo - baseLo;
+        long borrowHi = Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
+        long hiHi = maxHi - baseHi - borrowHi;
+        return compareUnsigned128(offLo, offHi, loLo, loHi) >= 0
+                && compareUnsigned128(offLo, offHi, hiLo, hiHi) <= 0;
     }
 
     public static boolean skipRun(Reader r, long n, long width) {
@@ -1026,7 +1093,18 @@ public final class TableMessage {
                 return !r.err;
             case 1:
                 return r.skipBits(1L);
-            case 11: case 36:
+            case 10: {
+                // A SKIPPED FLOAT IS HELD TO THE READ'S OWN RULE (§3.3, §4):
+                // a whole value that is not finite refuses the batch, and a
+                // quantized index above its announced count is damage.
+                readFloat32(r, s, 0.0f, 0.0f, false, "<skipped>");
+                return !r.err;
+            }
+            case 11: {
+                readFloat64(r, s, 0.0, 0.0, false, "<skipped>");
+                return !r.err;
+            }
+            case 36:
                 return r.skipBits(64L);
             case 30: {
                 long ref = r.get(r.vocab.refBits);
@@ -1049,7 +1127,10 @@ public final class TableMessage {
                 if (ref < 0L || ref > (long) r.vocab.count) { r.err = true; return false; }
                 TableVocabulary.Entry arm = r.vocab.entries[(int) ref - 1];
                 if (reservedId(arm.id) || arm.kind == 0) { r.err = true; return false; }
-                return skipAt(r, arm.shape, arm.element, depth + 1);
+                // A UNION INSIDE A UNION NESTS; a scalar arm adds no level, and
+                // a structural arm's own payload is the one level it spends
+                // (§4, §3.3).
+                return skipAt(r, arm.shape, arm.element, arm.kind == 15 ? depth + 1 : depth);
             }
             case 12: {
                 long n = r.get(TableVocabulary.bitCount(s.max));
@@ -1066,8 +1147,13 @@ public final class TableMessage {
                 return r.skipBits(n * 8L);
             }
             case 14: case 16: {
+                // AN ARRAY OR KEYED BODY IS ONE LEVEL DEEPER (§4): a body past
+                // the bound refuses even when it carries no element.
+                if (depth + 1 > 128) { r.err = true; return false; }
                 long n = readCount(r, s);
                 if (r.err) { return false; }
+                // A SKIPPED COUNT IS HELD TO ITS ANNOUNCED BOUNDS (§3.3, §4).
+                if (n < s.min || n > s.max) { r.err = true; return false; }
                 if (s.kind == 14 && elem != null && elem.kind == 6 && !r.align()) {
                     return false;
                 }
@@ -1075,49 +1161,53 @@ public final class TableMessage {
                 if (run >= 0L) {
                     return skipRun(r, n, run);
                 }
+                int seenSlotMark = r.seenMark();
                 for (long i = 0; i < n; i++) {
                     long at = r.at;
                     if (s.kind == 16) {
-                        long kref = r.get(r.vocab.refBits);
-                        if (r.err || kref < 0L || kref > (long) r.vocab.count) {
-                            r.err = true;
-                            return false;
-                        }
+                        // A SKIPPED KEY IS A NAMED KEY'S REFERENCE (§3.3, §4):
+                        // it names a declared no-payload entry, and no key is
+                        // carried twice in one array.
+                        TableVocabulary.Entry key = r.nameRef();
+                        if (key == null) { return false; }
+                        if (!r.seenAdd(seenSlotMark, key.id)) { r.err = true; return false; }
                     }
                     if (!skipAt(r, elem, null, depth + 1)) {
                         return false;
                     }
-                    // A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array
-                    // whose inner run is itself zero-width, steps the rest of
-                    // the run in one (docs/SPEC-TABLES.md §3.3). A remaining
-                    // count the bits left could not back is damage, so a
-                    // hostile count is refused here rather than walked, and
-                    // the skip is bounded by the batch's bits whatever the
-                    // count says.
+                    // A WALKED ELEMENT THAT CONSUMES NO BITS REFUSES THE READ
+                    // (§3.3): a fixed-width element is stepped over by its
+                    // width and never walked, so a walked element must make
+                    // progress whatever the announced count says.
                     if (r.at == at) {
-                        if (n - i - 1 > r.totalBits - r.at) {
-                            r.err = true;
-                            return false;
-                        }
-                        return true;
+                        r.err = true;
+                        return false;
                     }
                 }
+                r.seenRollback(seenSlotMark);
                 return true;
             }
         }
         long w = valueBits(s);
         if (w < 0L) { r.err = true; return false; }
+        if (s.packing == 1) { return skipRanged(r, s); }
         return r.skipBits(w);
     }
 
     public static boolean skipBody(Reader r, int depth) {
         if (depth > 128) { r.err = true; return false; }
+        int seenFieldMark = r.seenMark();
         while (true) {
             long ref = r.get(r.vocab.refBits);
             if (r.err) { return false; }
-            if (ref == 0L) { return true; }
+            if (ref == 0L) { r.seenRollback(seenFieldMark); return true; }
             if (ref < 0L || ref > (long) r.vocab.count) { r.err = true; return false; }
             TableVocabulary.Entry e = r.vocab.entries[(int) ref - 1];
+            // A SKIPPED BODY REFUSES A RESERVED ID (§3.3, §4), as a read of
+            // it does, and names no id twice: the ids this body has carried
+            // take their own region, as a read of it would.
+            if (reservedId(e.id)) { r.err = true; return false; }
+            if (!r.seenAdd(seenFieldMark, e.id)) { r.err = true; return false; }
             if (!skipAt(r, e.shape, e.element, depth)) { return false; }
         }
     }

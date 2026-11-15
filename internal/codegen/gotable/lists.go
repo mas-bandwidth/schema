@@ -171,7 +171,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo,kind uint8,at *int64,nod
  case 13:body,ok:=r.Body();if !ok{return bad};if reason:=tableWireExtent(&body,f.Table(),at,nodes);reason!=TableRefuseOk{return reason};if nodes>=0&&body.Offset!=int64(len(body.Buffer)){return bad}
  case 15:return tableWireUnionExtent(r,f,at,nodes)
  case 12:body,ok:=r.Body();if !ok||nodes>=0&&!tableUTF8Valid(body.Buffer){return bad}
- case 17:index,ok:=r.Leb();if !ok||nodes>=0&&index>uint64(nodes)+1{return bad}
+ case 17:index,ok:=r.Leb();if !ok||nodes>=0&&index>uint64(nodes)+1||nodes>=0&&index!=0&&f.Pointer&&int(index)<=len(r.Nodes.NodeTypes)&&r.Nodes.NodeTypes[index-1]!=0&&r.Nodes.NodeTypes[index-1]!=f.TargetId{return bad}
  case 30:ref,ok:=r.Leb();if !ok{return bad};if ref!=0{if _,ok=r.Resolve(ref);!ok{return bad}}
  case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}
  default:if !r.Skip(kind){return bad}}
@@ -265,6 +265,6 @@ func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInf
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
  if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
- for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.Refuse(TableRefuseKindMismatch,"");if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
+ for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if !tableJSONShapeMatches(shape,in.valueShape())&&!(f.Pointer&&in.valueShape()=='z'){in.report.Refuse(TableRefuseKindMismatch,"");if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
 }
 `

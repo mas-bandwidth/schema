@@ -452,6 +452,12 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
+  {
+    const x = Math.fround(value.f004Cf32);
+    if (!Number.isFinite(x) || x < 0.0 || x > 2000.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.f004Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
     return false;
@@ -472,6 +478,9 @@ export function WriteRealPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.f007F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
+    return false;
+  }
+  if (typeof value.f008U64 !== "bigint" || value.f008U64 < 0n || value.f008U64 > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.f008U64;
@@ -567,12 +576,21 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
+  {
+    const x = Math.fround(value.f027Cf32);
+    if (!Number.isFinite(x) || x < -2.0 || x > 2.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.f027Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -2.0, 2.0, 0.25)) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f028Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (typeof value.f029I64 !== "bigint" || value.f029I64 < -9223372036854775808n || value.f029I64 > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f029I64);
@@ -740,6 +758,12 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  {
+    const x = Math.fround(value.f061Cf32);
+    if (!Number.isFinite(x) || x < -90.0 || x > 90.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.f061Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -90.0, 90.0, 0.5)) {
     return false;
@@ -749,6 +773,9 @@ export function WriteRealPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.f062Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
+    return false;
+  }
+  if (typeof value.f063I64 !== "bigint" || value.f063I64 < -9223372036854775808n || value.f063I64 > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f063I64);
@@ -762,6 +789,12 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
+  {
+    const x = Math.fround(value.f065Cf32);
+    if (!Number.isFinite(x) || x < 0.0 || x > 30.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.f065Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 30.0, 0.5)) {
     return false;
@@ -770,9 +803,21 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 2)) {
     return false;
   }
+  {
+    const x = Math.fround(value.f067Cf32);
+    if (!Number.isFinite(x) || x < -100.0 || x > 100.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.f067Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -100.0, 100.0, 0.25)) {
     return false;
+  }
+  {
+    const x = Math.fround(value.f068Cf32);
+    if (!Number.isFinite(x) || x < 0.0 || x > 2000.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
   }
   NUMBER_SCRATCH.value = value.f068Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 1.0)) {
@@ -789,9 +834,21 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
+  {
+    const x = Math.fround(value.f071Cf32);
+    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.f071Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.02)) {
     return false;
+  }
+  {
+    const x = Math.fround(value.f072Cf32);
+    if (!Number.isFinite(x) || x < 0.0 || x > 100.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
   }
   NUMBER_SCRATCH.value = value.f072Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
@@ -809,6 +866,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   if (value.f074Bool) {
+    if (typeof value.f075U64 !== "bigint" || value.f075U64 < 0n || value.f075U64 > 18446744073709551615n) { // a bare integer must fit its width
+      return false;
+    }
     BIGINT_SCRATCH.value = value.f075U64;
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;

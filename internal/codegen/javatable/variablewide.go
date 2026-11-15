@@ -106,14 +106,14 @@ func writeVariableWideArrayRead(b *strings.Builder, f *ir.Field) {
 			pad = fmt.Sprintf("while(v.%s.size()<%d)v.%s.add(%s);", m, f.ArrayBound, m, variableWideDefault(f))
 			clear, place = "", fmt.Sprintf("TableVariable.put(v.%s,(int)i,%%s)", m)
 		}
-		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;long take=count;if(take<0||take>%dL){take=%dL;report.refuse(\"out_of_range\");}%sfor(long i=0;i<take;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);%s;}%s}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", variableCompatibleKinds(kind, "ek"), kind, f.ArrayBound, f.ArrayBound, clear, lo, hi, fmt.Sprintf(place, variableRawStorage(f, "raw")), pad)
+		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;long take=count;if(take<0||take>%dL){take=%dL;report.refuse(\"out_of_range\");}%sfor(long i=0;i<take;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);%s;}%s}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", variableCompatibleKinds(kind, "ek"), kind, f.ArrayBound, f.ArrayBound, clear, lo, hi, fmt.Sprintf(place, variableRawStorage(f, "raw")), pad)
 		return
 	}
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.refuse(\"kind_mismatch\");}else if(count<0||count>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else{if(ek!=%d)report.widened++;v.%s.clear();for(long i=0;i<count;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", variableCompatibleKinds(kind, "ek"), kind, m, lo, hi, m, variableRawStorage(f, "raw"))
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else if(count<0||count>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else{if(ek!=%d)report.widened++;v.%s.clear();for(long i=0;i<count;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", variableCompatibleKinds(kind, "ek"), kind, m, lo, hi, m, variableRawStorage(f, "raw"))
 }
 func writeVariableWideJsonRead(b *strings.Builder, f *ir.Field, expr string, array bool) {
 	lo, hi := variableRawBounds(f)
-	fmt.Fprintf(b, "{java.math.BigInteger raw=TableJson.readWide(in,%t,%d,%s,%s);", f.Type.Signed, f.Type.FracBits, lo, hi)
+	fmt.Fprintf(b, "{java.math.BigInteger raw=TableJson.readWide(in,%t,%d,%t,%t,%s,%s);", f.Type.Signed, f.Type.FracBits, f.Type.Kind != ir.TFixed, f.Type.Width > 32, lo, hi)
 	if array {
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "if(%s.size()<%d)%s.add(raw==null?%s:%s);else in.rep.refuse(\"out_of_range\");", expr, f.ArrayBound, expr, variableWideDefault(f), variableRawStorage(f, "raw"))
@@ -126,7 +126,11 @@ func writeVariableWideJsonRead(b *strings.Builder, f *ir.Field, expr string, arr
 	b.WriteString("}\n")
 }
 func variableWideJson(f *ir.Field, expr string) string {
-	return fmt.Sprintf("TableJson.wideText(%s,%d,%t)", variableRawExpr(f, expr), f.Type.FracBits, f.Type.Kind == ir.TFixed)
+	text := fmt.Sprintf("TableJson.wideText(%s,%d,%t)", variableRawExpr(f, expr), f.Type.FracBits, f.Type.Kind == ir.TFixed)
+	if f.Type.Width > 32 {
+		return `"\"" + ` + text + ` + "\""`
+	}
+	return text
 }
 
 const variableWideRuntime = `
@@ -147,6 +151,18 @@ const variableWideRuntime = `
 `
 
 const variableWideJsonRuntime = `
+    // integerToken is the digits-and-optional-minus spelling an integer takes:
+    // no fraction, no exponent, no plus, no leading zero, and not -0 (§16.2).
+    static boolean integerToken(String token){
+        if(token==null||token.isEmpty())return false;
+        int i=0;boolean negative=false;
+        if(token.charAt(0)=='-'){negative=true;i++;}
+        if(i>=token.length())return false;
+        if(token.charAt(i)=='0')return !negative&&i+1==token.length();
+        if(token.charAt(i)<'1'||token.charAt(i)>'9')return false;
+        for(;i<token.length();i++){char d=token.charAt(i);if(d<'0'||d>'9')return false;}
+        return true;
+    }
     static String wideText(java.math.BigInteger raw,int fraction,boolean fixed){
         if(!fixed)return raw.toString();String text=new java.math.BigDecimal(raw).divide(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).stripTrailingZeros().toPlainString();
         return text.indexOf('.')<0?text+".0":text;
@@ -154,9 +170,27 @@ const variableWideJsonRuntime = `
     // Exact raw-scale conversion, with the oracle's bounded decimal band.
     // The decimal point is placed by one scan of the token; only a bounded
     // run of significant digits reaches a big-number conversion (§15, §16.2).
-    static java.math.BigInteger readWide(In in,boolean signed,int fraction,java.math.BigInteger lo,java.math.BigInteger hi){
-        int c=in.peek();if(c!='-'&&(c<'0'||c>'9')){in.skipValue();in.rep.refuse("kind_mismatch");return null;}
-        String token=in.scanNumber(new boolean[1]);if(in.bad||token==null)return null;
+    static java.math.BigInteger readWide(In in,boolean signed,int fraction,boolean integerOnly,boolean stringOk,java.math.BigInteger lo,java.math.BigInteger hi){
+        int c=in.peek();
+        String token;
+        if(stringOk&&c=='"'){
+            token=in.scanString();if(in.bad||token==null)return null;
+            if(integerOnly){
+                if(!integerToken(token)){in.rep.refuse("kind_mismatch");return null;}
+            }else{
+                // The string holds the number and nothing around it: the scan
+                // steps over whitespace and comments, so the first byte must
+                // already be the token's own (§16.2).
+                if(token.isEmpty()||(token.charAt(0)!='-'&&(token.charAt(0)<'0'||token.charAt(0)>'9'))){in.rep.refuse("kind_mismatch");return null;}
+                In probe=new In(token.getBytes(java.nio.charset.StandardCharsets.UTF_8),new TableVariable.Report());
+                String scanned=probe.scanNumber(new boolean[1]);
+                if(probe.bad||scanned==null||probe.p!=probe.t.length){in.rep.refuse("kind_mismatch");return null;}
+                token=scanned;
+            }
+        }else if(c=='-'||(c>='0'&&c<='9')){
+            token=in.scanNumber(new boolean[1]);if(in.bad||token==null)return null;
+            if(integerOnly&&!integerToken(token)){in.rep.refuse("kind_mismatch");return null;}
+        }else{in.skipValue();in.rep.refuse("kind_mismatch");return null;}
         java.math.BigInteger domainHi=java.math.BigInteger.ONE.shiftLeft(signed?127:128).subtract(java.math.BigInteger.ONE);
         java.math.BigInteger domainLo=signed?java.math.BigInteger.ONE.shiftLeft(127).negate():java.math.BigInteger.ZERO;
         int n=token.length(),at=0;boolean negative=false;

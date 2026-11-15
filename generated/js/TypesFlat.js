@@ -14,11 +14,21 @@ export const FlatReadSlack = 8;
 
 // ---- type Vec3: the flat codec ----
 
-// WriteVec3Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold Vec3MaxBytes.
+// WriteVec3Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Vec3MaxBytes.
 export function WriteVec3Flat(view, value) {
+  if (!Number.isFinite(value.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
+  if (!Number.isFinite(value.z)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(16, value.z, true);
   return 24;
 }
@@ -72,12 +82,25 @@ export function ReadVec3FlatBits(view, numBits, value) {
 
 // ---- type Quat: the flat codec ----
 
-// WriteQuatFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold QuatMaxBytes.
+// WriteQuatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold QuatMaxBytes.
 export function WriteQuatFlat(view, value) {
+  if (!Number.isFinite(value.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
+  if (!Number.isFinite(value.z)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(16, value.z, true);
+  if (!Number.isFinite(value.w)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(24, value.w, true);
   return 32;
 }
@@ -145,6 +168,9 @@ export function ReadQuatFlatBits(view, numBits, value) {
 export function WriteHandleFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > 9999) {
+    return -1;
+  }
+  if (!Number.isInteger(value.objectSequence) || value.objectSequence < 0 || value.objectSequence > 255) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.objectId) & 0x3fff) | (((value.objectSequence) & 0xff) << 14));
@@ -476,21 +502,46 @@ export function ReadQuantizedRotationFlatBits(view, numBits, value) {
 
 // ---- type RigidBody: the flat codec ----
 
-// WriteRigidBodyFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold RigidBodyMaxBytes.
+// WriteRigidBodyFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold RigidBodyMaxBytes.
 export function WriteRigidBodyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isFinite(value.position.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.position.x, true);
+  if (!Number.isFinite(value.position.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.position.y, true);
+  if (!Number.isFinite(value.position.z)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(16, value.position.z, true);
+  if (!Number.isFinite(value.orientation.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(24, value.orientation.x, true);
+  if (!Number.isFinite(value.orientation.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(32, value.orientation.y, true);
+  if (!Number.isFinite(value.orientation.z)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(40, value.orientation.z, true);
+  if (!Number.isFinite(value.orientation.w)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(48, value.orientation.w, true);
   lo = ((value.atRest ? 1 : 0));
   wi = 56;
   sb = 1;
   if (!value.atRest) {
+    if (!Number.isFinite(value.linearVelocity.x)) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.linearVelocity.x, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -509,6 +560,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isFinite(value.linearVelocity.y)) { // a bare float must be finite
+      return -1;
     }
     SC.setFloat64(0, value.linearVelocity.y, true);
     v = SC.getUint32(0, true);
@@ -529,6 +583,9 @@ export function WriteRigidBodyFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+    if (!Number.isFinite(value.linearVelocity.z)) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.linearVelocity.z, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -547,6 +604,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isFinite(value.angularVelocity.x)) { // a bare float must be finite
+      return -1;
     }
     SC.setFloat64(0, value.angularVelocity.x, true);
     v = SC.getUint32(0, true);
@@ -567,6 +627,9 @@ export function WriteRigidBodyFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+    if (!Number.isFinite(value.angularVelocity.y)) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.angularVelocity.y, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -585,6 +648,9 @@ export function WriteRigidBodyFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isFinite(value.angularVelocity.z)) { // a bare float must be finite
+      return -1;
     }
     SC.setFloat64(0, value.angularVelocity.z, true);
     v = SC.getUint32(0, true);
@@ -971,75 +1037,45 @@ export function ReadRigidBodyFlatBits(view, numBits, value) {
 
 // ---- type Input: the flat codec ----
 
-// WriteInputFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold InputMaxBytes.
+// WriteInputFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold InputMaxBytes.
 export function WriteInputFlat(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0;
-  let bg = 0n;
+  let v = 0, x = 0, lo = 0;
   x = value.stickX;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
   x = value.stickY;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(4, v, true);
   x = value.throttle;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(8, v, true);
   x = value.yaw;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(12, v, true);
   x = value.pitch;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, v, true);
   lo = ((value.fire ? 1 : 0) | ((value.altFire ? 1 : 0) << 1) | ((value.boost ? 1 : 0) << 2) | ((value.brake ? 1 : 0) << 3) | ((value.aim ? 1 : 0) << 4) | ((value.lockOn ? 1 : 0) << 5) | ((value.zoom ? 1 : 0) << 6) | ((value.ping ? 1 : 0) << 7));
   view.setUint32(20, lo, true);
@@ -1231,8 +1267,13 @@ export function ReadInputFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold InputPacketMaxBytes.
 export function WriteInputPacketFlat(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+  let v = 0, x = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
+    return -1;
+  }
+  if (typeof value.currentFrame !== "bigint" || value.currentFrame < 0n || value.currentFrame > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   lo = (((value.synchronizeSequence) & 0xffff));
   SC.setBigUint64(0, value.currentFrame, true);
   v = SC.getUint32(0, true);
@@ -1241,6 +1282,9 @@ export function WriteInputPacketFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
+  if (typeof value.startFrame !== "bigint" || value.startFrame < 0n || value.startFrame > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.startFrame, true);
   v = SC.getUint32(0, true);
   view.setUint32(8, (lo | (v << 16)) >>> 0, true);
@@ -1257,17 +1301,11 @@ export function WriteInputPacketFlat(view, value) {
   for (let i0 = 0; i0 < value.inputsCount; i0++) {
     const e0 = value.inputs[i0];
     x = e0.stickX;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1277,17 +1315,11 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.stickY;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1297,17 +1329,11 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.throttle;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1317,17 +1343,11 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.yaw;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1337,17 +1357,11 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.pitch;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -2098,7 +2112,7 @@ export function ReadExpressionProbeFlatBits(view, numBits, value) {
 // must hold ExtremeProbeMaxBytes.
 export function WriteExtremeProbeFlat(view, value) {
   let v = 0;
-  if (value.floorBound > 100n) {
+  if (value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return -1;
   }
   SC.setBigUint64(0, value.floorBound - -9223372036854775808n, true);
@@ -2106,7 +2120,7 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
-  if (value.doubledFloor > 100n) {
+  if (value.doubledFloor < -9223372036854775808n || value.doubledFloor > 100n) {
     return -1;
   }
   SC.setBigUint64(0, value.doubledFloor - -9223372036854775808n, true);
@@ -2114,7 +2128,7 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
-  if (value.ceilingRange < 1n) {
+  if (value.ceilingRange < 1n || value.ceilingRange > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.ceilingRange - 1n, true);
@@ -2122,11 +2136,17 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(20, v, true);
+  if (typeof value.floorDefault !== "bigint" || value.floorDefault < -9223372036854775808n || value.floorDefault > 9223372036854775807n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.floorDefault, true);
   v = SC.getUint32(0, true);
   view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(28, v, true);
+  if (typeof value.ceilingDefault !== "bigint" || value.ceilingDefault < 0n || value.ceilingDefault > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.ceilingDefault, true);
   v = SC.getUint32(0, true);
   view.setUint32(32, v, true);
@@ -2267,7 +2287,7 @@ export function ReadExtremeProbeFlatBits(view, numBits, value) {
 // must hold ExtremeRowMaxBytes.
 export function WriteExtremeRowFlat(view, value) {
   let v = 0;
-  if (value.clampedFloor > 100n) {
+  if (value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return -1;
   }
   SC.setBigUint64(0, value.clampedFloor - -9223372036854775808n, true);
@@ -2283,11 +2303,17 @@ export function WriteExtremeRowFlat(view, value) {
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
+  if (typeof value.floorDef !== "bigint" || value.floorDef < -9223372036854775808n || value.floorDef > 9223372036854775807n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.floorDef, true);
   v = SC.getUint32(0, true);
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(20, v, true);
+  if (typeof value.ceilingDef !== "bigint" || value.ceilingDef < 0n || value.ceilingDef > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.ceilingDef, true);
   v = SC.getUint32(0, true);
   view.setUint32(24, v, true);

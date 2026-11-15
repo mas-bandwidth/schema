@@ -698,10 +698,11 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	}
 
 	g.pf("/* Reads %s. */\n", d.Name)
-	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(d.Name), d.Name)
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_read_%s_body_( serialize_read_stream_t * stream, %s * value )\n{\n", snake(d.Name), d.Name)
 	if d.Max == 0 {
 		g.pf("    (void) stream; /* zero wire bits — only None exists */\n")
 		g.pf("    value->type = %s_NONE;\n    return 1;\n}\n\n", screaming(tag))
+		g.emitPublicRead(d.Name)
 		return
 	}
 	g.pf("    {\n        serialize_uint32_t tag_value = 0;\n")
@@ -720,10 +721,31 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		} else {
 			g.pf("            memset( &value->as.%s, 0, sizeof( value->as.%s ) );\n", v.Name, v.Name)
 		}
-		g.pf("            return read_%s( stream, &value->as.%s );\n", snake(v.Type), v.Name)
+		g.pf("            return schema_read_%s_body_( stream, &value->as.%s );\n", snake(v.Type), v.Name)
 	}
 	g.pf("        default:\n            return 1; /* None */\n")
 	g.pf("    }\n}\n\n")
+	g.emitPublicRead(d.Name)
+}
+
+// emitPublicRead emits the generated public read of a type: the per-type body
+// without an end, then the runtime's one end check (SPEC §5, "Read
+// termination"). Nested types call the body directly, so the check runs once,
+// after the top-level object.
+func (g *gen) emitPublicRead(name string) {
+	g.pf("/* Reads %s as one packet. */\n", name)
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(name), name)
+	g.pf("    if ( !schema_read_%s_body_( stream, value ) )\n    {\n        return 0;\n    }\n", snake(name))
+	g.emitReadEnd()
+	g.pf("}\n\n")
+}
+
+// emitReadEnd emits the runtime's end check, once, after the top-level
+// object: a whole byte left over or non-zero bits in the final byte is a
+// refusal (SPEC §5). It is a separate call so the negative control can remove
+// it in a copy of the emitter.
+func (g *gen) emitReadEnd() {
+	g.pf("    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */\n")
 }
 
 func (g *gen) emitWriteFunc(st *ir.Struct) {
@@ -762,9 +784,10 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 func (g *gen) emitReadFunc(st *ir.Struct) {
 	g.bulkBytes = ir.AlignedFixedByteArrays(st) // see emitWriteFunc
 	g.pf("/* Reads %s. */\n", st.Name)
-	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_%s( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
+	g.pf("static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_read_%s_body_( serialize_read_stream_t * stream, %s * value )\n{\n", snake(st.Name), st.Name)
 	if len(st.Items) == 0 {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1;\n}\n\n")
+		g.emitPublicRead(st.Name)
 		return
 	}
 	// A struct whose wire width is FIXED reads the same bits on every path,
@@ -799,6 +822,7 @@ func (g *gen) emitReadFunc(st *ir.Struct) {
 	}
 	g.emitReadItems(st.Items, "    ")
 	g.pf("    return 1;\n}\n\n")
+	g.emitPublicRead(st.Name)
 }
 
 func (g *gen) emitWriteItems(items []ir.Item, ind string) {

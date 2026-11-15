@@ -53,14 +53,14 @@ func TestSpecPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 	}
 
 	header := ""
-	for _, line := range strings.Split(spec, "\n") {
-		if strings.HasPrefix(line, "| leg | `FixedSave` | `SaveMessages` | packet `Write`") {
+	for line := range strings.SplitSeq(spec, "\n") {
+		if strings.HasPrefix(line, "Each leg's `FixedSave`, `SaveMessages` and packet `Write`") {
 			header = line
 			break
 		}
 	}
 	if header == "" {
-		t.Fatal("docs/SPEC.md §5.1 no longer holds the FixedSave / SaveMessages / packet Write table")
+		t.Fatal("docs/SPEC.md §5.1 no longer holds the FixedSave / SaveMessages / packet Write list")
 	}
 	if strings.Contains(header, "(rows 1–7)") || !strings.Contains(header, "10)") {
 		t.Errorf("SPEC §5.1: the packet Write column header %q does not cover row 10", header)
@@ -89,7 +89,7 @@ func TestSpecPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 	mustState(t, "cases.txt header", casesText,
 		"by the writer's refusal in every build in an every-build leg")
 	got := map[string]string{}
-	for _, line := range strings.Split(cases, "\n") {
+	for line := range strings.SplitSeq(cases, "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

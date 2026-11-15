@@ -1053,7 +1053,9 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
 		w := int64(f.Type.Width)
+		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
 		if w <= 32 {
+			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %s", name, name, name, max.String()), "", ind)
 			if w == 32 {
 				g.chunkAdd(fmt.Sprintf("(%s >>> 0)", name), w, ind)
 			} else {
@@ -1061,6 +1063,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			return
 		}
+		g.guard(fmt.Sprintf("%s < 0n || %s > %sn", name, name, max.String()), "", ind)
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
@@ -1072,6 +1075,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
 		g.chunkFlush(ind)
+		g.guard(fmt.Sprintf("!Number.isFinite(%s)", name), " // a bare float must be finite", ind)
 		if g.wKnown && g.wSb == 0 {
 			// word-aligned at a static offset: the double's two little-endian
 			// words, low first, are exactly one little-endian 8-byte store
@@ -1100,23 +1104,14 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 	}
 }
 
-// emitWriteF32 is serialize.js float32BitsFromNumber inlined: hardware
-// conversion for non-NaN, software payload narrowing for NaN (quiet bit not
-// forced except the all-low-payload case).
+// emitWriteF32 refuses a value whose float32 rounding is not finite, then
+// writes the hardware-converted 32-bit pattern (SPEC §4.3, §5.1).
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sx = %s;\n", ind, name)
-	g.pf("%sif (x === x) {\n", ind)
-	g.pf("%s  SC.setFloat32(0, x, true);\n", ind)
-	g.pf("%s  v = SC.getUint32(0, true);\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  SC.setFloat64(0, x, true);\n", ind)
-	g.pf("%s  bg = SC.getBigUint64(0, true);\n", ind)
-	g.pf("%s  t0 = Number(bg >> 63n) << 31;\n", ind)
-	g.pf("%s  t1 = Number((bg >> 29n) & 0x7fffffn);\n", ind)
-	g.pf("%s  if (t1 === 0) { t1 = 0x400000; }\n", ind)
-	g.pf("%s  v = (t0 | 0x7f800000 | t1) >>> 0;\n", ind)
-	g.pf("%s}\n", ind)
+	g.guard("!Number.isFinite(Math.fround(x))", " // a bare float must be finite", ind)
+	g.pf("%sSC.setFloat32(0, x, true);\n", ind)
+	g.pf("%sv = SC.getUint32(0, true);\n", ind)
 	g.mergeW(32, ind)
 }
 
@@ -1127,16 +1122,18 @@ func f32lit(v float64) string {
 }
 
 // emitWriteCompressedFloat is the runtime's two-rounding float32
-// quantization with the declaration folded: value32 non-finite refused in
-// every build, clamp, quantize.
+// quantization with the declaration folded: value32 non-finite or off
+// [min, max] refused in every build (SPEC §5.1 row 10), then quantize.
 func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
-	deltaF := float32(f.FMax) - minF
+	maxF := float32(f.FMax)
+	deltaF := maxF - minF
 	mivF := float32(maxInt)
 	g.pf("%sx = Math.fround(%s);\n", ind, name)
 	g.guard("!Number.isFinite(x)", "", ind)
+	g.guard(fmt.Sprintf("x < %s || x > %s", f32lit(float64(minF)), f32lit(float64(maxF))), "", ind)
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
@@ -1211,6 +1208,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 			return
 		}
 		// uint128 raw: full 128 bits, 32-bit groups least significant first
+		g.guardBareInt(f, name, ind)
 		g.emitWriteWideOffset(name, 128, ind)
 		return
 	}
@@ -1257,6 +1255,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 		return
 	}
 	// bare integer at storage width
+	g.guardBareInt(f, name, ind)
 	if w == 64 {
 		g.emitWriteWideOffset(name, 64, ind)
 		return
@@ -1279,22 +1278,40 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 	}
 }
 
+// guardBareInt refuses a bare integer its declared width cannot carry, and
+// a value of the wrong JavaScript type (SPEC §5.1): JavaScript storage holds
+// any value, so the type and the width are checked before the mask could
+// wrap it. A width of 32 bits or fewer takes a Number that is an integer; a
+// wider one (int64, uint64, uint128) takes a BigInt only, tested first,
+// because a relational test against a BigInt bound is false for a Number,
+// a string, a boolean, null or an object rather than refusing it.
+func (g *fgen) guardBareInt(f *ir.Field, name, ind string) {
+	lo, hi := bareIntBounds(f)
+	if f.Type.Width > 32 {
+		g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %s || %s > %s", name, name, bigLit(lo), name, bigLit(hi)),
+			" // a bare integer must fit its width", ind)
+		return
+	}
+	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, lo.String(), name, hi.String()),
+		" // a bare integer must fit its width", ind)
+}
+
+// bareIntBounds is the value range of a bare intN or uintN.
+func bareIntBounds(f *ir.Field) (*big.Int, *big.Int) {
+	w := uint(f.Type.Width)
+	if f.Type.Signed {
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+		return new(big.Int).Neg(new(big.Int).Add(hi, big.NewInt(1))), hi
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+}
+
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and
-// full-range unsigned): vacuous guard halves elided per the storage bounds
-// (the C# discipline), offset via asUintN.
+// full-range unsigned): BigInt has no storage bound, so both halves of the
+// declared range test are always live; offset via asUintN.
 func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
-	sMin, sMax := storageBoundsBig(f.Type)
-	guardLo := f.IntMin.Cmp(sMin) > 0
-	guardHi := f.IntMax.Cmp(sMax) < 0
-	switch {
-	case guardLo && guardHi:
-		g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
-	case guardLo:
-		g.guard(fmt.Sprintf("%s < %sn", name, f.IntMin.String()), "", ind)
-	case guardHi:
-		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), "", ind)
-	}
+	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 	off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {
 		off = name
@@ -1341,6 +1358,10 @@ func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
 		" // the length guards the slice; out-of-contract writes are refused", ind)
+	if f.Type.Kind == ir.TString {
+		g.needText = true
+		emitWriteText(g.pf, name, length, ind, "-1")
+	}
 	g.emitWriteRangedNum(length, 0, f.Type.Size, ind)
 	g.emitWriteAlign(ind) // flushes the pending chunk (the length prefix)
 	g.wDynamic(ind)

@@ -807,17 +807,21 @@ namespace Tabledemo
             }
             static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
             {
+                // a wide kind is a STRING of decimal digits (§16.14 W10, W11); a
+                // 32-bit fixed kind stays a bare number
+                bool quoted = TableWideJson(f);
+                if (quoted) { o.Put((byte)'"'); }
                 if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
                 int frac = f.FracBits;
                 UInt128 whole = raw >> frac;
                 Span<char> digits = stackalloc char[40];
                 whole.TryFormat(digits, out int used);
                 for (int i = 0; i < used; i++) { o.Put((byte)digits[i]); }
-                if (f.Kind < 20 || f.Kind > 29) { return; }
+                if (f.Kind < 20 || f.Kind > 29) { if (quoted) { o.Put((byte)'"'); } return; }
                 o.Put((byte)'.');
                 UInt128 mask = ((UInt128)1 << frac) - 1;
                 UInt128 fraction = raw & mask;
-                if (fraction == 0) { o.Put((byte)'0'); return; }
+                if (fraction == 0) { o.Put((byte)'0'); if (quoted) { o.Put((byte)'"'); } return; }
                 while (fraction != 0)
                 {
                     UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
@@ -828,6 +832,7 @@ namespace Tabledemo
                     if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
                     o.Put((byte)('0' + (int)digit)); fraction &= mask;
                 }
+                if (quoted) { o.Put((byte)'"'); }
             }
             static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
             {
@@ -952,6 +957,47 @@ namespace Tabledemo
                 return f.VariantId != null && f.Arms == null;
             }
 
+            // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
+            // integer-shaped kind whose storage is wider than 32 bits is written as a
+            // STRING of decimal digits and reads as a string or a number — int64,
+            // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
+            static bool TableWideJson(TableFieldInfo f)
+            {
+                return f.Kind == 5 || f.Kind == 9 || f.Kind == 18 || f.Kind == 19 ||
+                       f.Kind == 23 || f.Kind == 24 || f.Kind == 28 || f.Kind == 29;
+            }
+
+            // the pure integer kinds, 128-bit included; a fixed-point kind is not one
+            static bool TableIntegerKind(TableFieldInfo f)
+            {
+                return f.Kind >= 2 && f.Kind <= 9 || f.Kind == 18 || f.Kind == 19;
+            }
+
+            // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2):
+            // digits with an optional minus, no leading zero, no fraction, no exponent,
+            // and not -0. The value never passes through a double.
+            static bool TableIntegerToken(ReadOnlySpan<char> text)
+            {
+                int i = 0;
+                bool negative = false;
+                if (i < text.Length && text[i] == '-') { negative = true; i++; }
+                if (i >= text.Length) { return false; }
+                if (text[i] == '0') { return !negative && i + 1 == text.Length; }
+                if (text[i] < '1' || text[i] > '9') { return false; }
+                for (; i < text.Length; i++)
+                {
+                    if (text[i] < '0' || text[i] > '9') { return false; }
+                }
+                return true;
+            }
+
+            // a wide integer declares 'N' and takes a string or a number; every other
+            // shape is exact
+            static bool TableShapeMatches(char want, char got)
+            {
+                return want == got || (want == 'N' && (got == 's' || got == 'n'));
+            }
+
             static char Shape(TableFieldInfo f)
             {
                 if (f.Map) { return 'o'; }
@@ -967,6 +1013,7 @@ namespace Tabledemo
                 if (IsEnum(f)) { return 's'; }
                 if (IsFlags(f)) { return 'a'; }
                 if (f.Kind == 1) { return 'b'; }
+                if (TableWideJson(f)) { return 'N'; }
                 return 'n';
             }
 
@@ -981,6 +1028,7 @@ namespace Tabledemo
                 if (IsEnum(f)) { return 's'; }
                 if (IsFlags(f)) { return 'a'; }
                 if (f.Kind == 1) { return 'b'; }
+                if (TableWideJson(f)) { return 'N'; }
                 return 'n';
             }
 
@@ -1173,9 +1221,13 @@ namespace Tabledemo
             // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
             // anything else into storage, so a byte that is not part of a well-formed
             // sequence was put there by a program: the write REFUSES (invalid_value,
-            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
+            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. A ZERO
+            // BYTE IS NOT TEXT EITHER, and its reader refuses the \u0000 a writer would
+            // otherwise spell: C# is an assert leg, so the write contract is the debug
+            // assert (docs/SPEC.md §5.1 row 8) and a release build carries no check.
             static void WriteString(ref Out o, ReadOnlySpan<byte> s)
             {
+                System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
                 o.Put((byte)'"');
                 for (int i = 0; i < s.Length; i++)
                 {
@@ -1482,8 +1534,14 @@ namespace Tabledemo
                     case 2:
                     case 3:
                     case 4:
-                    case 5:
                         WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
+                        return true;
+                    case 5:
+                        // int64 is wider than 32 bits: a STRING of decimal digits (§16.14 W10)
+                        o.Put((byte)'"'); WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index))); o.Put((byte)'"');
+                        return true;
+                    case 9:
+                        o.Put((byte)'"'); WriteUnsigned(ref o, f.GetRaw(owner, index)); o.Put((byte)'"');
                         return true;
                     default:
                         WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -1497,8 +1555,9 @@ namespace Tabledemo
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
-                    // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
+                    // a zero byte is storage that is not text, caught by the debug
+                    // write assert (§5.1 row 8); WriteString refuses ill-formed UTF-8
+                    // itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -1820,7 +1879,12 @@ namespace Tabledemo
                         ReadOnlySpan<byte> token = actual;
                         Space(token, ref probe);
                         if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
-                        { input.Bad = true; return false; }
+                        {
+                            // a key that is not the key kind's integer spelling is a
+                            // NAMED refusal (docs/SPEC-TABLES.md §16.2), not damage
+                            if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
+                            input.Bad = true; return false;
+                        }
                         if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
                     }
                     if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
@@ -1838,7 +1902,7 @@ namespace Tabledemo
                             // A key names a present optional value even when the
                             // value's shape is wrong; the new entry keeps its default.
                             if (field.Optional) { field.SetPresent(entry, true); }
-                            if (shape != Shape(field))
+                            if (!TableShapeMatches(Shape(field), shape))
                             {
                                 return RefuseText(ref input, "kind_mismatch");
                             }
@@ -2611,7 +2675,7 @@ namespace Tabledemo
                         TableUnionArmInfo arm = f.Arms.Arms[tag];
                         TableFieldInfo payload = arm.Field;
                         char wanted = payload == null ? 'z' : Shape(payload);
-                        if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
+                        if (!TableShapeMatches(wanted, ValueShape(text, ref input)) && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -2716,6 +2780,19 @@ namespace Tabledemo
                     f.SetRaw(owner, index, 0);
                     return true;
                 }
+                if (TableWideJson(f) && Peek(text, ref input) == '"')
+                {
+                    // a wide integer reads as a string OR a number (§16.2); the string
+                    // holds the same digits, judged by the same integer-token rule
+                    if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+                    Span<char> wideToken = stackalloc char[MaxNumber];
+                    if (body.Length <= wideToken.Length)
+                    {
+                        for (int i = 0; i < body.Length; i++) { wideToken[i] = (char)body[i]; }
+                        return ReadNumber(wideToken.Slice(0, body.Length), true, ref input, owner, f, index);
+                    }
+                    return ReadNumber(System.Text.Encoding.ASCII.GetString(body), true, ref input, owner, f, index);
+                }
                 Span<char> scratch = stackalloc char[MaxNumber];
                 int length;
                 bool tokenIntegral;
@@ -2735,6 +2812,10 @@ namespace Tabledemo
             // how many bytes spelled it (§16.2 Numbers).
             static bool ReadNumber(ReadOnlySpan<char> token, bool tokenIntegral, ref In input, object owner, TableFieldInfo f, int index)
             {
+                // THE INTEGER TOKEN RULE: an integer field takes an integer token only
+                // — no fraction, no exponent, not -0 — and its range is tested on the
+                // exact value, never through a double (§16.2).
+                if (TableIntegerKind(f) && !TableIntegerToken(token)) { return RefuseText(ref input, "kind_mismatch"); }
                 if (f.GetWide != null) { return ReadWide(token, ref input, owner, f, index); }
                 if (f.Kind == 10 || f.Kind == 11)
                 {
@@ -3033,7 +3114,7 @@ namespace Tabledemo
                             input.Report.Unknown++;
                             if (!SkipValue(text, ref input, depth + 1)) { return false; }
                         }
-                        else if (ValueShape(text, ref input) != shape)
+                        else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -3072,7 +3153,7 @@ namespace Tabledemo
                         {
                             return RefuseText(ref input, "count_over_bound");
                         }
-                        else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
+                        else if (!TableShapeMatches(shape, ValueShape(text, ref input)) && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -3184,7 +3265,7 @@ namespace Tabledemo
                         }
                         else
                         {
-                            if (got != Shape(f))
+                            if (!TableShapeMatches(Shape(f), got))
                             {
                                 // the wrong JSON type for the kind: skipped, never
                                 // coerced
@@ -3952,7 +4033,8 @@ namespace Tabledemo
                         else if (f.Kind == 15)
                         {
                             object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                            if (tag > (ulong)f.EnumMax) { return false; }
+                            // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
+                            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                             if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
                         }
                         else if (f.Kind == 17)
@@ -5134,8 +5216,9 @@ namespace Tabledemo
                 }
                 for (int i = 0; i < count; i++)
                 {
-                    // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a NaN or an infinity refuses the cook
-                    if ((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))) { return false; }
+                    // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a debug
+                    // assert, as every write check on this leg is (docs/SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
                     long element = at + (long)i * f.NativeElementSize, before = extent;
                     if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
                     if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -5158,7 +5241,7 @@ namespace Tabledemo
                 if (f.Kind == 15)
                 {
                     object union = f.GetChild(value, index); ulong tag = f.Arms.GetTag(union);
-                    if (tag > (ulong)f.EnumMax) { return false; }
+                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                     w.Put(at, tag, f.Arms.NativeTagSize);
                     TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
@@ -5225,7 +5308,7 @@ namespace Tabledemo
                     else if (f.Kind == 15)
                     {
                         object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                        if (tag > (ulong)f.EnumMax) { return false; }
+                        System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                         TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                         if (arm != null && !NativeExtentSize(union, arm, ref at)) { return false; }
                     }
@@ -5329,34 +5412,39 @@ namespace Tabledemo
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
                     int count = Count(child, text);
                     System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-                    return TextValid(text.GetBuffer(child).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
+                    return true;
                 }
                 if (!f.IsArray && f.Kind == 12)
                 {
                     int count = Count(value, f);
                     System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-                    return TextValid(f.GetBuffer(value).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
+                    return true;
                 }
-                if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
-                if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
-                // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
-                // §3.3): collect precedes measure and the first output byte, so Measure
-                // and Save both answer -1.
-                if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }
+                // EVERY WRITE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1, C# is an
+                // assert leg): a required value off its range, a NaN or an infinity
+                // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names.
+                // A Release build carries none of them; correct writes are the
+                // programmer's job.
+                if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
+                if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
+                if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
                 if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
                 if (f.Kind == 15)
                 {
                     object union = f.GetChild(value, i);
                     ulong tag = f.Arms.GetTag(union);
                     if (tag == 0) { return true; }
-                    if (tag > (ulong)f.EnumMax || !Named(f.EnumName(tag))) { return false; }
+                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
                     return ids.Add(f.VariantId(tag)) && CollectPayload(union, f.Arms.Arms[(int)tag].Field, ref ids);
                 }
                 if (f.Kind == 30)
                 {
                     ulong v = f.GetRaw(value, i);
                     if (v == 0) { return true; }
-                    return v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && ids.Add(f.VariantId(v));
+                    System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+                    return ids.Add(f.VariantId(v));
                 }
                 return true;
             }
@@ -5365,14 +5453,15 @@ namespace Tabledemo
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
                 if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
-                if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
+                if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
                 {
                     if (f.KeyId != null)
                     {
                         if (DefaultElement(value, f, i)) { continue; }
-                        if (!Named(f.KeyName((ulong)i + 1)) || !ids.Add(f.KeyId((ulong)i + 1))) { return false; }
+                        System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                        if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
                     }
                     if (!CollectElement(value, f, i, ref ids)) { return false; }
                 }
@@ -6237,7 +6326,7 @@ namespace Tabledemo
                 if (field.TextTotal == 0) { return true; }
                 long spent = extra;
                 TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
-                for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); if (length < 0) { return false; } spent += length; if (spent > field.TextTotal) { return false; } } }
+                for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
                 return spent <= field.TextTotal;
             }
             internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
@@ -6328,6 +6417,15 @@ namespace Tabledemo
             // fixed form refuses any other value, as the variable form does. Copy
             // would land a forged byte as truth.
             public const byte BoolByte = 9;
+            // A DEAD RANGE ALL-ZERO CHECK (docs/rulings.json fixed-dead-bytes-are-zero;
+            // docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): Src is the range start
+            // and Size its length. A non-zero byte inside refuses wire_damaged.
+            public const byte Dead = 10;
+
+            // Meta on a BoolByte entry: the byte is an optional's PRESENT flag, and
+            // Aux is the payload's source byte count behind it. A present byte of 0
+            // makes that whole payload dead (docs/FIXED-FORM-ALGORITHM.md §4.5).
+            public const byte BoolPresent = 1;
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
@@ -6401,6 +6499,171 @@ namespace Tabledemo
             public static uint TagBytes(TableFixedLayoutView b, int i)
             {
                 return EntryAt(b, i).Size - UnionArmBytes(b, i);
+            }
+
+            // View wraps a layout the BUILD laid down (this unit's own, or a locked
+            // lineage entry's) as the view the walk reads. The bytes were checked when
+            // the lock was built; the load path does not re-walk them.
+            public static TableFixedLayoutView View(ReadOnlySpan<byte> bytes)
+            {
+                TableFixedLayoutView v = default;
+                v.Bytes = bytes;
+                v.Count = bytes.Length >= 4 ? (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes) : 0;
+                return v;
+            }
+
+            // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+            // fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4, §13.10;
+            // docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). DeadDead answers
+            // "wire_damaged" when a byte that is not live is not zero, and null
+            // otherwise. The walk follows the WRITER's layout over the record body and
+            // reads the reader's own rows only for the facts a layout entry cannot
+            // carry: whether an array is counted and whether a byte span is bytes.
+            public static string DeadCheck(TableFixedLayoutView theirs, TableFixedLayoutView mine, ReadOnlySpan<TableFixedDst> dst, ReadOnlySpan<byte> body)
+            {
+                if (theirs.Count == 0 || mine.Count == 0 || body.IsEmpty) { return null; }
+                return DeadEntry(theirs, 0, 0, mine, 0, dst, body);
+            }
+
+            private static string DeadZero(ReadOnlySpan<byte> b)
+            {
+                for (int i = 0; i < b.Length; ++i)
+                {
+                    if (b[i] != 0) { return "wire_damaged"; }
+                }
+                return null;
+            }
+
+            private static string DeadEntry(TableFixedLayoutView theirs, int ti, uint at, TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, ReadOnlySpan<byte> src)
+            {
+                if (ti < 0 || ti >= theirs.Count || mi < 0 || mi >= mine.Count) { return null; }
+                TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                TableFixedLayoutEntry me = EntryAt(mine, mi);
+                if ((long)at + te.Size > src.Length || (uint)mi >= (uint)dst.Length) { return null; }
+                TableFixedDst d = dst[mi];
+                if (te.Kind != me.Kind && me.Kind != 35) { return null; } // a widen or a kind that moved: no dead span here
+                if (me.Kind == 35 && te.Kind != 35) { return DeadEntry(theirs, ti, at, mine, mi + 1, dst, src); }
+                switch (me.Kind)
+                {
+                    case 35: // optional: an absent payload is dead whole
+                        {
+                            byte present = src[(int)at];
+                            if (present > 1) { return "wire_damaged"; }
+                            if (present == 0) { return DeadZero(src.Slice((int)at + 1, (int)te.Size - 1)); }
+                            return DeadEntry(theirs, ti + 1, at + 1, mine, mi + 1, dst, src);
+                        }
+                    case 13: // table: every reader field the writer names, in the writer's order
+                        {
+                            int my_child = mi + 1;
+                            for (uint k = 0; k < me.Children; ++k)
+                            {
+                                TableFixedLayoutEntry mc = EntryAt(mine, my_child);
+                                int tc_i = ti + 1;
+                                uint tc_at = at;
+                                for (uint j = 0; j < te.Children; ++j)
+                                {
+                                    TableFixedLayoutEntry tc = EntryAt(theirs, tc_i);
+                                    if (tc.Id == mc.Id)
+                                    {
+                                        string why = DeadEntry(theirs, tc_i, tc_at, mine, my_child, dst, src);
+                                        if (why != null) { return why; }
+                                        break;
+                                    }
+                                    tc_at += tc.Size;
+                                    tc_i += Subtree(theirs, tc_i);
+                                }
+                                my_child += Subtree(mine, my_child);
+                            }
+                            return null;
+                        }
+                    case 14: // array, and bytes(N) as an array of u8
+                        {
+                            if (d.Arg == TextBytes)
+                            {
+                                if (te.Size < 4 || me.Size < 4) { return null; }
+                                int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                                uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                                if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
+                                return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
+                            }
+                            TableFixedLayoutEntry tel = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mel = EntryAt(mine, mi + 1);
+                            uint head = d.Counted != 0 ? 4u : 0u;
+                            if (tel.Size == 0 || mel.Size == 0 || te.Size < head || me.Size < head) { return null; }
+                            uint their_n = (te.Size - head) / tel.Size;
+                            uint my_n = (me.Size - head) / mel.Size;
+                            uint n = Math.Min(their_n, my_n);
+                            if (d.Counted != 0)
+                            {
+                                int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                                if (count < 0 || (uint)count > n) { return null; } // the live count rule refuses this
+                                string why = DeadZero(src.Slice((int)at + 4 + count * (int)tel.Size, (int)te.Size - 4 - count * (int)tel.Size));
+                                if (why != null) { return why; }
+                                n = (uint)count;
+                            }
+                            for (uint i = 0; i < n; ++i)
+                            {
+                                string why = DeadEntry(theirs, ti + 1, at + head + i * tel.Size, mine, mi + 1, dst, src);
+                                if (why != null) { return why; }
+                            }
+                            return null;
+                        }
+                    case 16: // enum-keyed array: every slot is live, but its elements may carry dead bytes
+                        {
+                            TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
+                            int tel = ti + 1 + Subtree(theirs, ti + 1);
+                            int mel = mi + 1 + Subtree(mine, mi + 1);
+                            TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                            for (uint k = 0; k < mkey.Children; ++k)
+                            {
+                                ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
+                                for (uint j = 0; j < tkey.Children; ++j)
+                                {
+                                    if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
+                                    string why = DeadEntry(theirs, tel, at + j * tee.Size, mine, mel, dst, src);
+                                    if (why != null) { return why; }
+                                    break;
+                                }
+                            }
+                            return null;
+                        }
+                    case 12: // string(N): the bytes past the used length are dead
+                        {
+                            if (te.Size < 4 || me.Size < 4) { return null; }
+                            int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                            uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                            if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
+                            return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
+                        }
+                    case 15: // union: tag 0 names no arm, and the span past a narrower arm is dead
+                        {
+                            uint tag_bytes = TagBytes(theirs, ti);
+                            ulong tag = 0;
+                            if (tag_bytes == 1) { tag = src[(int)at]; }
+                            else if (tag_bytes == 2) { tag = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)at)); }
+                            else if (tag_bytes == 4) { tag = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)at)); }
+                            else if (tag_bytes == 8) { tag = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)at)); }
+                            if (tag == 0) { return DeadZero(src.Slice((int)at + (int)tag_bytes, (int)te.Size - (int)tag_bytes)); }
+                            if (tag > te.Children) { return null; } // a forged tag refuses in the live pass
+                            int their_arm = ti + 1;
+                            for (uint j = 0; j + 1 < (uint)tag; ++j) { their_arm += Subtree(theirs, their_arm); }
+                            TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
+                            uint live = tag_bytes + (ta.Kind == 32 ? 0u : ta.Size);
+                            string why = DeadZero(src.Slice((int)at + (int)live, (int)te.Size - (int)live));
+                            if (why != null) { return why; }
+                            int my_arm = mi + 1;
+                            for (uint k = 0; k < me.Children; ++k)
+                            {
+                                TableFixedLayoutEntry ma = EntryAt(mine, my_arm);
+                                if (ma.Id == ta.Id) { return DeadEntry(theirs, their_arm, at + tag_bytes, mine, my_arm, dst, src); }
+                                my_arm += Subtree(mine, my_arm);
+                            }
+                            return null;
+                        }
+                    default:
+                        return null;
+                }
             }
 
             private static bool LeafSize(byte kind, uint size, out bool isLeaf)
@@ -7349,6 +7612,17 @@ namespace Tabledemo
                 return end;
             }
 
+            // DeadZero answers "wire_damaged" when the dead range [start,end) holds a
+            // byte other than zero, and null otherwise. EVERY DEAD BYTE IN A FIXED
+            // RECORD IS ZERO ON WRITE AND REFUSED ON READ WHEN NOT ZERO
+            // (docs/rulings.json fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md
+            // §4.5, §5.3 step 11). The range is never read as a value.
+            public static string DeadZero(ReadOnlySpan<byte> src, uint start, uint end)
+            {
+                for (uint i = start; i < end; ++i) { if (src[(int)i] != 0) { return "wire_damaged"; } }
+                return null;
+            }
+
             // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
             // LOOP. Run is called ONCE PER RECORD, so a new byte[runs * dw] taken
             // inside the FlatWiden case allocated once per widened run per record —
@@ -7436,6 +7710,16 @@ namespace Tabledemo
                             {
                                 ulong raw = src[(int)p.Src];
                                 if (raw > 1) { return "wire_damaged"; }
+                                // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                                // fixed-dead-bytes-are-zero): a present byte of 0 makes
+                                // the whole payload behind it dead, and a non-zero dead
+                                // byte refuses wire_damaged. Aux is the payload's source
+                                // byte count (§4.5).
+                                if (p.Meta == BoolPresent && raw == 0 && p.Aux != 0)
+                                {
+                                    string why = DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                    if (why != null) { return why; }
+                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
                                 break;
                             }
@@ -7494,6 +7778,15 @@ namespace Tabledemo
                             {
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                                // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD
+                                // (docs/rulings.json fixed-dead-bytes-are-zero): Aux is
+                                // one element's source byte count, Size the writer's
+                                // bound in elements (§4.5).
+                                if (p.Aux != 0 && (uint)v < p.Size)
+                                {
+                                    string why = DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                    if (why != null) { return why; }
+                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                                 break;
                             }
@@ -7502,6 +7795,14 @@ namespace Tabledemo
                                 uint cap = p.Size;
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                                // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                                // DEAD (docs/rulings.json fixed-dead-bytes-are-zero):
+                                // a non-zero dead byte refuses wire_damaged (§4.5).
+                                if ((uint)v < p.Size)
+                                {
+                                    string why = DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                    if (why != null) { return why; }
+                                }
                                 ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                                 // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                                 // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -7611,6 +7912,16 @@ namespace Tabledemo
                                 }
                                 break;
                             }
+                        case Dead:
+                            {
+                                // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                                // fixed-dead-bytes-are-zero): an inactive union arm's
+                                // span under tag 0, and the tail past a narrower taken
+                                // arm (§4.5). The range is never read as a value.
+                                string why = DeadZero(src, p.Src, p.Src + p.Size);
+                                if (why != null) { return why; }
+                                break;
+                            }
                         default: break;
                     }
                 }
@@ -7619,9 +7930,10 @@ namespace Tabledemo
 
             // TextIllFormed reports whether a text payload's USED units are the text
             // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-            // with no zero byte for string. bytes(N) carries no text rule at all, and
-            // slack past the used bytes is unspecified and never a refusal
-            // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
+            // with no zero byte for string. bytes(N) carries no text rule at all. The
+            // bytes past the used length are dead: the dead-byte check pass refuses
+            // wire_damaged when one is not zero (docs/SPEC-TABLES.md §3.4). The used
+            // argument is the clamped length.
             public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
             {
                 switch (meta)

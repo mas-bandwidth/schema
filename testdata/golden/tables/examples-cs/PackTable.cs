@@ -142,7 +142,7 @@ namespace Tabledemo
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
-            if (!float.IsFinite(v.Reaction)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Reaction));
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu && !ids.Add(0xb75aa3662201646aul)) return false;
             if (v.Tracking != false && !ids.Add(0xa6bf719a4602b0bcul)) return false;
             if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
@@ -256,9 +256,9 @@ namespace Tabledemo
         {
             TableFieldInfo[] fields = ShipEntryTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
-            if (!float.IsFinite(v.Health)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Health));
             if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u && !ids.Add(0x7f69d4b5288ba9cful)) return false;
-            if (!float.IsFinite(v.Mass)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Mass));
             if (BitConverter.SingleToUInt32Bits(v.Mass) != 0x3f800000u && !ids.Add(0x1f3757a2ce7b0ab1ul)) return false;
             if (!TableWire.CollectField(v, fields[3], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
@@ -1274,6 +1274,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             GunnerSettingsFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -1327,6 +1335,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             GunnerSettingsFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -1335,6 +1350,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -1406,6 +1428,14 @@ namespace Tabledemo
                             GunnerSettingsFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -1468,9 +1498,10 @@ namespace Tabledemo
 
         public static long GunnerSettingsFixedSave(ReadOnlySpan<GunnerSettings> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = GunnerSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (GunnerSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GunnerSettingsFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(GunnerSettingsFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -1603,7 +1634,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -1613,6 +1644,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(GunnerSettingsFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, GunnerSettingsFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -1879,6 +1924,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             ShipEntryFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -1932,6 +1985,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             ShipEntryFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -1940,6 +2000,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -2011,6 +2078,14 @@ namespace Tabledemo
                             ShipEntryFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -2024,7 +2099,7 @@ namespace Tabledemo
             new TableFixedFill(0u, 11u),
         };
 
-        public const int ShipEntryFixedPlanSplit = 9;
+        public const int ShipEntryFixedPlanSplit = 6;
 
         public static readonly byte[] ShipEntryFixedGuardPool = new byte[] {
         };
@@ -2033,12 +2108,12 @@ namespace Tabledemo
             new TableFixedEntry(0u, 0u, 32u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(36u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(40u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(44u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(44u, 4u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(48u, 5u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(64u, 6u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(65u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(69u, 8u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(70u, 9u, 24u, 10u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(64u, 6u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
+            new TableFixedEntry(65u, 7u, 4u, 0u, 64u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(69u, 8u, 1u, 0u, 64u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(70u, 9u, 24u, 10u, 64u, TableFixedWire.Text, 1, 0, 0, 1, 1),
         });
 
         private static readonly byte[] ShipEntryFixedLayout0 = new byte[] {
@@ -2086,9 +2161,10 @@ namespace Tabledemo
 
         public static long ShipEntryFixedSave(ReadOnlySpan<ShipEntry> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ShipEntryFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (ShipEntryFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ShipEntryFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(ShipEntryFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -2221,7 +2297,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -2231,6 +2307,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(ShipEntryFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, ShipEntryFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -2472,6 +2562,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             GlobalSettingsFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -2525,6 +2623,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             GlobalSettingsFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -2533,6 +2638,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -2604,6 +2716,14 @@ namespace Tabledemo
                             GlobalSettingsFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -2672,9 +2792,10 @@ namespace Tabledemo
 
         public static long GlobalSettingsFixedSave(ReadOnlySpan<GlobalSettings> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = GlobalSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (GlobalSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GlobalSettingsFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(GlobalSettingsFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -2807,7 +2928,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -2817,6 +2938,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(GlobalSettingsFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, GlobalSettingsFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -3364,6 +3499,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             PackConfigFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -3417,6 +3560,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             PackConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -3425,6 +3575,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -3496,6 +3653,14 @@ namespace Tabledemo
                             PackConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -3509,7 +3674,7 @@ namespace Tabledemo
             new TableFixedFill(0u, 76u),
         };
 
-        public const int PackConfigFixedPlanSplit = 63;
+        public const int PackConfigFixedPlanSplit = 45;
 
         public static readonly byte[] PackConfigFixedGuardPool = new byte[] {
         };
@@ -3523,61 +3688,61 @@ namespace Tabledemo
             new TableFixedEntry(73u, 6u, 32u, 7u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(109u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(113u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(117u, 10u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(117u, 10u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(121u, 11u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(137u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(138u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(142u, 14u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(143u, 15u, 24u, 16u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(137u, 12u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
             new TableFixedEntry(171u, 17u, 32u, 18u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(207u, 19u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(211u, 20u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(215u, 21u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(215u, 21u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(219u, 22u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(235u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(236u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(240u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(241u, 26u, 24u, 27u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(235u, 23u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
             new TableFixedEntry(269u, 28u, 32u, 29u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(305u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(309u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(313u, 32u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(313u, 32u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(317u, 33u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(333u, 34u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(334u, 35u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(338u, 36u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(339u, 37u, 24u, 38u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(333u, 34u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
             new TableFixedEntry(367u, 39u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(371u, 40u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(375u, 41u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(379u, 42u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(379u, 42u, 3u, 98u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(383u, 43u, 32u, 44u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(419u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(423u, 46u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(427u, 47u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(427u, 47u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(431u, 48u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(447u, 49u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(448u, 50u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(452u, 51u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(453u, 52u, 24u, 53u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(447u, 49u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
             new TableFixedEntry(481u, 54u, 32u, 55u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(517u, 56u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(521u, 57u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(525u, 58u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(525u, 58u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(529u, 59u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(545u, 60u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(546u, 61u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(550u, 62u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(551u, 63u, 24u, 64u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(545u, 60u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
             new TableFixedEntry(579u, 65u, 32u, 66u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(615u, 67u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(619u, 68u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(623u, 69u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(623u, 69u, 4u, 4u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(627u, 70u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(643u, 71u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(644u, 72u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(648u, 73u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
-            new TableFixedEntry(649u, 74u, 24u, 75u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
+            new TableFixedEntry(643u, 71u, 1u, 33u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
+            new TableFixedEntry(138u, 13u, 4u, 0u, 137u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(142u, 14u, 1u, 0u, 137u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(143u, 15u, 24u, 16u, 137u, TableFixedWire.Text, 1, 0, 0, 1, 1),
+            new TableFixedEntry(236u, 24u, 4u, 0u, 235u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(240u, 25u, 1u, 0u, 235u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(241u, 26u, 24u, 27u, 235u, TableFixedWire.Text, 1, 0, 0, 1, 1),
+            new TableFixedEntry(334u, 35u, 4u, 0u, 333u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(338u, 36u, 1u, 0u, 333u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(339u, 37u, 24u, 38u, 333u, TableFixedWire.Text, 1, 0, 0, 1, 1),
+            new TableFixedEntry(448u, 50u, 4u, 0u, 447u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(452u, 51u, 1u, 0u, 447u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(453u, 52u, 24u, 53u, 447u, TableFixedWire.Text, 1, 0, 0, 1, 1),
+            new TableFixedEntry(546u, 61u, 4u, 0u, 545u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(550u, 62u, 1u, 0u, 545u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(551u, 63u, 24u, 64u, 545u, TableFixedWire.Text, 1, 0, 0, 1, 1),
+            new TableFixedEntry(644u, 72u, 4u, 0u, 643u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(648u, 73u, 1u, 0u, 643u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(649u, 74u, 24u, 75u, 643u, TableFixedWire.Text, 1, 0, 0, 1, 1),
         });
 
         private static readonly byte[] PackConfigFixedLayout0 = new byte[] {
@@ -3662,9 +3827,10 @@ namespace Tabledemo
 
         public static long PackConfigFixedSave(ReadOnlySpan<PackConfig> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PackConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (PackConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PackConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(PackConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -3797,7 +3963,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -3807,6 +3973,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(PackConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, PackConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the

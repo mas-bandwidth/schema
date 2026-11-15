@@ -21,8 +21,8 @@ const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
-// interior null (SPEC §4.7). Every string field's read calls it; nothing
-// allocates and nothing latches.
+// interior null (SPEC §4.7). Every string field's read and write calls it;
+// nothing allocates and nothing latches.
 function validText(bytes, length) {
   for (let utf8Index = 0; utf8Index < length;) {
     const utf8Lead = bytes[utf8Index++];
@@ -176,6 +176,9 @@ export function WriteBenchPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
+    return false;
+  }
+  if (typeof value.big !== "bigint" || value.big < 0n || value.big > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.big;
@@ -1339,12 +1342,21 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
+  if (typeof value.sessionId !== "bigint" || value.sessionId < 0n || value.sessionId > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.sessionId;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
+  if (!Number.isInteger(value.clientId) || value.clientId < 0 || value.clientId > 4294967295) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.clientId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
@@ -1394,6 +1406,9 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   for (let i = 0; i < 4; i++) {
+    if (!Number.isInteger(value.loadout[i]) || value.loadout[i] < 0 || value.loadout[i] > 255) { // a bare integer must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.loadout[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
@@ -1404,6 +1419,9 @@ export function WriteBenchMixed(stream, value) {
   }
   NUMBER_SCRATCH.value = value.playerNameLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (!validText(value.playerName, value.playerNameLength)) {
     return false;
   }
   if (!stream.serializeBytes(value.playerName.subarray(0, value.playerNameLength))) {
@@ -1419,13 +1437,31 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
   }
+  {
+    const x = Math.fround(value.aimX);
+    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.aimX;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
+  {
+    const x = Math.fround(value.aimY);
+    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.aimY;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
+  }
+  {
+    const x = Math.fround(value.aimZ);
+    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
   }
   NUMBER_SCRATCH.value = value.aimZ;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
@@ -1437,6 +1473,9 @@ export function WriteBenchMixed(stream, value) {
   }
   NUMBER_SCRATCH.value = value.drift;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
+    return false;
+  }
+  if (typeof value.wideKey !== "bigint" || value.wideKey < 0n || value.wideKey > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.wideKey;

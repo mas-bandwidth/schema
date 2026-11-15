@@ -401,8 +401,7 @@ func (g *gen) rangeArgsBig(f *ir.Field) (string, string) {
 // the guard returns false WITHOUT latching — the family's generated-guard
 // form. Reads stay on the runtime ranged calls.
 
-// maxUint64 is 2^64 - 1, the top of unsigned-64 storage — the bound against
-// which a range guard becomes vacuous.
+// maxUint64 is 2^64 - 1, the top of unsigned-64 storage.
 var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
 
 // intRangePath picks the runtime call family for a ranged integer — the same
@@ -459,21 +458,14 @@ func (g *gen) emitWriteFoldedNum(expr, lo, hi string, min, max *big.Int, checkIn
 	g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, bits), "")
 }
 
-// emitWriteFoldedBig is the BigInt-domain fold: guard (vacuous halves
-// elided per the declared storage bounds, the C# discipline), then the
-// offset via BigInt.asUintN(64, v - min) — BigInt does not wrap, so the
-// two's-complement reduction is explicit where Go relies on defined signed
-// wrap. Where the bit count fits 32, the offset narrows to a Number and
-// rides serializeBits — byte-identical, the runtime's own split.
-func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, guardLo, guardHi bool, comment, ind string) {
-	switch {
-	case guardLo && guardHi:
-		g.pf("%sif (%s < %s || %s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind)
-	case guardLo:
-		g.pf("%sif (%s < %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, comment, ind, ind)
-	case guardHi:
-		g.pf("%sif (%s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, hi, comment, ind, ind)
-	}
+// emitWriteFoldedBig is the BigInt-domain fold: both halves of the declared
+// range test always ride (BigInt has no storage bound to make one vacuous),
+// then the offset via BigInt.asUintN(64, v - min) — BigInt does not wrap, so
+// the two's-complement reduction is explicit where Go relies on defined
+// signed wrap. Where the bit count fits 32, the offset narrows to a Number
+// and rides serializeBits — byte-identical, the runtime's own split.
+func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, comment, ind string) {
+	g.pf("%sif (%s < %s || %s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind)
 	bits := ir.BitsRequired(min, max)
 	if bits == 0 {
 		// degenerate range: ZERO bits — the refusal above is the whole write
@@ -567,6 +559,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.call(ind, fmt.Sprintf("stream.serializeInt128(%s, %s, %s)", scratch, bigLit(f.IntMin), bigLit(f.IntMax)), "")
 			} else {
 				// uint128 is the raw field: 128 bits, low 64-bit half first
+				g.emitBareIntCheck(f, name, ind)
 				g.pf("%s%s.value = %s;\n", ind, scratch, name)
 				g.call(ind, fmt.Sprintf("stream.serializeUint128(%s)", scratch), "")
 			}
@@ -598,17 +591,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					return
 				}
 				lo, hi := g.rangeArgsBig(f)
-				sMin, sMax := storageBoundsBig(f.Type)
-				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax,
-					f.IntMin.Cmp(sMin) > 0, f.IntMax.Cmp(sMax) < 0, "", ind)
+				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax, "", ind)
 			default:
 				// full-range unsigned: raw offset bits (uint64 storage only —
-				// no narrower storage can hold a range past int64); vacuous
-				// guard halves are elided, and BigInt.asUintN supplies the
-				// two's-complement wrap C# ulong storage performs by type
+				// no narrower storage can hold a range past int64), and
+				// BigInt.asUintN supplies the two's-complement wrap C# ulong
+				// storage performs by type
 				lo, hi := g.rangeArgsBig(f)
-				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax,
-					f.IntMin.Sign() != 0, f.IntMax.Cmp(maxUint64) != 0, "", ind)
+				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax, "", ind)
 			}
 			return
 		}
@@ -632,6 +622,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			// the holder copy is the write-through temp: the runtime's wire
 			// quantization cannot write back into the input
+			g.pf("%s{\n", ind)
+			g.pf("%s  const x = Math.fround(%s);\n", ind, name)
+			g.pf("%s  if (!Number.isFinite(x) || x < %s || x > %s) {\n",
+				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
+			g.pf("%s    return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)\n", ind)
+			g.pf("%s  }\n%s}\n", ind, ind)
 			g.pf("%s%s.value = %s;\n", ind, scratch, name)
 			g.call(ind, fmt.Sprintf("stream.serializeCompressedFloat(%s, %s, %s, %s)",
 				scratch, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")
@@ -647,13 +643,17 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a pre-allocated buffer (SPEC §4.7),
 		// Composed from primitives so the N bound and in-place byte storage
-		// stay explicit. The generated reader validates UTF-8. The guard runs
-		// BEFORE the slice, so a stale length never reaches subarray (§6.3).
-		// Interior nulls are writer misuse; the read side rejects them (§4.7).
+		// stay explicit. The guard runs BEFORE the slice, so a stale length
+		// never reaches subarray (§6.3). A string's used bytes are checked by
+		// the same validator its read calls (§5.1 row 8).
 		length := name + "Length"
 		g.emitWriteFoldedNum(length, "0", g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			big.NewInt(0), big.NewInt(f.Type.Size), true,
 			" // the length guards the slice (§6.3); out-of-contract writes are refused", ind)
+		if f.Type.Kind == ir.TString {
+			g.needText = true
+			emitWriteText(g.pf, name, length, ind, "false")
+		}
 		g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, length), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -669,17 +669,6 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
 		}
 	}
-}
-
-// storageBoundsBig is the representable range of a 64-bit integer storage
-// type — the domain against which a BigInt-path guard half is vacuous.
-func storageBoundsBig(t ir.FieldType) (*big.Int, *big.Int) {
-	w := uint(t.Width)
-	if t.Signed {
-		half := new(big.Int).Lsh(big.NewInt(1), w-1)
-		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1))
-	}
-	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
 }
 
 // rawLit renders a raw scaled fixed-point value in the field's value domain.
@@ -718,6 +707,7 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 // exactly as in C++). Signed BigInt values likewise need their unsigned
 // two's-complement bit pattern before calling the runtime bit writer.
 func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
+	g.emitBareIntCheck(f, name, ind)
 	if f.Type.Width == 64 {
 		scratch := g.bigScratch()
 		bits := name
@@ -731,6 +721,22 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	scratch := g.numScratch()
 	g.pf("%s%s.value = %s;\n", ind, scratch, fmtNumCast(f, name))
 	g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, f.Type.Width), "")
+}
+
+// emitBareIntCheck refuses a bare integer its declared width cannot carry,
+// and a value of the wrong JavaScript type (a BigInt only above 32 bits, a
+// Number that is an integer otherwise), before the mask could wrap it
+// (SPEC §5.1): the flat tier's guardBareInt twin.
+func (g *gen) emitBareIntCheck(f *ir.Field, name, ind string) {
+	lo, hi := bareIntBounds(f)
+	if f.Type.Width > 32 {
+		g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) { // a bare integer must fit its width\n",
+			ind, name, name, bigLit(lo), name, bigLit(hi))
+	} else {
+		g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) { // a bare integer must fit its width\n",
+			ind, name, name, lo.String(), name, hi.String())
+	}
+	g.pf("%s  return false;\n%s}\n", ind, ind)
 }
 
 // fmtNumCast renders the value-to-unsigned conversion for a 32-bit-or-less

@@ -277,6 +277,8 @@ public final class Wire {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_HEADER_MAX_BITS;
+        assert value.version >= 0;
+        assert value.version <= 7;
         return true;
     }
 
@@ -424,6 +426,10 @@ public final class Wire {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_BITS_MAX_BITS;
+        assert value.small >= 0;
+        assert value.small <= 511;
+        assert value.boundary >= 0;
+        assert value.boundary <= 8589934591L;
         assert value.sensor >= 0;
         assert value.sensor <= 4294967295L;
         return true;
@@ -603,6 +609,9 @@ public final class Wire {
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_SAMPLE_MAX_BITS;
         // finite: NaN and both infinities fail this
         assert value.orientation - value.orientation == 0.0f;
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.orientation >= -180.0f;
+        assert value.orientation <= 180.0f;
         if (value.active) {
             assert (value.weapon & 0xffL) >= 0;
             assert (value.weapon & 0xffL) <= 15;
@@ -1913,6 +1922,37 @@ public final class Wire {
         assert (long) data.length * 8 >= (long) bitOffset + CHAT_MAX_BITS;
         assert value.textLength >= 0;
         assert value.textLength <= 256;
+        for (int utf8Index = 0; utf8Index < value.textLength; ) {
+            int utf8Lead = value.text[utf8Index++] & 0xFF;
+            if (utf8Lead < 0x80) continue;
+            int utf8Remaining, utf8Point;
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if (utf8Remaining > value.textLength - utf8Index) return false;
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+                int utf8Byte = value.text[utf8Index++] & 0xFF;
+                if ((utf8Byte & 0xC0) != 0x80) return false;
+                utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+            }
+            if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
+            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+        }
+        for (int i0 = 0; i0 < value.textLength; i0++) {
+            if (value.text[i0] == 0) {
+                return false; // an interior null is content the write refuses (SPEC §4.7)
+            }
+        }
         return true;
     }
 
@@ -2254,6 +2294,12 @@ public final class Wire {
         assert value.b <= 100;
         assert value.c >= -100;
         assert value.c <= 150;
+        assert value.d >= 0;
+        assert value.d <= 255;
+        assert value.e >= 0;
+        assert value.e <= 255;
+        assert value.f >= 0;
+        assert value.f <= 255;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 16;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -2264,6 +2310,9 @@ public final class Wire {
         assert value.floatValue - value.floatValue == 0.0f;
         // finite: NaN and both infinities fail this
         assert value.compressedFloatValue - value.compressedFloatValue == 0.0f;
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.compressedFloatValue >= 0.0f;
+        assert value.compressedFloatValue <= 10.0f;
         // finite: NaN and both infinities fail this
         assert value.doubleValue - value.doubleValue == 0.0;
         assert value.uint8Value >= 0;
@@ -2276,6 +2325,37 @@ public final class Wire {
         assert value.int64Range <= 1000000000000L;
         assert value.textLength >= 0;
         assert value.textLength <= 255;
+        for (int utf8Index = 0; utf8Index < value.textLength; ) {
+            int utf8Lead = value.text[utf8Index++] & 0xFF;
+            if (utf8Lead < 0x80) continue;
+            int utf8Remaining, utf8Point;
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if (utf8Remaining > value.textLength - utf8Index) return false;
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+                int utf8Byte = value.text[utf8Index++] & 0xFF;
+                if ((utf8Byte & 0xC0) != 0x80) return false;
+                utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+            }
+            if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
+            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+        }
+        for (int i0 = 0; i0 < value.textLength; i0++) {
+            if (value.text[i0] == 0) {
+                return false; // an interior null is content the write refuses (SPEC §4.7)
+            }
+        }
         return true;
     }
 
@@ -2649,7 +2729,13 @@ public final class Wire {
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + COMPRESSED_PROBE_MAX_BITS;
         assert value.boundary - value.boundary == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.boundary >= 0.0f;
+        assert value.boundary <= 10.0f;
         assert value.offset - value.offset == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.offset >= -5.0f;
+        assert value.offset <= 5.0f;
         return true;
     }
 

@@ -867,7 +867,10 @@ public final class BenchMixedVariable {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -903,7 +906,10 @@ public final class BenchMixedVariable {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -948,6 +954,8 @@ public final class BenchMixedVariable {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {
@@ -1015,6 +1023,8 @@ public final class BenchMixedVariable {
                         long n = r.leb();
                         if (r.fail) {
                             r.fail = false;
+                            report.damaged = true;
+                        } else if (!TableVariable.arrayElemKindClosed(ek)) {
                             report.damaged = true;
                         } else if (ek != 6) {
                             report.refuse("kind_mismatch");
@@ -2054,7 +2064,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "session_id");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.sessionId));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2070,7 +2082,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "nonce");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.nonce));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2078,7 +2092,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "world_time");
         b.append(": ");
+        b.append('"');
         b.append(Long.toString(v.worldTime));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2086,7 +2102,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "frame_tick");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.frameTick));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2234,8 +2252,7 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "wide_key");
         b.append(": ");
         b.append(
-                TableJson.wideText(
-                        TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), 0, false));
+                "\"" + TableJson.wideText(TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), 0, false) + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2243,7 +2260,8 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "flux");
         b.append(": ");
-        b.append(TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), 0, false));
+        b.append(
+                "\"" + TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), 0, false) + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2455,7 +2473,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffL);
                         if (!in.rejected) {
                             v.sequence = (int) placed;
                         }
@@ -2476,7 +2494,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 65535);
+                        long placed = in.integer(true, false, 0, 65535);
                         if (!in.rejected) {
                             v.ackSequence = (int) placed;
                         }
@@ -2497,7 +2515,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffffL);
                         if (!in.rejected) {
                             v.ackBits = (int) placed;
                         }
@@ -2512,13 +2530,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[3] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffffffL);
                         if (!in.rejected) {
                             v.sessionId = placed;
                         }
@@ -2539,7 +2558,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffffL);
                         if (!in.rejected) {
                             v.clientId = (int) placed;
                         }
@@ -2554,13 +2573,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[5] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffffffL);
                         if (!in.rejected) {
                             v.nonce = placed;
                         }
@@ -2575,13 +2595,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[6] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -1000000000000L, 1000000000000L);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(true, true, -1000000000000L, 1000000000000L);
                         if (!in.rejected) {
                             v.worldTime = placed;
                         }
@@ -2596,13 +2617,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffL);
                         if (!in.rejected) {
                             v.frameTick = placed;
                         }
@@ -2628,6 +2650,8 @@ public final class BenchMixedVariable {
                                         in,
                                         true,
                                         8,
+                                        false,
+                                        false,
                                         new java.math.BigInteger("0"),
                                         new java.math.BigInteger("16776960"));
                         if (raw != null) v.serverTime = raw.intValue();
@@ -2799,7 +2823,7 @@ public final class BenchMixedVariable {
                                 in.skipValue();
                             } else {
                                 if (ec == '-' || (ec >= '0' && ec <= '9')) {
-                                    v.loadout.add((int) in.integer(false, 0L, 0xffL));
+                                    v.loadout.add((int) in.integer(false, false, 0L, 0xffL));
                                 } else {
                                     in.skipValue();
                                     in.rep.refuse("kind_mismatch");
@@ -2855,9 +2879,13 @@ public final class BenchMixedVariable {
                         if (text != null) {
                             try {
                                 byte[] bytes = java.util.Base64.getDecoder().decode(text);
-                                int keep = Math.min(bytes.length, 16);
-                                v.payload = java.util.Arrays.copyOf(bytes, keep);
-                                if (bytes.length > keep) in.rep.refuse("out_of_range");
+                                if (!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)) {
+                                    in.rep.refuse("base64_not_canonical");
+                                } else {
+                                    int keep = Math.min(bytes.length, 16);
+                                    v.payload = java.util.Arrays.copyOf(bytes, keep);
+                                    if (bytes.length > keep) in.rep.refuse("out_of_range");
+                                }
                             } catch (IllegalArgumentException invalid) {
                                 in.rep.refuse("kind_mismatch");
                             }
@@ -2978,8 +3006,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[20] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -2989,6 +3016,8 @@ public final class BenchMixedVariable {
                                         in,
                                         false,
                                         0,
+                                        true,
+                                        true,
                                         new java.math.BigInteger("0"),
                                         new java.math.BigInteger(
                                                 "340282366920938463463374607431768211455"));
@@ -3003,8 +3032,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[21] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -3014,6 +3042,8 @@ public final class BenchMixedVariable {
                                         in,
                                         true,
                                         0,
+                                        true,
+                                        true,
                                         new java.math.BigInteger(
                                                 "-1267650600228229401496703205376"),
                                         new java.math.BigInteger(
@@ -3039,6 +3069,8 @@ public final class BenchMixedVariable {
                                         in,
                                         false,
                                         8,
+                                        false,
+                                        false,
                                         new java.math.BigInteger("0"),
                                         new java.math.BigInteger("64000"));
                         if (raw != null) v.ping = raw.intValue();
@@ -3056,7 +3088,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffL);
                         if (!in.rejected) {
                             v.crcHint = (int) placed;
                         }
@@ -3098,7 +3130,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 255);
+                        long placed = in.integer(true, false, 0, 255);
                         if (!in.rejected) {
                             v.extra = (int) placed;
                         }
@@ -3119,7 +3151,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 15);
+                        long placed = in.integer(true, false, 0, 15);
                         if (!in.rejected) {
                             v.idleTicks = (int) placed;
                         }

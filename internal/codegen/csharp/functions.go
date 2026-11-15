@@ -887,9 +887,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 			min32 := float32(f.FMin)
-			delta := float32(f.FMax) - min32
+			max32 := float32(f.FMax)
+			delta := max32 - min32
 			// a temp so the wire quantization cannot write back into the input
 			g.sf("%s{\n%s    float compressedValue = %s;\n", ind, ind, name)
+			// SPEC §5.1 row 10: the packet writer holds the value to finite and
+			// inside [min, max] before quantizing. Write-side checks are caller
+			// error, so this one is a Debug.Assert like every other.
+			msg := fmt.Sprintf("%s out of range [%s, %s]", name,
+				formatFloat32(float64(min32)), formatFloat32(float64(max32)))
+			g.writeAssert(ind+"    ",
+				fmt.Sprintf("float.IsFinite(compressedValue) && compressedValue >= %s && compressedValue <= %s",
+					formatFloat32(float64(min32)), formatFloat32(float64(max32))), msg, "")
 			g.call(ind+"    ", fmt.Sprintf("%s.SerializeCompressedFloatPrecomputed(ref compressedValue, %du, %d, %s, %s)",
 				g.rv(), steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32))), "")
 			g.sf("%s}\n", ind)
@@ -909,6 +918,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteFoldedRange(length, "0", g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false),
 			big.NewInt(0), big.NewInt(f.Type.Size), false, true, true,
 			" // the length guards the slice (§6.3); an out-of-contract length is caller error", ind)
+		if f.Type.Kind == ir.TString {
+			g.writeAssert(ind, fmt.Sprintf("TextValid(%s)", g.prefix(name, length)),
+				fmt.Sprintf("%s holds a zero byte or is not well-formed UTF-8", name),
+				" // the used bytes hold no zero byte and are well-formed UTF-8 (SPEC §5.1 row 8)")
+		}
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -1175,13 +1189,6 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 		if f.Type.Kind == ir.TString {
 			g.emitReadUTF8(name, length, ind)
-			// the interior-null rule is generated-code validation (SPEC §4.7);
-			// the SerializeBytes bool above already surfaced a truncated
-			// stream as the stream's own latched error, so this verdict only
-			// ever judges bytes that arrived — false, nothing latched
-			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, length, ind)
-			g.sf("%s    if (%s[i] == 0) // an interior null is content the read refuses (SPEC §4.7)\n", ind, name)
-			g.sf("%s    {\n%s        return false;\n%s    }\n%s}\n", ind, ind, ind, ind)
 		}
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

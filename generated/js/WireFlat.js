@@ -13,8 +13,8 @@ const SC = new DataView(new ArrayBuffer(8));
 export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
-// interior null (SPEC §4.7). Every string field's read calls it; nothing
-// allocates and nothing latches.
+// interior null (SPEC §4.7). Every string field's read and write calls it;
+// nothing allocates and nothing latches.
 function validText(bytes, length) {
   for (let utf8Index = 0; utf8Index < length;) {
     const utf8Lead = bytes[utf8Index++];
@@ -63,11 +63,18 @@ function validText(bytes, length) {
 
 // ---- type ProbeHeader: the flat codec ----
 
-// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ProbeHeaderMaxBytes.
+// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
+    return -1;
+  }
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
+  if (typeof value.probeId !== "bigint" || value.probeId < 0n || value.probeId > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.probeId, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 16)) >>> 0, true);
@@ -157,6 +164,12 @@ export function ReadProbeHeaderFlatBits(view, numBits, value) {
 // must hold ProbeBitsMaxBytes.
 export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
+    return -1;
+  }
+  if (value.boundary < 0n || value.boundary > 8589934591n) {
+    return -1;
+  }
   lo = ((value.small & 0x1ff));
   SC.setBigUint64(0, value.boundary, true);
   v = SC.getUint32(0, true);
@@ -164,6 +177,9 @@ export function WriteProbeBitsFlat(view, value) {
   lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
   lo = (lo | (v << 9)) >>> 0;
+  if (value.wide < 0n || value.wide > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.wide, true);
   v = SC.getUint32(0, true);
   view.setUint32(4, (lo | (v << 10)) >>> 0, true);
@@ -172,6 +188,9 @@ export function WriteProbeBitsFlat(view, value) {
   view.setUint32(8, (lo | (v << 10)) >>> 0, true);
   lo = v >>> 22;
   if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
+    return -1;
+  }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return -1;
   }
   v = (((value.sensor) >>> 0)) >>> 0;
@@ -290,11 +309,20 @@ export function WriteProbeSampleFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -180.0 || x > 180.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
   if (v > 36000) { v = 36000; }
   lo = (lo | (v << 1)) >>> 0;
+  if (!Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
+    return -1;
+  }
+  if (typeof value.bigDelta !== "bigint" || value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+    return -1;
+  }
   v = (((value.rawDelta >>> 0) >>> 0)) >>> 0;
   view.setUint32(0, (lo | (v << 17)) >>> 0, true);
   lo = v >>> 15;
@@ -321,6 +349,9 @@ export function WriteProbeSampleFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
     if (value.hasTarget) {
+      if (!Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 65535) { // a bare integer must fit its width
+        return -1;
+      }
       v = (((value.targetId) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
@@ -332,6 +363,9 @@ export function WriteProbeSampleFlat(view, value) {
       }
     }
   } else {
+    if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 4294967295) { // a bare integer must fit its width
+      return -1;
+    }
     v = (((value.idleTicks) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -355,6 +389,9 @@ export function WriteProbeSampleFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.samplesCount; i0++) {
+    if (!Number.isInteger(value.samples[i0]) || value.samples[i0] < 0 || value.samples[i0] > 65535) { // a bare integer must fit its width
+      return -1;
+    }
     v = (((value.samples[i0]) & 0xffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
@@ -584,10 +621,14 @@ export function ReadProbeSampleFlatBits(view, numBits, value) {
 
 // ---- type ProbeRing: the flat codec ----
 
-// WriteProbeRingFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ProbeRingMaxBytes.
+// WriteProbeRingFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ProbeRingMaxBytes.
 export function WriteProbeRingFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
+    return -1;
+  }
   lo = (((value.radius) & 0xffff));
   view.setUint32(0, lo, true);
   return 2;
@@ -632,6 +673,9 @@ export function ReadProbeRingFlatBits(view, numBits, value) {
 export function WriteProbeSlabFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
+    return -1;
+  }
+  if (!Number.isInteger(value.height) || value.height < 0 || value.height > 255) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.width) & 0x7f) | (((value.height) & 0xff) << 7));
@@ -697,6 +741,9 @@ export function WriteProbeShapeFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
+      if (!Number.isInteger(value.ring.radius) || value.ring.radius < 0 || value.ring.radius > 65535) { // a bare integer must fit its width
+        return -1;
+      }
       v = (((value.ring.radius) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
@@ -710,6 +757,9 @@ export function WriteProbeShapeFlat(view, value) {
     }
     case 2: {
       if (!Number.isInteger(value.slab.width) || value.slab.width < 0 || value.slab.width > 100) {
+        return -1;
+      }
+      if (!Number.isInteger(value.slab.height) || value.slab.height < 0 || value.slab.height > 255) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.slab.width) & 0x7f) | (((value.slab.height) & 0xff) << 7)) >>> 0;
@@ -856,6 +906,9 @@ export function ReadProbeShapeFlatBits(view, numBits, value) {
 // must hold ProbeColliderMaxBytes.
 export function WriteProbeColliderFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
+    return -1;
+  }
   if (!Number.isInteger(value.shape.type) || value.shape.type < 0 || value.shape.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -863,6 +916,9 @@ export function WriteProbeColliderFlat(view, value) {
   sb = 10;
   switch (value.shape.type) {
     case 1: {
+      if (!Number.isInteger(value.shape.ring.radius) || value.shape.ring.radius < 0 || value.shape.ring.radius > 65535) { // a bare integer must fit its width
+        return -1;
+      }
       v = (((value.shape.ring.radius) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
@@ -876,6 +932,9 @@ export function WriteProbeColliderFlat(view, value) {
     }
     case 2: {
       if (!Number.isInteger(value.shape.slab.width) || value.shape.slab.width < 0 || value.shape.slab.width > 100) {
+        return -1;
+      }
+      if (!Number.isInteger(value.shape.slab.height) || value.shape.slab.height < 0 || value.shape.slab.height > 255) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.shape.slab.width) & 0x7f) | (((value.shape.slab.height) & 0xff) << 7)) >>> 0;
@@ -904,6 +963,9 @@ export function WriteProbeColliderFlat(view, value) {
   }
   switch (value.backup.type) {
     case 1: {
+      if (!Number.isInteger(value.backup.ring.radius) || value.backup.ring.radius < 0 || value.backup.ring.radius > 65535) { // a bare integer must fit its width
+        return -1;
+      }
       v = (((value.backup.ring.radius) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
@@ -917,6 +979,9 @@ export function WriteProbeColliderFlat(view, value) {
     }
     case 2: {
       if (!Number.isInteger(value.backup.slab.width) || value.backup.slab.width < 0 || value.backup.slab.width > 100) {
+        return -1;
+      }
+      if (!Number.isInteger(value.backup.slab.height) || value.backup.slab.height < 0 || value.backup.slab.height > 255) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.backup.slab.width) & 0x7f) | (((value.backup.slab.height) & 0xff) << 7)) >>> 0;
@@ -959,6 +1024,9 @@ export function WriteProbeColliderFlat(view, value) {
     }
     switch (e0.type) {
       case 1: {
+        if (!Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
+          return -1;
+        }
         v = (((e0.ring.radius) & 0xffff)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
         sb += 16;
@@ -972,6 +1040,9 @@ export function WriteProbeColliderFlat(view, value) {
       }
       case 2: {
         if (!Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
+          return -1;
+        }
+        if (!Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
           return -1;
         }
         v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
@@ -1373,6 +1444,9 @@ export function ReadProbeColliderFlatBits(view, numBits, value) {
 // must hold ProbeConfigMaxBytes.
 export function WriteProbeConfigFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
+    return -1;
+  }
   if (!Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
   }
@@ -1444,6 +1518,9 @@ export function WriteProbeArrayFlat(view, value) {
     if (!Number.isFinite(x)) {
       return -1;
     }
+    if (x < -180.0 || x > 180.0) {
+      return -1;
+    }
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
@@ -1455,6 +1532,12 @@ export function WriteProbeArrayFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (16 - sb);
+    }
+    if (!Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
+      return -1;
+    }
+    if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+      return -1;
     }
     v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
@@ -1498,6 +1581,9 @@ export function WriteProbeArrayFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
       if (e0.hasTarget) {
+        if (!Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
+          return -1;
+        }
         v = (((e0.targetId) & 0xffff)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
         sb += 16;
@@ -1509,6 +1595,9 @@ export function WriteProbeArrayFlat(view, value) {
         }
       }
     } else {
+      if (!Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
+        return -1;
+      }
       v = (((e0.idleTicks) >>> 0)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
@@ -1532,6 +1621,9 @@ export function WriteProbeArrayFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
     for (let i1 = 0; i1 < e0.samplesCount; i1++) {
+      if (!Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
+        return -1;
+      }
       v = (((e0.samples[i1]) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
@@ -1542,6 +1634,9 @@ export function WriteProbeArrayFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (16 - sb);
       }
     }
+  }
+  if (!Number.isInteger(value.config.retries) || value.config.retries < -2147483648 || value.config.retries > 2147483647) { // a bare integer must fit its width
+    return -1;
   }
   if (!Number.isInteger(value.config.preferred) || value.config.preferred < 0 || value.config.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
@@ -1895,6 +1990,9 @@ export function ReadHeartbeatFlatBits() {
 // must hold TestMaxBytes.
 export function WriteTestFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
+    return -1;
+  }
   if (!Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
     return -1;
   }
@@ -2118,6 +2216,9 @@ export function WriteChatFlat(view, value) {
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
+  if (!validText(value.text, value.textLength)) {
+    return -1;
+  }
   lo = (((value.textLength) & 0x1ff));
   sb = 16;
   {
@@ -2251,7 +2352,13 @@ export function ReadChatFlatBits(view, numBits, value) {
 // must hold ProbeReportMaxBytes.
 export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
+    return -1;
+  }
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
+  if (typeof value.header.probeId !== "bigint" || value.header.probeId < 0n || value.header.probeId > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.header.probeId, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 16)) >>> 0, true);
@@ -2265,6 +2372,9 @@ export function WriteProbeReportFlat(view, value) {
   SC.setBigUint64(0, value.flags, true);
   v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << 16)) >>> 0;
+  if (!Number.isInteger(value.echo.testA) || value.echo.testA < 0 || value.echo.testA > 65535) { // a bare integer must fit its width
+    return -1;
+  }
   if (!Number.isInteger(value.echo.testB) || value.echo.testB < 0 || value.echo.testB > 1000) {
     return -1;
   }
@@ -2412,8 +2522,7 @@ export function ReadProbeReportFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold TestDataMaxBytes.
 export function WriteTestDataFlat(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -2423,7 +2532,16 @@ export function WriteTestDataFlat(view, value) {
   if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return -1;
   }
+  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
+    return -1;
+  }
+  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
+    return -1;
+  }
   view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
+  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -2445,17 +2563,11 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   x = value.floatValue;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2466,6 +2578,9 @@ export function WriteTestDataFlat(view, value) {
   }
   x = Math.fround(value.compressedFloatValue);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < 0.0 || x > 10.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
@@ -2479,6 +2594,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
+  }
+  if (!Number.isFinite(value.doubleValue)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.doubleValue, true);
   v = SC.getUint32(0, true);
@@ -2499,6 +2617,18 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
+  if (!Number.isInteger(value.int8Value) || value.int8Value < -128 || value.int8Value > 127) { // a bare integer must fit its width
+    return -1;
+  }
+  if (!Number.isInteger(value.int16Value) || value.int16Value < -32768 || value.int16Value > 32767) { // a bare integer must fit its width
+    return -1;
+  }
+  if (!Number.isInteger(value.uint8Value) || value.uint8Value < 0 || value.uint8Value > 255) { // a bare integer must fit its width
+    return -1;
+  }
+  if (!Number.isInteger(value.uint16Value) || value.uint16Value < 0 || value.uint16Value > 65535) { // a bare integer must fit its width
+    return -1;
+  }
   v = (((value.int8Value & 0xff) & 0xff) | (((value.int16Value & 0xffff) & 0xffff) << 8) | (((value.uint8Value) & 0xff) << 24)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2508,6 +2638,9 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
+  if (!Number.isInteger(value.uint32Value) || value.uint32Value < 0 || value.uint32Value > 4294967295) { // a bare integer must fit its width
+    return -1;
+  }
   v = (((value.uint16Value) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
@@ -2516,6 +2649,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
+  }
+  if (typeof value.uint64Value !== "bigint" || value.uint64Value < 0n || value.uint64Value > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
   }
   v = (((value.uint32Value) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -2544,6 +2680,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (typeof value.int64Full !== "bigint" || value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
+    return -1;
   }
   SC.setBigUint64(0, value.int64Full, true);
   v = SC.getUint32(0, true);
@@ -2594,6 +2733,9 @@ export function WriteTestDataFlat(view, value) {
     sb = 0;
   }
   for (let i0 = 0; i0 < 17; i0++) {
+    if (!Number.isInteger(value.fixedBytes[i0]) || value.fixedBytes[i0] < 0 || value.fixedBytes[i0] > 255) { // a bare integer must fit its width
+      return -1;
+    }
     v = (((value.fixedBytes[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
@@ -2605,6 +2747,9 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!validText(value.text, value.textLength)) {
     return -1;
   }
   v = (((value.textLength) & 0xff)) >>> 0;
@@ -3174,6 +3319,9 @@ export function WriteCompressedProbeFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
@@ -3181,6 +3329,9 @@ export function WriteCompressedProbeFlat(view, value) {
   lo = v;
   x = Math.fround(value.offset);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -5.0 || x > 5.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -5.0) / 10.0);

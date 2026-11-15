@@ -869,21 +869,20 @@ tables-cs-fixed-rows: tables-fixedform-corpus
 # tables-cs-release passes) run in certify.yml's nightly tier.
 CS_FUZZ_SMOKE_N ?= 2000
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C# wire fuzz does not
-# compare the fixed-form dead-byte mutants (array tail, absent optional
-# payload, text tail, inactive arm), which C# refuses and the engine still
-# accepts; every other mutant is compared. re-enable: relax/dead-bytes
-CS_WIRE_FUZZ_RELAX ?= --relax-dead-bytes
-
+# THE FIXED-FORM DEAD-BYTE MUTANTS ARE COMPARED AGAIN (docs/rulings.json
+# fixed-dead-bytes-are-zero): the engine and the C# reader both refuse a
+# non-zero dead byte — an array tail past a counted array's live count, an
+# absent optional's payload, a text tail and an inactive union arm — so the
+# relax that once skipped them is gone and every mutant is compared.
 .PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
 tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N) $(CS_WIRE_FUZZ_RELAX)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-region-fuzz-smoke: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) $(CS_WIRE_FUZZ_RELAX)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
@@ -901,6 +900,20 @@ tables-cs-wire-fuzz-repeated-id:
 tables-cs-wire-fuzz-repeated-id-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
+
+# EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+# fixed-dead-bytes-are-zero): the C# reader holds a dead range to all-zero bytes
+# and never reads it as a live value — a counted array's slots past its count,
+# an absent optional's payload, a text tail and an inactive union arm. These are
+# the emitted artifact's unit checks (no interpreter): the runtime's DeadZero
+# check and the plan's count/present/union dead markers. The control strips the
+# check out of the same artifact and requires the check red.
+.PHONY: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
+tables-cs-wire-fuzz-dead-bytes:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
+tables-cs-wire-fuzz-dead-bytes-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
+test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
@@ -1464,24 +1477,31 @@ conformance-negative-control-cs-write-refusal-message: build-conformance-cs buil
 		'Debug\.Assert\(StorePurchaseFixedWriteAdmits\(v\)\);' write-refusal-message message
 	@echo 'C# write-refusal-message negative control: the message writer without its value write check is detected by cs / write-refusal-message; message stays green'
 
-# C# storage companions are checked by Debug.Assert (SPEC §5.1). This gate
-# routes assertion failures through a listener so both violations are observed.
+# C# write checks are Debug.Assert (SPEC §5.1): the storage companions and the
+# table writers' value checks. This gate routes assertion failures through a
+# listener so every violation is observed.
 STORAGE_DEBUG_CS := build/storage-debug-cs
+STORAGE_DEBUG_CS_VALUES := test/conformance/cs/storage-debug/WriteChecks.schema
 .PHONY: write-refusal-storage-debug-cs write-refusal-storage-debug-cs-negative-control
-write-refusal-storage-debug-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
+write-refusal-storage-debug-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) $(STORAGE_DEBUG_CS_VALUES) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
 	@mkdir -p $(STORAGE_DEBUG_CS)/generated
 	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)/generated $(STORAGE_RELEASE_SCHEMA)
+	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)/generated $(STORAGE_DEBUG_CS_VALUES)
 	$(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
 		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)/generated \
 		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
 		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)/obj/ \
 		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)/bin/
 
-write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
+write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) $(STORAGE_DEBUG_CS_VALUES) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
 	@mkdir -p $(STORAGE_DEBUG_CS)-negative/generated
 	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
+	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_DEBUG_CS_VALUES)
+	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs \
+		$(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs $(STORAGE_DEBUG_CS)-negative/generated/WritechecksRegion.cs
 	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
+	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs
+	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/WritechecksRegion.cs
 	@if $(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
 		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)-negative/generated \
 		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
@@ -1491,10 +1511,12 @@ write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SC
 		echo 'NEGATIVE CONTROL FAILED: removing storage assertions left the debug gate green'; \
 		exit 1; \
 	fi
-	@grep -q 'FAIL storage debug: count' $(STORAGE_DEBUG_CS)-negative/log
-	@grep -q 'FAIL storage debug: length' $(STORAGE_DEBUG_CS)-negative/log
+	@for check in count length finite 'cook finite' 'fixed finite' enum 'union tag' text 'text-list length' 'text-list total' 'required range' 'region count'; do \
+		grep -q "FAIL storage debug: $$check " $(STORAGE_DEBUG_CS)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the $$check assert"; cat $(STORAGE_DEBUG_CS)-negative/log; exit 1; }; \
+	done
 	@cat $(STORAGE_DEBUG_CS)-negative/log
-	@echo 'negative control: removing C# storage assertions turns the debug gate RED'
+	@echo 'negative control: removing the C# write assertions turns the debug gate RED on every one'
 
 # THE PACKET-END GATE (docs/SPEC.md §5 "Read termination"): the generated
 # public read of a type is the one-packet read — it reads the top-level object
@@ -1542,3 +1564,49 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 	@echo 'packet end C# negative control: removing the end check turns the trailing-byte and padding verdicts red'
 
 test-cs: packet-end-cs packet-end-cs-negative-control
+
+# THE PACKET-WRITE COMPRESSED-FLOAT RANGE GATE (docs/SPEC.md §5.1 row 10,
+# docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated packet writer holds a
+# compressed float to finite and inside [min, max] before quantizing, with a
+# debug-only Debug.Assert (a Release build removes it). The shared cases in
+# test/packet-write-cfloat are written in a Debug build whose assertions throw
+# through a TraceListener: every refused case must be refused and every lawful
+# case must read back to its quantized value.
+.PHONY: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control
+PACKET_WRITE_CFLOAT_CS := build/packet-write-cfloat/cs
+
+$(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cs.mk
+	@mkdir -p $(PACKET_WRITE_CFLOAT_CS)
+	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+packet-write-cfloat-cs: $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	$(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
+	@echo 'packet-write-cfloat C#: every refused case refused, every lawful case reads back quantized'
+
+# The control turns the generated finite/range assertion into a constant true
+# through a go build overlay, regenerates the shared schema, and requires the
+# driver to go red on the three finite off-range cases by name.
+PACKET_WRITE_CFLOAT_CS_NEG := build/packet-write-cfloat/cs-negative
+packet-write-cfloat-cs-negative-control: $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	@rm -rf $(PACKET_WRITE_CFLOAT_CS_NEG) && mkdir -p $(PACKET_WRITE_CFLOAT_CS_NEG)/generated
+	go run ./tools/sabotage -name packet-write-cfloat-cs-range -out $(PACKET_WRITE_CFLOAT_CS_NEG)/functions.gotext internal/codegen/csharp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_CFLOAT_CS_NEG)" > $(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json
+	go build -overlay=$(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json -o $(PACKET_WRITE_CFLOAT_CS_NEG)/schema ./cmd/schema
+	./$(PACKET_WRITE_CFLOAT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS_NEG)/generated test/packet-write-cfloat/CFloat.schema
+	$(DOTNET) build test/packet-write-cfloat/cs/packet-write-cfloat.csproj \
+		-p:GeneratedDir="$(CURDIR)/$(PACKET_WRITE_CFLOAT_CS_NEG)/generated" -o $(PACKET_WRITE_CFLOAT_CS_NEG)/checker --nologo
+	@if $(DOTNET) $(PACKET_WRITE_CFLOAT_CS_NEG)/checker/packet-write-cfloat.dll test/packet-write-cfloat > $(PACKET_WRITE_CFLOAT_CS_NEG)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-write-cfloat-cs stayed green with the range assertion removed'; \
+		cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; fi
+	@grep -Fq 'FAILED: above-max refused' $(PACKET_WRITE_CFLOAT_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: above-max was not refused by name'; cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; }
+	@grep -Fq 'FAILED: below-min refused' $(PACKET_WRITE_CFLOAT_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: below-min was not refused by name'; cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; }
+	@grep -Fq 'FAILED: largest-finite-float32 refused' $(PACKET_WRITE_CFLOAT_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: largest-finite-float32 was not refused by name'; cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; }
+	@grep '^FAILED: ' $(PACKET_WRITE_CFLOAT_CS_NEG)/log
+	@echo 'packet-write-cfloat C# negative control: removing the range assertion turns the off-range verdicts red'
+
+test-cs: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control

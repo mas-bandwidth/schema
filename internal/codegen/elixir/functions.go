@@ -919,8 +919,16 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 		fmt.Sprintf("{:ok, %s} | :error", g.valueSpec(name)))
 	g.readHead(snake)
 	g.bpf("    case read_%s_bits(data, num_bits) do\n", snake)
-	g.bpf("      {:ok, value, _bits_read} -> {:ok, value}\n")
-	g.bpf("      :error -> :error\n")
+	g.bpf("      {:ok, value, bits_read} ->\n")
+	g.bpf("        if byte_size(data) == div(bits_read + 7, 8) and\n")
+	g.bpf("             (rem(bits_read, 8) == 0 or\n")
+	g.bpf("                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do\n")
+	g.bpf("          {:ok, value}\n")
+	g.bpf("        else\n")
+	g.bpf("          :error\n")
+	g.bpf("        end\n\n")
+	g.bpf("      :error ->\n")
+	g.bpf("        :error\n")
 	g.bpf("    end\n")
 	g.bpf("  end\n\n")
 }
@@ -1540,7 +1548,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
-		g.emitWriteWideRaw(name, int64(f.Type.Width), ind)
+		// [0, 2^N-1], checked at every N: a BEAM integer has no storage
+		// width to elide against, 32 and 64 included. The mask stays after
+		// the check. A bare signed integer is not this path.
+		w := int64(f.Type.Width)
+		top := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+		g.emitCheckRange(name, g.dsp(name), big.NewInt(0), top, ind)
+		g.emitWriteWideRaw(name, w, ind)
 	case ir.TBool:
 		g.pf("%sv = if %s, do: 1, else: 0\n", ind, name)
 		g.mergeW(1, ind)
@@ -1649,8 +1663,18 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 		g.emitWriteOffset(name, f.IntMin, f.IntMax, ind)
 		return
 	}
-	// bare integer at storage width; signed values mask to the same-width
-	// two's-complement pattern (the family's bare-integer wire)
+	// bare integer at storage width (SPEC §5.1 row 1): a BEAM term has no
+	// storage width, so the writer refuses a non-integer and a value outside
+	// the declared intN/uintN range in every build. Signed values then mask
+	// to the same-width two's-complement pattern (the family's bare-integer
+	// wire).
+	lo, hi := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+	if f.Type.Signed {
+		lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(w-1)))
+		hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w-1)), big.NewInt(1))
+	}
+	g.raiseIf(fmt.Sprintf("not is_integer(%s)", name), fmt.Sprintf("%s is not an integer", g.dsp(name)), ind)
+	g.emitCheckRange(name, g.dsp(name), lo, hi, ind)
 	g.emitWriteWideRaw(name, w, ind)
 }
 
@@ -1663,8 +1687,17 @@ func f32lit(v float64) string {
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization
 // with the declaration folded (SPEC §4.3), through the port's own
 // quantizer — every step float32, overflow clamping, the normative integer
-// clamp.
+// clamp. The value is held to the declaration's range before quantizing
+// (SPEC §5.1 row 10); a non-number falls through to the quantizer's own
+// non_finite_float refusal.
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
+	what := g.dsp(name)
+	minLit := f32lit(float64(float32(f.FMin)))
+	maxLit := f32lit(float64(float32(f.FMax)))
+	g.raiseIf(fmt.Sprintf("is_number(%s) and %s < %s", name, name, minLit),
+		fmt.Sprintf("%s is below the compressed float minimum", what), ind)
+	g.raiseIf(fmt.Sprintf("is_number(%s) and %s > %s", name, name, maxLit),
+		fmt.Sprintf("%s is above the compressed float maximum", what), ind)
 	g.use("cf_quantize/5")
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
@@ -1680,6 +1713,12 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.raiseIf(fmt.Sprintf("byte_size(%s) > %d", name, f.Type.Size),
 		fmt.Sprintf("%s longer than the declared %d-byte bound", g.dsp(name), f.Type.Size), ind)
+	if f.Type.Kind == ir.TString {
+		g.raiseIf(fmt.Sprintf("not String.valid?(%s)", name),
+			fmt.Sprintf("%s is not well-formed UTF-8 (SPEC §4.7)", g.dsp(name)), ind)
+		g.raiseIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", name),
+			fmt.Sprintf("%s holds a zero byte (SPEC §4.7)", g.dsp(name)), ind)
+	}
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 	g.pf("%sv = byte_size(%s)\n", ind, name)
 	g.mergeW(lenBits, ind)

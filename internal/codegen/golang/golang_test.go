@@ -322,7 +322,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"export const ShapeType = Object.freeze({", 1},
 		expectation{"export class Shape {", 1},
 		expectation{"export function WriteShape(stream, value) {", 1},
-		expectation{"export function ReadShape(stream, value) {", 1},
+		expectation{"export function ReadShape(stream, value, nested) {", 1},
 		expectation{"export function ZeroShape(value) {", 1},
 		expectation{"export const ShapeMaxBits = 18;", 1})
 	cFiles, cErr := cgen.Generate(u)
@@ -509,7 +509,7 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 	}
 	src.WriteString("    inner Inner\n}\n")
 	files = generateGo(t, "Straddle", src.String())
-	for _, fn := range []string{"func WriteOuter(", "func ReadOuter("} {
+	for _, fn := range []string{"func WriteOuter(", "func (value *Outer) read("} {
 		body := funcBody(t, files, fn)
 		for _, forbidden := range []string{"value.A", "value.B", "value.C"} {
 			if strings.Contains(body, forbidden) {
@@ -695,7 +695,7 @@ func TestGoFlatFloatsAreFiniteOnly(t *testing.T) {
 			"\tif math.Float32bits(value.A)&0x7f800000 == 0x7f800000 {",
 			"\tif math.Float64bits(value.B)&0x7ff0000000000000 == 0x7ff0000000000000 {",
 		},
-		"func ReadFlat(": {
+		"func (value *Flat) read(": {
 			"\tif v0&0x7f800000 == 0x7f800000 {",
 			"\tif v1&0x7ff0000000000000 == 0x7ff0000000000000 {",
 		},
@@ -711,7 +711,7 @@ func TestGoFlatFloatsAreFiniteOnly(t *testing.T) {
 			t.Errorf("%s refuses non_finite_float %d times, want one per float field\n%s", decl, got, body)
 		}
 	}
-	for _, decl := range []string{"func WriteSingle(", "func ReadSingle("} {
+	for _, decl := range []string{"func WriteSingle(", "func (value *Single) read("} {
 		body := funcBody(t, files, decl)
 		if !strings.Contains(body, "stream.SerializeFloat32(&value.X)") {
 			t.Errorf("%s left the per-field form, so the shape under test did not arise\n%s", decl, body)

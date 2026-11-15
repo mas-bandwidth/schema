@@ -51,7 +51,7 @@ func dartJsonBase64Vectors(t *testing.T) []dartJsonBase64Case {
 		t.Fatalf("the vector manifest: %v", err)
 	}
 	var cases []dartJsonBase64Case
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

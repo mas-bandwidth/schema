@@ -400,10 +400,8 @@ func emitFixedLeafWalkFn(g *lobster.Gen, st *ir.Struct) {
 	emitted := false
 	sequence := 0
 	for _, f := range st.Fields {
-		if !f.Deprecated {
-			emitFixedFieldLeaves(g, f, off, "    ", &sequence)
-			emitted = true
-		}
+		emitFixedFieldLeaves(g, f, off, "    ", &sequence)
+		emitted = true
 		off += ir.TableFixedFieldBytes(f)
 	}
 	if !emitted {
@@ -472,7 +470,7 @@ func emitFixedElementLeavesAt(g *lobster.Gen, f *ir.Field, es, ed string, ind st
 			g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s, dst: %s, size: %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })\n",
 				ind, es, ed, tag)
 			for i, v := range r.Variants {
-				if v.F == nil || v.F.Deprecated {
+				if v.F == nil {
 					continue
 				}
 				gv := fmt.Sprintf("grd_at_%s_%d_%d", ir.GoExportName(v.Name), salt, i)
@@ -585,9 +583,8 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 			scatterUnion(g, r, expr, at, off, ind)
 			return
 		case *ir.Enum:
-			g.TypeRef(r.Name, false)
 			w := r.StorageBits / 8
-			g.Pf("%s%s = %s(%s(data, %s))\n", ind, expr, r.Name, readInt(w, false), at)
+			g.Pf("%s%s = %s(%s(data, %s))\n", ind, expr, enumConversion(g, r.Name), readInt(w, false), at)
 			return
 		case *ir.Flags:
 			g.TypeRef(r.Name, false)
@@ -686,9 +683,6 @@ func fixedCheckNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 }
 
 func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
-	if f.Deprecated {
-		return false
-	}
 	if len(lobsterScalarStorageBounds(f, "x")) != 0 {
 		return true
 	}
@@ -714,9 +708,6 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 }
 
 func fixedBoundNeeded(f *ir.Field, chk bool) bool {
-	if chk && f.Deprecated {
-		return false
-	}
 	if chk && len(lobsterScalarStorageBounds(f, "x")) != 0 {
 		return true
 	}
@@ -765,9 +756,6 @@ func fixedArmNeeded(r *ir.Union, chk bool) bool {
 
 func emitFixedBoundField(g *lobster.Gen, f *ir.Field, val, ind string, pass fixedPass) bool {
 	chk := pass != fixedPassClamp
-	if chk && f.Deprecated {
-		return false
-	}
 	if !fixedBoundNeeded(f, chk) {
 		return false
 	}
@@ -943,11 +931,18 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 	if chk {
 		switch f.Type.Kind {
 		case ir.TFloat32:
-			// the writer's finite rule (docs/SPEC-TABLES.md §3.3): a NaN or an
-			// infinity, at the width it is written, is invalid_value
+			// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity,
+			// at the width it is written, is invalid_value on a write and
+			// non_finite_float on a read.
 			g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
 			if f.HasFloatRange {
 				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat32(f.FMin), expr, lobster.FormatFloat32(f.FMax), ind)
+				if pass == fixedPassRead {
+					// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3,
+					// docs/rulings.json fixed-compressed-negzero): inside the
+					// range it lands as the value 0 itself, uncounted.
+					g.Pf("%sif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
+				}
 			}
 			return true
 		case ir.TFloat64:
@@ -1140,37 +1135,27 @@ type lobsterFixedDstSpec struct {
 	Note    string
 }
 
-func fixedDstArg(flavour int, dep bool) int {
-	a := flavour
-	if dep {
-		a |= 0x80
-	}
-	return a
-}
-
 func buildLobsterFixedDst(st *ir.Struct) []lobsterFixedDstSpec {
 	var out []lobsterFixedDstSpec
 	push := func(spec lobsterFixedDstSpec) {
 		out = append(out, spec)
 	}
 	var walkField func(f *ir.Field, off int64)
-	var walkPayload func(f *ir.Field, off int64, dep bool, note string)
-	var walkElement func(f *ir.Field, off int64, dep bool, note string)
+	var walkPayload func(f *ir.Field, off int64, note string)
+	var walkElement func(f *ir.Field, off int64, note string)
 
-	walkEnum := func(e *ir.Enum, off int64, dep bool, note string) {
-		a := fixedDstArg(0, dep)
-		push(lobsterFixedDstSpec{Dst: off, Arg: a, Meta: a, Note: note})
+	walkEnum := func(e *ir.Enum, off int64, note string) {
+		push(lobsterFixedDstSpec{Dst: off, Note: note})
 		for _, v := range e.Variants {
 			push(lobsterFixedDstSpec{Note: v})
 		}
 	}
 
-	walkElement = func(f *ir.Field, off int64, dep bool, note string) {
-		a := fixedDstArg(0, dep)
+	walkElement = func(f *ir.Field, off int64, note string) {
 		if f.Type.Kind == ir.TNamed {
 			switch r := f.Type.Ref.(type) {
 			case *ir.Struct:
-				push(lobsterFixedDstSpec{Dst: off, Arg: a, Meta: a, Note: note})
+				push(lobsterFixedDstSpec{Dst: off, Note: note})
 				subOff := int64(0)
 				for _, sub := range r.Fields {
 					walkField(sub, subOff)
@@ -1178,7 +1163,7 @@ func buildLobsterFixedDst(st *ir.Struct) []lobsterFixedDstSpec {
 				}
 				return
 			case *ir.Union:
-				push(lobsterFixedDstSpec{Dst: off, Aux: off, Arg: a, Meta: a, Note: note})
+				push(lobsterFixedDstSpec{Dst: off, Aux: off, Note: note})
 				tag := ir.TableFixedUnionTagBytes(r)
 				for _, v := range r.Variants {
 					if v.F == nil {
@@ -1187,54 +1172,49 @@ func buildLobsterFixedDst(st *ir.Struct) []lobsterFixedDstSpec {
 					}
 					af := *v.F
 					af.Name = v.Name
-					walkPayload(&af, tag, af.Deprecated, v.Name)
+					walkPayload(&af, tag, v.Name)
 				}
 				return
 			case *ir.Enum:
-				walkEnum(r, off, dep, note)
+				walkEnum(r, off, note)
 				return
 			}
 		}
-		push(lobsterFixedDstSpec{Dst: off, Arg: a, Meta: a, Note: note})
+		push(lobsterFixedDstSpec{Dst: off, Note: note})
 	}
 
-	walkPayload = func(f *ir.Field, off int64, dep bool, note string) {
-		a := fixedDstArg(0, dep)
+	walkPayload = func(f *ir.Field, off int64, note string) {
 		switch {
 		case f.KeyEnumRef != nil:
 			elem := ir.TableFixedElementBytes(f)
-			push(lobsterFixedDstSpec{Dst: off, Stride: elem, Arg: a, Meta: a, Note: note})
-			walkEnum(f.KeyEnumRef, 0, false, f.KeyEnum)
-			walkElement(f, 0, false, "element")
+			push(lobsterFixedDstSpec{Dst: off, Stride: elem, Note: note})
+			walkEnum(f.KeyEnumRef, 0, f.KeyEnum)
+			walkElement(f, 0, "element")
 		case f.Array == ir.ArrayFixed:
 			elem := ir.TableFixedElementBytes(f)
-			push(lobsterFixedDstSpec{Dst: off, Stride: elem, Arg: a, Meta: a, Note: note})
-			walkElement(f, 0, false, "element")
+			push(lobsterFixedDstSpec{Dst: off, Stride: elem, Note: note})
+			walkElement(f, 0, "element")
 		case f.Array == ir.ArrayCounted:
 			elem := ir.TableFixedElementBytes(f)
-			push(lobsterFixedDstSpec{Dst: off + 4, Stride: elem, Aux: off, Counted: 1, Arg: a, Meta: a, Note: note})
-			walkElement(f, 0, false, "element")
+			push(lobsterFixedDstSpec{Dst: off + 4, Stride: elem, Aux: off, Counted: 1, Note: note})
+			walkElement(f, 0, "element")
 		case f.Type.Kind == ir.TBytes:
-			ab := fixedDstArg(3, dep)
-			push(lobsterFixedDstSpec{Dst: off + 4, Stride: 1, Aux: off, Counted: 1, Arg: ab, Meta: ab, Note: note})
+			push(lobsterFixedDstSpec{Dst: off + 4, Stride: 1, Aux: off, Counted: 1, Arg: 3, Meta: 3, Note: note})
 			push(lobsterFixedDstSpec{Note: "u8"})
 		case f.Type.Kind == ir.TString:
-			as := fixedDstArg(1, dep)
-			push(lobsterFixedDstSpec{Dst: off, Aux: off + 4, Arg: as, Meta: as, Note: note})
+			push(lobsterFixedDstSpec{Dst: off, Aux: off + 4, Arg: 1, Meta: 1, Note: note})
 		default:
-			walkElement(f, off, dep, note)
+			walkElement(f, off, note)
 		}
 	}
 
 	walkField = func(f *ir.Field, off int64) {
-		dep := f.Deprecated
-		a := fixedDstArg(0, dep)
 		if f.Type.Optional {
-			push(lobsterFixedDstSpec{Aux: off, Arg: a, Meta: a, Note: f.Name + " ?"})
-			walkPayload(f, off+ir.TableFixedPresentBytes, dep, f.Name)
+			push(lobsterFixedDstSpec{Aux: off, Note: f.Name + " ?"})
+			walkPayload(f, off+ir.TableFixedPresentBytes, f.Name)
 			return
 		}
-		walkPayload(f, off, dep, f.Name)
+		walkPayload(f, off, f.Name)
 	}
 
 	push(lobsterFixedDstSpec{Note: st.Name})
@@ -1455,7 +1435,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    return schema_rt.TableFixedHeaderBytes + 4 + %d + count * (8 + %d)%s\n\n",
 		len(layout), bodyBytes, trailer)
 
-	// Checked writer: <Name>FixedSaveChecked(values, buffer) -> int, string, string
+	// Caller-buffer form of the checked writer <Name>FixedSave:
+	// <Name>FixedSaveChecked(values, buffer) -> int, string, string
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md
 	// §22.6): an empty batch is refused in every build, as every other
 	// table write refusal is (docs/SPEC.md §5.1).
@@ -1465,12 +1446,11 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    let need = %sMeasure(length(values))\n", name)
 	g.Pf("    if length(buffer) < need:\n")
 	g.Pf("        return -1, buffer, schema_rt.TableRefuseTruncated\n")
-	if fixedCheckNeededStruct(st, map[string]bool{}) {
-		g.Pf("    for(values) v:\n")
-		g.Pf("        if not %sFixedCheckBody(v):\n", st.Name)
-		g.Pf("            return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
-	}
+	// <Name>FixedSave is the checked writer: its "" is the refusal of a
+	// value <Name>FixedCheckBody refuses, and the buffer is left unwritten.
 	g.Pf("    let wire = %sSave(values)\n", name)
+	g.Pf("    if wire == \"\":\n")
+	g.Pf("        return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
 	g.Pf("    let out = write_substring(buffer, 0, wire, false)\n")
 	if st.Integrity != "" {
 		g.Pf("    let sealed, out2 = schema_rt.fixed_integrity_seal(out, need - 4)\n")
@@ -1480,6 +1460,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	}
 
 	// The fixed form has one read: a whole batch or refusal (SPEC-TABLES §6.5).
+	// REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.3): every refusal met
+	// before a record lands leaves the caller's values exactly as they were.
 	g.Pf("def %sLoad(values:[%s], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:\n", name, st.Name)
 	g.Pf("    let report = if report_in: report_in else: schema_rt.TableReport {}\n")
 	g.Pf("    schema_rt.fixed_reset_report(report)\n")
@@ -1491,59 +1473,47 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    if length(data) < 1:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return -1\n")
 	g.Pf("    let form = read_uint8_le(data, 0)\n")
 	g.Pf("    if form != schema_rt.TableFixedForm:\n")
 	g.Pf("        if form == 1:\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)\n")
 	g.Pf("        if form == 2:\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)\n")
 	if st.Integrity != "" {
 		g.Pf("    if not schema_rt.fixed_integrity_holds(data):\n")
 		g.Pf("        report.verdict = schema_rt.TableOpenDamaged\n")
 		g.Pf("        report.malformed = true\n")
 		g.Pf("        report.reason = schema_rt.TableRefuseIntegrityMismatch\n")
-		g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 		g.Pf("        return -1\n")
 		g.Pf("    data = substring(data, 0, length(data) - 4)\n")
 	}
 	g.Pf("    if length(data) < schema_rt.TableFixedHeaderBytes + 4:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return -1\n")
 	g.Pf("    var r_idx = 1\n")
 	g.Pf("    while r_idx < schema_rt.TableFixedHashAt:\n")
 	g.Pf("        if read_uint8_le(data, r_idx) != 0:\n")
 	g.Pf("            report.malformed = true\n")
 	g.Pf("            report.reason = schema_rt.TableRefuseReservedNotZero\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return -1\n")
 	g.Pf("        r_idx += 1\n")
 	g.Pf("    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)\n")
 	g.Pf("    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)\n")
 	g.Pf("    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)\n")
 	g.Pf("    let pick = schema_rt.fixed_select(%sKnown, hash)\n", name)
 	g.Pf("    if pick < 0:\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)\n")
 	g.Pf("    if pick < %sFloor:\n", name)
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)\n")
 	g.Pf("    let known = %sKnown[pick]\n", name)
 	g.Pf("    if layout_bytes != known.layout_bytes:\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)\n")
 	g.Pf("    for(layout_bytes) l_i:\n")
 	g.Pf("        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)\n")
 	g.Pf("    var entries = %sPlan.entries\n", name)
 	g.Pf("    var entry_count = %sPlan.count\n", name)
@@ -1554,7 +1524,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    if hash != %sHash:\n", name)
 	g.Pf("        let lane = %sLineagePlans[pick]\n", name)
 	g.Pf("        if lane.why != \"\":\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, lane.why)\n")
 	g.Pf("        entries = lane.entries\n")
 	g.Pf("        entry_count = lane.count\n")
@@ -1562,10 +1531,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        census_unknown = lane.unknown\n")
 	g.Pf("        census_kind = lane.kind_mismatch\n")
 	g.Pf("    if census_kind != 0:\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)\n")
 	g.Pf("    if entry_count > length(plan):\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
 	g.Pf("    let rest = length(data) - records_start\n")
@@ -1575,20 +1542,16 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    if rest == 0 or record_bytes <= 8 or (rest %% record_bytes) != 0:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return -1\n")
 	g.Pf("    let n = rest / record_bytes\n")
 	g.Pf("    if n > length(values):\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)\n")
 	g.Pf("    for(n) k:\n")
 	g.Pf("        let rec_at = records_start + k * record_bytes\n")
 	g.Pf("        if read_uint64_le(data, rec_at) != hash:\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)\n")
 	g.Pf("        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)\n")
 	g.Pf("        if why != \"\":\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, why)\n")
 	g.Pf("    for(n) k:\n")
 	g.Pf("        let rec_at = records_start + k * record_bytes\n")
@@ -1635,7 +1598,7 @@ func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 	}
 	seen[st.Name] = true
 	for _, f := range st.Fields {
-		if !f.Deprecated && fixedFiniteNeededField(f, seen) {
+		if fixedFiniteNeededField(f, seen) {
 			return true
 		}
 	}
@@ -1672,9 +1635,7 @@ func emitFixedFiniteBodyFn(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// first NaN or infinity, named <Owner>.<field>, or \"\".\n")
 	g.Pf("def %sFixedFiniteBody(v:%s) -> string:\n", st.Name, st.Name)
 	for _, f := range st.Fields {
-		if !f.Deprecated {
-			emitFixedFiniteField(g, f, st.Name, "v", "    ")
-		}
+		emitFixedFiniteField(g, f, st.Name, "v", "    ")
 	}
 	g.Pf("    return \"\"\n\n")
 }

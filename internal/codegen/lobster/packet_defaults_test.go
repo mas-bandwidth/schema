@@ -89,7 +89,7 @@ func TestLobsterPacketDefaultsNegativeControl(t *testing.T) {
 	var kept []string
 	removed := 0
 	for line := range strings.SplitSeq(string(files["Defaults.lobster"]), "\n") {
-		if strings.Contains(line, " = schema_rt.put(value.") {
+		if strings.Contains(line, " = schema_rt.put(value·.") {
 			removed++
 			continue
 		}
@@ -192,7 +192,7 @@ def pinned(name:string) -> string, int:
     let n, _ = string_to_int(substring(text, 0, find_string(text, "\n")))
     return data, n
 
-// a pin: the write is the C++ bytes and bits; a read into reused storage
+// a pin: the write is the C++ bytes and bits; a body read into reused storage
 // consumes exactly those bits and ends there
 def pin(name:string, write, read):
     let want, wbits = pinned(name)
@@ -239,7 +239,7 @@ ck(pb == db and pbits == dbits, "defaultless twin")
 
 // ---- the eight pins
 let s0 = zero()
-pin("sample-defaults", fn(w): packetdefaults.WriteSample(w, packetdefaults.NewSample())) r: packetdefaults.ReadSample(r, s0)
+pin("sample-defaults", fn(w): packetdefaults.WriteSample(w, packetdefaults.NewSample())) r: packetdefaults.read_body_Sample(r, s0)
 ck(show(s0) == show(sample()), "sample-defaults values")
 
 let batch = packetdefaults.NewBatch()
@@ -252,7 +252,7 @@ def reused_batch() -> packetdefaults.Batch:
     b.Counted[2] = short()
     return b
 let b0 = reused_batch()
-pin("batch-defaults", fn(w): packetdefaults.WriteBatch(w, batch)) r: packetdefaults.ReadBatch(r, b0)
+pin("batch-defaults", fn(w): packetdefaults.WriteBatch(w, batch)) r: packetdefaults.read_body_Batch(r, b0)
 ck(show_batch(b0) == show_batch(reused_batch()), "batch-defaults values and backing")
 
 let zc = packetdefaults.NewZeroCount()
@@ -261,34 +261,34 @@ let z0 = packetdefaults.NewZeroCount()
 z0.Items[0] = dirty()
 z0.Items[1] = short()
 z0.ItemsCount = 2
-pin("zero-count", fn(w): packetdefaults.WriteZeroCount(w, zc)) r: packetdefaults.ReadZeroCount(r, z0)
+pin("zero-count", fn(w): packetdefaults.WriteZeroCount(w, zc)) r: packetdefaults.read_body_ZeroCount(r, z0)
 ck(z0.ItemsCount == 0 and show(z0.Items[0]) == show(dirty()) and show(z0.Items[1]) == show(short()), "zero-count keeps backing")
 
 ck(packetdefaults.NewConditional().Enabled and show(packetdefaults.NewConditional().Value) == show(sample()), "Conditional born")
 let c0 = packetdefaults.NewConditional()
 c0.Enabled = false
 c0.Value = zero()
-pin("conditional-on", fn(w): packetdefaults.WriteConditional(w, packetdefaults.NewConditional())) r: packetdefaults.ReadConditional(r, c0)
+pin("conditional-on", fn(w): packetdefaults.WriteConditional(w, packetdefaults.NewConditional())) r: packetdefaults.read_body_Conditional(r, c0)
 ck(show_cond(c0) == show_cond(packetdefaults.NewConditional()), "conditional-on values")
 let off = packetdefaults.NewConditional()
 off.Enabled = false
 let c1 = packetdefaults.NewConditional()
 c1.Value = dirty()
-pin("conditional-off", fn(w): packetdefaults.WriteConditional(w, off)) r: packetdefaults.ReadConditional(r, c1)
+pin("conditional-off", fn(w): packetdefaults.WriteConditional(w, off)) r: packetdefaults.read_body_Conditional(r, c1)
 ck(not c1.Enabled and show(c1.Value) == show(zero()), "conditional-off clears the untaken side to zero")
 
 let choice = packetdefaults.NewChoice()
 choice.Type = packetdefaults.ChoiceTypeSample
 let ch0 = packetdefaults.NewChoice()
 ch0.Type = packetdefaults.ChoiceTypeConditional
-pin("choice-sample", fn(w): packetdefaults.WriteChoice(w, choice)) r: packetdefaults.ReadChoice(r, ch0)
+pin("choice-sample", fn(w): packetdefaults.WriteChoice(w, choice)) r: packetdefaults.read_body_Choice(r, ch0)
 ck(show_choice(ch0) == "sample|" + show(sample()), "choice-sample values")
 
 let sh0 = dirty()
-pin("sample-short", fn(w): packetdefaults.WriteSample(w, short())) r: packetdefaults.ReadSample(r, sh0)
+pin("sample-short", fn(w): packetdefaults.WriteSample(w, short())) r: packetdefaults.read_body_Sample(r, sh0)
 ck(show(sh0) == show(overlay(dirty(), short())), "sample-short overlays the prefix")
 let se0 = dirty()
-pin("sample-empty", fn(w): packetdefaults.WriteSample(w, zero())) r: packetdefaults.ReadSample(r, se0)
+pin("sample-empty", fn(w): packetdefaults.WriteSample(w, zero())) r: packetdefaults.read_body_Sample(r, se0)
 ck(show(se0) == show(overlay(dirty(), zero())), "sample-empty overlays the prefix")
 
 // ---- every selection is a fresh payload, a repeated tag included
@@ -302,7 +302,7 @@ for([short(), zero()]) sent:
     for(2):
         output.Sample = dirty()
         let r = serialize_read_stream_padded(cw)
-        ck(packetdefaults.ReadChoice(r, output) and r.bits_processed() == cbits, "repeated union read")
+        ck(packetdefaults.read_body_Choice(r, output) and r.bits_processed() == cbits and r.serialize_end(), "repeated union read")
         ck(show_choice(output) == "sample|" + show(overlay(sample(), sent)), "repeated union selection is fresh")
 let offChoice = packetdefaults.NewChoice()
 offChoice.Type = packetdefaults.ChoiceTypeConditional

@@ -244,8 +244,17 @@ defmodule Example.ArmDefaults do
   @spec read_default_arm(binary(), non_neg_integer()) :: {:ok, Example.DefaultArm.t()} | :error
   def read_default_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_arm_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -470,8 +479,17 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultChoice.t()} | :error
   def read_default_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_choice_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -706,8 +724,17 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultChoicePacket.t()} | :error
   def read_default_choice_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_choice_packet_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -863,8 +890,17 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultBulkArm.t()} | :error
   def read_default_bulk_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_bulk_arm_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1195,8 +1231,17 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultBulkChoice.t()} | :error
   def read_default_bulk_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_bulk_choice_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1204,6 +1249,19 @@ defmodule Example.ArmDefaults do
 
   defp wZdefault_armZentries([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{retries: e1_retries, preferred: e1_preferred} = e1
+
+    if not is_integer(e1_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e1_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e1_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e1_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1211,6 +1269,19 @@ defmodule Example.ArmDefaults do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e2_retries, preferred: e2_preferred} = e2
+
+    if not is_integer(e2_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e2_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e2_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e2_retries &&& 0xFFFFFFFF
     sc0 = scratch
     fl0 = scratch_bits >>> 3
@@ -1222,6 +1293,19 @@ defmodule Example.ArmDefaults do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e3_retries, preferred: e3_preferred} = e3
+
+    if not is_integer(e3_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e3_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e3_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e3_retries &&& 0xFFFFFFFF
     sc1 = scratch
     fl1 = scratch_bits >>> 3
@@ -1233,6 +1317,19 @@ defmodule Example.ArmDefaults do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e4_retries, preferred: e4_preferred} = e4
+
+    if not is_integer(e4_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e4_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e4_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e4_retries &&& 0xFFFFFFFF
     sc2 = scratch
     fl2 = scratch_bits >>> 3
@@ -1256,6 +1353,19 @@ defmodule Example.ArmDefaults do
 
   defp wZdefault_armZentries([e | rest], data, scratch, scratch_bits) do
     %{retries: e_retries, preferred: e_preferred} = e
+
+    if not is_integer(e_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32

@@ -5380,9 +5380,9 @@ var TeamConfigFixedLayout = []byte{
 }
 
 var TeamConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // TeamConfig
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // TeamConfig
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Min: 0, Counted: 0, Arg: 1, Meta: 1}, // banner
 }
 
 var TeamConfigFixedPlan = tableFixedBuildPlan(TeamConfigFixedLeaves, 2)
@@ -5451,10 +5451,10 @@ func TeamConfigFixedMeasure(count int64) int64 {
 }
 
 // TeamConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TeamConfigFixedSave(values []TeamConfig, buffer []byte) int64 {
 	need := TeamConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5573,6 +5573,11 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5585,7 +5590,7 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5596,8 +5601,8 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TeamConfigFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TeamConfigFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TeamConfigReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -5622,9 +5627,9 @@ var GunnerConfigFixedLayout = []byte{
 }
 
 var GunnerConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // GunnerConfig
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                // GunnerConfig
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // tracking
 }
 
 var GunnerConfigFixedPlan = tableFixedBuildPlan(GunnerConfigFixedLeaves, 2)
@@ -5693,10 +5698,10 @@ func GunnerConfigFixedMeasure(count int64) int64 {
 }
 
 // GunnerConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GunnerConfigFixedSave(values []GunnerConfig, buffer []byte) int64 {
 	need := GunnerConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5815,6 +5820,11 @@ func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5827,7 +5837,7 @@ func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5836,8 +5846,8 @@ func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixed
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := GunnerConfigFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := GunnerConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				GunnerConfigReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -5868,13 +5878,13 @@ var TurretConfigFixedLayout = []byte{
 }
 
 var TurretConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                     // TurretConfig
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0}, // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                     // TurretConfig
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},        // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},      // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Min: 0, Counted: 0, Arg: 0, Meta: 0}, // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},        // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},      // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},      // tracking
 }
 
 var TurretConfigFixedPlan = tableFixedBuildPlan(TurretConfigFixedLeaves, 5)
@@ -5947,10 +5957,10 @@ func TurretConfigFixedMeasure(count int64) int64 {
 }
 
 // TurretConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TurretConfigFixedSave(values []TurretConfig, buffer []byte) int64 {
 	need := TurretConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -6069,6 +6079,11 @@ func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -6081,7 +6096,7 @@ func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6090,8 +6105,8 @@ func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixed
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := TurretConfigFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := TurretConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				TurretConfigReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -6131,21 +6146,21 @@ var HullConfigFixedLayout = []byte{
 }
 
 var HullConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // HullConfig
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                      // health
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                        // mass
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // turrets
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Weapon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Cannon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Missile
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Mine
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                             // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // HullConfig
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                      // health
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                        // mass
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // turrets
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Weapon
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Cannon
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Missile
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                    // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                  // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Min: 0, Counted: 0, Arg: 0, Meta: 0},                             // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                    // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                  // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                  // tracking
 }
 
 var HullConfigFixedPlan = tableFixedBuildPlan(HullConfigFixedLeaves, 17)
@@ -6227,10 +6242,10 @@ func HullConfigFixedMeasure(count int64) int64 {
 }
 
 // HullConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func HullConfigFixedSave(values []HullConfig, buffer []byte) int64 {
 	need := HullConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -6349,6 +6364,11 @@ func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -6361,7 +6381,7 @@ func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6370,8 +6390,8 @@ func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntr
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := HullConfigFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := HullConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				HullConfigReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -6447,42 +6467,42 @@ var KeyedConfigFixedLayout = []byte{
 }
 
 var KeyedConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // KeyedConfig
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), Stride: uint32(unsafe.Sizeof(TeamConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // teams
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), Stride: uint32(unsafe.Sizeof(HullConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // hulls
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Hull
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Interceptor
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Gunship
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Freighter
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                  // health
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // mass
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},             // turrets
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Weapon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Cannon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Missile
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Mine
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                         // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // tracking
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                 // scores
-	{Dst: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // per_team
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // KeyedConfig
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), Stride: uint32(unsafe.Sizeof(TeamConfig{})), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                // teams
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
+	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Min: 0, Counted: 0, Arg: 1, Meta: 1}, // banner
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), Stride: uint32(unsafe.Sizeof(HullConfig{})), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                // hulls
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Hull
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Interceptor
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Gunship
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Freighter
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                  // health
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // mass
+	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},             // turrets
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Weapon
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Cannon
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Missile
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                // damage
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                              // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Min: 0, Counted: 0, Arg: 0, Meta: 0},                                         // gunner ?
+	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                              // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                              // tracking
+	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                 // scores
+	{Dst: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                // per_team
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
 }
 
 var KeyedConfigFixedPlan = tableFixedBuildPlan(KeyedConfigFixedLeaves, 60)
@@ -6586,10 +6606,10 @@ func KeyedConfigFixedMeasure(count int64) int64 {
 }
 
 // KeyedConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func KeyedConfigFixedSave(values []KeyedConfig, buffer []byte) int64 {
 	need := KeyedConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -6708,6 +6728,11 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -6720,7 +6745,7 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6729,8 +6754,8 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := KeyedConfigFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := KeyedConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				KeyedConfigReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -6739,8 +6764,8 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !KeyedConfigFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !KeyedConfigFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				KeyedConfigReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())

@@ -82,7 +82,7 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
+	Src, Dst, Size, Aux, Guard, Min uint32
 	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (docs/FIXED-FORM-ALGORITHM.md
 	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
 	// enum past 65535 variants holds its ordinal whole in this lane, and the
@@ -141,13 +141,9 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux uint32
+	Dst, Stride, Aux, Min uint32
 	Counted, Arg, Meta uint8
 }
-
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
 
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -721,7 +717,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
@@ -1070,12 +1066,12 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
 	// worth of them — are layout_malformed and not one of the seven.
-	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
+	if int64(len(bytes)) < int64(tableFixedLayoutHeaderBytes) {
 		return out, "layout_malformed"
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+	if count == 0 || count > 0x7fffffff || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
 	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
@@ -1296,9 +1292,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -1357,7 +1350,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)

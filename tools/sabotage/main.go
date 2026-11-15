@@ -69,6 +69,17 @@ var sabotages = map[string][]edit{
 		new: "\t\t\tg.pf(\"\\t// SABOTAGED: %s = [%s]byte{\", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))",
 	}},
 
+	// SPEC §5.1 row 10: the packet Write holds a finite compressed float
+	// inside [min, max] with a debug assert. Drop the assert; the runtime's
+	// [0, 1] value clamp then writes the off-range value.
+	"packet-write-cfloat-lobster-range": {{
+		old: `	g.Pf("%sassert %s - %s != 0.0 or (%s >= %s and %s <= %s) // a finite value is in [min, max] (SPEC §5.1 row 10)\n",
+		indent, val, val, val, FormatFloat32(float64(min32)), val, FormatFloat32(float64(max32)))
+`,
+		new: `	_ = max32 // SABOTAGED: the compressed float range assert is removed
+`,
+	}},
+
 	// SPEC §4.8 / #503: a payload-free arm adds no bits after its tag.
 	// Sabotage one direction at a time; the opposite direction remains an
 	// independent check and no writer-produced bytes feed the reader oracle.
@@ -93,6 +104,16 @@ var sabotages = map[string][]edit{
 			continue
 		}
 		g.needsNew = true`,
+	}},
+	// SPEC §5.1 row 10 on the packet Write: a compressed float is checked
+	// finite and inside [min, max] before quantizing. Remove the generated
+	// debug assert and an off-range finite value is written instead.
+	"packet-write-cfloat-cpp-range-assert": {{
+		old: `			g.pf("%s    serialize_assert( compressed_value >= %s && compressed_value <= %s ); // SPEC §5.1 row 10\n",
+				ind, formatFloat(float64(min32), true), formatFloat(float64(max32), true))
+`,
+		new: `			g.pf("%s    (void) compressed_value; // SABOTAGED: no compressed-float value check\n", ind)
+`,
 	}},
 	"packet-void-write-c": {{
 		old: `				g.pf("        case %d:\n            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n", i+1)`,

@@ -10,8 +10,8 @@ const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
-// interior null (SPEC §4.7). Every string field's read calls it; nothing
-// allocates and nothing latches.
+// interior null (SPEC §4.7). Every string field's read and write calls it;
+// nothing allocates and nothing latches.
 function validText(bytes, length) {
   for (let utf8Index = 0; utf8Index < length;) {
     const utf8Lead = bytes[utf8Index++];
@@ -328,7 +328,7 @@ export function WriteW52(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (value.items[i] > 4503599627370495n) {
+    if (value.items[i] < 0n || value.items[i] > 4503599627370495n) {
       return false;
     }
     BIGINT_SCRATCH.value = BigInt.asUintN(64, value.items[i]);
@@ -387,7 +387,7 @@ export function WriteW50(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (value.items[i] > 1125899906842623n) {
+    if (value.items[i] < 0n || value.items[i] > 1125899906842623n) {
       return false;
     }
     BIGINT_SCRATCH.value = BigInt.asUintN(64, value.items[i]);
@@ -912,6 +912,9 @@ export function WriteStrs(stream, value) {
   }
   NUMBER_SCRATCH.value = value.sLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (!validText(value.s, value.sLength)) {
     return false;
   }
   if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {

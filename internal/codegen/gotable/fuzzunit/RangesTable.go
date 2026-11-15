@@ -4390,7 +4390,7 @@ func RangedSignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Aux: 2, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
+	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Min: 0, Aux: 2, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
 	n++
 	for i := range uint32(4) {
 		es := src + 64 + i*2
@@ -4525,7 +4525,7 @@ func RangedUnsignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardL
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
+	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Min: 0, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
 	n++
 	for i := range uint32(4) {
 		es := src + 64 + i*8
@@ -4864,25 +4864,25 @@ var RangedSignedFixedLayout = []byte{
 }
 
 var RangedSignedFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                            // RangedSigned
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i8_span
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // i8_low
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i8_high
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                             // i8_inside
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i16_span
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i16_low
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i16_high
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                            // i16_inside
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i32_span
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i32_low
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i32_high
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                            // i32_inside
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i64_span
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i64_low
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i64_high
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                            // i64_inside
-	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.Edges)), Stride: uint32(unsafe.Sizeof(int16(0))), Aux: uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Counted: 1, Arg: 0, Meta: 0}, // edges
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                            // element
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                            // RangedSigned
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i8_span
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // i8_low
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i8_high
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I8Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                             // i8_inside
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i16_span
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i16_low
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i16_high
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I16Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                            // i16_inside
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i32_span
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i32_low
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i32_high
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I32Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                            // i32_inside
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i64_span
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // i64_low
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // i64_high
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.I64Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                            // i64_inside
+	{Dst: uint32(unsafe.Offsetof(RangedSigned{}.Edges)), Stride: uint32(unsafe.Sizeof(int16(0))), Aux: uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0}, // edges
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                            // element
 }
 
 var RangedSignedFixedPlan = tableFixedBuildPlan(RangedSignedFixedLeaves, 21)
@@ -4968,10 +4968,10 @@ func RangedSignedFixedMeasure(count int64) int64 {
 }
 
 // RangedSignedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RangedSignedFixedSave(values []RangedSigned, buffer []byte) int64 {
 	need := RangedSignedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5090,6 +5090,11 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5102,7 +5107,7 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5113,8 +5118,8 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !RangedSignedFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !RangedSignedFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				RangedSignedReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -5170,25 +5175,25 @@ var RangedUnsignedFixedLayout = []byte{
 }
 
 var RangedUnsignedFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                   // RangedUnsigned
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u8_span
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // u8_low
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u8_high
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                  // u8_inside
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u16_span
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u16_low
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u16_high
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // u16_inside
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u32_span
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u32_low
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u32_high
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // u32_inside
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Span)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u64_span
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Low)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u64_low
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64High)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u64_high
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Inside)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // u64_inside
-	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.Counts)), Stride: uint32(unsafe.Sizeof(uint64(0))), Aux: uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Counted: 1, Arg: 0, Meta: 0}, // counts
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                   // element
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                   // RangedUnsigned
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u8_span
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // u8_low
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u8_high
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                  // u8_inside
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u16_span
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u16_low
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u16_high
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // u16_inside
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u32_span
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u32_low
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u32_high
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // u32_inside
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Span)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u64_span
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Low)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // u64_low
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64High)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                   // u64_high
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Inside)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // u64_inside
+	{Dst: uint32(unsafe.Offsetof(RangedUnsigned{}.Counts)), Stride: uint32(unsafe.Sizeof(uint64(0))), Aux: uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0}, // counts
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                   // element
 }
 
 var RangedUnsignedFixedPlan = tableFixedBuildPlan(RangedUnsignedFixedLeaves, 21)
@@ -5274,10 +5279,10 @@ func RangedUnsignedFixedMeasure(count int64) int64 {
 }
 
 // RangedUnsignedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RangedUnsignedFixedSave(values []RangedUnsigned, buffer []byte) int64 {
 	need := RangedUnsignedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5396,6 +5401,11 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5408,7 +5418,7 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5419,8 +5429,8 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !RangedUnsignedFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !RangedUnsignedFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				RangedUnsignedReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -5463,13 +5473,13 @@ var RangedWidthsFixedLayout = []byte{
 }
 
 var RangedWidthsFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                           // RangedWidths
-	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B8)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},  // b8
-	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B16)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // b16
-	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B32)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // b32
-	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B64)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // b64
-	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B12)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // b12
-	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B48)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // b48
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                           // RangedWidths
+	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B8)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},  // b8
+	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B16)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // b16
+	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B32)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // b32
+	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B64)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // b64
+	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B12)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // b12
+	{Dst: uint32(unsafe.Offsetof(RangedWidths{}.B48)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // b48
 }
 
 var RangedWidthsFixedPlan = tableFixedBuildPlan(RangedWidthsFixedLeaves, 6)
@@ -5542,10 +5552,10 @@ func RangedWidthsFixedMeasure(count int64) int64 {
 }
 
 // RangedWidthsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RangedWidthsFixedSave(values []RangedWidths, buffer []byte) int64 {
 	need := RangedWidthsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5664,6 +5674,11 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5676,7 +5691,7 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5687,8 +5702,8 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !RangedWidthsFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !RangedWidthsFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				RangedWidthsReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())

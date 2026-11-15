@@ -173,9 +173,10 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 		switch {
 		case !named:
 			d.report.Unknown++ // a field the reader no longer declares (§4)
-		case inst.Fields[i].Def.Deprecated:
-			// the reader yields its declared default out of a deprecated slot
 		default:
+			// A DEPRECATED FIELD IS CARRIED LIKE ANY FIELD (docs/SPEC-TABLES.md
+			// §3.4, §22.6; docs/rulings.json fixed-deprecated-field-is-carried):
+			// the older writer supplied it, so the reader lands the stored value.
 			if reason := d.field(c, b[off:off+c.size], &inst.Fields[i]); reason != "" {
 				return reason
 			}
@@ -239,7 +240,7 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 		n := theirs
 		if f.Array == ir.ArrayCounted {
 			count := int32(binary.LittleEndian.Uint32(b))
-			if count < 0 || int64(count) > theirs || int64(count) > f.ArrayBound {
+			if count < 0 || int64(count) < f.ArrayMin || int64(count) > theirs || int64(count) > f.ArrayBound {
 				return FixedReasonCountOverBound
 			}
 			if reason := fixedDead(b[head+int64(count)*elem.size : w.size]); reason != "" {

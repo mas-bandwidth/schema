@@ -264,8 +264,17 @@ defmodule Example.Degenerate do
   @spec read_vec2(binary(), non_neg_integer()) :: {:ok, Example.Vec2.t()} | :error
   def read_vec2(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec2_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -349,8 +358,17 @@ defmodule Example.Degenerate do
   @spec read_span_f64(binary(), non_neg_integer()) :: {:ok, Example.SpanF64.t()} | :error
   def read_span_f64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_f64_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -434,8 +452,17 @@ defmodule Example.Degenerate do
   @spec read_span_u64(binary(), non_neg_integer()) :: {:ok, Example.SpanU64.t()} | :error
   def read_span_u64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_u64_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -519,8 +546,17 @@ defmodule Example.Degenerate do
   @spec read_span_i64(binary(), non_neg_integer()) :: {:ok, Example.SpanI64.t()} | :error
   def read_span_i64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_i64_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -604,8 +640,17 @@ defmodule Example.Degenerate do
   @spec read_span_one(binary(), non_neg_integer()) :: {:ok, Example.SpanOne.t()} | :error
   def read_span_one(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_one_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -689,8 +734,17 @@ defmodule Example.Degenerate do
   @spec read_span_chunk(binary(), non_neg_integer()) :: {:ok, Example.SpanChunk.t()} | :error
   def read_span_chunk(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_chunk_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -730,6 +784,19 @@ defmodule Example.Degenerate do
     scratch_bits = 0
     scratch = 0
     {data, scratch, scratch_bits} = wZspan_tailZvalues(value_values, <<>>, scratch, scratch_bits)
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 4_294_967_295 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
+
     v = value_tail &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -786,8 +853,17 @@ defmodule Example.Degenerate do
   @spec read_span_tail(binary(), non_neg_integer()) :: {:ok, Example.SpanTail.t()} | :error
   def read_span_tail(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_tail_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -882,8 +958,17 @@ defmodule Example.Degenerate do
   @spec read_span_twice(binary(), non_neg_integer()) :: {:ok, Example.SpanTwice.t()} | :error
   def read_span_twice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_twice_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -915,10 +1000,37 @@ defmodule Example.Degenerate do
   @spec write_trio!(Example.Trio.t()) :: binary()
   def write_trio!(value) do
     %{a: value_a, b: value_b, c: value_c} = value
+
+    if value_a < 0 do
+      raise ArgumentError, "value.a is below the wire minimum"
+    end
+
+    if value_a > 1_048_575 do
+      raise ArgumentError, "value.a is above the wire maximum"
+    end
+
     v = value_a &&& 0xFFFFF
     scratch = v
+
+    if value_b < 0 do
+      raise ArgumentError, "value.b is below the wire minimum"
+    end
+
+    if value_b > 1_048_575 do
+      raise ArgumentError, "value.b is above the wire maximum"
+    end
+
     v = value_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
+
+    if value_c < 0 do
+      raise ArgumentError, "value.c is below the wire minimum"
+    end
+
+    if value_c > 16_777_215 do
+      raise ArgumentError, "value.c is above the wire maximum"
+    end
+
     v = value_c &&& 0xFFFFFF
     sc0 = scratch
     scratch = v
@@ -975,8 +1087,17 @@ defmodule Example.Degenerate do
   @spec read_trio(binary(), non_neg_integer()) :: {:ok, Example.Trio.t()} | :error
   def read_trio(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1008,10 +1129,37 @@ defmodule Example.Degenerate do
   @spec write_trio_sole!(Example.TrioSole.t()) :: binary()
   def write_trio_sole!(value) do
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value.inner
+
+    if value_inner_a < 0 do
+      raise ArgumentError, "value.inner.a is below the wire minimum"
+    end
+
+    if value_inner_a > 1_048_575 do
+      raise ArgumentError, "value.inner.a is above the wire maximum"
+    end
+
     v = value_inner_a &&& 0xFFFFF
     scratch = v
+
+    if value_inner_b < 0 do
+      raise ArgumentError, "value.inner.b is below the wire minimum"
+    end
+
+    if value_inner_b > 1_048_575 do
+      raise ArgumentError, "value.inner.b is above the wire maximum"
+    end
+
     v = value_inner_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
+
+    if value_inner_c < 0 do
+      raise ArgumentError, "value.inner.c is below the wire minimum"
+    end
+
+    if value_inner_c > 16_777_215 do
+      raise ArgumentError, "value.inner.c is above the wire maximum"
+    end
+
     v = value_inner_c &&& 0xFFFFFF
     sc0 = scratch
     scratch = v
@@ -1069,8 +1217,17 @@ defmodule Example.Degenerate do
   @spec read_trio_sole(binary(), non_neg_integer()) :: {:ok, Example.TrioSole.t()} | :error
   def read_trio_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_sole_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1153,8 +1310,17 @@ defmodule Example.Degenerate do
   @spec read_vec3_sole(binary(), non_neg_integer()) :: {:ok, Example.Vec3Sole.t()} | :error
   def read_vec3_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec3_sole_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1187,13 +1353,49 @@ defmodule Example.Degenerate do
   def write_trio_first!(value) do
     %{inner: value_inner, trailer: value_trailer} = value
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
+
+    if value_inner_a < 0 do
+      raise ArgumentError, "value.inner.a is below the wire minimum"
+    end
+
+    if value_inner_a > 1_048_575 do
+      raise ArgumentError, "value.inner.a is above the wire maximum"
+    end
+
     v = value_inner_a &&& 0xFFFFF
     scratch = v
+
+    if value_inner_b < 0 do
+      raise ArgumentError, "value.inner.b is below the wire minimum"
+    end
+
+    if value_inner_b > 1_048_575 do
+      raise ArgumentError, "value.inner.b is above the wire maximum"
+    end
+
     v = value_inner_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
+
+    if value_inner_c < 0 do
+      raise ArgumentError, "value.inner.c is below the wire minimum"
+    end
+
+    if value_inner_c > 16_777_215 do
+      raise ArgumentError, "value.inner.c is above the wire maximum"
+    end
+
     v = value_inner_c &&& 0xFFFFFF
     sc0 = scratch
     scratch = v
+
+    if value_trailer < 0 do
+      raise ArgumentError, "value.trailer is below the wire minimum"
+    end
+
+    if value_trailer > 65535 do
+      raise ArgumentError, "value.trailer is above the wire maximum"
+    end
+
     v = value_trailer &&& 0xFFFF
     scratch = scratch ||| v <<< 24
     <<sc0::little-size(5)-unit(8), scratch::little-size(5)-unit(8)>>
@@ -1252,8 +1454,17 @@ defmodule Example.Degenerate do
   @spec read_trio_first(binary(), non_neg_integer()) :: {:ok, Example.TrioFirst.t()} | :error
   def read_trio_first(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_first_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1304,45 +1515,125 @@ defmodule Example.Degenerate do
       inner: value_inner
     } = value
 
+    if value_pad0 < 0 do
+      raise ArgumentError, "value.pad0 is below the wire minimum"
+    end
+
+    if value_pad0 > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.pad0 is above the wire maximum"
+    end
+
     v = value_pad0 &&& 0xFFFFFFFF
     scratch = v
     v = value_pad0 >>> 32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
+
+    if value_pad1 < 0 do
+      raise ArgumentError, "value.pad1 is below the wire minimum"
+    end
+
+    if value_pad1 > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.pad1 is above the wire maximum"
+    end
+
     v = value_pad1 &&& 0xFFFFFFFF
     sc1 = scratch
     scratch = v
     v = value_pad1 >>> 32 &&& 0xFFFFFFFF
     sc2 = scratch
     scratch = v
+
+    if value_pad2 < 0 do
+      raise ArgumentError, "value.pad2 is below the wire minimum"
+    end
+
+    if value_pad2 > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.pad2 is above the wire maximum"
+    end
+
     v = value_pad2 &&& 0xFFFFFFFF
     sc3 = scratch
     scratch = v
     v = value_pad2 >>> 32 &&& 0xFFFFFFFF
     sc4 = scratch
     scratch = v
+
+    if value_pad3 < 0 do
+      raise ArgumentError, "value.pad3 is below the wire minimum"
+    end
+
+    if value_pad3 > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.pad3 is above the wire maximum"
+    end
+
     v = value_pad3 &&& 0xFFFFFFFF
     sc5 = scratch
     scratch = v
     v = value_pad3 >>> 32 &&& 0xFFFFFFFF
     sc6 = scratch
     scratch = v
+
+    if value_pad4 < 0 do
+      raise ArgumentError, "value.pad4 is below the wire minimum"
+    end
+
+    if value_pad4 > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.pad4 is above the wire maximum"
+    end
+
     v = value_pad4 &&& 0xFFFFFFFF
     sc7 = scratch
     scratch = v
     v = value_pad4 >>> 32 &&& 0xFFFFFFFF
     sc8 = scratch
     scratch = v
+
+    if value_pad5 < 0 do
+      raise ArgumentError, "value.pad5 is below the wire minimum"
+    end
+
+    if value_pad5 > 16_777_215 do
+      raise ArgumentError, "value.pad5 is above the wire maximum"
+    end
+
     v = value_pad5 &&& 0xFFFFFF
     sc9 = scratch
     scratch = v
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
+
+    if value_inner_a < 0 do
+      raise ArgumentError, "value.inner.a is below the wire minimum"
+    end
+
+    if value_inner_a > 1_048_575 do
+      raise ArgumentError, "value.inner.a is above the wire maximum"
+    end
+
     v = value_inner_a &&& 0xFFFFF
     scratch = scratch ||| v <<< 24
+
+    if value_inner_b < 0 do
+      raise ArgumentError, "value.inner.b is below the wire minimum"
+    end
+
+    if value_inner_b > 1_048_575 do
+      raise ArgumentError, "value.inner.b is above the wire maximum"
+    end
+
     v = value_inner_b &&& 0xFFFFF
     sc10 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 4
+
+    if value_inner_c < 0 do
+      raise ArgumentError, "value.inner.c is below the wire minimum"
+    end
+
+    if value_inner_c > 16_777_215 do
+      raise ArgumentError, "value.inner.c is above the wire maximum"
+    end
+
     v = value_inner_c &&& 0xFFFFFF
     scratch = scratch ||| v <<< 24
 
@@ -1451,8 +1742,17 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioStraddle.t()} | :error
   def read_trio_straddle(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_straddle_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1493,6 +1793,18 @@ defmodule Example.Degenerate do
   defp wZspan_u64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_u64Zvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1526,6 +1838,18 @@ defmodule Example.Degenerate do
   defp wZspan_i64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_i64Zvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1559,6 +1883,18 @@ defmodule Example.Degenerate do
   defp wZspan_oneZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_oneZvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1592,15 +1928,66 @@ defmodule Example.Degenerate do
   defp wZspan_chunkZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_chunkZvalues([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e2 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e3 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e4 &&& 0xFFFF
     sc0 = scratch
     fl0 = scratch_bits >>> 3
@@ -1616,6 +2003,18 @@ defmodule Example.Degenerate do
   end
 
   defp wZspan_chunkZvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
