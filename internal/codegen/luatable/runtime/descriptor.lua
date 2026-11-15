@@ -371,8 +371,18 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
     if not d.fixed and not d.keyed and not d.list then
       if #val > d.bound or #val < (d.min or 0) then return where end
     end
-    for _, x in ipairs(val) do
-      local hit = invalid_value(T, d.elem, x, where, seen, zero_ok)
+    -- every index the writers walk: 1..bound for a fixed or keyed array
+    -- (a nil slot is a hole, checked as one), the count for a list
+    local n
+    if d.fixed or d.keyed then
+      n = d.bound or 0
+    elseif d.list then
+      n = #val
+    else
+      n = math.min(#val, d.bound or 0)
+    end
+    for i = 1, n do
+      local hit = invalid_value(T, d.elem, val[i], where, seen, zero_ok)
       if hit then return hit end
     end
   elseif s == "map" then

@@ -63,8 +63,9 @@ const (
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +71: a wide integer is a JSON string of digits, and every integer takes an integer token (SPEC-TABLES §16.2)
+	// +4: the JSON writer refuses a zero byte in text, and measures before it writes so a refusal writes nothing (SPEC-TABLES §16.14 W0, W8)
 	// +5: a fixed load refuses a file that holds no record (§5.3 steps 9 and 10, §22.6)
-	goOneTableLineBudget = 10190
+	goOneTableLineBudget = 10194
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -110,8 +111,10 @@ const (
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +71: a wide integer is a JSON string of digits, and every integer takes an integer token (SPEC-TABLES §16.2)
+	// +9: the JSON writer refuses a zero byte in text, and the plain and regional writers measure before they write so a refusal writes nothing (SPEC-TABLES §16.14 W0, W8)
+	// +8: a string-blob node write refuses a zero byte and ill-formed UTF-8 before it copies the bytes (SPEC-TABLES §16.14 W0, W8)
 	// +85: the same rule over the examples' fixed roots (§5.3 steps 9 and 10, §22.6)
-	goExamplesLineBudget = 60261
+	goExamplesLineBudget = 60278
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
