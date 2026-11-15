@@ -791,7 +791,9 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 			put(peerWSlot, peerRefBits)
 			put(5, 8)
 		})},
-		shapeCase{name: "msg-widened-at-default", form: "msg-widen", verdict: "refused", wire: packMsgBits(peerRefBits, func(put func(uint64, int), _ func()) {
+		// The peer is another build (its own build version), so its default
+		// for `w` is not known here and a stored 0 reads (§3.3(a)).
+		shapeCase{name: "msg-widened-at-default", form: "msg-widen", verdict: "read", wire: packMsgBits(peerRefBits, func(put func(uint64, int), _ func()) {
 			put(peerWSlot, peerRefBits)
 			put(0, 8)
 		})},
