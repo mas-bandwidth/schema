@@ -399,7 +399,7 @@ typedef struct TableNodeScan
 {
     TableReader fields, payload;
     uint64_t declared, records;
-    int opened, present, damaged;
+    int opened, present, damaged, misplaced;
 } TableNodeScan;
 
 static SCHEMA_UNUSED TableNodeScan table_node_scan_begin( const TableReader * root )
@@ -418,12 +418,14 @@ static SCHEMA_UNUSED int table_node_scan_open( TableNodeScan * scan )
     {
         uint64_t ref, id; uint8_t kind;
         if ( !table_reader_leb(fields,&ref) || ref == 0 || ref > fields->id_count ) { break; }
+        /* THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (docs/SPEC-TABLES.md
+           §3.1, §4): any field after it is a node table out of its place. */
+        if ( scan->present ) { scan->damaged = 1; scan->misplaced = 1; return 0; }
         id = table_reader_id_at(fields,ref);
         if ( !table_reader_has(fields,1) ) { break; }
         kind = table_reader_get8(fields);
         if ( id == UINT64_MAX )
         {
-            if ( scan->present ) { scan->damaged = 1; return 0; }
             scan->present = 1;
             if ( kind != 12 || !table_reader_span(fields,&scan->payload) )
             { scan->damaged = 1; return 0; }
@@ -432,6 +434,9 @@ static SCHEMA_UNUSED int table_node_scan_open( TableNodeScan * scan )
     }
     if ( !scan->present ) { return 0; }
     if ( !table_reader_leb(&scan->payload,&scan->declared) ) { scan->damaged = 1; return 0; }
+    /* A NODE TABLE WITH NO RECORD is a spelling no conforming writer makes:
+       a save with no node writes no node table (§3.1, §4). */
+    if ( scan->declared == 0 ) { scan->damaged = 1; scan->misplaced = 1; return 0; }
     return 1;
 }
 
@@ -440,8 +445,9 @@ static SCHEMA_UNUSED int table_node_scan_next( TableNodeScan * scan, uint64_t * 
     uint64_t ref;
     if ( !scan->opened && !table_node_scan_open(scan) ) { return 0; }
     if ( scan->damaged || scan->payload.offset >= scan->payload.size ) { return 0; }
-    if ( !table_reader_leb(&scan->payload,&ref) || ref == 0 || ref > scan->payload.id_count ||
-         !table_reader_span(&scan->payload,body) ) { scan->damaged = 1; return 0; }
+    if ( !table_reader_leb(&scan->payload,&ref) || ref == 0 || ref > scan->payload.id_count ) { scan->damaged = 1; return 0; }
+    table_reader_use( &scan->payload, ref );
+    if ( !table_reader_span(&scan->payload,body) ) { scan->damaged = 1; return 0; }
     *type_id = table_reader_id_at(&scan->payload,ref); scan->records++;
     /* A RECORD'S TYPE MAY NOT NAME A RESERVED ID (docs/SPEC-TABLES.md §3.1,
        §3.3): the node table, build version and vocabulary ids are transport,
@@ -1090,7 +1096,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int64_t %s(const TableReader * reader, int64_t * data_out, int64_t * records_out)\n{\n", g.sym(n, "load_layout"))
 	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id;\n    int64_t data=%s(reader), records=0;\n    if(data<0) { return -1; }\n", g.sym(n, "wire_storage"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n", g.sym(n, "node_lookup"))
-	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }\n        records++;\n    }\n")
+	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }\n        records++;\n    }\n    if (scan.misplaced) { return -1; }\n")
 	g.pf("    if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }\n")
 	g.pf("    *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);\n}\n")
 	strictShared := ""
@@ -1172,7 +1178,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedRoot = "retention.path=table_retain_root(root,1);"
 	}
-	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { break; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok=0; if(!nodes->refused) { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=table_align_up64((int64_t)sizeof(*root)); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; }\n      /* a NaN or an infinity anywhere in the graph refuses the read, the strict one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      %sif(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n      return !nodes->refused && (!nodes->arena || (read_ok && reader->report->missing_required==missing_before)); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), reachCheck, g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
+	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { break; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok=0; if(!nodes->refused) { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=table_align_up64((int64_t)sizeof(*root)); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; }\n      /* a NaN or an infinity anywhere in the graph refuses the read, the strict one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      %sif(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n      /* AN ID TABLE OUT OF FIRST-USE ORDER, OR WITH AN ENTRY NO REFERENCE NAMES (docs/SPEC-TABLES.md §3, §4), is judged once every walk above has met its references */\n      if(!nodes->refused && !reader->report->refused && (!nodes->arena || read_ok) && !table_reader_first_use_holds(reader)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n      return !nodes->refused && (!nodes->arena || (read_ok && reader->report->missing_required==missing_before)); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), reachCheck, g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
 	if g.retain {
 		return
 	}
@@ -1190,7 +1196,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	}
 	g.pf("/* %s is the STRICT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */\n", g.api(n, "load"))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load"))
-	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total; int refused_before,reason_before; int32_t non_finite_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->refused=0;\n")
+	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total; int refused_before,reason_before; int32_t non_finite_before; const uint8_t * first_use[4096];\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->refused=0;\n")
 	if st.Integrity != "" {
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return NULL; }\n")
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
@@ -1204,10 +1210,10 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a refusal, or
 	// damage the walk stepped over, hands back no root and leaves no node in
 	// the caller's region.
-	g.pf("    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink) || table_report_finish(report,1)) { report->refused=1; memset(region,0,(size_t)total); table_release(table_default_allocator(),nodes.blob_named); return NULL; } /* a refusal discards the whole load (§4) */\n    table_release(table_default_allocator(),nodes.blob_named); return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
+	g.pf("    table_reader_hold_first_use(&reader,first_use);\n    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink) || table_report_finish(report,1)) { report->refused=1; memset(region,0,(size_t)total); table_release(table_default_allocator(),nodes.blob_named); return NULL; } /* a refusal discards the whole load (§4) */\n    table_release(table_default_allocator(),nodes.blob_named); return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
 	g.pf("/* %s is the STRICT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */\n", g.api(n, "load_builder"))
 	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder"), n)
-	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok,refused_before; int32_t non_finite_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; non_finite_before=report->non_finite_floats; report->refused=0;\n", n)
+	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok,refused_before; int32_t non_finite_before; const uint8_t * first_use[4096];\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; non_finite_before=report->non_finite_floats; report->refused=0;\n", n)
 	if st.Integrity != "" {
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
@@ -1216,5 +1222,5 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	g.pf("    scan=table_node_scan_begin(&reader); while(table_node_scan_next(&scan,&id,&body)) { records++; }\n    if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	g.pf("    root=%s(builder); if(root==NULL) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", g.api(n, "builder_root"))
 	g.pf("    directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));\n    if(directory==NULL) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x%016x);\n", ir.TableWireId(st.WireName()))
-	g.pf("    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    sink.region=NULL; sink.worker=&builder->main;\n    ok=%s(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->refused && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->refused=report->refused||refused_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named);\n    if(!ok || table_report_finish(report,ok)) { report->refused=1; %s(root); return 0; } /* a refusal discards the whole load (§4) */\n    report->refused=report->refused||refused_before; return 1;\n}\n", blobNamedAllocBuilder, g.sym(n, "load_graph"), g.api(n, "reset"))
+	g.pf("    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    sink.region=NULL; sink.worker=&builder->main; table_reader_hold_first_use(&reader,first_use);\n    ok=%s(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->refused && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->refused=report->refused||refused_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named);\n    if(!ok || table_report_finish(report,ok)) { report->refused=1; %s(root); return 0; } /* a refusal discards the whole load (§4) */\n    report->refused=report->refused||refused_before; return 1;\n}\n", blobNamedAllocBuilder, g.sym(n, "load_graph"), g.api(n, "reset"))
 }

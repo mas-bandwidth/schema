@@ -464,6 +464,7 @@ typedef struct bench_table_reader_t
     const uint8_t * ids;
 
     uint64_t id_count;
+    const uint8_t ** first_use;
     int nested;
 } bench_table_reader_t;
 
@@ -490,6 +491,39 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE uint64_t bench_table_reader_id_at
     uint64_t lo = (uint64_t) e[0] | (uint64_t) e[1] << 8 | (uint64_t) e[2] << 16 | (uint64_t) e[3] << 24;
     uint64_t hi = (uint64_t) e[4] | (uint64_t) e[5] << 8 | (uint64_t) e[6] << 16 | (uint64_t) e[7] << 24;
     return lo | ( hi << 32 );
+}
+/* THE ID TABLE IS IN FIRST-USE ORDER, EVERY ENTRY USED (docs/SPEC-TABLES.md
+   §3, §4). A read that holds the rule hands its reader an array of one slot
+   an entry; the walks the read already makes note, at each reference they
+   meet, where in the wire it sits, and the earliest place wins. A graph read
+   places node records before it reads the root, so the walks do not meet
+   references in wire order; the earliest place of each is the wire's own
+   order all the same. At the end of the read every entry must have been met,
+   and the entries' first places must rise with their positions. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_reader_use( const bench_table_reader_t * r, uint64_t ref )
+{
+    if ( r->first_use != NULL && ref != 0 && ref <= r->id_count )
+    {
+        const uint8_t * at = r->buffer + r->offset;
+        if ( r->first_use[ref-1] == NULL || at < r->first_use[ref-1] ) { r->first_use[ref-1] = at; }
+    }
+}
+static SCHEMA_UNUSED void bench_table_reader_hold_first_use( bench_table_reader_t * r, const uint8_t ** at )
+{
+    uint64_t i;
+    for ( i = 0; i < r->id_count; i++ ) { at[i] = NULL; }
+    r->first_use = at;
+}
+static SCHEMA_UNUSED int bench_table_reader_first_use_holds( const bench_table_reader_t * r )
+{
+    uint64_t i;
+    if ( r->first_use == NULL ) { return 1; }
+    for ( i = 0; i < r->id_count; i++ )
+    {
+        if ( r->first_use[i] == NULL ) { return 0; }
+        if ( i > 0 && r->first_use[i] <= r->first_use[i-1] ) { return 0; }
+    }
+    return 1;
 }
 /* Rejected numbers do not consume input: the containing body's exact extent
    must still be able to detect the damaged spelling. */
@@ -623,6 +657,7 @@ static SCHEMA_UNUSED int64_t bench_table_skip_body( bench_table_reader_t r, int6
         if ( !bench_table_reader_leb( &r, &ref ) ) { return -1; }
         if ( ref == 0 ) { return r.offset; }
         if ( ref > r.id_count || ref > 4096 || !bench_table_reader_has( &r, 1 ) ) { return -1; }
+        bench_table_reader_use( &r, ref );
         if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
         seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
         id = bench_table_reader_id_at( &r, ref ); kind = bench_table_reader_get8( &r );
@@ -657,6 +692,7 @@ static SCHEMA_UNUSED int bench_table_skip_array( bench_table_reader_t * sub, int
         {
             uint64_t key; bench_table_reader_t elem;
             if ( !bench_table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            bench_table_reader_use( sub, key );
             if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
             seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
             if ( !bench_table_reader_span( sub, &elem ) ) { return 0; }
@@ -679,11 +715,13 @@ static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8
             return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
         case 30:
             if ( !bench_table_reader_leb( r, &n ) ) { return 0; }
+            bench_table_reader_use( r, n );
             return n <= r->id_count;
         case 15:
         {
             uint64_t ref; uint8_t arm_kind; bench_table_reader_t arm;
             if ( !bench_table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
+            bench_table_reader_use( r, ref );
             if ( ref == 0 ) { return 1; }
             if ( !bench_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = bench_table_reader_get8( r );
@@ -731,142 +769,6 @@ static SCHEMA_UNUSED int bench_table_kind_widens( uint8_t kind, uint8_t declared
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
-
-static SCHEMA_UNUSED int bench_table_first_use_mark( uint64_t ref, uint64_t * next, uint8_t * seen, uint64_t id_count )
-{
-    if ( ref == 0 || ref > id_count || ref > 4096 ) { return 0; }
-    if ( !( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) )
-    {
-        if ( ref != *next ) { return 0; }
-        seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); (*next)++;
-    }
-    return 1;
-}
-static SCHEMA_UNUSED int bench_table_first_use_value( bench_table_reader_t * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth );
-static SCHEMA_UNUSED int bench_table_first_use_payload( bench_table_reader_t * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth );
-static SCHEMA_UNUSED int bench_table_first_use_body( bench_table_reader_t * r, uint64_t * next, uint8_t * seen, int depth, int root )
-{
-    if ( depth > 128 ) { return 0; }
-    for ( ;; )
-    {
-        uint64_t ref, id; uint8_t kind;
-        if ( !bench_table_reader_leb( r, &ref ) ) { return 0; }
-        if ( ref == 0 ) { return r->offset == r->size; }
-        if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { return 0; }
-        kind = bench_table_reader_get8( r ); id = bench_table_reader_id_at( r, ref );
-        if ( !bench_table_first_use_mark( ref, next, seen, r->id_count ) ) { return 0; }
-        if ( id == UINT64_MAX - 1 || id == UINT64_MAX - 2 ) { return 2; }
-        if ( id == UINT64_MAX )
-        {
-            bench_table_reader_t payload; uint64_t count, i;
-            if ( !root || depth != 0 ) { return 0; }
-            if ( kind != 12 || !bench_table_reader_span( r, &payload ) ) { return 0; }
-            if ( !bench_table_reader_leb( &payload, &count ) || count == 0 ) { return 0; }
-            for ( i = 0; i < count; i++ )
-            {
-                uint64_t tref; bench_table_reader_t record;
-                if ( !bench_table_reader_leb( &payload, &tref ) || tref == 0 || tref > payload.id_count ) { return 0; }
-                if ( !bench_table_first_use_mark( tref, next, seen, payload.id_count ) ) { return 0; }
-                if ( !bench_table_reader_span( &payload, &record ) ) { return 0; }
-                if ( !bench_table_first_use_body( &record, next, seen, depth, 0 ) ) { return 0; }
-            }
-            if ( payload.offset != payload.size ) { return 0; }
-            if ( !bench_table_reader_leb( r, &ref ) || ref != 0 ) { return 0; }
-            return r->offset == r->size;
-        }
-        if ( !bench_table_first_use_value( r, kind, next, seen, depth ) ) { return 0; }
-    }
-}
-static SCHEMA_UNUSED int bench_table_first_use_array_body( bench_table_reader_t * sub, uint64_t * next, uint8_t * seen, int depth )
-{
-    uint8_t elem_kind; uint64_t count, i;
-    if ( !bench_table_reader_has( sub, 1 ) ) { return 0; }
-    elem_kind = bench_table_reader_get8( sub );
-    if ( !bench_table_array_element_kind_allowed( elem_kind ) ) { return 0; }
-    if ( !bench_table_reader_leb( sub, &count ) ) { return 0; }
-    for ( i = 0; i < count; i++ ) { if ( !bench_table_first_use_value( sub, elem_kind, next, seen, depth ) ) { return 0; } }
-    return sub->offset == sub->size;
-}
-static SCHEMA_UNUSED int bench_table_first_use_keyed_body( bench_table_reader_t * sub, uint64_t * next, uint8_t * seen, int depth )
-{
-    uint8_t elem_kind; uint64_t count, i;
-    if ( !bench_table_reader_has( sub, 1 ) ) { return 0; }
-    elem_kind = bench_table_reader_get8( sub );
-    if ( !bench_table_keyed_element_kind_allowed( elem_kind ) ) { return 0; }
-    if ( !bench_table_reader_leb( sub, &count ) ) { return 0; }
-    for ( i = 0; i < count; i++ )
-    {
-        uint64_t key; bench_table_reader_t elem;
-        if ( !bench_table_reader_leb( sub, &key ) || !bench_table_first_use_mark( key, next, seen, sub->id_count ) ) { return 0; }
-        if ( !bench_table_reader_span( sub, &elem ) ) { return 0; }
-        if ( elem_kind == 13 ) { if ( !bench_table_first_use_body( &elem, next, seen, depth + 1, 0 ) ) { return 0; } }
-        else if ( !bench_table_first_use_payload( &elem, elem_kind, next, seen, depth + 1 ) ) { return 0; }
-    }
-    return sub->offset == sub->size;
-}
-static SCHEMA_UNUSED int bench_table_first_use_value( bench_table_reader_t * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth )
-{
-    bench_table_reader_t sub; uint64_t n; int width = 0;
-    if ( depth > 128 ) { return 0; }
-    switch ( kind )
-    {
-        case 13: if ( !bench_table_reader_span( r, &sub ) ) { return 0; } return bench_table_first_use_body( &sub, next, seen, depth + 1, 0 );
-        case 14: if ( !bench_table_reader_span( r, &sub ) ) { return 0; } return bench_table_first_use_array_body( &sub, next, seen, depth + 1 );
-        case 16: if ( !bench_table_reader_span( r, &sub ) ) { return 0; } return bench_table_first_use_keyed_body( &sub, next, seen, depth + 1 );
-        case 12: case 31: if ( !bench_table_reader_span( r, &sub ) ) { return 0; } return 1;
-        case 32: if ( !bench_table_reader_span( r, &sub ) ) { return 0; } return sub.size == 0;
-        case 15:
-        {
-            uint64_t ref; uint8_t arm_kind;
-            if ( !bench_table_reader_leb( r, &ref ) ) { return 0; }
-            if ( ref == 0 ) { return 1; }
-            if ( !bench_table_first_use_mark( ref, next, seen, r->id_count ) ) { return 0; }
-            if ( !bench_table_reader_has( r, 1 ) ) { return 0; }
-            arm_kind = bench_table_reader_get8( r );
-            if ( !bench_table_reader_span( r, &sub ) ) { return 0; }
-            return bench_table_first_use_payload( &sub, arm_kind, next, seen, depth + 1 );
-        }
-        case 17: return bench_table_reader_leb( r, &n );
-        case 30:
-            if ( !bench_table_reader_leb( r, &n ) ) { return 0; }
-            return n == 0 || bench_table_first_use_mark( n, next, seen, r->id_count );
-        case 1: case 2: case 6: case 20: case 25: width = 1; break;
-        case 3: case 7: case 21: case 26: width = 2; break;
-        case 4: case 8: case 10: case 22: case 27: width = 4; break;
-        case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;
-        case 18: case 19: case 24: case 29: width = 16; break;
-        default: return 0;
-    }
-    if ( !bench_table_reader_has( r, width ) ) { return 0; }
-    r->offset += width; return 1;
-}
-static SCHEMA_UNUSED int bench_table_first_use_payload( bench_table_reader_t * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth )
-{
-    uint64_t n; int width = 0;
-    switch ( kind )
-    {
-        case 13: return bench_table_first_use_body( r, next, seen, depth, 0 );
-        case 14: return bench_table_first_use_array_body( r, next, seen, depth );
-        case 16: return bench_table_first_use_keyed_body( r, next, seen, depth );
-        case 12: case 31: r->offset = r->size; return 1;
-        case 32: return r->size == 0;
-        case 15: if ( !bench_table_first_use_value( r, kind, next, seen, depth ) ) { return 0; } return r->offset == r->size;
-        case 17: if ( !bench_table_reader_leb( r, &n ) ) { return 0; } return r->offset == r->size;
-        case 30:
-            if ( !bench_table_reader_leb( r, &n ) ) { return 0; }
-            if ( n != 0 && !bench_table_first_use_mark( n, next, seen, r->id_count ) ) { return 0; }
-            return r->offset == r->size;
-        case 1: case 2: case 6: case 20: case 25: width = 1; break;
-        case 3: case 7: case 21: case 26: width = 2; break;
-        case 4: case 8: case 10: case 22: case 27: width = 4; break;
-        case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;
-        case 18: case 19: case 24: case 29: width = 16; break;
-        default: return 0;
-    }
-    if ( !bench_table_reader_has( r, width ) ) { return 0; }
-    r->offset += width; return r->offset == r->size;
-}
-
 static SCHEMA_UNUSED int bench_table_wire_open( bench_table_reader_t * r, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
     uint64_t count, i; int64_t span; bench_table_reader_t tail;
@@ -910,18 +812,16 @@ static SCHEMA_UNUSED int bench_table_wire_open( bench_table_reader_t * r, const 
             }
         }
     }
-    /* FIRST-USE ORDER AND THE NODE TABLE OPEN (docs/SPEC-TABLES.md §3,
-       §3.1): the id table names every entry once, in the order the whole
-       walk first uses it, so an entry that is unused or out of first-use
-       order is refused here, before any value lands. The same walk finds the
-       root's node table, which is the root body's LAST field and never
-       empty. */
+    /* Root slack invalidates the whole file before any overlay. A stopped
+       body is different: its successfully decoded prefix must survive. */
+    tail = *r;
+    for ( ;; )
     {
-        uint64_t next = 1; uint8_t seen[512]; bench_table_reader_t body = *r; int first;
-        memset( seen, 0, sizeof( seen ) );
-        first = bench_table_first_use_body( &body, &next, seen, 0, 1 );
-        if ( first == 0 || ( first == 1 && next != count + 1 ) )
-        { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        uint64_t ref; uint8_t kind;
+        if ( !bench_table_reader_leb( &tail, &ref ) ) { break; }
+        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } break; }
+        if ( ref > count || !bench_table_reader_has( &tail, 1 ) ) { break; }
+        kind = bench_table_reader_get8( &tail ); if ( !bench_table_reader_skip( &tail, kind ) ) { break; }
     }
     return 1;
 }
@@ -3961,6 +3861,7 @@ static SCHEMA_UNUSED int bench_fixed_table_load_body( bench_table_reader_t * r, 
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -3977,6 +3878,7 @@ static SCHEMA_UNUSED int bench_fixed_table_load_body( bench_table_reader_t * r, 
                 }
                 bench_table_reader_t sub;
                 if ( !bench_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size == 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 bench_bench_mixed_load_body( &sub, &value->value );
                 if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; bench_bench_mixed_reset( &value->value ); }
                 break;
@@ -3995,14 +3897,16 @@ static SCHEMA_UNUSED int bench_fixed_table_load_body( bench_table_reader_t * r, 
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_fixed_table_load( bench_fixed_table_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_fixed_table_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
+    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_fixed_table_load_body( &r, value );
+    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_fixed_table_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_fixed_table_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -4070,14 +3974,11 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_t
 static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message_reader_t * r,bench_fixed_table_t * value)
 {
  int32_t last_field=-1;
- int any_field=0;
  bench_fixed_table_reset(value);
  for(;;){const bench_table_message_entry_t * entry;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
- if(entry==NULL){if(r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&!any_field)goto damaged;
- return 1;
- }if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- any_field=1;
+ if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  switch(entry->id){
  case UINT64_C(0x7ce4fd9430e80cea): {
  if(0<=last_field)goto damaged;
@@ -4087,7 +3988,9 @@ static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  }}
+ int64_t body_at=r->bits.offset;
  if(!bench_bench_mixed_load_message_body(r,&value->value))return 0;
+ if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&r->bits.offset-body_at==(int64_t)r->vocabulary->ref_bits)goto damaged;
  break;
  }
  default:r->report->unknown++;

@@ -278,6 +278,7 @@ typedef struct TableReader
     const uint8_t * ids;
 @READ_NODES@
     uint64_t id_count;
+    const uint8_t ** first_use;
     int nested;
 } TableReader;
 
@@ -304,6 +305,39 @@ static SCHEMA_UNUSED @INLINE@ uint64_t table_reader_id_at( const TableReader * r
     uint64_t lo = (uint64_t) e[0] | (uint64_t) e[1] << 8 | (uint64_t) e[2] << 16 | (uint64_t) e[3] << 24;
     uint64_t hi = (uint64_t) e[4] | (uint64_t) e[5] << 8 | (uint64_t) e[6] << 16 | (uint64_t) e[7] << 24;
     return lo | ( hi << 32 );
+}
+/* THE ID TABLE IS IN FIRST-USE ORDER, EVERY ENTRY USED (docs/SPEC-TABLES.md
+   §3, §4). A read that holds the rule hands its reader an array of one slot
+   an entry; the walks the read already makes note, at each reference they
+   meet, where in the wire it sits, and the earliest place wins. A graph read
+   places node records before it reads the root, so the walks do not meet
+   references in wire order; the earliest place of each is the wire's own
+   order all the same. At the end of the read every entry must have been met,
+   and the entries' first places must rise with their positions. */
+static SCHEMA_UNUSED @INLINE@ void table_reader_use( const TableReader * r, uint64_t ref )
+{
+    if ( r->first_use != NULL && ref != 0 && ref <= r->id_count )
+    {
+        const uint8_t * at = r->buffer + r->offset;
+        if ( r->first_use[ref-1] == NULL || at < r->first_use[ref-1] ) { r->first_use[ref-1] = at; }
+    }
+}
+static SCHEMA_UNUSED void table_reader_hold_first_use( TableReader * r, const uint8_t ** at )
+{
+    uint64_t i;
+    for ( i = 0; i < r->id_count; i++ ) { at[i] = NULL; }
+    r->first_use = at;
+}
+static SCHEMA_UNUSED int table_reader_first_use_holds( const TableReader * r )
+{
+    uint64_t i;
+    if ( r->first_use == NULL ) { return 1; }
+    for ( i = 0; i < r->id_count; i++ )
+    {
+        if ( r->first_use[i] == NULL ) { return 0; }
+        if ( i > 0 && r->first_use[i] <= r->first_use[i-1] ) { return 0; }
+    }
+    return 1;
 }
 /* Rejected numbers do not consume input: the containing body's exact extent
    must still be able to detect the damaged spelling. */
@@ -437,6 +471,7 @@ static SCHEMA_UNUSED int64_t table_skip_body( TableReader r, int64_t nodes, int 
         if ( !table_reader_leb( &r, &ref ) ) { return -1; }
         if ( ref == 0 ) { return r.offset; }
         if ( ref > r.id_count || ref > 4096 || !table_reader_has( &r, 1 ) ) { return -1; }
+        table_reader_use( &r, ref );
         if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
         seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
         id = table_reader_id_at( &r, ref ); kind = table_reader_get8( &r );
@@ -471,6 +506,7 @@ static SCHEMA_UNUSED int table_skip_array( TableReader * sub, int keyed, int64_t
         {
             uint64_t key; TableReader elem;
             if ( !table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            table_reader_use( sub, key );
             if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
             seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
             if ( !table_reader_span( sub, &elem ) ) { return 0; }
@@ -493,11 +529,13 @@ static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_
             return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
         case 30:
             if ( !table_reader_leb( r, &n ) ) { return 0; }
+            table_reader_use( r, n );
             return n <= r->id_count;
         case 15:
         {
             uint64_t ref; uint8_t arm_kind; TableReader arm;
             if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
+            table_reader_use( r, ref );
             if ( ref == 0 ) { return 1; }
             if ( !table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = table_reader_get8( r );
@@ -545,142 +583,6 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
-
-static SCHEMA_UNUSED int table_first_use_mark( uint64_t ref, uint64_t * next, uint8_t * seen, uint64_t id_count )
-{
-    if ( ref == 0 || ref > id_count || ref > 4096 ) { return 0; }
-    if ( !( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) )
-    {
-        if ( ref != *next ) { return 0; }
-        seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); (*next)++;
-    }
-    return 1;
-}
-static SCHEMA_UNUSED int table_first_use_value( TableReader * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth );
-static SCHEMA_UNUSED int table_first_use_payload( TableReader * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth );
-static SCHEMA_UNUSED int table_first_use_body( TableReader * r, uint64_t * next, uint8_t * seen, int depth, int root )
-{
-    if ( depth > 128 ) { return 0; }
-    for ( ;; )
-    {
-        uint64_t ref, id; uint8_t kind;
-        if ( !table_reader_leb( r, &ref ) ) { return 0; }
-        if ( ref == 0 ) { return r->offset == r->size; }
-        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { return 0; }
-        kind = table_reader_get8( r ); id = table_reader_id_at( r, ref );
-        if ( !table_first_use_mark( ref, next, seen, r->id_count ) ) { return 0; }
-        if ( id == UINT64_MAX - 1 || id == UINT64_MAX - 2 ) { return 2; }
-        if ( id == UINT64_MAX )
-        {
-            TableReader payload; uint64_t count, i;
-            if ( !root || depth != 0 ) { return 0; }
-            if ( kind != 12 || !table_reader_span( r, &payload ) ) { return 0; }
-            if ( !table_reader_leb( &payload, &count ) || count == 0 ) { return 0; }
-            for ( i = 0; i < count; i++ )
-            {
-                uint64_t tref; TableReader record;
-                if ( !table_reader_leb( &payload, &tref ) || tref == 0 || tref > payload.id_count ) { return 0; }
-                if ( !table_first_use_mark( tref, next, seen, payload.id_count ) ) { return 0; }
-                if ( !table_reader_span( &payload, &record ) ) { return 0; }
-                if ( !table_first_use_body( &record, next, seen, depth, 0 ) ) { return 0; }
-            }
-            if ( payload.offset != payload.size ) { return 0; }
-            if ( !table_reader_leb( r, &ref ) || ref != 0 ) { return 0; }
-            return r->offset == r->size;
-        }
-        if ( !table_first_use_value( r, kind, next, seen, depth ) ) { return 0; }
-    }
-}
-static SCHEMA_UNUSED int table_first_use_array_body( TableReader * sub, uint64_t * next, uint8_t * seen, int depth )
-{
-    uint8_t elem_kind; uint64_t count, i;
-    if ( !table_reader_has( sub, 1 ) ) { return 0; }
-    elem_kind = table_reader_get8( sub );
-    if ( !table_array_element_kind_allowed( elem_kind ) ) { return 0; }
-    if ( !table_reader_leb( sub, &count ) ) { return 0; }
-    for ( i = 0; i < count; i++ ) { if ( !table_first_use_value( sub, elem_kind, next, seen, depth ) ) { return 0; } }
-    return sub->offset == sub->size;
-}
-static SCHEMA_UNUSED int table_first_use_keyed_body( TableReader * sub, uint64_t * next, uint8_t * seen, int depth )
-{
-    uint8_t elem_kind; uint64_t count, i;
-    if ( !table_reader_has( sub, 1 ) ) { return 0; }
-    elem_kind = table_reader_get8( sub );
-    if ( !table_keyed_element_kind_allowed( elem_kind ) ) { return 0; }
-    if ( !table_reader_leb( sub, &count ) ) { return 0; }
-    for ( i = 0; i < count; i++ )
-    {
-        uint64_t key; TableReader elem;
-        if ( !table_reader_leb( sub, &key ) || !table_first_use_mark( key, next, seen, sub->id_count ) ) { return 0; }
-        if ( !table_reader_span( sub, &elem ) ) { return 0; }
-        if ( elem_kind == 13 ) { if ( !table_first_use_body( &elem, next, seen, depth + 1, 0 ) ) { return 0; } }
-        else if ( !table_first_use_payload( &elem, elem_kind, next, seen, depth + 1 ) ) { return 0; }
-    }
-    return sub->offset == sub->size;
-}
-static SCHEMA_UNUSED int table_first_use_value( TableReader * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth )
-{
-    TableReader sub; uint64_t n; int width = 0;
-    if ( depth > 128 ) { return 0; }
-    switch ( kind )
-    {
-        case 13: if ( !table_reader_span( r, &sub ) ) { return 0; } return table_first_use_body( &sub, next, seen, depth + 1, 0 );
-        case 14: if ( !table_reader_span( r, &sub ) ) { return 0; } return table_first_use_array_body( &sub, next, seen, depth + 1 );
-        case 16: if ( !table_reader_span( r, &sub ) ) { return 0; } return table_first_use_keyed_body( &sub, next, seen, depth + 1 );
-        case 12: case 31: if ( !table_reader_span( r, &sub ) ) { return 0; } return 1;
-        case 32: if ( !table_reader_span( r, &sub ) ) { return 0; } return sub.size == 0;
-        case 15:
-        {
-            uint64_t ref; uint8_t arm_kind;
-            if ( !table_reader_leb( r, &ref ) ) { return 0; }
-            if ( ref == 0 ) { return 1; }
-            if ( !table_first_use_mark( ref, next, seen, r->id_count ) ) { return 0; }
-            if ( !table_reader_has( r, 1 ) ) { return 0; }
-            arm_kind = table_reader_get8( r );
-            if ( !table_reader_span( r, &sub ) ) { return 0; }
-            return table_first_use_payload( &sub, arm_kind, next, seen, depth + 1 );
-        }
-        case 17: return table_reader_leb( r, &n );
-        case 30:
-            if ( !table_reader_leb( r, &n ) ) { return 0; }
-            return n == 0 || table_first_use_mark( n, next, seen, r->id_count );
-        case 1: case 2: case 6: case 20: case 25: width = 1; break;
-        case 3: case 7: case 21: case 26: width = 2; break;
-        case 4: case 8: case 10: case 22: case 27: width = 4; break;
-        case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;
-        case 18: case 19: case 24: case 29: width = 16; break;
-        default: return 0;
-    }
-    if ( !table_reader_has( r, width ) ) { return 0; }
-    r->offset += width; return 1;
-}
-static SCHEMA_UNUSED int table_first_use_payload( TableReader * r, uint8_t kind, uint64_t * next, uint8_t * seen, int depth )
-{
-    uint64_t n; int width = 0;
-    switch ( kind )
-    {
-        case 13: return table_first_use_body( r, next, seen, depth, 0 );
-        case 14: return table_first_use_array_body( r, next, seen, depth );
-        case 16: return table_first_use_keyed_body( r, next, seen, depth );
-        case 12: case 31: r->offset = r->size; return 1;
-        case 32: return r->size == 0;
-        case 15: if ( !table_first_use_value( r, kind, next, seen, depth ) ) { return 0; } return r->offset == r->size;
-        case 17: if ( !table_reader_leb( r, &n ) ) { return 0; } return r->offset == r->size;
-        case 30:
-            if ( !table_reader_leb( r, &n ) ) { return 0; }
-            if ( n != 0 && !table_first_use_mark( n, next, seen, r->id_count ) ) { return 0; }
-            return r->offset == r->size;
-        case 1: case 2: case 6: case 20: case 25: width = 1; break;
-        case 3: case 7: case 21: case 26: width = 2; break;
-        case 4: case 8: case 10: case 22: case 27: width = 4; break;
-        case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;
-        case 18: case 19: case 24: case 29: width = 16; break;
-        default: return 0;
-    }
-    if ( !table_reader_has( r, width ) ) { return 0; }
-    r->offset += width; return r->offset == r->size;
-}
-
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     uint64_t count, i; int64_t span; TableReader tail;
@@ -724,18 +626,16 @@ static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffe
             }
         }
     }
-    /* FIRST-USE ORDER AND THE NODE TABLE OPEN (docs/SPEC-TABLES.md §3,
-       §3.1): the id table names every entry once, in the order the whole
-       walk first uses it, so an entry that is unused or out of first-use
-       order is refused here, before any value lands. The same walk finds the
-       root's node table, which is the root body's LAST field and never
-       empty. */
+    /* Root slack invalidates the whole file before any overlay. A stopped
+       body is different: its successfully decoded prefix must survive. */
+    tail = *r;
+    for ( ;; )
     {
-        uint64_t next = 1; uint8_t seen[512]; TableReader body = *r; int first;
-        memset( seen, 0, sizeof( seen ) );
-        first = table_first_use_body( &body, &next, seen, 0, 1 );
-        if ( first == 0 || ( first == 1 && next != count + 1 ) )
-        { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        uint64_t ref; uint8_t kind;
+        if ( !table_reader_leb( &tail, &ref ) ) { break; }
+        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; } break; }
+        if ( ref > count || !table_reader_has( &tail, 1 ) ) { break; }
+        kind = table_reader_get8( &tail ); if ( !table_reader_skip( &tail, kind ) ) { break; }
     }
     return 1;
 }

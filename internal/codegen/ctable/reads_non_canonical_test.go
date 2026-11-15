@@ -36,7 +36,11 @@ func cNonCanonicalRows(t *testing.T) (string, []cNonCanonicalRow) {
 		if f[0] == "file" {
 			continue
 		}
-		measureHolds := f[2] == "unused-id-entry" || f[2] == "id-table-out-of-order" || f[2] == "empty-node-table" || f[2] == "node-table-out-of-place" || (f[1] == "variable" && f[3] == "read")
+		// The measure answers a size from the node table's framing and the
+		// root's storage walk; it refuses a node table out of its place or
+		// empty, which that walk meets. The id table's first-use order is
+		// judged by the reads, which meet every reference.
+		measureHolds := f[2] == "empty-node-table" || f[2] == "node-table-out-of-place" || (f[1] == "variable" && f[3] == "read")
 		rows = append(rows, cNonCanonicalRow{file: f[0], form: f[1], spelling: f[2], verdict: f[3], measureHolds: measureHolds})
 	}
 	if len(rows) == 0 {
@@ -132,6 +136,10 @@ func cNonCanonicalVariableProbe(data []byte, read, measureHolds bool) string {
     TableRetain retain; memset( &retain, 0, sizeof( retain ) );
     const Root * kept = root_load_retain( region2, total, wire, (int64_t) sizeof( wire ), &retain, &report );
     if ( kept == NULL ) { return fail("retain refused"); }
+    RootBuilder builder;
+    if ( !root_builder_init( &builder ) ) { return fail("builder init"); }
+    if ( !root_load_builder( &builder, wire, (int64_t) sizeof( wire ), &report ) ) { return fail("builder refused"); }
+    root_builder_shutdown( &builder );
     free( out ); free( region2 ); free( region );`)
 	if !read {
 		measureCheck := ""
@@ -148,6 +156,10 @@ func cNonCanonicalVariableProbe(data []byte, read, measureHolds bool) string {
     TableRetain retain; memset( &retain, 0, sizeof( retain ) );
     const Root * kept = root_load_retain( region2, 1 << 20, wire, (int64_t) sizeof( wire ), &retain, &report );
     if ( kept != NULL ) { return fail("retain read"); }
+    RootBuilder builder;
+    if ( !root_builder_init( &builder ) ) { return fail("builder init"); }
+    if ( root_load_builder( &builder, wire, (int64_t) sizeof( wire ), &report ) ) { return fail("builder read"); }
+    root_builder_shutdown( &builder );
     free( region2 ); free( region );`, measureCheck)
 	}
 	return fmt.Sprintf(`#include "ProbeTable.h"

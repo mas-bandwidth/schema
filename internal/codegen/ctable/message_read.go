@@ -350,6 +350,10 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		g.messageReadElement(f, "scratch", "element_entry", ind+" ", 1)
 		g.pf("%s }continue;}\n", ind)
 		g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ", 1)
+		if k := ir.TableWireScalarKind(f); k != tkTable && k != tkUnion && enumRef(f) == nil {
+			// a slot at its default is one the save skips (messageKeyedRides)
+			g.pf("%s if(!r->report->refused&&r->vocabulary->build_version==%s&&%s)goto damaged;\n", ind, buildVersionName(g.unit.Package), g.wireDefaultEquals(f, dst+"[slot]"))
+		}
 		g.pf("%s} }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
@@ -409,30 +413,58 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n }return 1;\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 }
 
-func (g *tableGen) messageFieldMustRide(f *ir.Field) bool {
-	if f.Type.Optional || f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" {
-		return false
+// messageRefuseAtDefault emits the message save's own elision test
+// (emitMessageSave), read back after a declared field lands: a field the save
+// would not have written is a spelling no conforming writer produces, and
+// the batch refuses it (docs/SPEC-TABLES.md §4 and the message form's own
+// paragraph). The test is held to a batch whose announcement names this
+// unit's own build version, as it was before; the spec's lineage cases read
+// a newer or older writer's field through the lineage check instead.
+func (g *tableGen) messageRefuseAtDefault(f *ir.Field, dst string) {
+	if f.Type.Optional {
+		return
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TNamed {
-		return false
+	own := "!r->report->refused&&r->vocabulary->build_version==" + buildVersionName(g.unit.Package)
+	kind := ir.TableWireScalarKind(f)
+	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		g.pf(" if(%s&&%s)goto damaged;\n", own, wireBytesAtDefault(f, dst))
+	case f.KeyEnum != "":
+		// the save writes riding slots only (messageKeyedRides), so a slot at
+		// its default is refused where it is read; no slot at all is the
+		// array the save elides
+		if kind == tkTable || kind == tkUnion {
+			return
+		}
+		g.pf(" { int32_t slot_at; int rides=0; for(slot_at=0;slot_at<%d;slot_at++){ if(!(%s)){rides=1;break;} } if(%s&&!rides)goto damaged; }\n", f.ArrayBound, g.wireDefaultEquals(f, dst+"[slot_at]"), own)
+	case f.Array == ir.ArrayCounted:
+		g.pf(" if(%s&&%s_count==0)goto damaged;\n", own, dst)
+	case f.Array == ir.ArrayFixed:
+		if kind == tkTable {
+			return
+		}
+		g.pf(" { int32_t slot_at; int rides=0; for(slot_at=0;slot_at<%d;slot_at++){ if(!(%s)){rides=1;break;} } if(%s&&!rides)goto damaged; }\n", f.ArrayBound, g.wireDefaultEquals(f, dst+"[slot_at]"), own)
+	case f.Array != ir.ArrayNone || kind == tkUnion:
+		return
+	case kind == tkTable:
+		// a nested body that is its terminator alone is the all-default
+		// table the save elides
+		g.pf(" if(%s&&r->bits.offset-body_at==(int64_t)r->vocabulary->ref_bits)goto damaged;\n", own)
+	case enumRef(f) != nil:
+		g.pf(" if(%s&&r->report->unknown==unknown_before&&%s)goto damaged;\n", own, g.wireDefaultEquals(f, dst))
+	default:
+		g.pf(" if(%s&&%s)goto damaged;\n", own, g.wireDefaultEquals(f, dst))
 	}
-	switch ir.TableWireScalarKind(f) {
-	case tkTable, tkUnion, tkArray, tkKeyed:
-		return false
-	}
-	return f.Required || !f.HasDefault
 }
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
-	empty := "return 1;"
-	if len(st.Fields) > 0 {
-		empty = "if(r->vocabulary->build_version==" + buildVersionName(g.unit.Package) + "&&!any_field)goto damaged;return 1;"
-	}
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
 	if len(st.Fields) > 0 {
-		g.pf(" int32_t last_field=-1; int any_field=0;\n")
+		// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §4):
+		// a declared field at or below the one before it is refused.
+		g.pf(" int32_t last_field=-1;\n")
 	}
-	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL){%s}if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;any_field=1;switch(entry->id){\n", g.api(st.Name, "reset"), empty)
+	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;switch(entry->id){\n", g.api(st.Name, "reset"))
 	for ordinal, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		g.pf(" if(%d<=last_field)goto damaged;last_field=%d;\n", ordinal, ordinal)
@@ -441,10 +473,16 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		if f.Array == ir.ArrayNone {
 			count = "value->" + f.Name + "_length"
 		}
-		g.messageReadValue(f, dst, count, "entry", " ")
-		if g.wireReadRefusesDefault(f) {
-			g.pf(" if(r->vocabulary->build_version==%s&&%s)goto damaged;\n", buildVersionName(g.unit.Package), g.wireDefaultEquals(f, dst))
+		if !f.Type.Optional && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+			switch {
+			case ir.TableWireScalarKind(f) == tkTable:
+				g.pf(" int64_t body_at=r->bits.offset;\n")
+			case enumRef(f) != nil:
+				g.pf(" int32_t unknown_before=r->report->unknown;\n")
+			}
 		}
+		g.messageReadValue(f, dst, count, "entry", " ")
+		g.messageRefuseAtDefault(f, dst)
 		if f.Type.Optional {
 			g.pf(" %s_present=1;\n", dst)
 		}

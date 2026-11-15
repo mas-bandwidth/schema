@@ -2,6 +2,7 @@ package ctable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
@@ -549,32 +550,43 @@ func cyclePatch(t *testing.T, wire []byte, from, to byte) {
 	wire[at+1] = to
 }
 
+// cycleGuardOff turns A's guard off on the wire while its guarded slot
+// stays: the id-table entry the guard field rides under is renamed to an id
+// this reader does not declare, so the field reads as an unknown field from a
+// newer writer and the guard reads its declared default, false. Storing the
+// guard at its default instead would be a spelling no conforming writer
+// produces, which every read refuses (docs/SPEC-TABLES.md §3, §4); an unknown
+// field is lawful and keeps the id table's first-use order and every length.
 func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 	t.Helper()
 	def := m.Lookup("Node")
-	for i := range wire {
-		if wire[i] != 1 {
+	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])
+	table := len(wire) - 8 - int(count)*8
+	for k := 0; k < int(count); k++ {
+		at := table + k*8
+		if binary.LittleEndian.Uint64(wire[at:]) != ir.TableWireId("on") {
 			continue
 		}
 		try := bytes.Clone(wire)
-		try[i] = 0
+		binary.LittleEndian.PutUint64(try[at:], ir.TableWireId("on_retired"))
 		root := m.New(def)
 		var report tabletext.Report
 		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil {
-			continue
+			t.Fatalf("the wire with its guard id retired does not decode: %v", err)
 		}
 		left, _ := root.FieldByKey("left")
 		if left.Cell.Node == nil {
-			continue
+			t.Fatal("the wire with its guard id retired lost A")
 		}
 		on, _ := left.Cell.Node.FieldByKey("on")
 		side, _ := left.Cell.Node.FieldByKey("side")
-		if !on.Cell.B && side.Cell.Node != nil {
-			copy(wire, try)
-			return
+		if on.Cell.B || side.Cell.Node == nil {
+			t.Fatal("retiring the guard id does not turn the guard off with the guarded slot kept")
 		}
+		copy(wire, try)
+		return
 	}
-	t.Fatal("no byte turns the guard off with the guarded slot kept")
+	t.Fatal("the wire names no guard id")
 }
 
 func cycleProbe(wire []byte, load bool, onFail string) string {
