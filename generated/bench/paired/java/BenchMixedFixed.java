@@ -202,7 +202,7 @@ public final class BenchMixedFixed {
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.sequence = TableFixed.get32(b, at + 0);
-        if (v.sequence > 65535L) {
+        if (Integer.compareUnsigned(v.sequence, 65535) > 0) {
             v.sequence = (int) (65535L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -257,7 +257,7 @@ public final class BenchMixedFixed {
             v.worldTime = q;
         }
         v.frameTick = TableFixed.get64(b, at + 40);
-        if (v.frameTick > 281474976710655L) {
+        if (Long.compareUnsigned(v.frameTick, 281474976710655L) > 0) {
             v.frameTick = 281474976710655L;
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -468,7 +468,7 @@ public final class BenchMixedFixed {
             v.ping = (short) (q);
         }
         v.crcHint = TableFixed.get32(b, at + 1223);
-        if (v.crcHint > 16777215L) {
+        if (Integer.compareUnsigned(v.crcHint, 16777215) > 0) {
             v.crcHint = (int) (16777215L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);

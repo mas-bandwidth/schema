@@ -1314,6 +1314,20 @@ tables-rust-guard-negative-control:
 #   - text: the Q-grid exactness check never fires, so a fraction finer than
 #     F rounds instead of counting kind_mismatch — json-hostile goes red on
 #     fixed-fraction-too-fine, and wire, report and json-read stay green.
+# A NEGATIVE CONTROL'S OWN DRIVER BUILD. Each Rust conformance control builds
+# a private copy of the driver and every generated crate it links, cold, in a
+# target directory of its own (CARGO_TARGET_DIR under the control's build dir).
+# The driver's manifest asks for opt-level 1 because the conformance leg runs
+# it seven times per matrix; a control runs it once over a small corpus, so the
+# optimiser is pure cost there. Unoptimised, without debug info and without
+# incremental state, the build of build/rust-conformance-wref-fixed-control
+# fell from 4m22s to 46s on two hulk cores (7m52s to 1m13s of CPU), and the
+# control still turned write-refusal-fixed red with wire green. At opt-level 1
+# these rows hit the 5-minute job cap on loaded runners (CI full 43664096253,
+# 43664797408, 43665903270). The warm shared target the wide controls build
+# into (test/conformance/rust/target) keeps the manifest's profile.
+RUST_CONTROL_CARGO_ENV := CARGO_PROFILE_DEV_OPT_LEVEL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
+
 RUST_WIDE_CONTROL := build/rust-wide-control
 RUST_WIDE_CONTROL_UNITS := scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema
 
@@ -1408,7 +1422,7 @@ conformance-negative-control-rust-walk: build/conformance-harness
 		-e 's|build/tables-generated-rust/|$(RUST_CONFORMANCE_WALK)/generated/|' \
 		test/conformance/rust/Cargo.toml > $(RUST_CONFORMANCE_WALK)/driver/Cargo.toml
 	cd $(RUST_CONFORMANCE_WALK)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WALK)/target cargo build --quiet
+		$(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WALK)/target cargo build --quiet
 	@printf '#!/bin/sh\nexec "%s/$(RUST_CONFORMANCE_WALK)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
 		> $(RUST_CONFORMANCE_WALK)/driver/driver && chmod +x $(RUST_CONFORMANCE_WALK)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(RUST_CONFORMANCE_WALK)" > $(RUST_CONFORMANCE_WALK)/drivers.txt
@@ -1464,7 +1478,7 @@ conformance-rust-absent-negative-control: build/conformance-harness build/tables
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
 	cd $(RUST_ABSENT_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_ABSENT_CONTROL)/target cargo build --quiet
+		$(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(RUST_ABSENT_CONTROL)/target cargo build --quiet
 	@printf '#!/bin/sh\nexec "%s/$(RUST_ABSENT_CONTROL)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
 		> $(RUST_ABSENT_CONTROL)/driver/driver && chmod +x $(RUST_ABSENT_CONTROL)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(RUST_ABSENT_CONTROL)" > $(RUST_ABSENT_CONTROL)/drivers.txt
@@ -1671,7 +1685,7 @@ define RUST_FRAMING_DRIVER
 		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
 	@[ "$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(1)/driver/Cargo.toml)" = 2 ] || \
 		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
-	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" $(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 endef
 conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
@@ -1861,7 +1875,7 @@ define rust_wref_control
 		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
 		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
 	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+		$(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 	@printf '#!/bin/sh\nexec "%s/$(1)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
 		> $(1)/driver/driver && chmod +x $(1)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(1)" > $(1)/drivers.txt

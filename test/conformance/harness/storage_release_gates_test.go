@@ -13,9 +13,9 @@ import (
 // positive target controls nothing.
 func TestReleaseStorageGatesAreDefined(t *testing.T) {
 	root := conformanceRoot(t)
-	// Rust is not here: its message storage check is a debug assert
-	// (docs/SPEC.md §5.1), held by tables-rust-message-storage-assert-negative-control.
-	for _, lang := range []string{"cpp", "cs", "dart"} {
+	// C, C#, Rust and Java are not here: an assert leg's storage check is a
+	// debug assert (docs/SPEC.md §5.1), held by its debug storage gate.
+	for _, lang := range []string{"cpp", "dart"} {
 		t.Run(lang, func(t *testing.T) {
 			body, err := os.ReadFile(filepath.Join(root, "make", lang+".mk"))
 			if err != nil {
