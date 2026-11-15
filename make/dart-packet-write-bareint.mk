@@ -37,7 +37,7 @@ packet-write-bareint-dart-negative-control: packet-write-bareint-dart
 		echo 'NEGATIVE CONTROL FAILED: a case other than an out-of-width value went red'; \
 		cat build/packet-write-bareint/dart-negative/log; exit 1; fi
 	@grep -m1 'FAILED: packet-write-bareint int8-above-max: out-of-width value was written' build/packet-write-bareint/dart-negative/log
-	@sed "/'uint64-negative':$$/{N;d;}" test/packet-write-bareint/dart/main.dart > build/packet-write-bareint/dart-negative/unnamed.dart
+	@sed "/^  'uint64-negative': /d" test/packet-write-bareint/dart/main.dart > build/packet-write-bareint/dart-negative/unnamed.dart
 	@if $(DART) --enable-asserts build/packet-write-bareint/dart-negative/unnamed.dart test/packet-write-bareint/cases.txt > build/packet-write-bareint/dart-negative/unnamed.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a case neither run nor named not representable stayed green'; \
 		cat build/packet-write-bareint/dart-negative/unnamed.log; exit 1; fi
