@@ -4436,7 +4436,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
   # string, and one of 32 bits or under stays a number.
   defp json_read_field(%{t: :int} = f, raw, report)
-       when is_binary(raw) and not is_map_key(f, :timestamp) do
+       when is_binary(raw) and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) do
     cond do
       not json_wide_int?(f) ->
         json_skip_value(raw)
@@ -5051,7 +5051,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a wide integer element reads its STRING form with the integer-token rule;
   # a wide fixed element reads its exact decimal string (docs/SPEC-TABLES.md §16.2)
   defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
-       when is_binary(e) and kind in [5, 9, 18, 19] do
+       when is_binary(e) and kind in [5, 9, 18, 19] and not is_map_key(f, :elem_flags) do
     case json_integer_text(e) do
       {:ok, value} -> json_clamp_elem(value, f, report)
       :error -> {:skip, throw(:wire_damaged)}

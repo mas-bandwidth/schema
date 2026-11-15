@@ -44,6 +44,14 @@ table Sites
     maybe  ?int64
     pick   Pick
 }
+
+flags Mode { A, B, C }
+
+table FlagSites
+{
+    f  Mode
+    fs []Mode
+}
 `
 
 // TestElixirJsonWideIntegersAreStrings holds the Elixir JSON writer and reader
@@ -218,6 +226,32 @@ case Jsonintegers.Table.from_json("Sites", Base.decode16!(%q, case: :mixed)) do
   other -> Probe.check(false, %q <> " refused: " <> inspect(other))
 end
 `, hex.EncodeToString([]byte(tc.text)), tc.name, hex.EncodeToString(canon), tc.name, tc.name, tc.name)
+	}
+
+	// A flags value is its list of set variant names, never an integer string:
+	// a numeric string refuses at the field and at the array element rather
+	// than reading as a raw mask (docs/SPEC-TABLES.md §16.2).
+	flagSites := []struct {
+		name string
+		text string
+	}{
+		{"flags-field-string", `{"f":"3"}`},
+		{"flags-elem-string", `{"fs":["3"]}`},
+	}
+	for _, tc := range flagSites {
+		st := model.Lookup("FlagSites")
+		inst := model.New(st)
+		var report tabletext.Report
+		if ok := model.Read(inst, []byte(tc.text), &report); ok || !report.Refused {
+			t.Fatalf("%s: the reference engine accepted %s", tc.name, tc.text)
+		}
+		fmt.Fprintf(&probe, `
+case Jsonintegers.Table.from_json("FlagSites", Base.decode16!(%q, case: :mixed)) do
+  {:ok, _value, _report} -> Probe.check(false, %q <> " accepted")
+  {:error, _reason, _report} -> :ok
+  other -> Probe.check(false, %q <> " unexpected: " <> inspect(other))
+end
+`, hex.EncodeToString([]byte(tc.text)), tc.name, tc.name)
 	}
 
 	probe.WriteString("\nif Process.get(:failed), do: raise(\"wide integer assertions failed\")\nIO.puts(\"JSON_WIDE_INTEGERS_OK\")\n")
