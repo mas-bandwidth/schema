@@ -11,13 +11,12 @@ name: schema luau nightly fuzz
 # (luau-nightly-fuzz-negative-control) runs on every merge in ci-full's
 # negative-controls luau row (make/negative-controls.json).
 on:
+  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form ]
 
 jobs:
   replay:
