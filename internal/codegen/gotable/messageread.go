@@ -107,7 +107,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		g.pf("}}\n")
 	default:
 		scalar := g.nextWireWriter()
-		g.pf("%s{var raw [16]byte;if !tableMessageReadScalar(&r.Bits,%s.Shape,&raw){%s};\n", ind, entry, bad)
+		g.pf("%s{var raw [16]byte;ok,over:=tableMessageReadScalar(&r.Bits,%s.Shape,&raw);if !ok{%s};if over{r.Report.Refuse(TableRefuseOutOfRange,\"\");return false};\n", ind, entry, bad)
 		g.emitMessageIntegerHeld(f, entry, ind+"\t", "raw", bad)
 		g.pf("%s%s:=TableReader{Buffer:raw[:],Report:&r.Report}\n", ind, scalar)
 		g.emitReadScalar(f, expr, scalar, entry+".Shape.Kind", ind+"\t", bad)
@@ -120,9 +120,10 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 // declared range where there is one, or the domain of the declared kind where
 // there is none (docs/SPEC-TABLES.md §3.3). The sender's offset plus base can
 // land past the reader kind's width, so the test is taken while the value is
-// still wide; outside the bound the batch refuses and is never masked or
-// wrapped. The 64-bit and 128-bit kinds are their own whole domain, and a
-// narrowing read cannot leave them, so they carry no extra test here.
+// still wide, high lane included; outside the bound the batch refuses and is
+// never masked or wrapped. A 128-bit kind's whole domain is its 128 bits, so
+// the reconstruction above is what refuses a value past it; its declared range
+// is held by the wide read.
 func (g *tableGen) emitMessageIntegerHeld(f *ir.Field, entry, ind, raw, onBad string) {
 	if f == nil {
 		return
@@ -130,9 +131,6 @@ func (g *tableGen) emitMessageIntegerHeld(f *ir.Field, entry, ind, raw, onBad st
 	switch f.Type.Kind {
 	case ir.TInt, ir.TFixed, ir.TBits:
 	default:
-		return
-	}
-	if f.Type.Width >= 64 {
 		return
 	}
 	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
@@ -146,11 +144,14 @@ func (g *tableGen) emitMessageIntegerHeld(f *ir.Field, entry, ind, raw, onBad st
 		}
 	}
 	stop := refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad)
-	if signed {
-		g.pf("%swide:=int64(binary.LittleEndian.Uint64(%s[:8]));if %s.Shape.Packing!=1&&%s.Shape.Bits>0&&%s.Shape.Bits<64{shift:=uint(64-%s.Shape.Bits);wide=wide<<shift>>shift};if wide < %s || wide > %s {%s}\n", ind, raw, entry, entry, entry, entry, goIntLit(lo, true, 8), goIntLit(hi, true, 8), stop)
+	if f.Type.Width >= 128 {
 		return
 	}
-	g.pf("%swide:=int64(binary.LittleEndian.Uint64(%s[:8]));if uint64(wide) < %s || uint64(wide) > %s {%s}\n", ind, raw, goIntLit(lo, false, 8), goIntLit(hi, false, 8), stop)
+	if signed {
+		g.pf("%swide:=int64(binary.LittleEndian.Uint64(%s[:8]));if int64(binary.LittleEndian.Uint64(%s[8:]))!=wide>>63||wide < %s || wide > %s {%s}\n", ind, raw, raw, goIntLit(lo, true, 8), goIntLit(hi, true, 8), stop)
+		return
+	}
+	g.pf("%swide:=binary.LittleEndian.Uint64(%s[:8]);if binary.LittleEndian.Uint64(%s[8:])!=0||wide < %s || wide > %s {%s}\n", ind, raw, raw, goIntLit(lo, false, 8), goIntLit(hi, false, 8), stop)
 }
 func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	bad := "r.Report.Refuse(TableRefuseWireDamaged,\"\");return false"

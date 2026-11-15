@@ -99,17 +99,23 @@ func TestMessageIntDomain(t *testing.T) {
 	t.Parallel()
 
 	// A ranged sender whose reconstructed value lands beyond the reader's
-	// declared kind: int8 must hold -128 through 127 and uint8 0 through 255.
+	// declared kind: int8 must hold -128 through 127 and uint8 0 through 255,
+	// and the 64- and 128-bit kinds hold their whole domains, high lane
+	// included.
 	hostile := []struct {
-		name, field string
-		base        uint64
-		bits        int64
-		raw         uint64
+		name, field  string
+		base, baseHi uint64
+		bits         int64
+		raw, rawHi   uint64
 	}{
-		{"int8_above_domain", "a", 100, 8, 255},
-		{"uint8_above_domain", "c", 250, 8, 255},
-		{"int32_above_domain", "d", 1<<31 - 1, 32, 1<<32 - 1},
-		{"uint32_above_domain", "e", 1<<32 - 1, 32, 1<<32 - 1},
+		{name: "int8_above_domain", field: "a", base: 100, bits: 8, raw: 255},
+		{name: "uint8_above_domain", field: "c", base: 250, bits: 8, raw: 255},
+		{name: "int32_above_domain", field: "d", base: 1<<31 - 1, bits: 32, raw: 1<<32 - 1},
+		{name: "uint32_above_domain", field: "e", base: 1<<32 - 1, bits: 32, raw: 1<<32 - 1},
+		{name: "int64_above_domain", field: "f", base: 1<<63 - 1, bits: 64, raw: ^uint64(0)},
+		{name: "uint64_above_domain", field: "g", base: ^uint64(0), bits: 64, raw: ^uint64(0)},
+		{name: "int128_above_domain", field: "h", base: ^uint64(0), baseHi: 1<<63 - 1, bits: 128, raw: 0, rawHi: 1 << 63},
+		{name: "uint128_above_domain", field: "i", base: ^uint64(0), baseHi: ^uint64(0), bits: 128, raw: ^uint64(0), rawHi: ^uint64(0)},
 	}
 	for _, tc := range hostile {
 		tc := tc
@@ -120,11 +126,11 @@ func TestMessageIntDomain(t *testing.T) {
 			shape := v.Entries[slot].Shape
 			shape.Packing = 1
 			shape.Bits = tc.bits
-			shape.Base = [2]uint64{tc.base, 0}
+			shape.Base = [2]uint64{tc.base, tc.baseHi}
 			v.Entries[slot].Shape = shape
 			storage := make([]Probe, 1)
 			var report TableReport
-			count, ok := ProbeLoadMessages(storage, v, messageIntDomainBody(v, slot, tc.raw, 0, tc.bits), &report)
+			count, ok := ProbeLoadMessages(storage, v, messageIntDomainBody(v, slot, tc.raw, tc.rawHi, tc.bits), &report)
 			if ok || count != 0 || !report.Refused() {
 				t.Fatalf("a value outside the reader kind's domain was accepted: count=%d ok=%v report=%+v", count, ok, report)
 			}

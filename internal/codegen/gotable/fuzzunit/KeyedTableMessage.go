@@ -162,16 +162,17 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
-					if entry.Shape.Packing != 1 && entry.Shape.Bits > 0 && entry.Shape.Bits < 64 {
-						shift := uint(64 - entry.Shape.Bits)
-						wide = wide << shift >> shift
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
 					}
-					if wide < 0 || wide > 64 {
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 64 {
 						r.Report.Refuse(TableRefuseOutOfRange, "TeamConfig.spawn_count")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -396,8 +397,13 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload2 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -434,8 +440,13 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload3 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -630,8 +641,13 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload4 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -668,8 +684,13 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload5 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -929,8 +950,13 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -967,8 +993,13 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1588,16 +1619,17 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 						}
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
-							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
-							if element.Shape.Packing != 1 && element.Shape.Bits > 0 && element.Shape.Bits < 64 {
-								shift := uint(64 - element.Shape.Bits)
-								wide = wide << shift >> shift
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
 							}
-							if wide < 0 || wide > 100000 {
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 100000 {
 								r.Report.Refuse(TableRefuseOutOfRange, "ScoreBoard.per_team")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
