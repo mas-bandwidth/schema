@@ -142,7 +142,7 @@ func TestCSkippedValueIsValidated(t *testing.T) {
 		t.Fatalf("probe: %v\n%s", err, out)
 	}
 	got := map[int]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		var index int
 		var verdict string
 		if _, err := fmt.Sscanf(line, "%d %s", &index, &verdict); err != nil {

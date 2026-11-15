@@ -20,6 +20,10 @@ local F = require("./schema_fixed")
 
 local L = {}
 
+-- the whole-body walks one read has taken: a test seam that counts the load's
+-- own passes over the file, so a cost gate holds a count and never a clock
+local _walks = 0
+
 -- THE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §5). They are integers, the
 -- same width the id table's entries are read at.
 local NodeTableId: integer = -1i                  -- 0xffffffffffffffff
@@ -394,6 +398,24 @@ local _nonFinite: string? = nil
 local _ownerName: string = "?"
 local _fieldName: string = "?"
 
+-- THE FIRST FIELD THAT MOVED A COUNTER (docs/SPEC-TABLES.md §11): the walk
+-- records it where the counter moves, so naming the field costs one
+-- assignment and never a second read
+local _firstField: { [string]: string } = {}
+local function noteField(k: string, name: string)
+	if _firstField[k] == nil then _firstField[k] = name end
+end
+
+local function idName(id: integer): string
+	local b = buffer.create(8)
+	buffer.writeinteger(b, 0, id)
+	local out = { "#" }
+	for i = 7, 0, -1 do
+		out[#out + 1] = string.format("%02x", buffer.readu8(b, i))
+	end
+	return table.concat(out)
+end
+
 -- refuseNonFinite records the first non-finite float (docs/SPEC-TABLES.md §3.3)
 local function refuseNonFinite(fd: any)
 	if _nonFinite == nil then
@@ -418,6 +440,9 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 			x = 0.0
 		else
 			x = f32_of(bits)
+			-- a ranged float's -0 lands as +0, uncounted (docs/SPEC-TABLES.md
+			-- §3.3, the special values); a plain float keeps its sign
+			if fd.s == "float" and fd.lo ~= nil and x == 0 then x = 0 end
 		end
 	elseif kind == 11 then
 		-- the high half holds the whole exponent field; the width is checked above
@@ -472,8 +497,8 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 	if lo ~= nil then
 		local lt, gt = cmp_lt, cmp_gt
 		if fd.signed == false then lt, gt = ucmp_lt, ucmp_gt end
-		if lt(x, lo) then x = lo; report.clamped = report.clamped + 1
-		elseif gt(x, hi) then x = hi; report.clamped = report.clamped + 1 end
+		if lt(x, lo) then x = lo; report.clamped = report.clamped + 1; noteField("clamped", _fieldName)
+		elseif gt(x, hi) then x = hi; report.clamped = report.clamped + 1; noteField("clamped", _fieldName) end
 	end
 	if fd.bits ~= nil and fd.bits > 0 and fd.bits < width * 8 then
 		-- bits(N) is unsigned in [0, 2^N - 1] (docs/SPEC-TABLES.md §16.2): an
@@ -484,7 +509,7 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 		else
 			bmax = 2 ^ fd.bits - 1
 		end
-		if ucmp_gt(x, bmax) then x = bmax; report.clamped = report.clamped + 1 end
+		if ucmp_gt(x, bmax) then x = bmax; report.clamped = report.clamped + 1; noteField("clamped", _fieldName) end
 	end
 	return x
 end
@@ -505,6 +530,7 @@ local _numberingGood: boolean = true
 local _countRefused: boolean = false
 local _countReport: any = nil
 local _countNonFinite: string? = nil
+local _countField: { [string]: string } = {}
 
 -- refuseCount records the first count past the storage cap (§2.9)
 local function refuseCount(report: any)
@@ -512,6 +538,7 @@ local function refuseCount(report: any)
 	_countRefused = true
 	_countReport = table.clone(report)
 	_countNonFinite = _nonFinite
+	_countField = table.clone(_firstField)
 end
 
 -- restoreCount puts the report back as it stood at the first count refusal
@@ -521,6 +548,7 @@ local function restoreCount(report: any)
 	for _, k in keys do report[k] = nil end
 	for k, v in _countReport do report[k] = v end
 	_nonFinite = _countNonFinite
+	_firstField = table.clone(_countField)
 end
 
 local read_body: any
@@ -529,6 +557,7 @@ local read_array: any
 local read_element: any
 local read_union: any
 local read_map: any
+local put: any
 
 -- an enum reference (§3, §2.15): a retired id reads its field default, not unknown; 0 is None, a reference past the id table is damage,
 -- a variant this enum cannot name reads None and counts unknown. The value is
@@ -546,6 +575,7 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 		end
 	end
 	report.unknown = report.unknown + 1
+	noteField("unknown", _fieldName)
 	return 0, true
 end
 
@@ -677,11 +707,12 @@ local function loadFixDScanKey(keyfd: any, body: any, entry: any): (any, boolean
 end
 
 read_map = function(fd: any, r: any, report: any, v: any): boolean
+	local mapName = _fieldName
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then report.malformed = true; return false end
+	if r.bad or r.at + n > r.e then report.malformed = true; noteField("malformed", mapName); return false end
 	local endpos = r.at + n
 	local landed: { any } = {}
-	if n < 2 then report.malformed = true end
+	if n < 2 then report.malformed = true; noteField("malformed", mapName) end
 	if n >= 2 then
 		-- THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
 		-- (internal/tablewire decode.go mapField, subTo; docs/SPEC-TABLES.md
@@ -690,9 +721,9 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		local hdr = new_reader(r.b, r.at, r.e)
 		local ek = r_u8(hdr)
 		local count = r_leb(hdr)
-		if hdr.bad then report.malformed = true; r.at = endpos; return true end
+		if hdr.bad then report.malformed = true; noteField("malformed", mapName); r.at = endpos; return true end
 		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
-		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
+		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName); r.at = endpos; return true end
 		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
 		-- collectionCap): a count inside the map's L refuses the read as
 		-- count_over_extent_cap when the walk ends, the refusal LoadMeasure
@@ -701,7 +732,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		-- the region's recovery instead: damage, the walk resuming after L.
 		if count > 0x7FFFFFFF then
 			if hdr.at > endpos then
-				report.malformed = true
+				report.malformed = true; noteField("malformed", mapName)
 			else
 				refuseCount(report)
 			end
@@ -716,26 +747,26 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		local hasLast = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
+			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; noteField("malformed", mapName); break end
 			local body = new_reader(sub.b, sub.at, sub.at + elemLen)
 			sub.at = sub.at + elemLen
 			-- THE KEY BEFORE THE SLOT (docs/SPEC-TABLES.md §2.8): scan it
 			-- before the entry body is counted, exactly as mapField does.
 			local keyVal, kindBad, entryWidened, keyOk = loadFixDScanKey(keyfd, body, entry)
-			if entryWidened and not widened then widened = true; report.widened = report.widened + 1 end
+			if entryWidened and not widened then widened = true; report.widened = report.widened + 1; noteField("widened", mapName) end
 			if kindBad then
-				report.kindMismatch = report.kindMismatch + 1
+				report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
 				landed = {}
 				break
 			end
-			if not keyOk then report.malformed = true; break end
+			if not keyOk then report.malformed = true; noteField("malformed", mapName); break end
 			if not loadFixDKeyFits(keyfd, keyVal) then
-				report.clamped = report.clamped + 1
+				report.clamped = report.clamped + 1; noteField("clamped", mapName)
 			else
 				local order = -1
 				if hasLast then order = loadFixDKeyCompare(keyfd, lastKey, keyVal) end
 				if order > 0 then
-					report.malformed = true
+					report.malformed = true; noteField("malformed", mapName)
 					break
 				end
 				-- the entry's body is read WHOLE now the key has chosen its
@@ -743,22 +774,22 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 				local vals: any = entry.new()
 				while true do
 					local ref = r_leb(body)
-					if body.bad then report.malformed = true; break end
+					if body.bad then report.malformed = true; noteField("malformed", mapName); break end
 					if ref == 0 then break end
-					if ref > #_table then report.malformed = true; break end
+					if ref > #_table then report.malformed = true; noteField("malformed", mapName); break end
 					local id = _table[ref]
 					local kind = r_u8(body)
 					-- THE RESERVED IDS IN A NESTED BODY ARE MALFORMED (§3.1):
 					-- a map entry is one of those bodies, and the engine's
 					-- bodyAt enforces the same rule there.
 					if id == BuildVersionId or id == MessageVocabularyId or id == NodeTableId then
-						report.malformed = true
+						report.malformed = true; noteField("malformed", mapName)
 						break
 					end
 					local efd = entryFields[id]
 					if efd == nil then
-						report.unknown = report.unknown + 1
-						if not skip(body, kind) then report.malformed = true; break end
+						report.unknown = report.unknown + 1; noteField("unknown", mapName)
+						if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
 					elseif id == MapKeyId and keyfd ~= nil then
 						if kind ~= keyfd.k then
 							if widens(kind, keyfd.k) then
@@ -766,8 +797,8 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 								if x == nil then break end
 								vals[keyfd.slot] = x
 							else
-								report.kindMismatch = report.kindMismatch + 1
-								if not skip(body, kind) then report.malformed = true; break end
+								report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
+								if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
 							end
 						else
 							if not read_field(keyfd, body, vals) then break end
@@ -777,10 +808,10 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							local x = scalar_at(body, efd, kind, report)
 							if x == nil then break end
 							if efd.slot ~= nil then vals[efd.slot] = x end
-							report.widened = report.widened + 1
+							report.widened = report.widened + 1; noteField("widened", mapName)
 						else
-							report.kindMismatch = report.kindMismatch + 1
-							if not skip(body, kind) then report.malformed = true; break end
+							report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
+							if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
 						end
 					else
 						if not read_field(efd, body, vals) then break end
@@ -795,7 +826,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 					vals[keyfd.slot] = buffer.create(0)
 				end
 				if order == 0 then
-					report.duplicate = report.duplicate + 1
+					report.duplicate = report.duplicate + 1; noteField("duplicate", mapName)
 					landed[#landed] = vals
 				else
 					landed[#landed + 1] = vals
@@ -815,12 +846,13 @@ end
 -- skipped; an element kind the declaration does not name is one kind_mismatch.
 -- Key variant k lands at index k (docs/PORT-LUAU.md, THE TYPE MAPPING).
 local function read_keyed(fd: any, r: any, report: any, v: any): boolean
+	local keyedName = _fieldName
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then report.malformed = true; return false end
+	if r.bad or r.at + n > r.e then report.malformed = true; noteField("malformed", keyedName); return false end
 	local endpos = r.at + n
 	local dst: any = nil
 	if v ~= nil and fd.slot ~= nil then dst = v[fd.slot] end
-	if n < 2 then report.malformed = true end
+	if n < 2 then report.malformed = true; noteField("malformed", keyedName) end
 	if n >= 2 then
 		-- THE KEYED BODY'S HEADER IS READ AGAINST THE PARENT, as every
 		-- array's is (internal/tablewire decode.go keyed, subTo;
@@ -830,17 +862,17 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		local hdr = new_reader(r.b, r.at, r.e)
 		local ek = r_u8(hdr)
 		local count = r_leb(hdr)
-		if hdr.bad then report.malformed = true; r.at = endpos; return true end
+		if hdr.bad then report.malformed = true; noteField("malformed", keyedName); r.at = endpos; return true end
 		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= fd.ek then
-			if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
-			report.widened = report.widened + 1
+			if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", keyedName); r.at = endpos; return true end
+			report.widened = report.widened + 1; noteField("widened", keyedName)
 		end
 		local e = fd.e
 		for _ = 1, count do
 			local key = r_leb(sub)
-			if sub.bad then report.malformed = true; break end
-			if key == 0 or key > #_table then report.malformed = true; break end
+			if sub.bad then report.malformed = true; noteField("malformed", keyedName); break end
+			if key == 0 or key > #_table then report.malformed = true; noteField("malformed", keyedName); break end
 			local at = 0
 			if fd.keyvs ~= nil then
 				local keyID = _table[key]
@@ -849,10 +881,10 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 				end
 			end
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; break end
+			if sub.bad or sub.at + elemLen > sub.e then report.malformed = true; noteField("malformed", keyedName); break end
 			-- a key this reader cannot name is skipped by its length (§2.4, §3.2)
 			if at == 0 then
-				report.unknown = report.unknown + 1
+				report.unknown = report.unknown + 1; noteField("unknown", keyedName)
 				sub.at = sub.at + elemLen
 				continue
 			end
@@ -867,7 +899,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
 					-- DEFAULTS (docs/SPEC-TABLES.md §3.2, §5): the engine's keyed
 					-- read refills the slot, so a partial element never rides.
-					report.malformed = true
+					report.malformed = true; noteField("malformed", keyedName)
 					inst = d.new()
 				end
 				x = inst
@@ -876,7 +908,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
+			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
 		end
 	end
 	r.at = endpos
@@ -927,6 +959,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	-- headerEnd is the PARENT body's end for a field (read_array); an ARM's
 	-- payload is its own frame, so the arm passes nil and the header is read
 	-- against the arm's L exactly as the engine's arm reader does.
+	local arrayName = _fieldName
 	local head = new_reader(sub.b, sub.at, headerEnd or sub.e)
 	local ek = r_u8(head)
 	local count = r_leb(head)
@@ -935,17 +968,17 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	local crossed = head.at > sub.e
 	sub.at = if crossed then sub.e else head.at
 	if head.bad then
-		report.malformed = true
+		report.malformed = true; noteField("malformed", arrayName)
 		if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 		return false
 	end
 	if ek ~= fd.ek then
-		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return false end
+		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", arrayName); return false end
 		-- a list past the int32 storage cap refuses below and moves no
 		-- counter (§2.9), the widening included; one whose count crossed L is
 		-- damage below, and damage counts the widening (internal/tablewire
 		-- capDamages)
-		if not (fd.array == "list" and count > 0x7FFFFFFF and not crossed) then report.widened = report.widened + 1 end
+		if not (fd.array == "list" and count > 0x7FFFFFFF and not crossed) then report.widened = report.widened + 1; noteField("widened", arrayName) end
 	end
 	local keep = count
 	if fd.array == "list" then
@@ -954,7 +987,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 			-- inside L the read's refusal, count_over_extent_cap when the walk
 			-- ends; crossing L the region's damage
 			if crossed then
-				report.malformed = true
+				report.malformed = true; noteField("malformed", arrayName)
 			else
 				refuseCount(report)
 			end
@@ -962,7 +995,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		end
 	elseif count > fd.bound then
 		keep = fd.bound
-		report.clamped = report.clamped + 1
+		report.clamped = report.clamped + 1; noteField("clamped", arrayName)
 	end
 	local slot = fd.slot
 	local holder: any = nil
@@ -970,12 +1003,12 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	if fd.s == "bytes" then
 		-- bytes(N) rides as an array of u8 (§2.5)
 		local have = keep
-		if sub.at + have > sub.e then have = sub.e - sub.at; report.malformed = true end
+		if sub.at + have > sub.e then have = sub.e - sub.at; report.malformed = true; noteField("malformed", arrayName) end
 		if holder ~= nil then store_bytes(holder, slot, sub.b, sub.at, have, have) end
 		sub.at = sub.at + have
 		-- bytes left inside the array's L after its elements are damage
 		-- (internal/tablewire decode.go, arrayBody)
-		if have == keep and sub.at < sub.e then report.malformed = true end
+		if have == keep and sub.at < sub.e then report.malformed = true; noteField("malformed", arrayName) end
 		return true
 	end
 	local dst: any
@@ -993,7 +1026,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	local got = 0
 	local spent = 0
 	for i = 1, keep do
-		if sub.at >= sub.e then report.malformed = true; break end
+		if sub.at >= sub.e then report.malformed = true; noteField("malformed", arrayName); break end
 		if not read_element(fd, sub, fd.e, dst, i, report, ek, lens) then break end
 		-- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the running sum
 		-- takes this element, and the first element that would carry it past
@@ -1001,7 +1034,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		if fd.total ~= nil then
 			spent = spent + text_elem_bytes(fd.e, dst[i], if lens ~= nil then lens[i] else nil)
 			if spent > fd.total then
-				report.clamped = report.clamped + 1
+				report.clamped = report.clamped + 1; noteField("clamped", arrayName)
 				if fd.array == "list" then dst[i] = nil end
 				got = i - 1
 				break
@@ -1014,7 +1047,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	-- was read, yet the body still holds bytes. A clamped or text-total
 	-- truncation leaves bytes by design and already refuses on its own
 	-- counter, so it is not counted again here.
-	if got == keep and keep == count and sub.at < sub.e then report.malformed = true end
+	if got == keep and keep == count and sub.at < sub.e then report.malformed = true; noteField("malformed", arrayName) end
 	if fd.array == "counted" and holder ~= nil then holder[slot .. "Count"] = got end
 	-- a list of pointers may hold null slots, which a Luau length cannot see:
 	-- its live length rides as n, the table.pack convention, and the save reads it
@@ -1024,7 +1057,7 @@ end
 
 -- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
 -- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
+put = function(dst: any, i: number, x: any)
 	if typeof(dst) == "buffer" then
 		buffer.writeu8(dst, i - 1, x)
 	else
@@ -1058,6 +1091,7 @@ text_elem_bytes = function(e: any, x: any, used: number?): number
 end
 
 read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: any, ek: number, lens: any): boolean
+	local elemName = _fieldName
 	if e == nil then
 		local x = scalar_at(r, {}, ek, report)
 		if x == nil then return false end
@@ -1066,13 +1100,13 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	end
 	if e.s == "ptr" or e.s == "sblob" or e.s == "bblob" then
 		local index = r_leb(r)
-		if r.bad then report.malformed = true; return false end
+		if r.bad then report.malformed = true; noteField("malformed", elemName); return false end
 		-- a null in a list is false, so the list is never cut short; a fixed or
 		-- counted array stays nil-filled (docs/PORT-LUAU.md, THE TYPE MAPPING, Tables)
 		local null: any = nil
 		if fd.array == "list" then null = false end
 		dst[i] = null
-		_pending[#_pending + 1] = { holder = dst, key = i, index = index, d = e, null = null }
+		_pending[#_pending + 1] = { holder = dst, key = i, index = index, d = e, null = null, name = elemName }
 		return true
 	elseif e.s == "enum" then
 		local x, ok = enum_read(e, r, report)
@@ -1081,11 +1115,11 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		return true
 	elseif e.s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then report.malformed = true; return false end
+		if r.bad or r.at + n > r.e then report.malformed = true; noteField("malformed", elemName); return false end
 		local sub = new_reader(r.b, r.at, r.at + n)
 		local inst = S.lookup(e.t).new()
 		read_body(S.lookup(e.t), sub, inst, true)
-		if sub.at ~= sub.e then report.malformed = true; inst = S.lookup(e.t).new() end
+		if sub.at ~= sub.e then report.malformed = true; noteField("malformed", elemName); inst = S.lookup(e.t).new() end
 		r.at = r.at + n
 		dst[i] = inst
 		return true
@@ -1106,12 +1140,12 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	elseif e.s == "str" or e.s == "text" then
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then report.malformed = true; return false end
+		if r.bad or r.at + n > r.e then report.malformed = true; noteField("malformed", elemName); return false end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ill-formed UTF-8 or a zero byte in an element is malformed, and
 			-- the element does not land: the list keeps the prefix the body
 			-- covered, as the Go engine's element break leaves it (§2.13, §3)
-			report.malformed = true
+			report.malformed = true; noteField("malformed", elemName)
 			r.at = r.at + n
 			return false
 		end
@@ -1122,7 +1156,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			dst[i] = copy_out(r.b, r.at, n)
 		else
 			local keep = n
-			if e.bound ~= nil and keep > e.bound then keep = clamp_utf8(r.b, r.at, e.bound); report.clamped = report.clamped + 1 end
+			if e.bound ~= nil and keep > e.bound then keep = clamp_utf8(r.b, r.at, e.bound); report.clamped = report.clamped + 1; noteField("clamped", elemName) end
 			local b = dst[i]
 			if typeof(b) ~= "buffer" or buffer.len(b) < keep then b = buffer.create(keep); dst[i] = b end
 			buffer.fill(b, 0, 0)
@@ -1165,7 +1199,7 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any): boole
 	if s == "bool" or s == "int" or s == "float" then
 		local w = width_of(arm.k)
 		if w > 0 and sub.e - sub.at ~= w then
-			_report.malformed = true
+			_report.malformed = true; noteField("malformed", _fieldName)
 			return false
 		end
 		return (read_field(arm, sub, u))
@@ -1175,7 +1209,7 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any): boole
 			local framing = new_reader(sub.b, sub.at, sub.e)
 			r_leb(framing)
 			if framing.bad or framing.at ~= framing.e then
-				_report.malformed = true
+				_report.malformed = true; noteField("malformed", _fieldName)
 				return false
 			end
 		end
@@ -1183,7 +1217,7 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any): boole
 		if ok and sub.at ~= sub.e then
 			-- a reference-shaped arm's L is the byte count of the reference it
 			-- frames (§3): an L that framed more is the arm's own damage
-			_report.malformed = true
+			_report.malformed = true; noteField("malformed", _fieldName)
 			return false
 		end
 		return ok
@@ -1202,17 +1236,18 @@ end
 -- unknown and the union reads None; a retyped arm is a kind mismatch. The
 -- value is the union's { Type, <Arm> } (docs/PORT-LUAU.md, THE TYPE MAPPING).
 read_union = function(fd: any, r: any, report: any): (any, boolean)
+	local unionName = _fieldName
 	local un = S.lookup(fd.t)
 	local u = un.new()
 	local ref = r_leb(r)
-	if r.bad then report.malformed = true; return u, false end
+	if r.bad then report.malformed = true; noteField("malformed", unionName); return u, false end
 	if ref == 0 then return u, true end
-	if ref > #_table then report.malformed = true; return u, false end
+	if ref > #_table then report.malformed = true; noteField("malformed", unionName); return u, false end
 	local armID = _table[ref]
 	local kind = r_u8(r)
 	local lpos = r.at
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then report.malformed = true; return u, false end
+	if r.bad or r.at + n > r.e then report.malformed = true; noteField("malformed", unionName); return u, false end
 	local sub = new_reader(r.b, r.at, r.at + n)
 	local arm: any = nil
 	for _, a in un.arms do
@@ -1224,25 +1259,25 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	end
 	local want = arm == nil and 0 or (arm.s == "void" and 32 or arm.k)
 	if arm == nil then
-		report.unknown = report.unknown + 1
+		report.unknown = report.unknown + 1; noteField("unknown", idName(armID))
 	elseif kind ~= want then
 		if widens(kind, want) then
 			if n == width_of(kind) then
 				local x = scalar_at(sub, arm, kind, report)
 				if x ~= nil then
-					report.widened = report.widened + 1
+					report.widened = report.widened + 1; noteField("widened", arm.name)
 					u[arm.slot] = x
 					u.Type = arm.tag
 				end
-			else report.malformed = true end
+			else report.malformed = true; noteField("malformed", arm.name) end
 		else
-			report.kindMismatch = report.kindMismatch + 1
+			report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", arm.name)
 		end
 	elseif arm.s == "void" then
 		-- a payload-free arm carries L = 0; an L that is not zero is that
 		-- arm's own framing damage (docs/SPEC-TABLES.md §3)
 		if n ~= 0 then
-			report.malformed = true
+			report.malformed = true; noteField("malformed", arm.name)
 		else
 			u.Type = arm.tag
 		end
@@ -1261,6 +1296,7 @@ end
 -- damaged inside its own L, which a field answers with its declared default
 -- and a union arm (read_arm) with None.
 read_field = function(fd: any, r: any, v: any): any
+	local fieldName = _fieldName
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
 		local x = scalar_at(r, fd, fd.k, _report)
@@ -1269,13 +1305,13 @@ read_field = function(fd: any, r: any, v: any): any
 		return true
 	elseif s == "str" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
+		if r.bad or r.at + n > r.e then _report.malformed = true; noteField("malformed", fieldName); return false end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): the field
 			-- reads its DECLARED DEFAULT, one malformed counts, and the parent
 			-- reads on past L. An earlier occurrence of the field does not
 			-- survive it (internal/tablewire decode.go field, FieldDefaultCell).
-			_report.malformed = true
+			_report.malformed = true; noteField("malformed", fieldName)
 			if fd.slot ~= nil and v ~= nil then
 				local def: string = fd.def or ""
 				store_bytes(v, fd.slot, buffer.fromstring(def), 0, #def, #def)
@@ -1284,17 +1320,17 @@ read_field = function(fd: any, r: any, v: any): any
 			return true, nil, false
 		end
 		local keep = n
-		if fd.bound ~= nil and n > fd.bound then keep = clamp_utf8(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
+		if fd.bound ~= nil and n > fd.bound then keep = clamp_utf8(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1; noteField("clamped", fieldName) end
 		if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, keep, keep) end
 		r.at = r.at + n
 		return true
 	elseif s == "text" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
+		if r.bad or r.at + n > r.e then _report.malformed = true; noteField("malformed", fieldName); return false end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ILL-FORMED TEXT IS DAMAGE at any bound (docs/SPEC-TABLES.md §3,
 			-- §4): one malformed counts and the parent reads on past L
-			_report.malformed = true
+			_report.malformed = true; noteField("malformed", fieldName)
 			if fd.slot ~= nil and v ~= nil then v[fd.slot] = fd.def or "" end
 			r.at = r.at + n
 			return true, nil, false
@@ -1309,12 +1345,12 @@ read_field = function(fd: any, r: any, v: any): any
 		return true
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		local index = r_leb(r)
-		if r.bad then _report.malformed = true; return false end
-		_pending[#_pending + 1] = { holder = v, key = fd.slot, index = index, d = fd }
+		if r.bad then _report.malformed = true; noteField("malformed", fieldName); return false end
+		_pending[#_pending + 1] = { holder = v, key = fd.slot, index = index, d = fd, name = fd.name or fieldName }
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
+		if r.bad or r.at + n > r.e then _report.malformed = true; noteField("malformed", fieldName); return false end
 		local sub = new_reader(r.b, r.at, r.at + n)
 		local d = S.lookup(fd.t)
 		local inst = d.new()
@@ -1325,7 +1361,7 @@ read_field = function(fd: any, r: any, v: any): any
 			-- DEFAULTS (docs/SPEC-TABLES.md §3, §5): the engine refills the
 			-- body, and the slot names the reset value rather than the partial
 			-- read.
-			_report.malformed = true
+			_report.malformed = true; noteField("malformed", fieldName)
 			inst = d.new()
 			if fd.slot ~= nil and v ~= nil then v[fd.slot] = inst end
 			r.at = r.at + n
@@ -1346,7 +1382,7 @@ read_field = function(fd: any, r: any, v: any): any
 	elseif s == "map" then
 		return read_map(fd, r, _report, v)
 	end
-	_report.malformed = true
+	_report.malformed = true; noteField("malformed", fieldName)
 	return false
 end
 
@@ -1523,30 +1559,35 @@ local function resolve(report: any)
 		if p.index ~= 0 then
 			if p.index == 1 then
 				if p.d.s == "ptr" and p.d.t == _rootDesc.name then value = _rootValue
-				else report.kindMismatch = report.kindMismatch + 1 end
+				else report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", p.name) end
 			elseif p.index - 2 >= #_nodes then
-				report.malformed = true
+				report.malformed = true; noteField("malformed", p.name)
 			else
 				local n = _nodes[p.index - 1]
 				-- §3.1: a placeholder is a refused record; every pointer
-				-- naming it reads null, counted once at the node, not here
-				if n ~= nil and n.kind ~= "x" then
-					if p.d.s == "sblob" then
+				-- naming it reads null, counted once at the node, not here.
+				-- A placeholder of a type this reader DECLARES is not a newer
+				-- writer's type: naming it at a slot that is not its target is
+				-- damage, and the whole load refuses.
+				if n ~= nil then
+					if n.kind == "x" then
+						if n.declared then report.kindMismatch = report.kindMismatch + 1 end
+					elseif p.d.s == "sblob" then
 						if n.kind == "s" then
-							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
+							if landed[n] then report.blobShared = (report.blobShared or 0) + 1; noteField("blobShared", p.name) end
 							landed[n] = true
 							value = n.blob
-						else report.kindMismatch = report.kindMismatch + 1 end
+						else report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", p.name) end
 					elseif p.d.s == "bblob" then
 						if n.kind == "b" then
-							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
+							if landed[n] then report.blobShared = (report.blobShared or 0) + 1; noteField("blobShared", p.name) end
 							landed[n] = true
 							value = n.blob
-						else report.kindMismatch = report.kindMismatch + 1 end
+						else report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", p.name) end
 					elseif n.kind == "t" and n.desc.name == p.d.t then
 						value = n.v
 					else
-						report.kindMismatch = report.kindMismatch + 1
+						report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", p.name)
 					end
 				end
 			end
@@ -1597,7 +1638,11 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		local id = _table[ref]
 		-- a repeated field id in one body is damage (docs/SPEC-TABLES.md
 		-- §6.5, wirecheck's R5); the value still lands last-wins on the walk
-		if seen[id] then _report.duplicate = (_report.duplicate or 0) + 1 end
+		if seen[id] then
+			_report.duplicate = (_report.duplicate or 0) + 1
+			local dup = byId[id]
+			noteField("duplicate", if dup ~= nil then dup.name else idName(id))
+		end
 		seen[id] = true
 		if id == BuildVersionId or id == MessageVocabularyId then _report.malformed = true; return false end
 		if id == NodeTableId then
@@ -1613,8 +1658,8 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			_fieldName = fd.name
 		end
 		if fd == nil then
-			_report.unknown = _report.unknown + 1
-			if not skip(r, kind) then _report.malformed = true; return false end
+			_report.unknown = _report.unknown + 1; noteField("unknown", idName(id))
+			if not skip(r, kind) then _report.malformed = true; noteField("malformed", _fieldName); return false end
 		elseif kind ~= fd.k then
 			if widens(kind, fd.k) then
 				local x = scalar_at(r, fd, kind, _report)
@@ -1622,10 +1667,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 				if fd.slot ~= nil and v ~= nil then v[fd.slot] = x end
 				if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 				seen[id] = true
-				_report.widened = _report.widened + 1
+				_report.widened = _report.widened + 1; noteField("widened", fd.name)
 			else
-				_report.kindMismatch = _report.kindMismatch + 1
-				if not skip(r, kind) then _report.malformed = true; return false end
+				_report.kindMismatch = _report.kindMismatch + 1; noteField("kindMismatch", fd.name)
+				if not skip(r, kind) then _report.malformed = true; noteField("malformed", fd.name); return false end
 			end
 		else
 			local ok, selected = read_field(fd, r, v)
@@ -1645,12 +1690,15 @@ end
 -- strict wrapper retain wire_damaged for unopened input and its field/counter
 -- diagnostics for a decoded value that the damage rule now discards (§4).
 local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
+	_walks += 1
 	_table = o.table
 	_report = report
 	_countRefused = false
 	_countReport = nil
 	_countNonFinite = nil
+	_countField = {}
 	_nonFinite = nil
+	_firstField = {}
 	_pending = {}
 	_nodes = {}
 	local desc = S.lookup(root)
@@ -1698,9 +1746,13 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 				local nc = place[tid]
 				if nc == nil then
 					-- §3.1: a type id this reader cannot name is counted once
-					-- here and KEEPS ITS INDEX; the placeholder grows the array
+					-- here and KEEPS ITS INDEX; the placeholder grows the array.
+					-- A type it DECLARES at a slot that is not its target is
+					-- damage, so the placeholder remembers that it was named.
 					report.unknown = report.unknown + 1
-					_nodes[#_nodes + 1] = { kind = "x" }
+					noteField("unknown", idName(tid))
+					local declared = S.tableId(tid) or tid == StringBlobId or tid == BytesBlobId
+					_nodes[#_nodes + 1] = { kind = "x", declared = declared }
 				else
 					local inst = nc.new()
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = inst, body = rec.body }
@@ -1830,16 +1882,6 @@ end
 
 -- an id this build cannot name has no name, so it is spelled by its wire id
 -- (docs/SPEC-TABLES.md §11: a refusal names the field)
-local function idName(id: integer): string
-	local b = buffer.create(8)
-	buffer.writeinteger(b, 0, id)
-	local out = { "#" }
-	for i = 7, 0, -1 do
-		out[#out + 1] = string.format("%02x", buffer.readu8(b, i))
-	end
-	return table.concat(out)
-end
-
 -- CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
 -- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). No table: a strict read is not hot.
 local function crc32c(b: buffer, n: number): number
@@ -1969,219 +2011,6 @@ local function frame(b: buffer): any
 		ids[i + 1] = buffer.readinteger(b, endpos + i * 8)
 	end
 	return { ids = ids, e = endpos, tail = buffer.readstring(b, endpos, len - endpos) }
-end
-
-local function bytesOf(b: buffer, s: number, e: number): string
-	return buffer.readstring(b, s, e - s)
-end
-
-local function fieldById(fields: { any }, id: integer): any
-	for _, f in fields do
-		if f.id == id then return f end
-	end
-	return nil
-end
-
--- THE WITNESS: the first field the walk saw move a counter (docs/SPEC-TABLES.md
--- §11, a refusal names the field). The pinned Luau carries no debug.getlocal,
--- so the field is not read off the load's frames: it is found by asking the
--- load itself. The file is rebuilt with only a PREFIX of a body's fields (the
--- id table and every other byte unchanged) and loaded again into a fresh
--- report; the first prefix whose last field moves the counter names that
--- field. The walk is the load's own order (§3.1: the node records' bodies
--- first, then the root body, then resolution, whose counters belong to the
--- pointer field that queued them), and it descends into an inline table's
--- body the same way and into a union to the arm its header selects, so a
--- counter names the innermost field that holds it. An id the reader cannot
--- name is spelled #<hex>, and a counter no field holds (a node table's own
--- framing, a blob record's text) names none.
-local function witness(root: string, b: buffer, k: string): string?
-	local fr = frame(b)
-	if fr == nil then return nil end
-	local ids = fr.ids
-	local desc = S.lookup(root)
-	local top = walkBody(b, 1, fr.e, ids)
-	if top == nil then return nil end
-
-	local function probe(wire: string): boolean
-		local rep = fresh()
-		loadBody(root, buffer.fromstring(wire), rep)
-		return moved(rep, k)
-	end
-
-	-- refine names the innermost field of `fd`, whose header and payload are
-	-- seg in b, that moves k, given rebuild(segment) -> the whole file
-	local refine: (fd: any, seg: any, rebuild: (string) -> string) -> string?
-	local function isolate(fields: { any }, f: any, rebuild: (string) -> string): string?
-		-- f.fields is the body's field list, f.desc its descriptor; rebuild
-		-- takes a whole body (fields and terminator)
-		for i = 1, #f.fields do
-			local parts = {}
-			for j = 1, i do
-				local s = f.fields[j]
-				parts[j] = bytesOf(b, s.s, s.e)
-			end
-			if probe(rebuild(table.concat(parts) .. "\0")) then
-				local seg = f.fields[i]
-				local fd = fieldById(fields, seg.id)
-				if fd == nil then return idName(seg.id) end
-				local before = table.concat(parts, "", 1, i - 1)
-				return refine(fd, seg, function(one: string): string
-					return rebuild(before .. one .. "\0")
-				end) or fd.name
-			end
-		end
-		return nil
-	end
-	refine = function(fd: any, seg: any, rebuild: (string) -> string): string?
-		if fd.s == "tab" and seg.kind == 13 and fd.t ~= nil then
-			local n, bs = leb(b, seg.ps, seg.e)
-			if n == nil then return fd.name end
-			local inner = walkBody(b, bs, bs + n, ids)
-			if inner == nil then return fd.name end
-			local head = bytesOf(b, seg.s, seg.ps)
-			return isolate(S.lookup(fd.t).fields, inner, function(body: string): string
-				return rebuild(head .. lebBytes(#body) .. body)
-			end) or fd.name
-		elseif fd.s == "union" and seg.kind == 15 and fd.t ~= nil then
-			local ref = leb(b, seg.ps, seg.e)
-			if ref == nil or ref == 0 or ref > #ids then return fd.name end
-			local arm = fieldById(S.lookup(fd.t).arms, ids[ref])
-			if arm == nil then return idName(ids[ref]) end
-			return arm.name
-		end
-		return fd.name
-	end
-
-	-- the root body, rebuilt from a list of its own segments
-	local function wireOf(body: string): string
-		return "\1" .. body .. fr.tail
-	end
-
-	-- the node records (§3.1), read before the root body when the root is of
-	-- the variable class: the node table field is kept and every other root
-	-- field dropped, and records past the one under test are emptied in place
-	-- (same type, same index), so every pointer still resolves
-	local nodeSeg: any = nil
-	for _, s in top.fields do
-		if s.id == NodeTableId then nodeSeg = s end
-	end
-	if desc.variable and nodeSeg ~= nil and nodeSeg.kind == 12 then
-		local n, ps = leb(b, nodeSeg.ps, nodeSeg.e)
-		local recs: { any } = {}
-		local ok = n ~= nil
-		local count = 0
-		if ok then
-			local c, p = leb(b, ps, ps + (n :: number))
-			ok = c ~= nil
-			count = c or 0
-			while ok and p < ps + (n :: number) do
-				local tref, q = leb(b, p, ps + (n :: number))
-				if tref == nil or tref == 0 or tref > #ids then ok = false; break end
-				local tlen, r = leb(b, q, ps + (n :: number))
-				if tlen == nil or r + tlen > ps + (n :: number) then ok = false; break end
-				recs[#recs + 1] = { tref = tref, tid = ids[tref], s = r, e = r + tlen }
-				p = r + tlen
-			end
-			ok = ok and count == #recs
-		end
-		if ok then
-			local head = bytesOf(b, nodeSeg.s, nodeSeg.ps)
-			local function empty(rec: any): string
-				if rec.tid == StringBlobId or rec.tid == BytesBlobId then return "" end
-				return "\0"
-			end
-			local function nodeWire(bodyOf: (number, any) -> string): string
-				local parts = { lebBytes(#recs) }
-				for i, rec in recs do
-					local body = bodyOf(i, rec)
-					parts[#parts + 1] = lebBytes(rec.tref) .. lebBytes(#body) .. body
-				end
-				local payload = table.concat(parts)
-				return wireOf(head .. lebBytes(#payload) .. payload .. "\0")
-			end
-			local placed: { [integer]: any } = {}
-			for _, name in desc.place.tables do
-				local d = S.lookup(name)
-				placed[d.id] = d
-			end
-			for upto = 1, #recs + 1 do
-				local j = upto - 1 -- the records kept whole: none, then one more each pass
-				local wire = nodeWire(function(i: number, rec: any): string
-					if i <= j then return bytesOf(b, rec.s, rec.e) end
-					return empty(rec)
-				end)
-				if probe(wire) then
-					if j == 0 then
-						-- no record body holds it: a record of a type this
-						-- build cannot place, or the numbering's own framing
-						if k == "unknown" then
-							for _, rec in recs do
-								local blob = (rec.tid == StringBlobId and desc.place.str) or (rec.tid == BytesBlobId and desc.place.bytes)
-								if not blob and placed[rec.tid] == nil then return idName(rec.tid) end
-							end
-						end
-						return nil
-					end
-					local rec = recs[j]
-					local rd = placed[rec.tid]
-					if rd == nil then return nil end
-					local body = walkBody(b, rec.s, rec.e, ids)
-					if body == nil then return nil end
-					return isolate(rd.fields, body, function(one: string): string
-						return nodeWire(function(i: number, r: any): string
-							if i < j then return bytesOf(b, r.s, r.e) end
-							if i == j then return one end
-							return empty(r)
-						end)
-					end)
-				end
-			end
-		end
-	end
-
-	-- the root body: the node table field kept where it stands, and the
-	-- root's other fields a prefix at a time. With none of them the counter
-	-- already moved means the node table's own framing moved it (a numbering
-	-- that does not read, §3.1), which no field holds
-	if desc.variable and nodeSeg ~= nil and probe(wireOf(bytesOf(b, nodeSeg.s, nodeSeg.e) .. "\0")) then
-		return nil
-	end
-	local others = {}
-	for _, s in top.fields do
-		if not (desc.variable and s == nodeSeg) then others[#others + 1] = s end
-	end
-	for i = 1, #others do
-		local parts = {}
-		local taken = 0
-		for _, s in top.fields do
-			if desc.variable and s == nodeSeg then
-				parts[#parts + 1] = bytesOf(b, s.s, s.e)
-			elseif taken < i then
-				taken += 1
-				parts[#parts + 1] = bytesOf(b, s.s, s.e)
-			end
-		end
-		if probe(wireOf(table.concat(parts) .. "\0")) then
-			local seg = others[i]
-			local fd = fieldById(desc.fields, seg.id)
-			if fd == nil then return idName(seg.id) end
-			return refine(fd, seg, function(one: string): string
-				local out = {}
-				local t = 0
-				for _, s in top.fields do
-					if desc.variable and s == nodeSeg then
-						out[#out + 1] = bytesOf(b, s.s, s.e)
-					elseif t < i then
-						t += 1
-						out[#out + 1] = t == i and one or bytesOf(b, s.s, s.e)
-					end
-				end
-				return wireOf(table.concat(out) .. "\0")
-			end) or fd.name
-		end
-	end
-	return nil
 end
 
 -- the report's reset: every counter at rest, no reason, no field
@@ -2513,6 +2342,11 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 			return nil
 		end
 		if _countRefused then
+			-- the wire-alone walk's count refusal (§2.9): name it as the value
+			-- walk does, so a refusal is never silent
+			restoreCount(rep)
+			rep.refused = (rep.refused or 0) + 1
+			rep.reason = "count_over_extent_cap"
 			return nil
 		end
 		if damaged then
@@ -2530,13 +2364,12 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 				rep.field = rep.missingName
 			else
 				rep.reason = NAMES[k]
-				rep.field = witness(root, b, k)
+				rep.field = _firstField[k]
 			end
 			return nil
 		end
 	end
-	if rep.unknown > 0 then rep.unknownField = witness(root, b, "unknown") end
-	if rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end
+	if rep.unknown > 0 then rep.unknownField = _firstField["unknown"] end
 	return v
 end
 
@@ -2609,6 +2442,16 @@ end
 -- ReadStrict still owns the fixed-form dispatch and delegates form 1 here.
 function L.load(root: string, bytes: buffer, report: any): any
 	return L.ReadStrict(root, bytes, report)
+end
+
+-- THE WALK SEAM (a test reads a count, never a clock): the whole-body walks
+-- this module has taken since the last reset
+function L.walkCount(): number
+	return _walks
+end
+
+function L.resetWalkCount()
+	_walks = 0
 end
 
 return table.freeze(L)

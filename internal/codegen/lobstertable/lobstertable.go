@@ -19,6 +19,7 @@ import (
 	"maps"
 	"math/big"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -355,6 +356,19 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	g.Pf("    place_tables: [%s]::string,\n", strings.Join(placeable, ", "))
 	g.Pf("    place_str: %v,\n", stringEdge)
 	g.Pf("    place_bytes: %v,\n", bytesEdge)
+	if ir.VariableTables(g.Unit)[t.Name] {
+		// A record's TYPE is what the reader DECLARES, not only what a
+		// pointer below this root reaches: a record of a declared type that
+		// is not the type a slot requires is damage, while one of a type the
+		// reader cannot name is the lawful newer-writer case (§3.1).
+		var declared []string
+		for _, name := range slices.Sorted(maps.Keys(g.Unit.Tables)) {
+			if st := g.Unit.Tables[name]; st != nil && st.IsTable && !st.IsMapEntry() {
+				declared = append(declared, idLit(ir.TableWireId(st.WireName())))
+			}
+		}
+		g.Pf("    declared: [%s],\n", strings.Join(declared, ", "))
+	}
 	// THE REGION FACTS (docs/SPEC-TABLES.md §6.5, §20.3): the C ABI record
 	// size and the unit's region alignment, which load_measure reads to
 	// state the region a C reader of this wire would ask for

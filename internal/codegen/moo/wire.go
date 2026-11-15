@@ -1,8 +1,11 @@
 // wire.go is the type wire both ways (docs/PORT-MOO.md, THE WIRE): for every
 // packet type and union, Write<Name>(stream, value) and Read<Name>(stream,
-// value) against the vendored serialize.moo streams. There is no private bit
-// writer or reader: every bit is the runtime's. The bytes are SPEC §4.3's, the
-// same ones the C++ target pins in testdata/wire/*.bin.
+// value) against the vendored serialize.moo streams. The public Read<Name> is
+// the one-packet read: Read<Name>Body, then stream:serializeEnd() once after
+// the top-level object; a nested type is read through its body, which does not
+// end (SPEC §5). There is no private bit writer or reader: every bit is the
+// runtime's. The bytes are SPEC §4.3's, the same ones the C++ target pins in
+// testdata/wire/*.bin.
 //
 // The error idiom is the §6.3 bool early-out. A value outside its declared
 // contract (a wrong storage type, an out-of-range integer, a non-finite float
@@ -47,6 +50,15 @@ func (g *gen) refuse(ind, cond, comment string) {
 		comment = " -- " + comment
 	}
 	g.pf("%sif %s then%s\n%s\treturn false\n%send\n", ind, cond, comment, ind, ind)
+}
+
+// refuseRead emits a guard that latches the read refusal through the stream's
+// one latch when cond holds (docs/PORT-MOO.md, THE WIRE).
+func (g *gen) refuseRead(ind, cond, comment string) {
+	if comment != "" {
+		comment = " -- " + comment
+	}
+	g.pf("%sif %s then%s\n%s\tstream:fail(\"value_out_of_range\")\n%s\treturn false\n%send\n", ind, cond, comment, ind, ind, ind)
 }
 
 // ---------------------------------------------------------------------------
@@ -112,12 +124,27 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 		return g.writeScalar(val, val+"Length", f, ind)
 	}
 	limit := fmt.Sprintf("%d", f.ArrayBound)
+	if isByteElem(f) {
+		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"buffer\"", val), "the byte array's fixed storage")
+	} else {
+		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"table\"", val), "the array's table storage")
+	}
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		g.refuse(ind, fmt.Sprintf("not isInt(%s, %d, %d)", count, f.ArrayMin, f.ArrayBound), "the count guards the loop (SPEC §6.3)")
+		limit = count
+	}
+	if isByteElem(f) {
+		g.refuse(ind, fmt.Sprintf("buffer.len(%s) < %s", val, limit), "the byte storage covers every element")
+	} else if isRecordType(f.Type) {
+		g.pf("%sfor i = 1, %s do\n", ind, limit)
+		g.refuse(ind+"\t", fmt.Sprintf("type(%s[i]) ~= \"table\"", val), "each live record has table storage")
+		g.pf("%send\n", ind)
+	}
+	if f.Array == ir.ArrayCounted {
+		count := val + "Count"
 		g.pf("%sNUM.value = %s\n", ind, count)
 		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, %d, %d)", f.ArrayMin, f.ArrayBound), "the count (SPEC §4.6)")
-		limit = count
 	}
 	e := *f
 	e.Array = ir.ArrayNone
@@ -125,7 +152,8 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 	var err error
 	switch {
 	case isByteElem(f):
-		err = g.writeScalar(fmt.Sprintf("buffer.readu8(%s, i - 1)", val), "", &e, ind+"\t")
+		g.pf("%s\tNUM.value = buffer.readu8(%s, i - 1)\n", ind, val)
+		g.call(ind+"\t", "stream:serializeBits(NUM, 8)", "")
 	case isBuffer(f.Type):
 		err = g.writeScalar(val+"[i]", val+"Length[i]", &e, ind+"\t")
 	default:
@@ -133,6 +161,18 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 	}
 	g.pf("%send\n", ind)
 	return err
+}
+
+func isRecordType(t ir.FieldType) bool {
+	if t.Kind != ir.TNamed {
+		return false
+	}
+	switch t.Ref.(type) {
+	case *ir.Struct, *ir.Union:
+		return true
+	default:
+		return false
+	}
 }
 
 // writeScalar writes one value of a field's kind (SPEC §4.3's table).
@@ -178,7 +218,7 @@ func (g *gen) writeScalar(val, length string, f *ir.Field, ind string) error {
 		g.pf("%sSTR.value = %s\n", ind, val)
 		g.call(ind, fmt.Sprintf("stream:serializeString(STR, %d)", t.Size+1), "length, align, the bytes (SPEC §4.7)")
 	case ir.TBytes:
-		g.refuse(ind, fmt.Sprintf("not isInt(%s, 0, %d) or buffer.len(%s) < %s", length, t.Size, val, length),
+		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"buffer\" or not isInt(%s, 0, %d) or buffer.len(%s) < %s", val, length, t.Size, val, length),
 			"the length guards the slice (SPEC §6.3)")
 		g.pf("%sNUM.value = %s\n", ind, length)
 		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", t.Size), "")
@@ -197,6 +237,7 @@ func (g *gen) writeScalar(val, length string, f *ir.Field, ind string) error {
 				g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", ref.WireBits), "the flags wire width")
 			}
 		case *ir.Struct, *ir.Union:
+			g.refuse(ind, fmt.Sprintf("type(%s) ~= \"table\"", val), "record storage")
 			g.call(ind, fmt.Sprintf("%s.Write%s(stream, %s)", g.mod(t.Name), t.Name, val), "")
 		default:
 			return fmt.Errorf("field %s: named type %s is not carried on the packet wire", f.Name, t.Name)
@@ -370,13 +411,15 @@ func (g *gen) emitWriteUnion(d *ir.Union) error {
 // Read.
 
 func (g *gen) emitReadStruct(d *ir.Struct) error {
-	g.pf("-- Read%s reads the type wire; false refuses (stream:error() names a runtime\n", d.Name)
-	g.pf("-- refusal; a schema rule's refusal returns false unlatched).\n")
-	g.pf("function M.Read%s(stream: any, value: %s): boolean\n", d.Name, d.Name)
+	g.pf("-- Read%sBody reads the type wire; false refuses (stream:error() names a runtime\n", d.Name)
+	g.pf("-- refusal; a schema rule's refusal returns false unlatched). A nested read\n")
+	g.pf("-- stops here; the end check belongs to the public one-packet read (SPEC §5).\n")
+	g.pf("function M.Read%sBody(stream: any, value: %s): boolean\n", d.Name, d.Name)
 	if err := g.readItems(d.Items, "\t"); err != nil {
 		return err
 	}
 	g.pf("\treturn true\nend\n\n")
+	g.emitPublicRead(d.Name)
 	return nil
 }
 
@@ -512,7 +555,7 @@ func (g *gen) readScalar(val, length string, f *ir.Field, ind string) error {
 			g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", ref.WireBits), "")
 			g.pf("%s%s = WIDE.value\n", ind, val)
 		case *ir.Struct, *ir.Union:
-			g.call(ind, fmt.Sprintf("%s.Read%s(stream, %s)", g.mod(t.Name), t.Name, val), "")
+			g.call(ind, fmt.Sprintf("%s.Read%sBody(stream, %s)", g.mod(t.Name), t.Name, val), "")
 		default:
 			return fmt.Errorf("field %s: named type %s is not carried on the packet wire", f.Name, t.Name)
 		}
@@ -566,7 +609,7 @@ func (g *gen) readInt(val string, f *ir.Field, ind string) {
 		}
 		g.call(ind, fmt.Sprintf("stream:serializeBits(NUM, %d)", bits), "")
 		if diff := new(big.Int).Sub(hi, lo); diff.Cmp(mask(int(bits))) != 0 {
-			g.refuse(ind, fmt.Sprintf("NUM.value > %s", diff), "a read rejects out of range (SPEC §4.3)")
+			g.refuseRead(ind, fmt.Sprintf("NUM.value > %s", diff), "a read rejects out of range (SPEC §4.3)")
 		}
 		g.pf("%s%s = NUM.value + %s\n", ind, val, paren(lo))
 	default:
@@ -586,7 +629,7 @@ func (g *gen) readInt(val string, f *ir.Field, ind string) {
 		}
 		g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", bits), "")
 		if diff := new(big.Int).Sub(hi, lo); diff.Cmp(mask(int(bits))) != 0 {
-			g.refuse(ind, fmt.Sprintf("serialize.Uint64.cmp(WIDE.value, %s) > 0", g.k(wideNew("Uint64", diff, 64))), "a read rejects out of range (SPEC §4.3)")
+			g.refuseRead(ind, fmt.Sprintf("serialize.Uint64.cmp(WIDE.value, %s) > 0", g.k(wideNew("Uint64", diff, 64))), "a read rejects out of range (SPEC §4.3)")
 		}
 		g.pf("%s%s = serialize.Uint64.add(WIDE.value, %s)\n", ind, val, g.k(wideNew("Uint64", lo, 64)))
 	}
@@ -618,9 +661,10 @@ func (g *gen) readFixed(val string, f *ir.Field, ind string) {
 }
 
 func (g *gen) emitReadUnion(d *ir.Union) error {
-	g.pf("-- Read%s: a tag above %d is refused; a selected arm takes fresh declared\n", d.Name, d.Max)
-	g.pf("-- defaults, then its payload (SPEC §4.8).\n")
-	g.pf("function M.Read%s(stream: any, value: %s): boolean\n", d.Name, d.Name)
+	g.pf("-- Read%sBody: a tag above %d is refused; a selected arm takes fresh declared\n", d.Name, d.Max)
+	g.pf("-- defaults, then its payload (SPEC §4.8). A nested read stops here; the end\n")
+	g.pf("-- check belongs to the public one-packet read (SPEC §5).\n")
+	g.pf("function M.Read%sBody(stream: any, value: %s): boolean\n", d.Name, d.Name)
 	g.call("\t", fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", d.Max), "rejects a tag above the count (SPEC §4.8)")
 	g.pf("\tvalue.Type = NUM.value\n")
 	for i, v := range d.Variants {
@@ -636,5 +680,23 @@ func (g *gen) emitReadUnion(d *ir.Union) error {
 		g.pf("\tend\n")
 	}
 	g.pf("\treturn true\nend\n\n")
+	g.emitPublicRead(d.Name)
 	return nil
+}
+
+// emitPublicRead is the one-packet read (SPEC §5): the per-type body, then the
+// runtime's end check once, after the top-level object. The end check reads the
+// final byte's unused bits, so its position is put back on success: the read
+// reports the object's bits consumed, as the writer reports them.
+func (g *gen) emitPublicRead(name string) {
+	g.pf("-- Read%s is the one-packet read: Read%sBody, then the end check once after\n", name, name)
+	g.pf("-- the top-level object (SPEC §5); it reports the object's bits consumed.\n")
+	g.pf("function M.Read%s(stream: any, value: %s): boolean\n", name, name)
+	g.pf("\tif not M.Read%sBody(stream, value) then\n\t\treturn false\n\tend\n", name)
+	g.pf("\tlocal bits = stream:bitsProcessed()\n")
+	g.pf("\tlocal reader = stream._reader\n")
+	g.pf("\tlocal bitsRead = reader._bitsRead\n")
+	g.pf("\tif not stream:serializeEnd() then\n\t\treturn false\n\tend\n")
+	g.pf("\tstream._bits = bits\n\treader._bitsRead = bitsRead\n")
+	g.pf("\treturn true\nend\n\n")
 }

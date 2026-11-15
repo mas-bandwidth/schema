@@ -418,12 +418,13 @@ function _M.ZeroBenchPacket(value: any)
   value.Y = 0
   value.Z = 0
   value.Big = 0i
-  for i = 1, 17 do value.Blob[i] = 0 end
+  buffer.fill(value.Blob, 0, 0)
 end
 
--- ReadBenchPacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadBenchPacketBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadBenchPacket(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadBenchPacket is the one-packet read (SPEC §5).
+function _M.ReadBenchPacketBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, -100, 100) then
     return false
   end
@@ -478,6 +479,13 @@ function _M.ReadBenchPacket(stream: any, value: any): boolean
   return true
 end
 
+-- ReadBenchPacket reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadBenchPacket(stream: any, value: any): boolean
+  if not _M.ReadBenchPacketBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitBenchInts resets a value to what NewBenchInts builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -508,9 +516,10 @@ function _M.ZeroBenchInts(value: any)
   value.F9 = 0
 end
 
--- ReadBenchInts reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadBenchIntsBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadBenchInts(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadBenchInts is the one-packet read (SPEC §5).
+function _M.ReadBenchIntsBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, -100, 100) then
     return false
   end
@@ -554,6 +563,13 @@ function _M.ReadBenchInts(stream: any, value: any): boolean
   return true
 end
 
+-- ReadBenchInts reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadBenchInts(stream: any, value: any): boolean
+  if not _M.ReadBenchIntsBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitBenchBits resets a value to what NewBenchBits builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -580,9 +596,10 @@ function _M.ZeroBenchBits(value: any)
   value.B48 = 0i
 end
 
--- ReadBenchBits reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadBenchBitsBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadBenchBits(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadBenchBits is the one-packet read (SPEC §5).
+function _M.ReadBenchBitsBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 7) then
     return false
   end
@@ -616,6 +633,13 @@ function _M.ReadBenchBits(stream: any, value: any): boolean
   end
   value.B48 = BIG.value
   return true
+end
+
+-- ReadBenchBits reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadBenchBits(stream: any, value: any): boolean
+  if not _M.ReadBenchBitsBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitMixedEntity resets a value to what NewMixedEntity builds, in place: its declared defaults
@@ -656,9 +680,10 @@ function _M.ZeroMixedEntity(value: any)
   value.Firing = false
 end
 
--- ReadMixedEntity reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadMixedEntityBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadMixedEntity(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadMixedEntity is the one-packet read (SPEC §5).
+function _M.ReadMixedEntityBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 12) then
     return false
   end
@@ -718,6 +743,13 @@ function _M.ReadMixedEntity(stream: any, value: any): boolean
   return true
 end
 
+-- ReadMixedEntity reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadMixedEntity(stream: any, value: any): boolean
+  if not _M.ReadMixedEntityBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitMixedStat resets a value to what NewMixedStat builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -732,9 +764,10 @@ function _M.ZeroMixedStat(value: any)
   value.Delta = 0
 end
 
--- ReadMixedStat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadMixedStatBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadMixedStat(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadMixedStat is the one-packet read (SPEC §5).
+function _M.ReadMixedStatBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 8) then
     return false
   end
@@ -744,6 +777,13 @@ function _M.ReadMixedStat(stream: any, value: any): boolean
   end
   value.Delta = BITS.value
   return true
+end
+
+-- ReadMixedStat reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadMixedStat(stream: any, value: any): boolean
+  if not _M.ReadMixedStatBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitMixedHitEvent resets a value to what NewMixedHitEvent builds, in place: its declared defaults
@@ -764,9 +804,10 @@ function _M.ZeroMixedHitEvent(value: any)
   value.Crit = false
 end
 
--- ReadMixedHitEvent reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadMixedHitEventBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadMixedHitEvent(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadMixedHitEvent is the one-packet read (SPEC §5).
+function _M.ReadMixedHitEventBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 12) then
     return false
   end
@@ -786,6 +827,13 @@ function _M.ReadMixedHitEvent(stream: any, value: any): boolean
   return true
 end
 
+-- ReadMixedHitEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadMixedHitEvent(stream: any, value: any): boolean
+  if not _M.ReadMixedHitEventBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitMixedChatEvent resets a value to what NewMixedChatEvent builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -800,9 +848,10 @@ function _M.ZeroMixedChatEvent(value: any)
   value.Speaker = 0
 end
 
--- ReadMixedChatEvent reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadMixedChatEventBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadMixedChatEvent(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadMixedChatEvent is the one-packet read (SPEC §5).
+function _M.ReadMixedChatEventBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 3) then
     return false
   end
@@ -812,6 +861,13 @@ function _M.ReadMixedChatEvent(stream: any, value: any): boolean
   end
   value.Speaker = BITS.value
   return true
+end
+
+-- ReadMixedChatEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadMixedChatEvent(stream: any, value: any): boolean
+  if not _M.ReadMixedChatEventBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitMixedPickupEvent resets a value to what NewMixedPickupEvent builds, in place: its declared defaults
@@ -828,9 +884,10 @@ function _M.ZeroMixedPickupEvent(value: any)
   value.Amount = 0
 end
 
--- ReadMixedPickupEvent reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadMixedPickupEventBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadMixedPickupEvent(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadMixedPickupEvent is the one-packet read (SPEC §5).
+function _M.ReadMixedPickupEventBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 10) then
     return false
   end
@@ -840,6 +897,13 @@ function _M.ReadMixedPickupEvent(stream: any, value: any): boolean
   end
   value.Amount = BITS.value
   return true
+end
+
+-- ReadMixedPickupEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadMixedPickupEvent(stream: any, value: any): boolean
+  if not _M.ReadMixedPickupEventBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitMixedEvent resets the union to what NewMixedEvent builds, in place: None, and every
@@ -856,24 +920,32 @@ function _M.ZeroMixedEvent(value: any)
   value.Type = 0
 end
 
-function _M.ReadMixedEvent(stream: any, value: any): boolean
+-- ReadMixedEventBody reads the union wire; it does not end the packet (SPEC §5).
+function _M.ReadMixedEventBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 3) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.MixedEventType.Hit then
     _M.InitMixedHitEvent(value.Hit) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadMixedHitEvent(stream, value.Hit)
+    return _M.ReadMixedHitEventBody(stream, value.Hit)
   end
   if value.Type == _M.MixedEventType.Chat then
     _M.InitMixedChatEvent(value.Chat) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadMixedChatEvent(stream, value.Chat)
+    return _M.ReadMixedChatEventBody(stream, value.Chat)
   end
   if value.Type == _M.MixedEventType.Pickup then
     _M.InitMixedPickupEvent(value.Pickup) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadMixedPickupEvent(stream, value.Pickup)
+    return _M.ReadMixedPickupEventBody(stream, value.Pickup)
   end
   return true -- None
+end
+
+-- ReadMixedEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadMixedEvent(stream: any, value: any): boolean
+  if not _M.ReadMixedEventBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitBenchMixed resets a value to what NewBenchMixed builds, in place: its declared defaults
@@ -929,7 +1001,7 @@ function _M.ZeroBenchMixed(value: any)
   for i = 1, 80 do _M.ZeroMixedStat(value.Stats[i]) end
   value.StatsCount = 0
   _M.ZeroMixedEvent(value.GameEvent)
-  for i = 1, 4 do value.Loadout[i] = 0 end
+  buffer.fill(value.Loadout, 0, 0)
   buffer.fill(value.PlayerName, 0, 0)
   value.PlayerNameLength = 0
   buffer.fill(value.Payload, 0, 0)
@@ -948,9 +1020,10 @@ function _M.ZeroBenchMixed(value: any)
   value.IdleTicks = 0
 end
 
--- ReadBenchMixed reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadBenchMixedBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadBenchMixed(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadBenchMixed is the one-packet read (SPEC §5).
+function _M.ReadBenchMixedBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 16) then
     return false
   end
@@ -998,7 +1071,7 @@ function _M.ReadBenchMixed(stream: any, value: any): boolean
   end
   value.EntitiesCount = BITS.value
   for i = 1, value.EntitiesCount do
-    if not _M.ReadMixedEntity(stream, value.Entities[i]) then
+    if not _M.ReadMixedEntityBody(stream, value.Entities[i]) then
       return false
     end
   end
@@ -1007,11 +1080,11 @@ function _M.ReadBenchMixed(stream: any, value: any): boolean
   end
   value.StatsCount = BITS.value
   for i = 1, value.StatsCount do
-    if not _M.ReadMixedStat(stream, value.Stats[i]) then
+    if not _M.ReadMixedStatBody(stream, value.Stats[i]) then
       return false
     end
   end
-  if not _M.ReadMixedEvent(stream, value.GameEvent) then
+  if not _M.ReadMixedEventBody(stream, value.GameEvent) then
     return false
   end
   for i = 1, 4 do
@@ -1106,6 +1179,13 @@ function _M.ReadBenchMixed(stream: any, value: any): boolean
   end
   value.IdleTicks = BITS.value
   return true
+end
+
+-- ReadBenchMixed reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadBenchMixed(stream: any, value: any): boolean
+  if not _M.ReadBenchMixedBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- BenchPacketMaxBits is the longest wire path, align padding at its worst case;

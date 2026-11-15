@@ -730,8 +730,8 @@ namespace Tabledemo
             // A map key's spelling buffer. A map key is data, never a schema name.
             public const int MaxKey = 256;
 
-            // The longest numeric token the walk will convert. Anything longer is a
-            // value no field can hold and counts as a kind mismatch.
+            // The working size of a numeric token's stack scratch. A longer token is
+            // kept whole on the heap: its LENGTH is never why a read refuses (§16.2).
             public const int MaxNumber = 512;
 
             const string Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -831,7 +831,7 @@ namespace Tabledemo
             }
             static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
             {
-                Span<byte> digits = stackalloc byte[MaxNumber];
+                byte[] digits = new byte[token.Length];
                 int pos = 0, n = 0, integer = 0;
                 bool negative = token[0] == '-';
                 if (negative) { pos++; }
@@ -859,7 +859,7 @@ namespace Tabledemo
                 else if (point < -40) { return RefuseText(ref input, "kind_mismatch"); }
                 else
                 {
-                    Span<byte> fractionDigits = stackalloc byte[MaxNumber + 48];
+                    byte[] fractionDigits = new byte[token.Length + 48];
                     int fn = 0;
                     for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
                     for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
@@ -1173,9 +1173,13 @@ namespace Tabledemo
             // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
             // anything else into storage, so a byte that is not part of a well-formed
             // sequence was put there by a program: the write REFUSES (invalid_value,
-            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
+            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. A ZERO
+            // BYTE IS NOT TEXT EITHER, and its reader refuses the \u0000 a writer would
+            // otherwise spell: C# is an assert leg, so the write contract is the debug
+            // assert (docs/SPEC.md §5.1 row 8) and a release build carries no check.
             static void WriteString(ref Out o, ReadOnlySpan<byte> s)
             {
+                System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
                 o.Put((byte)'"');
                 for (int i = 0; i < s.Length; i++)
                 {
@@ -1497,8 +1501,9 @@ namespace Tabledemo
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
-                    // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
+                    // a zero byte is storage that is not text, caught by the debug
+                    // write assert (§5.1 row 8); WriteString refuses ill-formed UTF-8
+                    // itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -1638,7 +1643,7 @@ namespace Tabledemo
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
                 Span<byte> key = stackalloc byte[MaxName];
-                if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
                 if (!Same(key.Slice(0, used), "&node"))
@@ -1703,6 +1708,22 @@ namespace Tabledemo
                     }
                 }
                 if (malformed) { return RefuseText(ref input, "kind_mismatch"); }
+                // The writer's spelling is padded standard base64 with zero pad bits
+                // (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above accepts
+                // decodable unpadded input, so hold the text to that exact spelling
+                // before placing any bytes.
+                bool canonical = symbols % 4 == 0;
+                if (pad == 1)
+                {
+                    int last = Base64Decode[body[body.Length - 2]];
+                    canonical = last >= 0 && (last & 0x03) == 0;
+                }
+                else if (pad == 2)
+                {
+                    int last = Base64Decode[body[body.Length - 3]];
+                    canonical = last >= 0 && (last & 0x0f) == 0;
+                }
+                if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
                 byte[] bytes = new byte[symbols * 6 / 8];
                 int count = 0, held = 0;
                 uint accumulator = 0;
@@ -1955,14 +1976,18 @@ namespace Tabledemo
                         if (next == '/')
                         {
                             input.Pos += 2;
+                            int start = input.Pos;
                             while (input.Pos < text.Length && text[input.Pos] != '\n') { input.Pos++; }
+                            if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                             continue;
                         }
                         if (next == '*')
                         {
                             input.Pos += 2;
+                            int start = input.Pos;
                             while (input.Pos + 1 < text.Length && !(text[input.Pos] == '*' && text[input.Pos + 1] == '/')) { input.Pos++; }
                             if (input.Pos + 1 >= text.Length) { input.Bad = true; return; }
+                            if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                             input.Pos += 2;
                             continue;
                         }
@@ -2202,8 +2227,9 @@ namespace Tabledemo
                             return RefuseText(ref input, "string_not_utf8");
                         }
                     }
-                    // Only stored text rejects NUL; skipped values and object field
-                    // names still accept that escape. Map keys opt in before length checks.
+                    // A placed string, an object key and a skipped value take one
+                    // rule (docs/SPEC-TABLES.md §16.3): a text that decodes to U+0000
+                    // refuses the read. Map keys opt in before length checks.
                     if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
                     if (measure)
                     {
@@ -2281,20 +2307,104 @@ namespace Tabledemo
                 return true;
             }
 
-            // the same production, with the token kept for conversion. The token is
-            // ASCII by that grammar, so it widens into chars a digit at a time and the
-            // conversions below need no encoder.
-            static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> token, out int length, out bool integral)
+            // the same production, with the token's extent kept for conversion. The
+            // token is ASCII by that grammar, so it widens into chars a digit at a time
+            // and the conversions below need no encoder. A token longer than the
+            // scratch is kept whole in the document: its own size bounds it, and its
+            // LENGTH is never the reason a read refuses (§16.2 Numbers).
+            static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> scratch, out int length, out bool integral)
             {
                 length = 0;
                 Space(text, ref input);
                 int start = input.Pos;
                 if (!WalkNumber(text, ref input, out integral)) { return false; }
                 int count = input.Pos - start;
-                if (count <= 0 || count >= token.Length) { return false; }
-                for (int i = 0; i < count; i++) { token[i] = (char)text[start + i]; }
+                if (count <= 0) { return false; }
                 length = count;
+                if (count <= scratch.Length)
+                {
+                    for (int i = 0; i < count; i++) { scratch[i] = (char)text[start + i]; }
+                }
                 return true;
+            }
+
+            // A token's value does not depend on how many digits spell its mantissa
+            // (§16.2 Numbers). A long token folds its insignificant zeros into one
+            // exponent and keeps its significant digits inside a conversion's working
+            // precision, with a sticky digit when more followed: the result denotes the
+            // same exact decimal value.
+            static string BoundedFloatToken(ReadOnlySpan<char> token)
+            {
+                const int limit = 799;
+                int i = 0;
+                bool negative = false;
+                if (i < token.Length && token[i] == '-') { negative = true; i++; }
+                int intAt = i;
+                while (i < token.Length && token[i] >= '0' && token[i] <= '9') { i++; }
+                int intEnd = i;
+                int fracAt = i;
+                int fracLength = 0;
+                if (i < token.Length && token[i] == '.')
+                {
+                    i++;
+                    fracAt = i;
+                    while (i < token.Length && token[i] >= '0' && token[i] <= '9') { i++; }
+                    fracLength = i - fracAt;
+                }
+                long exp = 0;
+                if (i < token.Length && (token[i] == 'e' || token[i] == 'E'))
+                {
+                    i++;
+                    bool expNegative = false;
+                    if (i < token.Length && (token[i] == '-' || token[i] == '+')) { expNegative = token[i] == '-'; i++; }
+                    while (i < token.Length && token[i] >= '0' && token[i] <= '9')
+                    {
+                        if (exp < 100000) { exp = exp * 10 + (token[i] - '0'); }
+                        i++;
+                    }
+                    if (expNegative) { exp = -exp; }
+                }
+                int intLength = intEnd - intAt;
+                int total = intLength + fracLength;
+                exp -= fracLength;
+                int first = 0;
+                while (first < total)
+                {
+                    char c = first < intLength ? token[intAt + first] : token[fracAt + first - intLength];
+                    if (c != '0') { break; }
+                    first++;
+                }
+                if (first == total) { return negative ? "-0" : "0"; }
+                int last = total;
+                while (last > first)
+                {
+                    char c = last - 1 < intLength ? token[intAt + last - 1] : token[fracAt + last - 1 - intLength];
+                    if (c != '0') { break; }
+                    last--;
+                }
+                exp += total - last;
+                int count = last - first;
+                Span<char> text = stackalloc char[limit + 40];
+                int n = 0;
+                if (negative) { text[n++] = '-'; }
+                int keep = count < limit ? count : limit;
+                for (int k = 0; k < keep; k++)
+                {
+                    char c = first + k < intLength ? token[intAt + first + k] : token[fracAt + first + k - intLength];
+                    text[n++] = c;
+                }
+                if (count > limit)
+                {
+                    text[n++] = '1';
+                    exp += count - limit - 1;
+                }
+                text[n++] = 'e';
+                if (exp < 0) { text[n++] = '-'; exp = -exp; }
+                Span<char> digits = stackalloc char[20];
+                int dn = 0;
+                do { digits[dn++] = (char)('0' + (int)(exp % 10)); exp /= 10; } while (exp != 0);
+                for (int k = dn - 1; k >= 0; k--) { text[n++] = digits[k]; }
+                return new string(text.Slice(0, n));
             }
 
             // the token's exact double, through the runtime's own converter — under the
@@ -2302,10 +2412,17 @@ namespace Tabledemo
             // crosses a locale's own
             static double TokenDouble(ReadOnlySpan<char> token, bool single)
             {
+                ReadOnlySpan<char> bounded = token;
+                string spill = null;
+                if (token.Length > MaxNumber)
+                {
+                    spill = BoundedFloatToken(token);
+                    bounded = spill;
+                }
                 if (single)
                 {
                     float narrow;
-                    if (!float.TryParse(token, System.Globalization.NumberStyles.Float,
+                    if (!float.TryParse(bounded, System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out narrow))
                     {
                         return double.NaN;
@@ -2313,7 +2430,7 @@ namespace Tabledemo
                     return narrow;
                 }
                 double value;
-                if (!double.TryParse(token, System.Globalization.NumberStyles.Float,
+                if (!double.TryParse(bounded, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out value))
                 {
                     return double.NaN;
@@ -2379,7 +2496,7 @@ namespace Tabledemo
                     if (c == 0) { input.Bad = true; return false; }
                     if (close == '}')
                     {
-                        if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
@@ -2414,7 +2531,7 @@ namespace Tabledemo
                     case (byte)'"':
                         {
                             int ignored;
-                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored, stored: true);
                         }
                     case (byte)'t': return Literal(text, ref input, "true");
                     case (byte)'f': return Literal(text, ref input, "false");
@@ -2481,7 +2598,7 @@ namespace Tabledemo
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
                     Span<byte> key = stackalloc byte[MaxName];
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int tag = 0;
@@ -2604,19 +2721,30 @@ namespace Tabledemo
                     f.SetRaw(owner, index, 0);
                     return true;
                 }
-                Span<char> token = stackalloc char[MaxNumber];
+                Span<char> scratch = stackalloc char[MaxNumber];
                 int length;
                 bool tokenIntegral;
-                if (!ScanNumber(text, ref input, token, out length, out tokenIntegral))
+                if (!ScanNumber(text, ref input, scratch, out length, out tokenIntegral))
                 {
                     input.Bad = true;
                     return false;
                 }
-                if (f.GetWide != null) { return ReadWide(token.Slice(0, length), ref input, owner, f, index); }
+                if (length <= scratch.Length)
+                {
+                    return ReadNumber(scratch.Slice(0, length), tokenIntegral, ref input, owner, f, index);
+                }
+                return ReadNumber(System.Text.Encoding.ASCII.GetString(text.Slice(input.Pos - length, length)), tokenIntegral, ref input, owner, f, index);
+            }
+
+            // one number token at one field: the token's VALUE decides what lands, not
+            // how many bytes spelled it (§16.2 Numbers).
+            static bool ReadNumber(ReadOnlySpan<char> token, bool tokenIntegral, ref In input, object owner, TableFieldInfo f, int index)
+            {
+                if (f.GetWide != null) { return ReadWide(token, ref input, owner, f, index); }
                 if (f.Kind == 10 || f.Kind == 11)
                 {
                     bool single = f.Kind == 10;
-                    double value = TokenDouble(token.Slice(0, length), single);
+                    double value = TokenDouble(token, single);
                     // A magnitude the field's format cannot hold is the WRONG SHAPE for
                     // the kind, and it never reaches storage: 1e400 is not a float64
                     // and 1e300 is not a float32. Storing the infinity the conversion
@@ -2657,11 +2785,11 @@ namespace Tabledemo
                 long value2 = 0;
                 if (tokenIntegral)
                 {
-                    value2 = TokenInteger(token.Slice(0, length), isSigned, out saturated);
+                    value2 = TokenInteger(token, isSigned, out saturated);
                 }
                 else
                 {
-                    double d = TokenDouble(token.Slice(0, length), false);
+                    double d = TokenDouble(token, false);
                     if (!Finite(d))
                     {
                         return RefuseText(ref input, "kind_mismatch");
@@ -2810,6 +2938,22 @@ namespace Tabledemo
                         // the field keeps its default and the event is counted
                         return RefuseText(ref input, "kind_mismatch");
                     }
+                    // The writer's spelling is padded standard base64 with zero pad
+                    // bits (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above
+                    // accepts decodable unpadded input, so hold the text to that exact
+                    // spelling before placing any bytes.
+                    bool canonical = symbols % 4 == 0;
+                    if (pad == 1)
+                    {
+                        int last = Base64Decode[body[body.Length - 2]];
+                        canonical = last >= 0 && (last & 0x03) == 0;
+                    }
+                    else if (pad == 2)
+                    {
+                        int last = Base64Decode[body[body.Length - 3]];
+                        canonical = last >= 0 && (last & 0x0f) == 0;
+                    }
+                    if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
                     byte[] storage = f.GetBuffer(value);
                     Array.Clear(storage, 0, f.ArrayBound);
                     PutCount(value, f, 0);
@@ -2864,7 +3008,7 @@ namespace Tabledemo
                         if (c == '}') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
                         int keyLength;
-                        if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         int slot = -1;
@@ -2993,7 +3137,7 @@ namespace Tabledemo
                     if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
                     if (c == 0) { input.Bad = true; return false; }
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int index = -1;
@@ -4676,14 +4820,16 @@ namespace Tabledemo
                         bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
                         Span<ulong> few = stackalloc ulong[16];
                         int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                        // a walked element of no fixed width that consumes no bits
+                        // refuses the read (docs/SPEC-TABLES.md §3.3), as the
+                        // reference's walk does: a count alone never buys the walk
+                        bool walked = shape.Elem != 0 && shape.Elem != 32 && Width(shape.Elem) == 0;
                         for (ulong i = 0; i < n; i++)
                         {
-                            long at = r.At;
                             if (kind == 16 && (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id))) { return false; }
+                            long at = r.At;
                             if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, nested ? depth + 1 : depth)) { return false; }
-                            // an element that consumed no bits is the rest of the run
-                            // too: a remaining count the bits left cannot back is damage
-                            if (r.At == at) { return n - i - 1 <= (ulong)(r.End - r.At); }
+                            if (walked && r.At == at) { return false; }
                         }
                         return true;
                     case 10:

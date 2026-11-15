@@ -491,6 +491,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F004Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 2000.0f, "value.F004Cf32 out of range [0.0f, 2000.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 20000u, 15, 2000.0f, 0.0f))
                 {
                     return false;
@@ -611,6 +612,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F027Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -2.0f && compressedValue <= 2.0f, "value.F027Cf32 out of range [-2.0f, 2.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 16u, 5, 4.0f, -2.0f))
                 {
                     return false;
@@ -758,6 +760,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F061Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -90.0f && compressedValue <= 90.0f, "value.F061Cf32 out of range [-90.0f, 90.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 360u, 9, 180.0f, -90.0f))
                 {
                     return false;
@@ -783,6 +786,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F065Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 30.0f, "value.F065Cf32 out of range [0.0f, 30.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 60u, 6, 30.0f, 0.0f))
                 {
                     return false;
@@ -794,6 +798,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F067Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -100.0f && compressedValue <= 100.0f, "value.F067Cf32 out of range [-100.0f, 100.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 800u, 10, 200.0f, -100.0f))
                 {
                     return false;
@@ -801,6 +806,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F068Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 2000.0f, "value.F068Cf32 out of range [0.0f, 2000.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 2000u, 11, 2000.0f, 0.0f))
                 {
                     return false;
@@ -819,6 +825,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F071Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.F071Cf32 out of range [0.0f, 10.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 500u, 9, 10.0f, 0.0f))
                 {
                     return false;
@@ -826,6 +833,7 @@ namespace Realworld
             }
             {
                 float compressedValue = value.F072Cf32;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 100.0f, "value.F072Cf32 out of range [0.0f, 100.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 100.0f, 0.0f))
                 {
                     return false;
@@ -947,6 +955,15 @@ namespace Realworld
         }
 
         public static bool ReadRealPacket(ReadStream stream, ref RealPacket value)
+        {
+            if (!ReadRealPacketBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRealPacketBody(ReadStream stream, ref RealPacket value)
         {
             if (!stream.SerializeInt(ref value.F001Int, -805495, 805495))
             {

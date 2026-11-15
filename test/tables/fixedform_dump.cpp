@@ -21,12 +21,14 @@
 
 #include "FX1Table.h"
 #include "FX2Table.h"
+#include "FNZTable.h"
 #include "P1Table.h"
 #include "P3Table.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
 #include "FU1Table.h"
 #include "FU2Table.h"
+#include "FD1Table.h"
 #include "DeadBytesTable.h"
 
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
@@ -758,6 +760,22 @@ static bool fu2_file( const char * dir )
     return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
 }
 
+// THE COMPRESSED FLOAT'S NEGATIVE ZERO (docs/SPEC-TABLES.md §3.3). The record
+// holds the bits of -0 in `value`; the manifest's `expect=` states the rule's
+// landing, the value 0 itself, which is also the canonical bytes with that
+// field all zero. The read is not asserted here: the file records what went
+// onto the wire, and every leg's own read is where the rule is held.
+static bool nz_file( const char * dir )
+{
+    std::vector<tblfnz::NegZero> v( 1 );
+    tblfnz::NegZeroReset( v[0] );
+    MS( v[0].lead, 1u );
+    MS( v[0].value, float_from_bits( 0x80000000u ) );
+    MS( v[0].trail, 2u );
+    g_expect = "r0.value=0";
+    return emit( dir, "negative_zero.bin", v, tblfnz::NegZeroFixedMeasure, tblfnz::NegZeroFixedSave );
+}
+
 // ---- the DEAD-BYTE corpus --------------------------------------------------
 // docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 and docs/SPEC-TABLES.md §3.4,
 // §13.10: every dead byte in a fixed record is zero on write and a non-zero one
@@ -765,9 +783,11 @@ static bool fu2_file( const char * dir )
 // control is the reference writer's own bytes (every dead byte zero), and each
 // changed file is a control with ONE region made non-zero.
 //
-// THE DUMP WRITES THE BYTES AND SAYS WHAT WENT ONTO THE WIRE; it does not read
-// them back. The verdict belongs to each leg's own reader, and every changed
-// line carries no `expect=` for that reason.
+// THE DUMP ASSERTS THE REFERENCE'S OWN VERDICT ON EACH FILE BEFORE IT WRITES
+// IT, the way it asserts hostile_range_widen.bin: a control reads (its line
+// carries `expect=`), and a file with one changed dead region is refused whole
+// (its line carries no `expect=`). Each leg then holds its own reader to the
+// same bytes.
 
 static constexpr int64_t kDeadRecordAt = tbldead::kTableFixedHeaderBytes + 4
                                        + tbldead::DeadRootFixedLayoutBytes + 8;
@@ -869,6 +889,33 @@ static bool dead_write( const char * dir, const char * name, const std::vector<u
     g_values = values;
     g_forged = forged;
     g_expect = expect;
+    // THE VERDICT IS THE REFERENCE'S OWN: a control (expect= present) reads,
+    // and a file with one changed dead region is refused whole before a record
+    // lands. The dump refuses to write a row whose bytes the reference does not
+    // answer as its line says.
+    {
+        tbldead::DeadRoot back;
+        tbldead::DeadRootReset( back );
+        tbldead::TableReport r;
+        std::vector<tbldead::TableFixedEntry> plan( 4096 );
+        const int64_t n = tbldead::DeadRootFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                      plan.data(), 4096, NULL, &r );
+        const bool want_read = !expect.empty();
+        if ( want_read && ( n != 1 || r.damaged || r.refused ) )
+        {
+            std::fprintf( stderr, "%s: the reference answered n=%lld damaged=%d refused=%d, want one record read\n",
+                          name, (long long) n, (int) r.damaged, (int) r.refused );
+            g_values.clear();
+            return false;
+        }
+        if ( !want_read && n != -1 )
+        {
+            std::fprintf( stderr, "%s: the reference read %lld records, want the whole load refused\n",
+                          name, (long long) n );
+            g_values.clear();
+            return false;
+        }
+    }
     man_finish( name, "DeadRoot", 1 );
     return spill( dir, name, out );
 }
@@ -1716,13 +1763,143 @@ static bool vlists_files( const char * dir )
 
 // ==== END rowan/cpp-versioning-lists =======================================
 
+// ---- deprecated fields are carried ----------------------------------------
+//
+// docs/SPEC-TABLES.md §3.4, §21.2, §22.6 and docs/rulings.json
+// fixed-deprecated-field-is-carried: a `| deprecated` field in the fixed form
+// reads and writes like any other field, and its declared default applies only
+// where the record does not supply the field. FD1's FdRoot declares one
+// deprecated field of each shape; each file below holds a lawful value that is
+// NOT that field's declared default and ordinary values elsewhere
+// (internal/fixedvector.DeprecatedField names them).
+//
+// The reference reads each file back under its own layout, and the dump
+// refuses to write the row unless the read lands the stored value in the
+// deprecated field and the landed record saves back to the same bytes. So
+// `expect=` is what the reference landed, and it is the stored values: the
+// same list as `values=`.
+template <typename Same>
+static bool deprecated_file( const char * dir, const char * name, const std::vector<tblfd1::FdRoot> & v, Same same )
+{
+    std::vector<uint8_t> out( (size_t) tblfd1::FdRootFixedMeasure( 1 ) );
+    if ( tblfd1::FdRootFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+    {
+        std::fprintf( stderr, "%s: save refused\n", name );
+        g_values.clear();
+        return false;
+    }
+    tblfd1::FdRoot back;
+    tblfd1::FdRootReset( back );
+    tblfd1::TableReport r;
+    std::vector<tblfd1::TableFixedEntry> plan( 4096 );
+    const int64_t n = tblfd1::FdRootFixedLoad( &back, 1, out.data(), (int64_t) out.size(), plan.data(), 4096, NULL, &r );
+    if ( n != 1 || !same( v[0], back ) )
+    {
+        std::fprintf( stderr, "%s: the reference's read answered n=%lld and did not land the stored deprecated value\n",
+                      name, (long long) n );
+        g_values.clear();
+        return false;
+    }
+    std::vector<uint8_t> again( out.size() );
+    if ( tblfd1::FdRootFixedSave( &back, 1, again.data(), (int64_t) again.size() ) != (int64_t) again.size() || again != out )
+    {
+        std::fprintf( stderr, "%s: the landed record does not save back to the same bytes\n", name );
+        g_values.clear();
+        return false;
+    }
+    std::string expect;
+    for ( size_t k = 0; k < g_values.size(); ++k )
+    {
+        if ( k != 0 ) { expect += ","; }
+        expect += g_values[k];
+    }
+    g_expect = expect;
+    man_finish( name, man_root_of( typeid( tblfd1::FdRoot ).name() ).c_str(), 1 );
+    return spill( dir, name, out );
+}
+
+static bool deprecated_files( const char * dir )
+{
+    // a scalar: old_count int32 = 4, holding 99
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_count, 99 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_scalar.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_count == a.old_count; } ) ) { return false; }
+    }
+    // a text: old_tag string(8) = "abc", holding "hi"
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        std::memset( (void *) v[0].old_tag, 0, sizeof( v[0].old_tag ) );
+        MS( v[0].lead, 11 );
+        MSTR( v[0].old_tag, "hi" );
+        MS( v[0].old_tag_length, 2 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_string.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_tag_length == a.old_tag_length && std::memcmp( b.old_tag, a.old_tag, sizeof( a.old_tag ) ) == 0; } ) ) { return false; }
+    }
+    // a counted array: old_marks [..3]uint16, empty by default, holding two
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_marks[0], 300 );
+        MS( v[0].old_marks[1], 400 );
+        MS( v[0].old_marks_count, 2 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_array.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_marks_count == 2 && b.old_marks[0] == a.old_marks[0] && b.old_marks[1] == a.old_marks[1]; } ) ) { return false; }
+    }
+    // an optional: old_bonus ?uint16, absent by default, present
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_bonus_present, true );
+        MS( v[0].old_bonus, 77 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_optional.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_bonus_present && b.old_bonus == a.old_bonus; } ) ) { return false; }
+    }
+    // a nested type: old_spot Spot { x = 5, y = 6 }, holding (50, 60)
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MS( v[0].old_spot.x, 50 );
+        MS( v[0].old_spot.y, 60 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_nested.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_spot.x == a.old_spot.x && b.old_spot.y == a.old_spot.y; } ) ) { return false; }
+    }
+    // a union: old_pick Pick, None by default, taking its `spot` arm (a type)
+    // off that type's defaults
+    {
+        std::vector<tblfd1::FdRoot> v( 1 );
+        tblfd1::FdRootReset( v[0] );
+        MS( v[0].lead, 11 );
+        MSE( v[0].old_pick.type, tblfd1::PickType::Spot );
+        MS( v[0].old_pick.spot.x, 70 );
+        MS( v[0].old_pick.spot.y, 80 );
+        MS( v[0].trail, 22 );
+        if ( !deprecated_file( dir, "deprecated_union.bin", v, []( const tblfd1::FdRoot & a, const tblfd1::FdRoot & b )
+             { return b.old_pick.type == tblfd1::PickType::Spot && b.old_pick.spot.x == a.old_pick.spot.x &&
+                      b.old_pick.spot.y == a.old_pick.spot.y; } ) ) { return false; }
+    }
+    return true;
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
          !keyed_file( dir ) || !pack_file( dir ) ||
-         !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
+         !fu1_file( dir ) || !fu2_file( dir ) || !nz_file( dir ) ) { return 1; }
     if ( !dead_bytes_files( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }
@@ -1730,6 +1907,7 @@ int main( int argc, char ** argv )
     // ==== BEGIN rowan/cpp-versioning-lists ====
     if ( !vlists_files( dir ) ) { return 1; }
     // ==== END rowan/cpp-versioning-lists =====
+    if ( !deprecated_files( dir ) ) { return 1; }
     // ---- rowan/corpus-manifest ----
     // THE MANIFEST, beside the bytes it describes (§5.7 step 1, ruling #32)
     if ( !man_write( dir ) ) { return 1; }

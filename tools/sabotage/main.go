@@ -94,6 +94,16 @@ var sabotages = map[string][]edit{
 		}
 		g.needsNew = true`,
 	}},
+	// SPEC §5.1 row 10 on the packet Write: a compressed float is checked
+	// finite and inside [min, max] before quantizing. Remove the generated
+	// debug assert and an off-range finite value is written instead.
+	"packet-write-cfloat-cpp-range-assert": {{
+		old: `			g.pf("%s    serialize_assert( compressed_value >= %s && compressed_value <= %s ); // SPEC §5.1 row 10\n",
+				ind, formatFloat(float64(min32), true), formatFloat(float64(max32), true))
+`,
+		new: `			g.pf("%s    (void) compressed_value; // SABOTAGED: no compressed-float value check\n", ind)
+`,
+	}},
 	"packet-void-write-c": {{
 		old: `				g.pf("        case %d:\n            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n", i+1)`,
 		new: `				g.pf("        case %d:\n", i+1)
