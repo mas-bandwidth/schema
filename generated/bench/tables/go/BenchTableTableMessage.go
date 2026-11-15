@@ -635,11 +635,12 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 // readers then hold these lanes to the declared ranges, as the file read does.
 // The reconstruction is canonical: a signed kind is sign-extended to 128 bits,
 // an unsigned kind zero-extended, and a ranged offset carries into the high
-// lane. A value past the 128-bit domain of an integer kind is reported so the
-// reader refuses it before it narrows.
+// lane. A timestamp (kind 36) is a signed sixty-four bit count. A value past
+// the 128-bit domain of an integer kind is reported so the reader refuses it
+// before it narrows.
 func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) (bool, bool) {
-	integer := s.Kind >= 2 && s.Kind <= 9 || s.Kind >= 18 && s.Kind <= 29
-	signed := integer && (s.Kind <= 5 || s.Kind == 18 || s.Kind >= 20 && s.Kind <= 24)
+	integer := s.Kind >= 2 && s.Kind <= 9 || s.Kind >= 18 && s.Kind <= 29 || s.Kind == 36
+	signed := integer && (s.Kind <= 5 || s.Kind == 18 || s.Kind >= 20 && s.Kind <= 24 || s.Kind == 36)
 	lo, ok := r.Get(min(s.Bits, 64))
 	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
 		return false, false

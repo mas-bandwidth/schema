@@ -24,6 +24,7 @@ fixed table Probe
 	g uint64
 	h int128 | min = -1000, max = 1000
 	i uint128
+	j timestamp
 }
 `
 	runGenerated(t, schema, "package probe\n"+messageIntDomainProbe)
@@ -231,6 +232,25 @@ func TestMessageIntDomain(t *testing.T) {
 		}
 		if storage[0].B != -128 {
 			t.Fatalf("read %d, want -128", storage[0].B)
+		}
+	})
+
+	// A timestamp (kind 36) is a signed sixty-four bit count with no declared
+	// range, so its bound is all of int64: a pre-epoch count is lawful and
+	// reads, and it is sign-extended to 128 bits before the held check.
+	t.Run("timestamp_negative_reads", func(t *testing.T) {
+		t.Parallel()
+		v := messageIntDomainAnnounce(t)
+		slot := messageIntDomainSlot(t, v, messageIntDomainField(t, "j"))
+		width := v.Entries[slot].Shape.Bits
+		storage := make([]Probe, 1)
+		var report TableReport
+		count, ok := ProbeLoadMessages(storage, v, messageIntDomainBody(v, slot, ^uint64(999999999), 0, width), &report)
+		if !ok || count != 1 || report.Refused() {
+			t.Fatalf("a lawful negative timestamp count was refused: count=%d ok=%v report=%+v", count, ok, report)
+		}
+		if storage[0].J != -1000000000 {
+			t.Fatalf("read %d, want -1000000000", storage[0].J)
 		}
 	})
 }
