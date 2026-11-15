@@ -358,8 +358,8 @@ func TestLuauFixedEvolutionArrayBounds(t *testing.T) {
 // TestLuauFixedEvolutionText is text (C3, C4, C5, R24): a length past the
 // field's capacity refuses; ill-formed UTF-8 or a zero in the USED bytes and an
 // unpaired surrogate in a wstring's used units refuse; a hostile byte in the
-// slack past the used length is not read and not a refusal. The negative
-// control drops the UTF-8 check.
+// slack past the used length is a dead byte and refuses wire_damaged. The
+// negative control drops the UTF-8 check.
 func TestLuauFixedEvolutionText(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
@@ -375,7 +375,7 @@ func TestLuauFixedEvolutionText(t *testing.T) {
 		{"C3 length 5 of 4", cut(func(b []byte) { b[body] = 5 }), "refused length_over_bound"},
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), "refused text_ill_formed"},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), "refused text_ill_formed"},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 w0 u0"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "refused wire_damaged"},
 	}
 	for _, c := range cases {
 		if got := g.load(t, "T", c.file).head; got != c.want {
@@ -532,8 +532,9 @@ func TestLuauFixedEvolutionOrdinals(t *testing.T) {
 // TestLuauFixedEvolutionNormalization is normalization (C12, C13, R17) under
 // the one read: a bool byte or a present byte other than 0 or 1 refuses
 // wire_damaged (docs/FIXED-FORM-ALGORITHM.md §4.5), never normalized; 0 and 1
-// read, and the payload behind a present byte of 1 lands. The negative
-// control drops the byte check.
+// read, and the payload behind a present byte of 1 lands. A present byte of 0
+// makes the payload dead, so a non-zero byte there refuses wire_damaged. The
+// negative control drops the byte check.
 func TestLuauFixedEvolutionNormalization(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
@@ -559,8 +560,11 @@ func TestLuauFixedEvolutionNormalization(t *testing.T) {
 	if got := g.load(t, "T", set(1, 1, 42)); got.head != "ok 1 w0 u0" || got.dump["r0.Flag"] != "true" || got.dump["r0.OptPresent"] != "true" || got.dump["r0.Opt"] != "42" {
 		t.Errorf("the control: %s %v", got.head, got.dump)
 	}
-	if got := g.load(t, "T", set(0, 0, 42)); got.head != "ok 1 w0 u0" || got.dump["r0.Flag"] != "false" || got.dump["r0.OptPresent"] != "false" {
-		t.Errorf("the control, absent: %s %v", got.head, got.dump)
+	if got := g.load(t, "T", set(0, 0, 42)); got.head != "refused wire_damaged" {
+		t.Errorf("a non-zero byte in an absent payload: %s, want refused wire_damaged", got.head)
+	}
+	if got := g.load(t, "T", set(0, 0, 0)); got.head != "ok 1 w0 u0" || got.dump["r0.Flag"] != "false" || got.dump["r0.OptPresent"] != "false" {
+		t.Errorf("the control, absent and zero: %s %v", got.head, got.dump)
 	}
 	gc := luauCutGen(t, g.unit, nil)
 	gc.plant(t, `if b > 1 then error({ name = "wire_damaged"`, `if false then error({ name = "wire_damaged"`)

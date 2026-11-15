@@ -104,14 +104,20 @@ func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 		g.inBatch = false
 		g.sf("}\n\n")
 	}
+	// The public read is the one-packet read (SPEC §5 "Read termination"): it
+	// reads the top-level object through the per-type body and then asks the
+	// runtime to check the packet's end. Nested generated reads call the body,
+	// never this entry, so the end is checked once, after the top-level object.
+	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
+	g.sf("    if (!Read%sBody(stream, %svalue))\n    {\n        return false;\n    }\n", pair, r)
+	g.sf("    return stream.SerializeEnd();\n}\n\n")
+	g.sf("private static bool Read%sBody(ReadStream stream, %s value)\n{\n", pair, typ)
 	if batched {
-		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
 		g.sf("    ReadBatch batch = stream.BeginBatch();\n")
 		g.sf("    bool result = Read%sBatch(ref batch, %svalue);\n", pair, r)
 		g.sf("    batch.End();\n")
 		g.sf("    return result;\n}\n\n")
 	} else {
-		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
 		readBody()
 		g.sf("}\n\n")
 	}
@@ -460,6 +466,9 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 func (g *gen) armCall(dir string, v ir.UnionVariant) string {
 	if g.inBatch {
 		return fmt.Sprintf("%s%sBatch(ref batch, %svalue.%s)", dir, v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
+	}
+	if dir == "Read" {
+		return fmt.Sprintf("Read%sBody(stream, %svalue.%s)", v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 	}
 	return fmt.Sprintf("%s%s(stream, %svalue.%s)", dir, v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 }
@@ -1186,13 +1195,13 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			if g.inBatch {
 				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Read%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
+				g.call(ind, fmt.Sprintf("Read%sBody(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		case *ir.Union:
 			if g.inBatch {
 				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Read%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
+				g.call(ind, fmt.Sprintf("Read%sBody(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		}
 	}
