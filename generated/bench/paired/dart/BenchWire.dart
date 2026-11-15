@@ -727,6 +727,9 @@ final class TableWireReader {
   // _useBad records a reference that named an entry before its turn.
   int _useNext = 0;
   bool _useBad = false;
+  // idsNotFirstUse is the id-table verdict wireFramingBad's walk reached:
+  // true when an entry was named before its turn or no reference named it.
+  bool idsNotFirstUse = false;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -1771,7 +1774,8 @@ final class TableWireReader {
   // a keyed slot's and a node record's type — in the wire's own order, the
   // root body first and the node table, its last field, after it, so an
   // entry named before its turn, or one no reference names, is a table no
-  // conforming writer produces. The walk stays one pass over the input.
+  // conforming writer produces. The walk stays one pass over the input: the
+  // framing verdict is its answer, and this one lands on idsNotFirstUse.
   bool wireFramingBad() {
     if (entryCount == 0 || data.isEmpty || data[0] != 1) return false;
     final bodyEnd = data.length - (entryCount * 8 + 8);
@@ -1787,7 +1791,9 @@ final class TableWireReader {
         if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
         if (!_wireBody(nodes[rec], false, sink, 0)) return true;
       }
-      return _useBad || _useNext != entryCount + 1;
+      idsNotFirstUse = _useBad || _useNext != entryCount + 1;
+      return false;
+
     } finally {
       _useNext = 0;
     }
@@ -5163,6 +5169,7 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   if (r.wireCycle()) { r.report.refuse('wire_damaged'); }
   if (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }
   if (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }
+  if (r.idsNotFirstUse) { r.report.refuse('wire_damaged'); }
   if (r.wireBlobShared()) { r.report.refuse('blob_shared'); }
   if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return FixedTable();
