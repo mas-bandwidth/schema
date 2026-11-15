@@ -1321,12 +1321,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 	switch {
 	case isBytes:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%s%s.push(wire[*off]); *off += 1;\n", i5, field)
 	case ir.TextListPlain(f):
 		emitPlainTextListElement(b, f, field, i5)
 	case cls == vTable:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 		fmt.Fprintf(b, "%sif *off > sub || el > (sub - *off) as u64 { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet eend = *off + el as usize;\n", i5)
@@ -1338,13 +1336,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s*off = eend;\n", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vPointer:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(index) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 		fmt.Fprintf(b, "%sif *off > sub { report.damaged = true; break; }\n", i5)
 		emitPointerResolve(b, f, "let e", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vEnum:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		emitEnumDecode(b, f, "let e", "sub", "break;", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vUnion:
@@ -1383,7 +1379,6 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned()%s); }\n", i4, field, f.ArrayBound, field, field, orElse(fieldDefault(scalarOnly(f))))
 	}
-	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
