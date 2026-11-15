@@ -103,7 +103,8 @@ const (
 	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
-	goExamplesLineBudget = 60093
+	// +13: a pointer target's record type is the reader's DECLARED type, not one root's reachable set (docs/SPEC-TABLES.md §3.1)
+	goExamplesLineBudget = 60106
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

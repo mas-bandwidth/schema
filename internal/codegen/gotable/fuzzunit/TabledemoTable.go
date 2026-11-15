@@ -3222,13 +3222,14 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 // check has already refused an index past the table and a blob named twice.
 type TableNodeDirEntry struct{ Offset, TypeID uint64 }
 type TableNodeMap struct {
-	Base    unsafe.Pointer
-	Entries []TableNodeDirEntry
-	Good    bool
-	Arena   bool
-	Once    bool
-	Indexed bool
-	Count   uint64
+	Base      unsafe.Pointer
+	Entries   []TableNodeDirEntry
+	Good      bool
+	Arena     bool
+	Once      bool
+	Indexed   bool
+	Count     uint64
+	NodeTypes []uint64
 }
 
 // Mark records that a slot the reader cannot name points at a node record, so
@@ -3457,11 +3458,22 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		w := TableReader{Buffer: r.Buffer, Ids: r.Ids}
 		at := int64(0)
 		nodes := int64(s.records)
+		var stack [4097]uint64
+		var types []uint64
+		if int(s.records)+1 <= len(stack) {
+			types = stack[:int(s.records)+1]
+		} else {
+			types = make([]uint64, int(s.records)+1)
+		}
+		types[0] = root.ID
 		scan := tableNodeScanBegin(w)
-		for {
+		for k := 1; ; k++ {
 			id, body, ok := scan.next()
 			if !ok {
 				break
+			}
+			if nodeType(id) != nil || id == tableBytesTypeID || id == tableStringTypeID {
+				types[k] = id
 			}
 			if id == tableStringTypeID && blobs&2 != 0 && !tableUTF8Valid(body.Buffer) {
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
@@ -3470,6 +3482,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 			}
 		}
+		w.Nodes.NodeTypes = types
 		if tableWireExtent(&w, root, &at, nodes) != TableRefuseOk {
 			return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 		}
@@ -3962,7 +3975,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo, kind uint8, at *int64, 
 		}
 	case 17:
 		index, ok := r.Leb()
-		if !ok || nodes >= 0 && index > uint64(nodes)+1 {
+		if !ok || nodes >= 0 && index > uint64(nodes)+1 || nodes >= 0 && index != 0 && f.Pointer && int(index) <= len(r.Nodes.NodeTypes) && r.Nodes.NodeTypes[index-1] != 0 && r.Nodes.NodeTypes[index-1] != f.TargetID {
 			return bad
 		}
 	case 30:
@@ -4257,6 +4270,10 @@ func tableCycleType(index uint64) *TableTypeInfo {
 	}
 	return nil
 }
+
+var tableDeclaredTypes = map[uint64]*TableTypeInfo{0x413e7bcf261bc3c7: ArchiveConfigTableType(), 0xffb1dfb1f6ce215b: GlobalSettingsTableType(), 0x5fcbe04615411b64: GunnerConfigTableType(), 0xb76842b2253337af: GunnerSettingsTableType(), 0x3066b130dfbd7890: HullConfigTableType(), 0xd6633ae4e94deecf: KeyedConfigTableType(), 0xa6aa0caea28dcca1: LoadoutConfigTableType(), 0xd02d825db114336e: PackConfigTableType(), 0x1c182e1c2529027b: PatrolTableType(), 0x19fffcb7859da778: ProfileConfigTableType(), 0xec79751dda28be2e: RangedSignedTableType(), 0x031ec0c4b7d28bf1: RangedUnsignedTableType(), 0xbf59694e9e4f5ed7: RangedWidthsTableType(), 0x5f4843f6def45e87: RootConfigTableType(), 0x1d1a9911da171a29: ShipEntryTableType(), 0x1cf8555d11fb113a: TeamConfigTableType(), 0x469dba0c16b2ad15: TurretConfigTableType(), 0x0577780d86c4b0c3: WeaponConfigTableType(), 0xab6a6961d3366451: WideBlobTableType()}
+
+func tableDeclaredType(id uint64) *TableTypeInfo { return tableDeclaredTypes[id] }
 func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	for i := range info.Fields {
 		f := &info.Fields[i]
