@@ -62,7 +62,7 @@ local function skip(r: any, kind: number): boolean
 	end
 	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			return false
 		end
 		r.at += n
@@ -78,7 +78,7 @@ local function skip(r: any, kind: number): boolean
 			end
 			r_u8(r)
 			local n = r_leb(r)
-			if r.bad or r.at + n > r.e then
+			if r.bad or n > r.e - r.at then
 				return false
 			end
 			r.at += n
@@ -165,7 +165,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 				break
 			end
 			local n = r_leb(w)
-			if w.bad or w.at + n > w.e then
+			if w.bad or n > w.e - w.at then
 				bad = true
 				break
 			end
@@ -199,7 +199,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 			return nil
 		end
 		local tlen = r_leb(rec)
-		if rec.bad or rec.at + tlen > rec.e then
+		if rec.bad or tlen > rec.e - rec.at then
 			report.bodyDamaged = true
 			return nil
 		end
@@ -517,7 +517,7 @@ local function scan_key(keyfd: any, body: any, entry: any): (any, boolean, boole
 					end
 				elseif keyfd.s == "str" or keyfd.s == "text" then
 					local n = r_leb(scan)
-					if scan.bad or scan.at + n > scan.e then
+					if scan.bad or n > scan.e - scan.at then
 						return keyVal, kindBad, entryWidened, false
 					end
 					if not V.utf8(scan.b, scan.at, n) then
@@ -542,7 +542,7 @@ end
 
 local function read_map(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		report.bodyDamaged = true
 		return false
 	end
@@ -591,7 +591,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 		local hasLast = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then
+			if sub.bad or elemLen > sub.e - sub.at then
 				report.bodyDamaged = true
 				break
 			end
@@ -737,7 +737,7 @@ end
 -- reference and then its framed payload. Key variant k lands at index k.
 local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		report.bodyDamaged = true
 		return false
 	end
@@ -792,7 +792,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 				end
 			end
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then
+			if sub.bad or elemLen > sub.e - sub.at then
 				report.bodyDamaged = true
 				break
 			end
@@ -930,7 +930,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	if fd.s == "bytes" then
 		-- bytes(N) rides as an array of u8 (§2.5)
 		local have = keep
-		if sub.at + have > sub.e then
+		if have > sub.e - sub.at then
 			have = sub.e - sub.at
 			report.bodyDamaged = true
 		end
@@ -1004,7 +1004,7 @@ end
 -- the header is read against the PARENT buffer (§2.9).
 local function read_array(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		report.bodyDamaged = true
 		return false, false
 	end
@@ -1046,7 +1046,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			report.bodyDamaged = true
 			return false
 		end
@@ -1080,7 +1080,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	elseif s == "str" or s == "text" then
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			report.bodyDamaged = true
 			return false
 		end
@@ -1201,7 +1201,7 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 	local kind = r_u8(r)
 	local lpos = r.at
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		report.bodyDamaged = true
 		return u, false
 	end
@@ -1267,7 +1267,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "str" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			_report.bodyDamaged = true
 			return false
 		end
@@ -1288,7 +1288,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "text" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			_report.bodyDamaged = true
 			return false
 		end
@@ -1321,7 +1321,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			_report.bodyDamaged = true
 			return false
 		end
@@ -2028,7 +2028,7 @@ local function witness(root: string, b: buffer, k: string): string?
 	refine = function(fd: any, seg: any, rebuild: (string) -> string): string?
 		if fd.s == "tab" and seg.kind == 13 and fd.t ~= nil then
 			local n, bs = V.leb(b, seg.ps, seg.e)
-			if n == nil then
+			if n == nil or n > seg.e - bs then
 				return fd.name
 			end
 			local inner = walkBody(b, bs, bs + n, ids)
@@ -2071,7 +2071,7 @@ local function witness(root: string, b: buffer, k: string): string?
 		local recs: { any } = {}
 		local ok = n ~= nil
 		local count = 0
-		if n ~= nil then
+		if n ~= nil and n <= nodeSeg.e - ps then
 			local stop = ps + n
 			local c, p = V.leb(b, ps, stop)
 			ok = c ~= nil
@@ -2083,7 +2083,7 @@ local function witness(root: string, b: buffer, k: string): string?
 					break
 				end
 				local tlen, r = V.leb(b, q, stop)
-				if tlen == nil or r + tlen > stop then
+				if tlen == nil or tlen > stop - r then
 					ok = false
 					break
 				end
