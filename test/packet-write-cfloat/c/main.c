@@ -177,6 +177,7 @@ int main( int argc, char ** argv )
         cfloat_case_t test;
         pid_t child;
         int status = 0;
+        long mark;
         int parsed = parse_case( line, &test );
         int refused = 0;
         int wrote = 0;
@@ -184,7 +185,7 @@ int main( int argc, char ** argv )
 
         if ( parsed < 0 )
         {
-            printf( "FAILED: packet-write-cfloat cases.txt: malformed case %s", line );
+            printf( "FAILED: packet-write-cfloat cases.txt: malformed case %s\n", line );
             failed = 1;
             continue;
         }
@@ -195,6 +196,16 @@ int main( int argc, char ** argv )
         cases++;
         fflush( stdout );
         fflush( stderr );
+        /* The child's abort flushes this FILE and lseeks the shared open-file
+           description by whatever the child still had buffered. Remember the
+           logical position and put it back, or the next read repeats the file. */
+        mark = ftell( file );
+        if ( mark < 0 )
+        {
+            printf( "FAILED: packet-write-cfloat %s: could not mark the case file\n", test.name );
+            failed = 1;
+            break;
+        }
         child = fork();
         if ( child < 0 )
         {
@@ -210,7 +221,17 @@ int main( int argc, char ** argv )
         {
             printf( "FAILED: packet-write-cfloat %s: could not wait for the child\n", test.name );
             failed = 1;
+            if ( fseek( file, mark, SEEK_SET ) != 0 )
+            {
+                break;
+            }
             continue;
+        }
+        if ( fseek( file, mark, SEEK_SET ) != 0 )
+        {
+            printf( "FAILED: packet-write-cfloat %s: could not restore the case file\n", test.name );
+            failed = 1;
+            break;
         }
         if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT )
         {
