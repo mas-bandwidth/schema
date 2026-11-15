@@ -1,4 +1,4 @@
 # carried findings: name	slug	input	one line
 # No carried findings; unexpected disagreements and stale entries fail.
-conformance-base64-unpadded	hostile-rows-js	inputs/conformance-base64-unpadded.json	RELAXED 2026-11-14 (maintainer: get main green): the js JSON read accepts unpadded base64 the ruling json-base64-canonical refuses; re-enable: relax/hostile-rows-js
-conformance-str-zero-escape-unknown-key	hostile-rows-js	inputs/conformance-str-zero-escape-unknown-key.json	RELAXED 2026-11-14 (maintainer: get main green): the js JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-js
+conformance-base64-unpadded	js-hostile-rows	inputs/conformance-base64-unpadded.json	RELAXED 2026-11-14 (maintainer: get main green): the js JSON read accepts unpadded base64 the ruling json-base64-canonical refuses; re-enable: relax/hostile-rows-js
+conformance-str-zero-escape-unknown-key	js-hostile-rows	inputs/conformance-str-zero-escape-unknown-key.json	RELAXED 2026-11-14 (maintainer: get main green): the js JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-js
