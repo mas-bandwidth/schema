@@ -1373,9 +1373,11 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
 			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)
+		g.fixedClampNegZero(expr, formatFloat(0, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, false), formatFloat(f.FMin, false),
 			expr+" > "+formatFloat(f.FMax, false), formatFloat(f.FMax, false), ind)
+		g.fixedClampNegZero(expr, formatFloat(0, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -1429,6 +1431,17 @@ func (g *tableGen) fixedClampBoth(expr, loTest, lo, hiTest, hi, ind string) {
 	   warning about code that is not this. A sum would silence it too and is
 	   measurably slower (test/bench/fixedform_measure.cpp). */
 	g.pf("%s(*out_of_range) += (int) ( %s ) | (int) ( %s );\n", ind, loTest, hiTest)
+}
+
+/*
+fixedClampNegZero is A COMPRESSED FLOAT'S -0 RULE (docs/SPEC-TABLES.md §3.3,
+
+	docs/rulings.json fixed-compressed-negzero): it is inside the range and only
+	its spelling differs, so it lands as the value 0 itself and nothing is
+	counted. A plain float's -0 is carried bit-exact and never reaches here.
+*/
+func (g *tableGen) fixedClampNegZero(expr, zero, ind string) {
+	g.pf("%sif ( %s == 0 ) { %s = %s; }\n", ind, expr, expr, zero)
 }
 
 /*
