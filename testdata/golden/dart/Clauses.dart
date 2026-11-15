@@ -1398,6 +1398,10 @@ int writeTri3(Tri3 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.a >= 0);
+  assert(value.a <= 1);
+  assert(value.b >= 0);
+  assert(value.b <= 3);
   v = (value.a & 0x1) | ((value.b & 0x3) << 1);
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -1505,26 +1509,110 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
     var i0 = 0;
     for (; i0 + 21 <= value.itemsCount; i0 += 21) {
       final e0 = value.items[i0];
+      assert(e0.a >= 0);
+      assert(e0.a <= 1);
+      assert(e0.b >= 0);
+      assert(e0.b <= 3);
       final e0g1 = value.items[i0 + 1];
+      assert(e0g1.a >= 0);
+      assert(e0g1.a <= 1);
+      assert(e0g1.b >= 0);
+      assert(e0g1.b <= 3);
       final e0g2 = value.items[i0 + 2];
+      assert(e0g2.a >= 0);
+      assert(e0g2.a <= 1);
+      assert(e0g2.b >= 0);
+      assert(e0g2.b <= 3);
       final e0g3 = value.items[i0 + 3];
+      assert(e0g3.a >= 0);
+      assert(e0g3.a <= 1);
+      assert(e0g3.b >= 0);
+      assert(e0g3.b <= 3);
       final e0g4 = value.items[i0 + 4];
+      assert(e0g4.a >= 0);
+      assert(e0g4.a <= 1);
+      assert(e0g4.b >= 0);
+      assert(e0g4.b <= 3);
       final e0g5 = value.items[i0 + 5];
+      assert(e0g5.a >= 0);
+      assert(e0g5.a <= 1);
+      assert(e0g5.b >= 0);
+      assert(e0g5.b <= 3);
       final e0g6 = value.items[i0 + 6];
+      assert(e0g6.a >= 0);
+      assert(e0g6.a <= 1);
+      assert(e0g6.b >= 0);
+      assert(e0g6.b <= 3);
       final e0g7 = value.items[i0 + 7];
+      assert(e0g7.a >= 0);
+      assert(e0g7.a <= 1);
+      assert(e0g7.b >= 0);
+      assert(e0g7.b <= 3);
       final e0g8 = value.items[i0 + 8];
+      assert(e0g8.a >= 0);
+      assert(e0g8.a <= 1);
+      assert(e0g8.b >= 0);
+      assert(e0g8.b <= 3);
       final e0g9 = value.items[i0 + 9];
+      assert(e0g9.a >= 0);
+      assert(e0g9.a <= 1);
+      assert(e0g9.b >= 0);
+      assert(e0g9.b <= 3);
       final e0g10 = value.items[i0 + 10];
+      assert(e0g10.a >= 0);
+      assert(e0g10.a <= 1);
+      assert(e0g10.b >= 0);
+      assert(e0g10.b <= 3);
       final e0g11 = value.items[i0 + 11];
+      assert(e0g11.a >= 0);
+      assert(e0g11.a <= 1);
+      assert(e0g11.b >= 0);
+      assert(e0g11.b <= 3);
       final e0g12 = value.items[i0 + 12];
+      assert(e0g12.a >= 0);
+      assert(e0g12.a <= 1);
+      assert(e0g12.b >= 0);
+      assert(e0g12.b <= 3);
       final e0g13 = value.items[i0 + 13];
+      assert(e0g13.a >= 0);
+      assert(e0g13.a <= 1);
+      assert(e0g13.b >= 0);
+      assert(e0g13.b <= 3);
       final e0g14 = value.items[i0 + 14];
+      assert(e0g14.a >= 0);
+      assert(e0g14.a <= 1);
+      assert(e0g14.b >= 0);
+      assert(e0g14.b <= 3);
       final e0g15 = value.items[i0 + 15];
+      assert(e0g15.a >= 0);
+      assert(e0g15.a <= 1);
+      assert(e0g15.b >= 0);
+      assert(e0g15.b <= 3);
       final e0g16 = value.items[i0 + 16];
+      assert(e0g16.a >= 0);
+      assert(e0g16.a <= 1);
+      assert(e0g16.b >= 0);
+      assert(e0g16.b <= 3);
       final e0g17 = value.items[i0 + 17];
+      assert(e0g17.a >= 0);
+      assert(e0g17.a <= 1);
+      assert(e0g17.b >= 0);
+      assert(e0g17.b <= 3);
       final e0g18 = value.items[i0 + 18];
+      assert(e0g18.a >= 0);
+      assert(e0g18.a <= 1);
+      assert(e0g18.b >= 0);
+      assert(e0g18.b <= 3);
       final e0g19 = value.items[i0 + 19];
+      assert(e0g19.a >= 0);
+      assert(e0g19.a <= 1);
+      assert(e0g19.b >= 0);
+      assert(e0g19.b <= 3);
       final e0g20 = value.items[i0 + 20];
+      assert(e0g20.a >= 0);
+      assert(e0g20.a <= 1);
+      assert(e0g20.b >= 0);
+      assert(e0g20.b <= 3);
       v =
           (e0.a & 0x1) |
           ((e0.b & 0x3) << 1) |
@@ -1579,6 +1667,10 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
     }
     for (; i0 < value.itemsCount; i0++) {
       final e0 = value.items[i0];
+      assert(e0.a >= 0);
+      assert(e0.a <= 1);
+      assert(e0.b >= 0);
+      assert(e0.b <= 3);
       v = (e0.a & 0x1) | ((e0.b & 0x3) << 1);
       scratch |= v << scratchBits;
       scratchBits += 3;
@@ -1843,6 +1935,10 @@ int writeEleven(Eleven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.a >= 0);
+  assert(value.a <= 7);
+  assert(value.b >= 0);
+  assert(value.b <= 255);
   v = (value.a & 0x7) | ((value.b & 0xff) << 3);
   scratch |= v << scratchBits;
   scratchBits += 11;
@@ -1940,6 +2036,10 @@ int writeArrEleven(ArrEleven value, ByteData view) {
   var v = 0;
   for (var i0 = 0; i0 < 9; i0++) {
     final e0 = value.items[i0];
+    assert(e0.a >= 0);
+    assert(e0.a <= 7);
+    assert(e0.b >= 0);
+    assert(e0.b <= 255);
     v = (e0.a & 0x7) | ((e0.b & 0xff) << 3);
     scratch |= v << scratchBits;
     scratchBits += 11;
@@ -2296,6 +2396,8 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   assert(value.u.type >= 0);
   assert(value.u.type <= 2);
   v = (value.lead & 0x1f) | ((value.u.type & 0x3) << 5);
@@ -2307,6 +2409,8 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
     case EmptyUnionType.b:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 127);
   v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -2438,6 +2542,8 @@ int writeStrs(Strs value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   assert(value.sLength >= 0);
   assert(value.sLength <= 8);
   v = (value.lead & 0x1f) | ((value.sLength & 0xf) << 5);
@@ -2530,6 +2636,8 @@ int writeStrs(Strs value, ByteData view) {
       }
     }
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 7);
   v = value.tail & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -2723,6 +2831,8 @@ int writeArrNested(ArrNested value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 4);
   v = (value.lead & 0x1f) | ((value.itemsCount & 0x7) << 5);
@@ -2732,10 +2842,30 @@ int writeArrNested(ArrNested value, ByteData view) {
     var i0 = 0;
     for (; i0 + 5 <= value.itemsCount; i0 += 5) {
       final e0 = value.items[i0];
+      assert(e0.a >= 0);
+      assert(e0.a <= 7);
+      assert(e0.b >= 0);
+      assert(e0.b <= 255);
       final e0g1 = value.items[i0 + 1];
+      assert(e0g1.a >= 0);
+      assert(e0g1.a <= 7);
+      assert(e0g1.b >= 0);
+      assert(e0g1.b <= 255);
       final e0g2 = value.items[i0 + 2];
+      assert(e0g2.a >= 0);
+      assert(e0g2.a <= 7);
+      assert(e0g2.b >= 0);
+      assert(e0g2.b <= 255);
       final e0g3 = value.items[i0 + 3];
+      assert(e0g3.a >= 0);
+      assert(e0g3.a <= 7);
+      assert(e0g3.b >= 0);
+      assert(e0g3.b <= 255);
       final e0g4 = value.items[i0 + 4];
+      assert(e0g4.a >= 0);
+      assert(e0g4.a <= 7);
+      assert(e0g4.b >= 0);
+      assert(e0g4.b <= 255);
       v =
           (e0.a & 0x7) |
           ((e0.b & 0xff) << 3) |
@@ -2758,6 +2888,10 @@ int writeArrNested(ArrNested value, ByteData view) {
     }
     for (; i0 < value.itemsCount; i0++) {
       final e0 = value.items[i0];
+      assert(e0.a >= 0);
+      assert(e0.a <= 7);
+      assert(e0.b >= 0);
+      assert(e0.b <= 255);
       v = (e0.a & 0x7) | ((e0.b & 0xff) << 3);
       scratch |= v << scratchBits;
       scratchBits += 11;
@@ -2769,6 +2903,8 @@ int writeArrNested(ArrNested value, ByteData view) {
       }
     }
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 7);
   v = value.tail & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -2947,6 +3083,8 @@ int writeSole(Sole value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.only >= 0);
+  assert(value.only <= 8191);
   v = value.only & 0x1fff;
   scratch |= v << scratchBits;
   scratchBits += 13;

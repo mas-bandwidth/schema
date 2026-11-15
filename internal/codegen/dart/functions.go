@@ -793,6 +793,26 @@ func (g *gen) emitWriteWide64(expr string, bits int64, ind string) {
 	g.chunkAdd(maskedPiece(expr, bits), bits, ind)
 }
 
+// emitBitsWidthAssert asserts a bits(N) value is in [0, 2^N - 1] when the
+// Dart storage can hold a wider one (SPEC §5.1 row 2). A scalar, and a field
+// of an array element, is a bit-transparent int: 64 bits. A bits array
+// element sits in a Uint32List when N <= 32 and a Uint64List otherwise.
+// Storage that holds exactly N bits gets no assert. The mask on the write
+// stays; the assert is debug-only, like the other write asserts.
+func (g *gen) emitBitsWidthAssert(f *ir.Field, name, ind string) {
+	w := int64(f.Type.Width)
+	storage := int64(64)
+	if f.Array != ir.ArrayNone && w <= 32 {
+		storage = 32
+	}
+	if w >= storage {
+		return
+	}
+	hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+	g.pf("%sassert(%s >= 0);\n", ind, name)
+	g.pf("%sassert(%s <= %s);\n", ind, name, dartIntLit(hi))
+}
+
 // emitWriteWide128 queues the low `bits` bits (1..128) of a (hi, lo) pair
 // expression: the lo lane, then the hi remainder — 32-bit groups least
 // significant first on the wire, exactly as before, because each lane's
@@ -814,6 +834,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
+		g.emitBitsWidthAssert(f, name, ind)
 		g.emitWriteWide64(name, int64(f.Type.Width), ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)

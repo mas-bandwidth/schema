@@ -159,6 +159,8 @@ int writeProbeHeader(ProbeHeader value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.version >= 0);
+  assert(value.version <= 7);
   v = 171 | ((value.version & 0x7) << 8);
   scratch |= v << scratchBits;
   scratchBits += 16;
@@ -319,6 +321,10 @@ int writeProbeBits(ProbeBits value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.small >= 0);
+  assert(value.small <= 511);
+  assert(value.boundary >= 0);
+  assert(value.boundary <= 8589934591);
   v = (value.small & 0x1ff) | ((value.boundary & 0x1ffffffff) << 9);
   scratch |= v << scratchBits;
   scratchBits += 42;
@@ -2501,6 +2507,8 @@ int writeProbeReport(ProbeReport value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.header.version >= 0);
+  assert(value.header.version <= 7);
   v = 171 | ((value.header.version & 0x7) << 8);
   scratch |= v << scratchBits;
   scratchBits += 16;
@@ -2779,6 +2787,12 @@ int writeTestData(TestData value, ByteData view) {
   assert(value.b <= 100);
   assert(value.c >= -100);
   assert(value.c <= 150);
+  assert(value.d >= 0);
+  assert(value.d <= 255);
+  assert(value.e >= 0);
+  assert(value.e <= 255);
+  assert(value.f >= 0);
+  assert(value.f <= 255);
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 16);
   v =

@@ -1002,6 +1002,12 @@ int writeTrio(Trio value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.a >= 0);
+  assert(value.a <= 1048575);
+  assert(value.b >= 0);
+  assert(value.b <= 1048575);
+  assert(value.c >= 0);
+  assert(value.c <= 16777215);
   v =
       (value.a & 0xfffff) |
       ((value.b & 0xfffff) << 20) |
@@ -1110,6 +1116,12 @@ int writeTrioSole(TrioSole value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.inner.a >= 0);
+  assert(value.inner.a <= 1048575);
+  assert(value.inner.b >= 0);
+  assert(value.inner.b <= 1048575);
+  assert(value.inner.c >= 0);
+  assert(value.inner.c <= 16777215);
   v =
       (value.inner.a & 0xfffff) |
       ((value.inner.b & 0xfffff) << 20) |
@@ -1389,6 +1401,14 @@ int writeTrioFirst(TrioFirst value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.inner.a >= 0);
+  assert(value.inner.a <= 1048575);
+  assert(value.inner.b >= 0);
+  assert(value.inner.b <= 1048575);
+  assert(value.inner.c >= 0);
+  assert(value.inner.c <= 16777215);
+  assert(value.trailer >= 0);
+  assert(value.trailer <= 65535);
   v =
       (value.inner.a & 0xfffff) |
       ((value.inner.b & 0xfffff) << 20) |
@@ -1563,6 +1583,8 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.pad5 >= 0);
+  assert(value.pad5 <= 16777215);
   v = value.pad4;
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1572,6 +1594,12 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.inner.a >= 0);
+  assert(value.inner.a <= 1048575);
+  assert(value.inner.b >= 0);
+  assert(value.inner.b <= 1048575);
+  assert(value.inner.c >= 0);
+  assert(value.inner.c <= 16777215);
   v =
       (value.pad5 & 0xffffff) |
       ((value.inner.a & 0xfffff) << 24) |
