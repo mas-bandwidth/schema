@@ -324,6 +324,18 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 	return nil
 }
 
+// targetCommand runs a binary built for target under the runner cargo names for
+// that target (CARGO_TARGET_<TRIPLE>_RUNNER, for example qemu-i386), and
+// directly when the variable is unset.
+func targetCommand(target, bin string) *exec.Cmd {
+	key := "CARGO_TARGET_" + strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(target)) + "_RUNNER"
+	runner := strings.Fields(os.Getenv(key))
+	if len(runner) == 0 {
+		return exec.Command(bin)
+	}
+	return exec.Command(runner[0], append(runner[1:], bin)...)
+}
+
 func wire32Verdicts(out []byte) map[string]bool {
 	verdicts := map[string]bool{}
 	for line := range strings.SplitSeq(string(out), "\n") {
@@ -383,12 +395,12 @@ func TestRustWireLengthsOn32BitTargets(t *testing.T) {
 		}
 		t.Skipf("the probe did not build for the 32-bit target %s and SCHEMA_REQUIRE_CORPUS is unset: %v", target, err)
 	}
-	run := exec.Command(targetBin)
+	run := targetCommand(target, targetBin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the probe did not run for the 32-bit target %s: %v\n%s", target, err, out)
+			t.Fatalf("the probe did not run for the 32-bit target %s (%s): %v\n%s", target, run.String(), err, out)
 		}
 		t.Skipf("the probe did not run for the 32-bit target %s and SCHEMA_REQUIRE_CORPUS is unset: %v\n%s", target, err, out)
 	}
