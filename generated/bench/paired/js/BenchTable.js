@@ -2000,8 +2000,76 @@ export function tableMessageEntry(v, ref) {
   if (ref === 0n || ref > BigInt(v.Count)) { return null; }
   return v.Entries[Number(ref) - 1];
 }
+// ONE ARRAY ELEMENT'S FIXED WIDTH, or -1 where the element has to be walked
+// one at a time. A name, a payload-free arm and a ranged value whose min equals
+// its max ride no bits and are arithmetic; a nested body, a union, an enum and
+// a pointer resolve something and are walked; so is a float and a ranged or
+// quantized value, whose finiteness, index and range are conditions the wire
+// decides (§3.3, §4).
+export function tableMessageElementRunBits(kind, elem) {
+  if (kind !== 14) { return -1; }
+  switch (elem.Kind) {
+    case 13: case 15: case 17: case 30: return -1;
+    case 0: case 32: return 0;
+  }
+  if (elem.Bits > 0) {
+    if (elem.Kind === 10 || elem.Kind === 11) { return -1; }
+    if (elem.Packing === 1 || elem.Packing === 2) { return -1; }
+  }
+  return elem.Bits;
+}
+// A RANGED VALUE'S KIND DOMAIN: the widest range a declaration of that kind
+// can announce, which is what a skipped offset is held to when its bits spell a
+// value past the sender's maximum (§3.3, §4).
+function tableMessageKindWidth(kind) {
+  switch (kind) {
+    case 1: case 2: case 6: case 20: case 25: return 8;
+    case 3: case 7: case 21: case 26: return 16;
+    case 4: case 8: case 10: case 22: case 27: return 32;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 64;
+    case 18: case 19: case 24: case 29: return 128;
+  }
+  return 0;
+}
+function tableMessageKindSigned(kind) {
+  switch (kind) {
+    case 2: case 3: case 4: case 5: case 18:
+    case 20: case 21: case 22: case 23: case 24: return true;
+  }
+  return false;
+}
+function tableMessageKindHolds(kind, value) {
+  const width = tableMessageKindWidth(kind);
+  if (width === 0) { return true; }
+  if (tableMessageKindSigned(kind)) {
+    const half = 1n << BigInt(width - 1);
+    return value >= -half && value <= half - 1n;
+  }
+  return value >= 0n && value <= (1n << BigInt(width)) - 1n;
+}
+function tableMessageSkipRanged(r, kind, s, width) {
+  let offset = 0n;
+  if (width <= 64) {
+    const [v, ok] = r.Get(width);
+    if (!ok) { return false; }
+    offset = v;
+  } else {
+    const [lo, ok] = r.Get(64);
+    if (!ok) { return false; }
+    const [hi, ok2] = r.Get(width - 64);
+    if (!ok2) { return false; }
+    offset = lo | (hi << 64n);
+  }
+  const wide = kind >= 18 && kind <= 29;
+  const rawBase = wide ? (s.Base[0] | (s.Base[1] << 64n)) : s.Base[0];
+  const bits = wide ? 128 : 64;
+  const base = tableMessageKindSigned(kind) ? BigInt.asIntN(bits, rawBase) : BigInt.asUintN(bits, rawBase);
+  return tableMessageKindHolds(kind, offset + base);
+}
 // THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
-// by the announced shape, so the position after it is known (§3.3).
+// by the announced shape, so the position after it is known (§3.3). SKIPPED IS
+// NOT UNREAD (§4): every condition the wire and the announcement decide is held
+// here as a read of a named field of the same shape holds it.
 export function tableMessageSkip(r, v, indexBits, e, depth) {
   if (depth > 128) { return false; }
   const s = e.Shape;
@@ -2036,32 +2104,58 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       const [n, ok] = r.Get(32);
       return ok && r.Skip(Number(n) * 8);
     }
+    case 10: {
+      if (s.Packing === 2) {
+        const [v, ok] = tableMessageReadScalar(r, s);
+        if (!ok) { return false; }
+        return (Number(v[0] & 0xffffffffn) & 0x7f800000) !== 0x7f800000;
+      }
+      const [bits, ok] = r.Get(32);
+      return ok && (Number(bits) & 0x7f800000) !== 0x7f800000;
+    }
+    case 11: {
+      const [bits, ok] = r.Get(64);
+      return ok && (bits & 0x7ff0000000000000n) !== 0x7ff0000000000000n;
+    }
     case 14: case 16: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok) { return false; }
+      if (!ok || n > BigInt(s.Max)) { return false; }
       if (s.Kind === 14 && e.Element.Kind === 6 && !r.Align()) { return false; }
-      if (e.Element.Bits >= 0 || e.Element.Kind === 0 || e.Element.Kind === 32) {
-        let width = Math.max(0, e.Element.Bits);
-        if (s.Kind === 16) { width += v.RefBits; }
-        return r.Skip(Number(n) * width);
+      if (s.Kind === 14 && (e.Element.Kind === 0 || e.Element.Kind === 32)) { return true; }
+      const run = tableMessageElementRunBits(s.Kind, e.Element);
+      if (run >= 0) {
+        if (run === 0) { return true; }
+        const total = n * BigInt(run);
+        return total <= BigInt(Number.MAX_SAFE_INTEGER) && r.Skip(Number(total));
       }
+      const seen = s.Kind === 16 ? new Set() : null;
       for (let i = 0n; i < n; i++) {
         const before = r.Offset;
-        if (s.Kind === 16 && !r.Skip(v.RefBits)) { return false; }
+        if (s.Kind === 16) {
+          const [kref, kok] = r.Get(v.RefBits);
+          if (!kok) { return false; }
+          const ken = tableMessageEntry(v, kref);
+          if (ken === null || ken.Shape.Kind !== 0 || ken.Id >= 0xfffffffffffffffdn || seen.has(ken.Id)) { return false; }
+          seen.add(ken.Id);
+        }
         if (!tableMessageSkip(r, v, indexBits, { Shape: e.Element, Element: { Kind: 0, Bits: 0 } }, depth + 1) || r.Offset === before) { return false; }
       }
       return true;
     }
   }
+  if (s.Packing === 1) { return tableMessageSkipRanged(r, s.Kind, s, Number(s.Bits)); }
   return s.Bits >= 0 && r.Skip(s.Bits);
 }
 export function tableMessageSkipBody(r, v, indexBits, depth) {
   if (depth > 128) { return false; }
+  const seen = new Set();
   for (;;) {
     const [ref, ok] = r.Get(v.RefBits);
     if (!ok || ref === 0n) { return ok; }
     const e = tableMessageEntry(v, ref);
-    if (e === null || !tableMessageSkip(r, v, indexBits, e, depth)) { return false; }
+    if (e === null || e.Id >= 0xfffffffffffffffdn || seen.has(e.Id)) { return false; }
+    seen.add(e.Id);
+    if (!tableMessageSkip(r, v, indexBits, e, depth)) { return false; }
   }
 }
 // A scalar reconstructs at the announced storage width. A ranged value is the
