@@ -2,9 +2,9 @@
 one hexadecimal wire per input line ("-" is the empty wire), one verdict per
 output line, "REFUSE" or "OK <bits> <payload> <bits> <canonical>".
 
-It reads with the generated reader over a ReadStream, as every leg's driver
-does, so the verdict is the field's alone and the C++ oracle's trailing-input
-rule is not asked. The consumed and the written bits are printed apart, as
+It reads as the generated read() does, the reader and then serialize's end,
+so trailing input refuses as it does in the C++ oracle's reader, but over a
+ReadStream the driver keeps, so the consumed bits can be printed. The consumed and the written bits are printed apart, as
 the C++ driver prints them, so a disagreement is a verdict line, never a
 crash.
 """
@@ -23,7 +23,7 @@ def main() -> None:
         wire = b"" if line == "-" else bytes.fromhex(line)
         value = Narrow()
         r = ReadStream(wire)
-        if not value._s_read(r):
+        if not (value._s_read(r) and r.serialize_end()):
             out.append("REFUSE")
             continue
         w = WriteStream(256)
