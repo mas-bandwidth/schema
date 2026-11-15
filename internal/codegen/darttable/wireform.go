@@ -3223,7 +3223,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		if g.holdsElision(f) {
 			g.pf("%s\t{\n", ind)
 			g.pf("%s\t\tfinal flag = r.readBool();\n", ind)
-			g.refuseElided(f, ind+"\t\t", fmt.Sprintf("flag == %v", f.HasDefault && f.DefBool))
+			atDefault := "!flag"
+			if f.HasDefault && f.DefBool {
+				atDefault = "flag"
+			}
+			g.refuseElided(f, ind+"\t\t", atDefault)
+
 			g.pf("%s\t\tv.%s = flag;\n", ind, name)
 			g.pf("%s\t}\n", ind)
 		} else {

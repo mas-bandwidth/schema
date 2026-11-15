@@ -272,9 +272,9 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		g.pf("        nextField = %d;\n", i+1)
 		g.emitMessageCompatibility(f, entry, "entry", "shape", "        ")
 		held := g.messageHoldsElision(f, entry)
-		if held {
+		if held && messageNamesUnknown(f) {
 			g.pf("        final unknownAt = r.report.unknown;\n")
-			if _, nested := f.Type.Ref.(*ir.Struct); nested && f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+			if _, nested := f.Type.Ref.(*ir.Struct); nested {
 				g.pf("        final bitsAt = r.bits.offset;\n")
 			}
 		}
@@ -319,14 +319,34 @@ func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyE
 // whose read met a name this reader cannot place (an enum variant, a union
 // arm, a nested field) reads its default lawfully and is not held to it.
 func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
+	if !messageNamesUnknown(f) {
+		rides := g.messageRides(f, expr, ind)
+		g.pf("%sif (!(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, rides)
+		return
+	}
 	rides := ""
-	if st, ok := f.Type.Ref.(*ir.Struct); ok && st != nil && f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+	if _, nested := f.Type.Ref.(*ir.Struct); nested {
 		rides = "r.bits.offset - bitsAt > r.vocabulary.refBits"
 	} else {
 		rides = g.messageRides(f, expr, ind)
 	}
 	g.pf("%sif (r.report.unknown == unknownAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, rides)
 }
+
+// messageNamesUnknown reports whether a single field's read can meet a name
+// this reader cannot place, and so read its default lawfully: an enum's
+// variant, a union's arm, a nested body's field.
+func messageNamesUnknown(f *ir.Field) bool {
+	if f.Type.Kind != ir.TNamed || f.Array != ir.ArrayNone || f.IsList() || f.IsMap() {
+		return false
+	}
+	switch f.Type.Ref.(type) {
+	case *ir.Struct, *ir.Union, *ir.Enum:
+		return true
+	}
+	return false
+}
+
 
 // emitMessageCompatibility refuses an announced kind that is neither the
 // declared one nor a widening (docs/SPEC-TABLES.md §3.3, §4), counting one
