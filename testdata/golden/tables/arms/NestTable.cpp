@@ -2121,7 +2121,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         int32_t kept_len = 0;
         int32_t i = 0;
         bool negative = false;
-        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        if ( i < length && token[i] == '-' )
+        {
+            negative = true;
+            i++;
+        }
         int32_t fraction = 0;
         bool after_point = false;
         int32_t digits = 0;
@@ -2130,7 +2134,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         for ( ; i < length; i++ )
         {
             char c = token[i];
-            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == '.' )
+            {
+                after_point = true;
+                continue;
+            }
             if ( c == 'e' || c == 'E' ) { break; }
             if ( after_point ) { fraction++; }
             if ( !nonzero )
@@ -2140,7 +2148,10 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
             }
             digits++;
             if ( c == '0' ) { trailing++; }
-            else { trailing = 0; }
+            else
+            {
+                trailing = 0;
+            }
             if ( kept_len < limit ) { kept[kept_len++] = c; }
         }
         int64_t exponent = 0;
@@ -2183,7 +2194,11 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
                 scale--;
             }
             work[n++] = 'e';
-            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            if ( scale < 0 )
+            {
+                work[n++] = '-';
+                scale = -scale;
+            }
             char reversed[24];
             int32_t rn = 0;
             if ( scale == 0 ) { reversed[rn++] = '0'; }
@@ -5597,7 +5612,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     {
         i++;
         bool exp_negative = false;
-        if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { exp_negative = s[i] == '-'; i++; }
+        if ( i < length && ( s[i] == '-' || s[i] == '+' ) )
+        {
+            exp_negative = s[i] == '-';
+            i++;
+        }
         int64_t e = 0;
         while ( i < length && s[i] >= '0' && s[i] <= '9' )
         {
@@ -5613,7 +5632,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     };
     int32_t start = 0;
     int64_t point = int_len + exp;
-    while ( start < total && digit( start ) == 0 ) { start++; point--; }
+    while ( start < total && digit( start ) == 0 )
+    {
+        start++;
+        point--;
+    }
     int32_t end = total;
     while ( end > start && digit( end - 1 ) == 0 ) { end--; }
     if ( start == end ) { return true; }

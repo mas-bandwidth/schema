@@ -11175,8 +11175,8 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
                                             else if ( width_2 > 0 && width_2 < 64 )
                                             {
-                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
+                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                                             }
                                             if ( decoded_wide_2 < 0ll )
                                             {
@@ -11219,8 +11219,8 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                     if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
                                     else if ( width_2 > 0 && width_2 < 64 )
                                     {
-                                        const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                        if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
+                                        const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
+                                        if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                                     }
                                     if ( decoded_wide_2 < 0ll )
                                     {
@@ -14390,8 +14390,8 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
                                                     else if ( width_3 > 0 && width_3 < 64 )
                                                     {
-                                                        const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                        const uint64_t sign_3 = uint64_t( 1 ) << ( width_3 - 1 );
+                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t( 1 ) << width_3 ) - 1 ) ); }
                                                     }
                                                     if ( decoded_wide_3 < 0ll )
                                                     {
@@ -14434,8 +14434,8 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                             if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
                                             else if ( width_3 > 0 && width_3 < 64 )
                                             {
-                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                const uint64_t sign_3 = uint64_t( 1 ) << ( width_3 - 1 );
+                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t( 1 ) << width_3 ) - 1 ) ); }
                                             }
                                             if ( decoded_wide_3 < 0ll )
                                             {
@@ -17991,8 +17991,8 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                             if ( arm.elem_packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm.elem_base_lo ); }
                                             else if ( width_3 > 0 && width_3 < 64 )
                                             {
-                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
+                                                const uint64_t sign_3 = uint64_t( 1 ) << ( width_3 - 1 );
+                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t( 1 ) << width_3 ) - 1 ) ); }
                                             }
                                             if ( decoded_wide_3 < -2147483648ll )
                                             {
@@ -18475,8 +18475,8 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     if ( arm_2.elem_packing == 1 ) { decoded_wide_4 = (int64_t) ( raw_4 + (uint64_t) arm_2.elem_base_lo ); }
                                                     else if ( width_4 > 0 && width_4 < 64 )
                                                     {
-                                                        const uint64_t sign_4 = uint64_t(1) << ( width_4 - 1 );
-                                                        if ( ( raw_4 & sign_4 ) != 0 ) { decoded_wide_4 = (int64_t) ( raw_4 | ~( ( uint64_t(1) << width_4 ) - 1 ) ); }
+                                                        const uint64_t sign_4 = uint64_t( 1 ) << ( width_4 - 1 );
+                                                        if ( ( raw_4 & sign_4 ) != 0 ) { decoded_wide_4 = (int64_t) ( raw_4 | ~( ( uint64_t( 1 ) << width_4 ) - 1 ) ); }
                                                     }
                                                     if ( decoded_wide_4 < -2147483648ll )
                                                     {
