@@ -2293,6 +2293,16 @@ class TableVariableTextIn {
       this.p++;
     }
   }
+  // A schema name is at most 255 bytes after decoding (§16.2): a field key,
+  // an enum name, a flags element, a union arm, an &node key, and a key inside
+  // a skipped object. A longer one refuses the read. Map keys and string
+  // values are not schema names and stay on str().
+  name() {
+    const s = this.str();
+    if (s === null) { return null; }
+    if (TableVariableUtf8Encode(s).length > 255) { this.bad = true; return null; }
+    return s;
+  }
   // ONE RFC 8259 number, and whether it was integral in FORM
   number() {
     this.space();
@@ -2364,7 +2374,7 @@ class TableVariableTextIn {
       if (ch === close) { this.p++; return true; }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
-        const key = this.str();
+        const key = this.name();
         if (key === null) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
         this.p++;
@@ -2453,7 +2463,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       const ch = inp.peek();
       if (ch === "}") { inp.p++; return TableVariableRequireSeen(c, v, seen, report); }
       if (ch === "") { inp.bad = true; return false; }
-      key = inp.str();
+      key = inp.name();
       if (key === null) { return false; }
       if (inp.peek() !== ":") { inp.bad = true; return false; }
       inp.p++;
@@ -2655,7 +2665,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   let ch = inp.peek();
   if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new Set(), report); }
   if (ch === "") { inp.bad = true; return false; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
@@ -2700,7 +2710,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       return TableVariableReadTable(d.c, inp, inst, depth + 1, graph, report);
     }
     case "enum": {
-      const s = inp.str();
+      const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
       for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
@@ -2721,7 +2731,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           report.mismatch++;
           if (!inp.skip(depth + 1, graph)) { return false; }
         } else {
-          const s = inp.str();
+          const s = inp.name();
           if (s === null) { return false; }
           const bit = d.vs.indexOf(s);
           if (bit >= 0) {
