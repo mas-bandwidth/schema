@@ -150,12 +150,13 @@ for _, value in { -5, 5 } do
 		obj.Bits = if high then 7 else 0
 		obj.Compressed = if high then 0x41200000 else 0
 		obj.Small = if high then 255 else 0
+		obj.Unsigned = if high then serialize.Uint64.new(0xffffffff, 0xffffffff) else serialize.Uint64.new(0, 0)
 		obj.CountedCount = if high then 4 else 0
 		obj.Text = if high then "12345678" else ""
 		obj.BytesLength = if high then 4 else 0
 	end
 	local function matches(obj: any): boolean
-		return obj.Range == value and serialize.Int64.cmp(obj.At, serialize.Int64.fromNumber(-1)) == 0 and obj.Bits == (if high then 7 else 0) and obj.Compressed == (if high then 0x41200000 else 0) and obj.Small == (if high then 255 else 0) and obj.CountedCount == (if high then 4 else 0) and obj.Text == (if high then "12345678" else "") and obj.BytesLength == (if high then 4 else 0)
+		return obj.Range == value and serialize.Int64.cmp(obj.At, serialize.Int64.fromNumber(-1)) == 0 and obj.Bits == (if high then 7 else 0) and obj.Compressed == (if high then 0x41200000 else 0) and obj.Small == (if high then 255 else 0) and serialize.Uint64.cmp(obj.Unsigned, if high then serialize.Uint64.new(0xffffffff, 0xffffffff) else serialize.Uint64.new(0, 0)) == 0 and obj.CountedCount == (if high then 4 else 0) and obj.Text == (if high then "12345678" else "") and obj.BytesLength == (if high then 4 else 0)
 	end
 	local f = F.save(fixedDesc, fixedSpec, {fv})
 	local v = S.save(variableDesc, vv)
