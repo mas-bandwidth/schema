@@ -30,7 +30,8 @@ var spawnPaths = []spawnPath{
 	{file: "internal/codegen/luau/luaurun/luaurun.go", fn: "Run"},
 	{file: "internal/codegen/luau/luaurun/luaurun.go", fn: "Analyze"},
 	{file: "internal/codegen/lobster/lobsterrun/lobsterrun.go", fn: "runFlags"},
-	{file: "internal/codegen/moo/moorun/moorun.go", fn: "RunErr"},
+	{file: "internal/codegen/moo/moorun/moorun.go", fn: "RunErr", spawn: "runInterpreter("},        // runInterpreter spawns; its only callers are these two gated doors
+	{file: "internal/codegen/moo/moorun/moorun.go", fn: "RunCheckedErr", spawn: "runInterpreter("}, // the checked interpreter's door
 	{file: "internal/codegen/moo/moorun/moorun.go", fn: "Analyze"},
 	{file: "internal/codegen/python/pyrun/pyrun.go", fn: "Try"},
 	{file: "internal/codegen/python/pyrun/pyrun.go", fn: "Analyze"},

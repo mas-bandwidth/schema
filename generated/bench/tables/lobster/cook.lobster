@@ -460,10 +460,15 @@ def cw_str(c:CookWrite, at:int, value:string, used:int, bufsize:int, countoff:in
 def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
     if fd.present != "":
         // The presence slot is STORAGE like every other (§20.2): it is
-        // written whether it is set or not, and the value beside it keeps
-        // the storage the constructor gave it (Go's regionWriter.field).
+        // written whether it is set or not (Go's regionWriter.field).
         if cf.present >= 0:
             co_u8(c.o, at + cf.present, if sl.present: 1 else: 0)
+        // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md
+        // §7.2; docs/rulings.json fixed-dead-bytes-are-zero): zero on write
+        // whatever the element's declared default is, so the payload is
+        // written only when the field is present.
+        if not sl.present:
+            return
     let s = fd.s
     if s == "tab":
         let t = sl.cell.tab

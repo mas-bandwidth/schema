@@ -276,6 +276,17 @@ green)` and its slug.
   other disagreement is still compared. Real fix: the generated Go fixed read
   refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
   tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
+- `relax/fixedtwin-dead-bytes-runtimes`: `tools/fixedtwin`
+  TestPairedHeadersAgree, TestCAndCppTwinHeadersAgree and
+  TestCAndCppTwinHeadersAgreeNegativeControl skip when the real paired
+  headers leave lines after the twin map (850 at 53a72e4e5); a header the
+  tool cannot extract still fails. The C and C++ legs each landed their own
+  fixed dead-bytes-zero runtime (c2b00ff8c, then 4eb3af336), and the C++
+  strict walk added a `refuse_reason` line inside the RefuseScan call block
+  the gate matches (016607b8a). `make tables-fixed-twin` is red for the same
+  reason. Real fix: the two runtimes are brought back into one shape (or the
+  twin map in bench/paired/TWIN.md names each difference), the call match
+  takes the new block, and the skips go.
 
 ## Proof cells
 

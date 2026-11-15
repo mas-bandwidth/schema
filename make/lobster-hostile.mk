@@ -41,7 +41,7 @@ schema-lobster-runs-hostile-corpus-negative-control: schema-lobster-runs-hostile
 		-e 's/^        return fixed_record_codec(root)\.read_fixed(data, report)$$/        return nil/' $(LOBSTER_HOSTILE_BUILD)-plant/*/load.lobster
 	@if cmp -s $(LOBSTER_HOSTILE_BUILD)/tables_examples/load.lobster $(LOBSTER_HOSTILE_BUILD)-plant/tables_examples/load.lobster; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
-	@sed -i.orig -e 's/^\( *\)if rv != 0: return stream.fail(serialize_refusal_value_out_of_range).*/\1if rv != 0: return true/' \
+	@sed -i.orig -e 's/^\( *\)if rv· != 0: return stream·.fail(serialize_refusal_value_out_of_range).*/\1if rv· != 0: return true/' \
 		$(LOBSTER_HOSTILE_BUILD)-plant/$(LOBSTER_HOSTILE_PACKET)
 	@if cmp -s $(LOBSTER_HOSTILE_BUILD)/$(LOBSTER_HOSTILE_PACKET) $(LOBSTER_HOSTILE_BUILD)-plant/$(LOBSTER_HOSTILE_PACKET); then \
 		echo 'NEGATIVE CONTROL FAILED: the planted packet reader bug did not apply'; exit 1; fi

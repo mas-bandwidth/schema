@@ -2651,9 +2651,10 @@
     {
       "row": "surface write-refusal-json",
       "lang": "lobster",
-      "status": "relaxed",
-      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lobster (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (lobster)",
+      "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
     {
       "row": "surface write-refusal-json",
