@@ -179,38 +179,41 @@ local function slot(T, id)
   return 0
 end
 
+-- entry_matches_field reports whether an announced entry rides the shape the
+-- local declaration states: one name can be announced at two shapes (§3.3,
+-- "the same name at a SECOND kind or shape takes a second slot"), and the
+-- field's own descriptor says which of them is its header.
+local function entry_matches_field(e, f)
+  if e.id ~= f.id or e.kind ~= f.kind then return false end
+  if f.shape == "string" or f.shape == "bytes" then
+    return (e.max or 0) == (f.bound or 0)
+  elseif f.shape == "int" then
+    if f.lo ~= nil and f.hi ~= nil then
+      return e.packing == 1 and (e.bits or 0) == bits_range(f.lo, f.hi)
+    elseif f.bits ~= nil then
+      return (e.bits or 0) == f.bits
+    end
+    return e.packing == nil
+  elseif f.shape == "wide" then
+    if f.lo ~= nil and f.hi ~= nil then
+      return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi)
+    end
+    return e.packing == nil
+  elseif f.shape == "array" then
+    return (e.max or 0) == (f.bound or 0) and (e.min or 0) == (f.min or 0) and (e.elem or 0) == (f.elem_kind or 0)
+  elseif f.shape == "flags" then
+    return (e.bits or 0) == (f.bits or 0)
+  end
+  return true
+end
+
 -- slot_field resolves a FIELD's reference by id AND the shape its declaration
 -- rides at: one name can be announced at two shapes (§3.3, "the same name at a
 -- SECOND kind or shape takes a second slot"), and the field's own descriptor
 -- says which of them is its header.
 local function slot_field(T, f)
   for i = 1, T.MessageEntries do
-    local e = T.MessageVocabulary[i]
-    if e.id == f.id and e.kind == f.kind then
-      local ok = true
-      if f.shape == "string" or f.shape == "bytes" then
-        ok = (e.max or 0) == (f.bound or 0)
-      elseif f.shape == "int" then
-        if f.lo ~= nil and f.hi ~= nil then
-          ok = e.packing == 1 and (e.bits or 0) == bits_range(f.lo, f.hi)
-        elseif f.bits ~= nil then
-          ok = (e.bits or 0) == f.bits
-        else
-          ok = e.packing == nil
-        end
-      elseif f.shape == "wide" then
-        if f.lo ~= nil and f.hi ~= nil then
-          ok = e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi)
-        else
-          ok = e.packing == nil
-        end
-      elseif f.shape == "array" then
-        ok = (e.max or 0) == (f.bound or 0) and (e.min or 0) == (f.min or 0) and (e.elem or 0) == (f.elem_kind or 0)
-      elseif f.shape == "flags" then
-        ok = (e.bits or 0) == (f.bits or 0)
-      end
-      if ok then return i end
-    end
+    if entry_matches_field(T.MessageVocabulary[i], f) then return i end
   end
   return slot(T, f.id)
 end
@@ -220,6 +223,15 @@ local function field_by_id(_T, desc, id)
     if f.id == id then return f end
   end
   return nil
+end
+
+-- field_pos is the field's place in its declaration's order, which is the
+-- order a writer emits (§3.3 (b)).
+local function field_pos(desc, f)
+  for i, x in ipairs(desc.fields) do
+    if x == f then return i end
+  end
+  return 0
 end
 
 -- a retired variant reads the declared default, an element's None
@@ -614,6 +626,11 @@ read_value = function(R, T, f, holder, key, ctx, e)
   elseif s == "enum" then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
+    -- An enum's one encoding is read off the VARIANT the wire names, not off
+    -- the value this reader places: a deprecated variant reads the field
+    -- default (§2.15) though the writer wrote a value its build elides
+    -- nothing of (§3.3 (a)).
+    ctx.enumAtDefault = f.default == nil or f.default == false
     if ref == 0 then
       holder[key] = nil
       return true
@@ -622,12 +639,18 @@ read_value = function(R, T, f, holder, key, ctx, e)
     if ve == nil or ve.kind ~= 0 or ve.id == NODE_ID or ve.id == 0xfffffffffffffffe or ve.id == 0xfffffffffffffffd then
       return false
     end
+    ctx.enumAtDefault = ve.id == variant_id(T, f, f.default)
     holder[key] = variant_name(T, f, ve.id)
     return true
   elseif s == "union" then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
     if ref == 0 then
+      -- A UNION FIELD'S NONE ARM IS NOT THE ONE ENCODING (§3.3 (c)): a
+      -- conforming writer elides the field, so an explicit arm 0 is damage.
+      -- An ELEMENT of a union-typed array is positional and writes its None,
+      -- which is why only the record field's own read refuses it.
+      if ctx.unionField == f then return false end
       holder[key] = { tag = 0 }
       return true
     end
@@ -785,6 +808,10 @@ end
 load_fields = function(R, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
+  -- A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3): its fields follow
+  -- the writer's declaration order, and nothing is written at a default the
+  -- writer elides. A body that breaks either is damage, so the batch discards.
+  local last = 0
   while true do
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
@@ -795,8 +822,32 @@ load_fields = function(R, T, name, value, ctx)
     if f == nil then
       if not skip_entry(R, e, ctx) then return false end
     else
+      local pos = field_pos(desc, f)
+      if pos <= last then return false end
+      last = pos
       ctx.field = f.name
-      if not read_value(R, T, f, value, f.name, ctx, e) then return false end
+      -- The field's union arm is read with the field in hand, so an explicit
+      -- None reference is refused here and read_value knows which read it is.
+      ctx.unionField = f.shape == "union" and f or nil
+      local read = read_value(R, T, f, value, f.name, ctx, e)
+      ctx.unionField = nil
+      if not read then return false end
+      -- An explicit default is refused where this reader knows it exactly:
+      -- the same announced shape at the same build version (§3.3 (a)). An
+      -- enum's default is the VARIANT the wire names, since a deprecated
+      -- variant lands as the default while the writer wrote another value; a
+      -- nested body, an array and a union ride only when a child or an arm
+      -- rides, so a field they carry is never at the value their writer
+      -- elides.
+      local atDefault = false
+      if f.shape == "enum" then
+        atDefault = ctx.enumAtDefault == true
+      elseif f.shape == "int" or f.shape == "flags" or f.shape == "float" or f.shape == "wide" or f.shape == "string" or f.shape == "bytes" then
+        atDefault = not rides(T, f, value[f.name])
+      end
+      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then
+        return false
+      end
     end
   end
 end
