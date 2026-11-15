@@ -55,7 +55,7 @@ func cppRuntimeNames() []Name {
 			"kTableMessageListMax", "kTableMessageVocabularyFieldId",
 		}},
 		{what: "a shared runtime helper or constant of the table wire (docs/SPEC-TABLES.md §3, §6)", names: []string{
-			"TableExtentUnreachedEmpty", "TableKeyLength", "TableKeyOrder", "TableResetMapValue",
+			"TableArrayElementKind", "TableExtentUnreachedEmpty", "TableKeyLength", "TableKeyOrder", "TableKeyedElementKind", "TableResetMapValue",
 			"TableWireExtentElements", "TableWireExtentFn", "TableWireExtentKeyed", "kTableCookHeaderBytes",
 			"kTableProbeBound", "kTableProbeShift", "kTableProbeSlots", "kTableWireForm", "kTableWireMessageForm",
 		}},

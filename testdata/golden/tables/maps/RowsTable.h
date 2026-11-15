@@ -806,6 +806,22 @@ struct TableIdTable
     }
 };
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+// 14) opens with one of 1–13, 15, 17, 18–29 or 30, and an enum-keyed body
+// (kind 16) with one of 1–11, 13, 18–29 or 30. Every other element kind is
+// damage under any count, a count of 0 included, in a declared field and in an
+// unknown one alike, so the header's kind byte is judged before any comparison
+// with the reader's own element kind.
+inline bool TableArrayElementKind( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+
+inline bool TableKeyedElementKind( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
+
 struct TableReader
 {
     const uint8_t * buffer;
@@ -970,10 +986,26 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
+            case 14: // an ARRAY body: its element kind is closed under any count (§3)
+            {
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                if ( !room( n ) ) return false;
+                if ( n > 0 && !TableArrayElementKind( buffer[offset] ) ) return false;
+                offset += (int64_t) n;
+                return true;
+            }
+            case 16: // an ENUM-KEYED body: its element kind has its own closed list (§3)
+            {
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                if ( !room( n ) ) return false;
+                if ( n > 0 && !TableKeyedElementKind( buffer[offset] ) ) return false;
+                offset += (int64_t) n;
+                return true;
+            }
             case 12:
             case 13:
-            case 14:
-            case 16:
             case 31:
             case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
@@ -6598,6 +6630,9 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
+            // THE ELEMENT KIND IS CLOSED, judged before any element and under
+            // a count of 0 (docs/SPEC-TABLES.md §3, §4).
+            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -6611,6 +6646,8 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
+            // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
+            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -11311,6 +11348,14 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                         r.offset = body_end;
                         break;
                     }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 )
@@ -11810,6 +11855,14 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
                     {
                         r.report->damaged = true;
                         r.offset = body_end;
@@ -12551,6 +12604,14 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                         r.offset = body_end;
                         break;
                     }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 )
@@ -12690,6 +12751,14 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
                     {
                         r.report->damaged = true;
                         r.offset = body_end;
@@ -17183,6 +17252,14 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                         r.offset = body_end;
                         break;
                     }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 )
@@ -17700,6 +17777,14 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
                     {
                         r.report->damaged = true;
                         r.offset = body_end;
@@ -18467,6 +18552,14 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                         r.offset = body_end;
                         break;
                     }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 )
@@ -18609,6 +18702,14 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind
+                    // is held to the array list first, under any count (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
                     {
                         r.report->damaged = true;
                         r.offset = body_end;

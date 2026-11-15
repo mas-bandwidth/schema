@@ -1575,6 +1575,9 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
+            // THE ELEMENT KIND IS CLOSED, judged before any element and under
+            // a count of 0 (docs/SPEC-TABLES.md §3, §4).
+            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -1588,6 +1591,8 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReport ignored;
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
+            // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
+            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
