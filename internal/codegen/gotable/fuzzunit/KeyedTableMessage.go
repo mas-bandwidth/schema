@@ -1101,6 +1101,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1123,10 +1124,26 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
-						if !TurretConfigLoadMessageBody(r, &(*p)) {
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !TurretConfigLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 					}
@@ -1416,6 +1433,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1438,10 +1456,26 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
-						if !TeamConfigLoadMessageBody(r, &(*p)) {
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !TeamConfigLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 					}
@@ -1481,6 +1515,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1503,10 +1538,26 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
-						if !HullConfigLoadMessageBody(r, &(*p)) {
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !HullConfigLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 					}
@@ -1693,6 +1744,7 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1715,9 +1767,15 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
+						slotDefault := true
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
@@ -1738,6 +1796,13 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 								}
 								(*p) = int32(v)
 							}
+							if (*p) != 0 {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					}
 				}

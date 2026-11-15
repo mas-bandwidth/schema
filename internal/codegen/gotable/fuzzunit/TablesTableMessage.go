@@ -1241,6 +1241,7 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					allDefault := true
 					if n > 3 {
 						r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.podium")
 						return false
@@ -1263,9 +1264,16 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 								}
 								if !(*p).TableEnumValue(id) {
 									r.Report.Unknown++
+									allDefault = false
+								} else if (*p) != GradeNone {
+									allDefault = false
 								}
 							}
 						}
+					}
+					if exact && allDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 				}
 				if widened {

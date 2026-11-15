@@ -2715,10 +2715,6 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						}
 					}
 				}
-				if exact && !(value.ServerTime != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
 				if widened {
 					r.Report.Widened++
 				}
@@ -3147,10 +3143,6 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						}
 					}
 				}
-				if exact && !(value.AimX != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
 				if widened {
 					r.Report.Widened++
 				}
@@ -3201,10 +3193,6 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						}
 					}
 				}
-				if exact && !(value.AimY != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
 				if widened {
 					r.Report.Widened++
 				}
@@ -3254,10 +3242,6 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							value.AimZ = v
 						}
 					}
-				}
-				if exact && !(value.AimZ != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -3493,10 +3477,6 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							value.Ping = v
 						}
 					}
-				}
-				if exact && !(value.Ping != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
 				}
 				if widened {
 					r.Report.Widened++

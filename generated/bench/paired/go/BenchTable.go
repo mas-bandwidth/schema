@@ -163,6 +163,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    tableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -175,7 +176,11 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk {
+	if r == nil {
+		return
+	}
+	r.firstUse = tableFirstUse{}
+	if r.Refusal != TableRefuseOk {
 		return
 	}
 	r.Refusal, r.Field = reason, field
@@ -520,6 +525,49 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 			return false
 		}
 	}
+}
+
+type tableFirstUse struct {
+	usePhase          uint8 // 0 not counting, 1 the node records, 2 the root body
+	useNodes, useRoot tableFirstUseRun
+}
+
+type tableFirstUseRun struct{ useHigh, useJump uint64 }
+
+func (u *tableFirstUseRun) useMeet(ref uint64) {
+	if ref > u.useHigh {
+		if ref != u.useHigh+1 {
+			u.useJump = ref
+		}
+		u.useHigh = ref
+	}
+}
+
+// tableFirstUseCount starts counting one part of a load's walk: 1 the node
+// records, which starts the count afresh, and 2 the root body; 0 stops it.
+func tableFirstUseCount(r *TableReport, phase uint8) {
+	if phase != 2 {
+		r.firstUse = tableFirstUse{}
+	}
+	r.firstUse.usePhase = phase
+}
+
+func tableFirstUseMeet(r *TableReport, ref uint64) {
+	switch r.firstUse.usePhase {
+	case 1:
+		r.firstUse.useNodes.useMeet(ref)
+	case 2:
+		r.firstUse.useRoot.useMeet(ref)
+	}
+}
+
+// tableFirstUseWhole answers the count's verdict over an id table of n
+// entries, and stops it.
+func tableFirstUseWhole(r *TableReport, n uint64) bool {
+	u := r.firstUse
+	r.firstUse = tableFirstUse{}
+	root, nodes := u.useRoot, u.useNodes
+	return root.useJump <= 1 && (nodes.useHigh <= root.useHigh || nodes.useJump <= root.useHigh+1) && max(root.useHigh, nodes.useHigh) == n
 }
 
 // TableRefuseReason is the typed error shared by file and accelerator failures.
@@ -1213,6 +1261,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 	if ref == 0 || ref > uint64(len(r.Ids)/8) {
 		return 0, false
 	}
+	r.meetFirstUse(ref)
 	return binary.LittleEndian.Uint64(r.Ids[(ref-1)*8:]), true
 }
 
@@ -1359,9 +1408,6 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		}
-	}
-	if !tableFirstUseHolds(r, n) {
-		return r, TableOpenDamaged
 	}
 	return r, TableOpenOk
 }
@@ -1602,6 +1648,9 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		if !ok || ref > uint64(c.ids) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
+		if ref != 0 {
+			r.meetFirstUse(ref)
+		}
 	case 15:
 		return c.union(r)
 	case 12, 13, 14, 16, 31, 32:
@@ -1706,7 +1755,8 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 		}
 	}
 	for range count {
-		sub.Leb()
+		key, _ := sub.Leb()
+		sub.meetFirstUse(key)
 		elem, _ := sub.Body()
 		if !c.framed(elem, kind) {
 			return 0, false
@@ -1725,6 +1775,7 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	if ref == 0 {
 		return r.Offset, true
 	}
+	r.meetFirstUse(ref)
 	if !r.Has(1) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
@@ -1977,196 +2028,13 @@ func tableRefused(r *TableReport) {
 		r.Refuse(TableRefuseWireDamaged, "")
 	}
 	r.Unknown, r.Widened, r.Retained, r.RetainLost = 0, 0, 0, 0
+	r.firstUse = tableFirstUse{}
 }
 
-// THE ID TABLE IS IN FIRST-USE ORDER, AND THE NODE TABLE IN ITS PLACE
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §3.1): a table holding an entry no reference names,
-// or one out of its place, and a node table that numbers no record or is not
-// the root body's last field, are spellings no conforming writer produces, so
-// the open refuses them. Every reference is met in byte order, so the walk
-// keeps one number, the next entry a new reference may name, and work linear
-// in the file. Framing it cannot walk is the body read's to refuse: the walk
-// answers only what it saw whole.
-type tableFirstUse struct {
-	next  uint64
-	depth int
-	bad   bool
-}
-
-func tableFirstUseHolds(r TableReader, n uint64) bool {
-	u := tableFirstUse{next: 1}
-	if !u.body(&r, true) {
-		return !u.bad
+func (r *TableReader) meetFirstUse(ref uint64) {
+	if r.Report != nil {
+		tableFirstUseMeet(r.Report, ref)
 	}
-	return u.next == n+1
-}
-
-// ref meets one reference: an entry already named, or the next one.
-func (u *tableFirstUse) ref(k uint64) bool {
-	if k > u.next {
-		u.bad = true
-		return false
-	}
-	if k == u.next {
-		u.next++
-	}
-	return true
-}
-
-// body walks one body to its terminator. Past four times the nesting bound
-// the file is damage the body read refuses, so the walk stops there.
-func (u *tableFirstUse) body(r *TableReader, root bool) bool {
-	if u.depth > 4*tableBinaryMaxDepth {
-		return false
-	}
-	u.depth++
-	ok := u.fields(r, root)
-	u.depth--
-	return ok
-}
-
-func (u *tableFirstUse) fields(r *TableReader, root bool) bool {
-	nodes := false
-	for {
-		k, ok := r.Leb()
-		if !ok {
-			return false
-		}
-		if k == 0 {
-			return true
-		}
-		if nodes {
-			u.bad = true
-			return false
-		}
-		if !u.ref(k) {
-			return false
-		}
-		id, ok := r.Resolve(k)
-		if !ok || !r.Has(1) {
-			return false
-		}
-		kind := r.Get8()
-		if root && id == 0xffffffffffffffff && kind == 12 {
-			sub, ok := r.Body()
-			if !ok || !u.records(&sub) {
-				return false
-			}
-			nodes = true
-			continue
-		}
-		if !u.value(r, kind) {
-			return false
-		}
-	}
-}
-
-// records walks the node table's payload: its count, then each record's type
-// reference and, for a table body, the body.
-func (u *tableFirstUse) records(r *TableReader) bool {
-	count, ok := r.Leb()
-	if !ok {
-		return false
-	}
-	if count == 0 {
-		u.bad = true
-		return false
-	}
-	for r.Offset < int64(len(r.Buffer)) {
-		k, ok := r.Leb()
-		if !ok || !u.ref(k) {
-			return false
-		}
-		id, ok := r.Resolve(k)
-		if !ok {
-			return false
-		}
-		body, ok := r.Body()
-		if !ok {
-			return false
-		}
-		if id != tableWireBytesID && id != tableWireStringID && !u.body(&body, false) {
-			return false
-		}
-	}
-	return true
-}
-
-// value walks one payload of a kind, a field's or an element's.
-func (u *tableFirstUse) value(r *TableReader, kind uint8) bool {
-	switch kind {
-	case 30:
-		k, ok := r.Leb()
-		return ok && (k == 0 || u.ref(k))
-	case 15:
-		return u.union(r)
-	case 13, 14, 16:
-		sub, ok := r.Body()
-		return ok && u.framed(&sub, kind)
-	}
-	return r.Skip(kind)
-}
-
-// framed walks the content of an L-framed payload of a kind: a nested body,
-// an array or keyed body, a keyed slot's element or an arm's payload.
-func (u *tableFirstUse) framed(r *TableReader, kind uint8) bool {
-	switch kind {
-	case 13:
-		return u.body(r, false)
-	case 14, 16:
-		if !r.Has(2) || u.depth > 4*tableBinaryMaxDepth {
-			return false
-		}
-		u.depth++
-		defer func() { u.depth-- }()
-		elem := r.Get8()
-		count, ok := r.Leb()
-		if !ok || count > uint64(len(r.Buffer)) {
-			return false
-		}
-		for range count {
-			if kind == 16 {
-				k, ok := r.Leb()
-				if !ok || k == 0 || !u.ref(k) {
-					return false
-				}
-				sub, ok := r.Body()
-				if !ok || !u.framed(&sub, elem) {
-					return false
-				}
-			} else if !u.value(r, elem) {
-				return false
-			}
-		}
-		return true
-	case 15:
-		return u.union(r)
-	case 30:
-		return u.value(r, kind)
-	}
-	return true
-}
-
-func (u *tableFirstUse) union(r *TableReader) bool {
-	k, ok := r.Leb()
-	if !ok {
-		return false
-	}
-	if k == 0 {
-		return true
-	}
-	if !u.ref(k) || !r.Has(1) || u.depth > 4*tableBinaryMaxDepth {
-		return false
-	}
-	kind := r.Get8()
-	arm, ok := r.Body()
-	if !ok {
-		return false
-	}
-	u.depth++
-	ok = u.framed(&arm, kind)
-	u.depth--
-	return ok
 }
 
 // TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
@@ -5085,7 +4953,8 @@ func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool 
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !MixedEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !MixedEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -5336,7 +5205,8 @@ func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !MixedStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !MixedStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -5716,7 +5586,8 @@ func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) b
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !MixedHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !MixedHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -5988,7 +5859,8 @@ func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport)
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !MixedChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !MixedChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -6260,7 +6132,8 @@ func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableRep
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !MixedPickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !MixedPickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -8226,7 +8099,8 @@ func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !BenchMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !BenchMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}

@@ -3407,10 +3407,6 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						}
 					}
 				}
-				if exact && !(value.AimX != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
 				if widened {
 					r.Report.Widened++
 				}
@@ -3461,10 +3457,6 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						}
 					}
 				}
-				if exact && !(value.AimY != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
 				if widened {
 					r.Report.Widened++
 				}
@@ -3514,10 +3506,6 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 							value.AimZ = v
 						}
 					}
-				}
-				if exact && !(value.AimZ != 0.0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
 				}
 				if widened {
 					r.Report.Widened++

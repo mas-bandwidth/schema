@@ -1556,6 +1556,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1578,10 +1579,26 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
-						if !ShipEntryLoadMessageBody(r, &(*p)) {
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !ShipEntryLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 					}
@@ -1621,6 +1638,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1643,9 +1661,15 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
+						slotDefault := true
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
@@ -1666,6 +1690,13 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 								}
 								(*p) = int32(v)
 							}
+							if (*p) != 0 {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					}
 				}

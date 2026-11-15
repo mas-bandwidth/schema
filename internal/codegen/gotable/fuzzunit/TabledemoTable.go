@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xad5850dc4545aec9)
-const _ = uint64(0xad5850dc4545aec9 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x310f1e8e11999c71)
+const _ = uint64(0x310f1e8e11999c71 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -42,6 +42,16 @@ func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJ
 func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
+
+type tableFirstUse = goruntime.TableFirstUse
+
+type tableFirstUseRun = goruntime.TableFirstUseRun
+
+func tableFirstUseCount(a0 *TableReport, a1 uint8) { goruntime.TableFirstUseCount(a0, a1) }
+
+func tableFirstUseMeet(a0 *TableReport, a1 uint64) { goruntime.TableFirstUseMeet(a0, a1) }
+
+func tableFirstUseWhole(a0 *TableReport, a1 uint64) bool { return goruntime.TableFirstUseWhole(a0, a1) }
 
 type TableRefuseReason = goruntime.TableRefuseReason
 
@@ -1257,6 +1267,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 	if ref == 0 || ref > uint64(len(r.Ids)/8) {
 		return 0, false
 	}
+	r.meetFirstUse(ref)
 	return binary.LittleEndian.Uint64(r.Ids[(ref-1)*8:]), true
 }
 
@@ -1387,9 +1398,6 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		}
-	}
-	if !tableFirstUseHolds(r, n) {
-		return r, TableOpenDamaged
 	}
 	return r, TableOpenOk
 }
@@ -1585,6 +1593,9 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		if !ok || ref > uint64(c.ids) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
+		if ref != 0 {
+			r.meetFirstUse(ref)
+		}
 	case 15:
 		return c.union(r)
 	case 12, 13, 14, 16, 31, 32:
@@ -1689,7 +1700,8 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 		}
 	}
 	for range count {
-		sub.Leb()
+		key, _ := sub.Leb()
+		sub.meetFirstUse(key)
 		elem, _ := sub.Body()
 		if !c.framed(elem, kind) {
 			return 0, false
@@ -1708,6 +1720,7 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	if ref == 0 {
 		return r.Offset, true
 	}
+	r.meetFirstUse(ref)
 	if !r.Has(1) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
@@ -1930,194 +1943,10 @@ func tableOpenChecked(data []byte, report *TableReport) (TableReader, TableOpenV
 	return r, verdict
 }
 
-// THE ID TABLE IS IN FIRST-USE ORDER, AND THE NODE TABLE IN ITS PLACE
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §3.1): a table holding an entry no reference names,
-// or one out of its place, and a node table that numbers no record or is not
-// the root body's last field, are spellings no conforming writer produces, so
-// the open refuses them. Every reference is met in byte order, so the walk
-// keeps one number, the next entry a new reference may name, and work linear
-// in the file. Framing it cannot walk is the body read's to refuse: the walk
-// answers only what it saw whole.
-type tableFirstUse struct {
-	next  uint64
-	depth int
-	bad   bool
-}
-
-func tableFirstUseHolds(r TableReader, n uint64) bool {
-	u := tableFirstUse{next: 1}
-	if !u.body(&r, true) {
-		return !u.bad
+func (r *TableReader) meetFirstUse(ref uint64) {
+	if r.Report != nil {
+		tableFirstUseMeet(r.Report, ref)
 	}
-	return u.next == n+1
-}
-
-// ref meets one reference: an entry already named, or the next one.
-func (u *tableFirstUse) ref(k uint64) bool {
-	if k > u.next {
-		u.bad = true
-		return false
-	}
-	if k == u.next {
-		u.next++
-	}
-	return true
-}
-
-// body walks one body to its terminator. Past four times the nesting bound
-// the file is damage the body read refuses, so the walk stops there.
-func (u *tableFirstUse) body(r *TableReader, root bool) bool {
-	if u.depth > 4*tableBinaryMaxDepth {
-		return false
-	}
-	u.depth++
-	ok := u.fields(r, root)
-	u.depth--
-	return ok
-}
-
-func (u *tableFirstUse) fields(r *TableReader, root bool) bool {
-	nodes := false
-	for {
-		k, ok := r.Leb()
-		if !ok {
-			return false
-		}
-		if k == 0 {
-			return true
-		}
-		if nodes {
-			u.bad = true
-			return false
-		}
-		if !u.ref(k) {
-			return false
-		}
-		id, ok := r.Resolve(k)
-		if !ok || !r.Has(1) {
-			return false
-		}
-		kind := r.Get8()
-		if root && id == 0xffffffffffffffff && kind == 12 {
-			sub, ok := r.Body()
-			if !ok || !u.records(&sub) {
-				return false
-			}
-			nodes = true
-			continue
-		}
-		if !u.value(r, kind) {
-			return false
-		}
-	}
-}
-
-// records walks the node table's payload: its count, then each record's type
-// reference and, for a table body, the body.
-func (u *tableFirstUse) records(r *TableReader) bool {
-	count, ok := r.Leb()
-	if !ok {
-		return false
-	}
-	if count == 0 {
-		u.bad = true
-		return false
-	}
-	for r.Offset < int64(len(r.Buffer)) {
-		k, ok := r.Leb()
-		if !ok || !u.ref(k) {
-			return false
-		}
-		id, ok := r.Resolve(k)
-		if !ok {
-			return false
-		}
-		body, ok := r.Body()
-		if !ok {
-			return false
-		}
-		if id != tableWireBytesID && id != tableWireStringID && !u.body(&body, false) {
-			return false
-		}
-	}
-	return true
-}
-
-// value walks one payload of a kind, a field's or an element's.
-func (u *tableFirstUse) value(r *TableReader, kind uint8) bool {
-	switch kind {
-	case 30:
-		k, ok := r.Leb()
-		return ok && (k == 0 || u.ref(k))
-	case 15:
-		return u.union(r)
-	case 13, 14, 16:
-		sub, ok := r.Body()
-		return ok && u.framed(&sub, kind)
-	}
-	return r.Skip(kind)
-}
-
-// framed walks the content of an L-framed payload of a kind: a nested body,
-// an array or keyed body, a keyed slot's element or an arm's payload.
-func (u *tableFirstUse) framed(r *TableReader, kind uint8) bool {
-	switch kind {
-	case 13:
-		return u.body(r, false)
-	case 14, 16:
-		if !r.Has(2) || u.depth > 4*tableBinaryMaxDepth {
-			return false
-		}
-		u.depth++
-		defer func() { u.depth-- }()
-		elem := r.Get8()
-		count, ok := r.Leb()
-		if !ok || count > uint64(len(r.Buffer)) {
-			return false
-		}
-		for range count {
-			if kind == 16 {
-				k, ok := r.Leb()
-				if !ok || k == 0 || !u.ref(k) {
-					return false
-				}
-				sub, ok := r.Body()
-				if !ok || !u.framed(&sub, elem) {
-					return false
-				}
-			} else if !u.value(r, elem) {
-				return false
-			}
-		}
-		return true
-	case 15:
-		return u.union(r)
-	case 30:
-		return u.value(r, kind)
-	}
-	return true
-}
-
-func (u *tableFirstUse) union(r *TableReader) bool {
-	k, ok := r.Leb()
-	if !ok {
-		return false
-	}
-	if k == 0 {
-		return true
-	}
-	if !u.ref(k) || !r.Has(1) || u.depth > 4*tableBinaryMaxDepth {
-		return false
-	}
-	kind := r.Get8()
-	arm, ok := r.Body()
-	if !ok {
-		return false
-	}
-	u.depth++
-	ok = u.framed(&arm, kind)
-	u.depth--
-	return ok
 }
 
 type TableMessageWriter struct {
@@ -3528,7 +3357,7 @@ func tableNodeScanBegin(r TableReader) tableNodeScan {
 	if s.present {
 		var ok bool
 		s.declared, ok = s.payload.Leb()
-		if !ok {
+		if !ok || s.declared == 0 {
 			s.bad = true
 		}
 	}
@@ -3600,6 +3429,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 	probe := r
 	probe.Offset = 0
 	framed := true
+	nodeTable := false
 	for {
 		ref, ok := probe.Leb()
 		if !ok {
@@ -3609,6 +3439,10 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if ref == 0 {
 			break
 		}
+		if nodeTable {
+			framed = false
+			break
+		}
 		id, ok := probe.Resolve(ref)
 		if !ok || !probe.Has(1) {
 			framed = false
@@ -3616,6 +3450,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 		kind := probe.Get8()
 		if id == 0xffffffffffffffff {
+			nodeTable = true
 			if kind != 12 {
 				framed = false
 				break
@@ -3739,6 +3574,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	report.Unknown += unknown
 	s = tableNodeScanBegin(r)
 	k = 1
+	tableFirstUseCount(report, 1)
 	for {
 		id, body, ok := s.next()
 		if !ok {
@@ -3759,9 +3595,13 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		}
 		k++
 	}
+	tableFirstUseCount(report, 2)
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBody(r, base)
+	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) {
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
 	if report.Refused() {
 		clear(region)
 		return nil
@@ -3931,6 +3771,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		report = &ignored
 	}
 	defer func() {
+		tableFirstUseCount(report, 0)
 		if !loaded && p != nil {
 			root.Reset(p)
 		}
@@ -4026,6 +3867,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	report.Unknown += unknown
 	scan = tableNodeScanBegin(r)
 	k = 1
+	tableFirstUseCount(report, 1)
 	for {
 		id, body, ok := scan.next()
 		if !ok {
@@ -4045,9 +3887,13 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		}
 		k++
 	}
+	tableFirstUseCount(report, 2)
 	r.Nodes = nodes
 	r.Nested = false
 	ok := root.LoadBody(r, p)
+	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) && ok {
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
 	if ok && worker.refused == TableRefuseOk && !report.Refused() {
 		if reason := tableCycleCheckReason(p, root, worker.Arena, directory, nodeType); reason != TableRefuseOk {
 			report.Refuse(reason, "")
@@ -5583,6 +5429,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	}
 	s = tableNodeScanBegin(r)
 	k = 1
+	tableFirstUseCount(report, 1)
 	for {
 		id, body, ok := s.next()
 		if !ok {
@@ -5603,9 +5450,13 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		}
 		k++
 	}
+	tableFirstUseCount(report, 2)
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
+	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) {
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
 	if report.Refused() {
 		clear(region)
 		retain.reset(nil, nil)

@@ -19,7 +19,8 @@ import (
 // message-form row through the message load under the unit's announcement. The
 // refusal's name is the language's own diagnostic and is not compared
 // (docs/rulings.json refusal-verdict-only). A row the test cannot place in a
-// unit is a red.
+// unit is a red. The per-kind rows (nonCanonicalKindRows) run the same way, and
+// the id table's first-use order is held to the load's own walk.
 func TestGoReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
 	vectors, err := filepath.Abs("../../../testdata/wire/non-canonical")
@@ -60,25 +61,36 @@ func TestGoReadsRefuseNonCanonical(t *testing.T) {
 			t.Errorf("MANIFEST.tsv:%d: form %q has no read entry in its unit", i+1, cols[1])
 			continue
 		}
-		u.rows = append(u.rows, fmt.Sprintf("{%q, %q, %q, %v, %v},", cols[0], path, cols[1], cols[3] == "read", nonCanonicalWireAlone[cols[2]]))
+		u.rows = append(u.rows, fmt.Sprintf("{name: %q, path: %q, form: %q, read: %v, resave: %v, wireAlone: %v},", cols[0], path, cols[1], cols[3] == "read", cols[3] == "read", nonCanonicalWireAlone[cols[2]]))
 		rows++
 	}
 	if rows == 0 {
 		t.Fatal("the manifest names no row; the gate would pass over an empty set")
 	}
 	for dir, u := range units {
+		u.announcement = fmt.Sprintf("readFile(t, %q)", filepath.Join(dir, "announcement.bin"))
+	}
+	// and the per-kind rows (nonCanonicalKindRows), written from a unit of
+	// their own
+	kinds, announcement := nonCanonicalKindRows(t)
+	nonCanonicalFirstUseInTheWalk(t, tableGoSource(t, nonCanonicalKindsSchema))
+	units["kinds"] = &nonCanonicalUnit{source: nonCanonicalKindsSchema, pkg: "kinds", message: "Msg", variable: "Root", rows: kinds, announcement: fmt.Sprintf("[]byte(%q)", string(announcement))}
+	for _, u := range units {
 		if len(u.rows) == 0 {
 			continue
 		}
 		t.Run(u.pkg, func(t *testing.T) {
 			t.Parallel()
-			src, err := os.ReadFile(filepath.Join("../../..", u.schema))
-			if err != nil {
-				t.Fatal(err)
+			src := []byte(u.source)
+			if u.schema != "" {
+				var err error
+				if src, err = os.ReadFile(filepath.Join("../../..", u.schema)); err != nil {
+					t.Fatal(err)
+				}
 			}
 			probe := strings.NewReplacer(
 				"PACKAGE", u.pkg,
-				"ANNOUNCEMENT", fmt.Sprintf("%q", filepath.Join(dir, "announcement.bin")),
+				"ANNOUNCEMENT", u.announcement,
 				"ROWS", strings.Join(u.rows, "\n\t"),
 				"VARIABLE", nonCanonicalVariable(u.variable),
 				"MESSAGE", u.message,
@@ -91,32 +103,33 @@ func TestGoReadsRefuseNonCanonical(t *testing.T) {
 	}
 }
 
-// nonCanonicalWireAlone is the manifest's cases the wire alone decides, with no
-// declaration: the id table's first-use order and the node table's count and
-// place. The load measure answers those, so it is held to refuse them too; the
-// other cases need the declaration, which the measure does not read.
+// nonCanonicalWireAlone is the manifest's cases the load measure answers: the
+// node table's count and place, which its framing walk reads. It is held to
+// refuse them too. The id table's first-use order is not among them: the loads
+// hold it in the walk that resolves every reference, and the measure resolves
+// none, so it sizes such a file and the load refuses it. The other cases need
+// the declaration, which the measure does not read.
 var nonCanonicalWireAlone = map[string]bool{
-	"unused-id-entry":         true,
-	"id-table-out-of-order":   true,
 	"empty-node-table":        true,
 	"node-table-out-of-place": true,
 }
 
 type nonCanonicalUnit struct {
-	schema, pkg, message, variable string
-	rows                           []string
+	schema, source, pkg, message, variable string
+	announcement                           string // the probe's expression for the unit's announcement
+	rows                                   []string
 }
 
 // nonCanonicalVariable is the probe's variable-form reader for a unit whose
 // variable root is root, or a stub that fails for a unit that has none.
 func nonCanonicalVariable(root string) string {
 	if root == "" {
-		return `func readVariable(t *testing.T, name string, wire []byte, want, wireAlone bool) { t.Errorf("%s: this unit has no variable root", name) }`
+		return `func readVariable(t *testing.T, name string, wire []byte, want, wireAlone, resave bool) { t.Errorf("%s: this unit has no variable root", name) }`
 	}
 	return strings.ReplaceAll(nonCanonicalVariableRead, "ROOT", root)
 }
 
-const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, wire []byte, want, wireAlone bool) {
+const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, wire []byte, want, wireAlone, again bool) {
 	// the measure answers the wire's verdict: it sizes a canonical file and
 	// refuses one whose id table or node table no writer produces
 	n := ROOTLoadMeasure(wire)
@@ -150,7 +163,7 @@ const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, w
 	var report TableReport
 	got := ROOTLoad(region(size), wire, &report)
 	verdict("the region load", got != nil && !report.Refused())
-	if want && got != nil {
+	if again && got != nil {
 		resave("the region load", func() int64 { return ROOTMeasure(got) }, func(out []byte) int64 { return ROOTSave(got, out) })
 	}
 
@@ -162,7 +175,7 @@ const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, w
 	report = TableReport{}
 	ok := ROOTLoadBuilder(&b, wire, &report)
 	verdict("the builder load", ok && !report.Refused())
-	if want && ok {
+	if again && ok {
 		resave("the builder load", func() int64 { return ROOTMeasure(b.GetRoot(), &b.Arena) }, func(out []byte) int64 { return ROOTSave(b.GetRoot(), out, &b.Arena) })
 	}
 
@@ -173,7 +186,7 @@ const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, w
 	report = TableReport{}
 	kept := ROOTLoadRetain(region(size), wire, &retain, &report)
 	verdict("the retaining load", kept != nil && !report.Refused())
-	if want && kept != nil {
+	if again && kept != nil {
 		resave("the retaining load", func() int64 { return ROOTMeasureRetain(kept, &retain) }, func(out []byte) int64 { return ROOTSaveRetain(kept, &retain, out, &report) })
 	}
 }
@@ -189,8 +202,9 @@ import (
 )
 
 type row struct {
-	name, path, form string
-	read, wireAlone   bool
+	name, path, form, wire  string
+	read, resave, wireAlone bool
+	other                   bool // under another build's announcement of the same shape
 }
 
 var rows = []row{
@@ -205,20 +219,30 @@ func region(n int64) []byte {
 
 VARIABLE
 
-func announce(t *testing.T, vocab *TableVocabulary, storage []TableMessageEntry) bool {
-	data, err := os.ReadFile(ANNOUNCEMENT)
+func readFile(t *testing.T, path string) []byte {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	return data
+}
+
+// announce reads the unit's own announcement, or, other set, the same shape
+// under another build version (its low byte flipped).
+func announce(t *testing.T, vocab *TableVocabulary, storage []TableMessageEntry, other bool) bool {
+	data := append([]byte(nil), ANNOUNCEMENT...)
+	if other {
+		data[3] ^= 1
 	}
 	vocab.Init(storage)
 	var report TableReport
 	return AnnounceRead(vocab, data, &report) && !report.Refused()
 }
 
-func readMessage(t *testing.T, name string, wire []byte, want bool) {
+func readMessage(t *testing.T, name string, wire []byte, want, again, other bool) {
 	var storage [256]TableMessageEntry
 	var vocab TableVocabulary
-	if !announce(t, &vocab, storage[:]) {
+	if !announce(t, &vocab, storage[:], other) {
 		t.Fatalf("%s: the unit's announcement does not read", name)
 	}
 	values := make([]MESSAGE, TableMessageBatchMax)
@@ -228,7 +252,7 @@ func readMessage(t *testing.T, name string, wire []byte, want bool) {
 	if read != want {
 		t.Errorf("%s: the message load read=%v, want read=%v", name, read, want)
 	}
-	if !want || !read {
+	if !again || !read {
 		return
 	}
 	batch := make([]*MESSAGE, n)
@@ -248,16 +272,15 @@ func readMessage(t *testing.T, name string, wire []byte, want bool) {
 
 func TestReadsRefuseNonCanonical(t *testing.T) {
 	for _, r := range rows {
-		wire, err := os.ReadFile(r.path)
-		if err != nil {
-			t.Errorf("%s: %v", r.name, err)
-			continue
+		wire := []byte(r.wire)
+		if r.path != "" {
+			wire = readFile(t, r.path)
 		}
 		switch r.form {
 		case "variable":
-			readVariable(t, r.name, wire, r.read, r.wireAlone)
+			readVariable(t, r.name, wire, r.read, r.wireAlone, r.resave)
 		case "message":
-			readMessage(t, r.name, wire, r.read)
+			readMessage(t, r.name, wire, r.read, r.resave, r.other)
 		case "announcement":
 			var storage [256]TableMessageEntry
 			var vocab TableVocabulary
