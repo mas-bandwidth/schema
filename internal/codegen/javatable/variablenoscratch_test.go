@@ -32,6 +32,8 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 			case name == "TableVariable.java":
 				for _, sig := range []string{
 					"public static int trailerBase(byte[] data, Report report) {",
+					"private static int trailerBase(byte[] data, Report report, boolean distinct) {",
+					"static boolean idsDistinct(byte[] data, int base, int count) {",
 					"public static int bodyExtent(byte[] buf, int idCount, int off, int limit) {",
 					"public static int skipExtent(byte[] buf, int kind, int off, int limit) {",
 					"public static int lebEnd(byte[] buf, int off, int limit) {",
@@ -58,6 +60,7 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 					"public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {",
 					"public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {",
 					"public static long loadMeasure(byte[] data, TableVariable.Measure m) {",
+					"static long loadMeasure(byte[] data, TableVariable.Measure m, boolean distinct) {",
 					"static long measureFields(\n            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {",
 				} {
 					body := javaMethodBody(t, name, src, sig)

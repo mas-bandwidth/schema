@@ -13,9 +13,9 @@ import (
 // endpoint's announcement is untrusted, and one unknown entry announcing an array
 // with `min = max = 0xFFFFFFFF` over an element that rides no bits used to buy
 // about 2^32 iterations of the skip walk for a few bytes of wire: kind 0 and
-// kind 32 elements because the arithmetic run did not take them, and a nested
-// array over a zero-width inner array because nothing bounds a walked element
-// that consumes nothing.
+// kind 32 elements because the arithmetic run did not take them. A NESTED
+// ELEMENT SHAPE IS REFUSED AT THE ANNOUNCEMENT, so a list of lists never
+// reaches the skip walk at all.
 //
 // The work is counted by the decoder's own step counter and never by a clock:
 // a walk past 1<<20 elements is the defect, whatever the machine's speed.
@@ -47,9 +47,9 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 	const limit = 1 << 20
 	wide := ir.TableMessageListMax
 	cases := []struct {
-		name      string
-		shape     ir.TableMessageShape
-		malformed bool
+		name     string
+		shape    ir.TableMessageShape
+		announce bool
 	}{
 		{"elem 0", ir.TableMessageShape{Min: wide, Max: wide, Elem: 0, Inner: &ir.TableMessageShape{}}, false},
 		{"elem 32", ir.TableMessageShape{Min: wide, Max: wide, Elem: ir.TableKindNoPayload, Inner: &ir.TableMessageShape{}}, false},
@@ -57,18 +57,23 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 			Inner: &ir.TableMessageShape{Min: 3, Max: 3, Elem: 0, Inner: &ir.TableMessageShape{}}}, true},
 		{"nested elem 14 over an empty inner array", ir.TableMessageShape{Min: wide, Max: wide, Elem: ir.TableKindArray,
 			Inner: &ir.TableMessageShape{Min: 0, Max: 0, Elem: ir.TableKindBool, Inner: &ir.TableMessageShape{}}}, true},
-		// AND A WELL-FORMED NESTED RUN STILL SKIPS: a count the batch's bits
-		// back is the shape a conforming writer produces, and it reads as before
+		// AND A NESTED SHAPE IS REFUSED AT THE ANNOUNCEMENT: a count the bits
+		// back is still a list of lists, which no declaration produces
 		{"nested elem 14, a count the bits back", ir.TableMessageShape{Min: 3, Max: 3, Elem: ir.TableKindArray,
-			Inner: &ir.TableMessageShape{Min: 2, Max: 2, Elem: 0, Inner: &ir.TableMessageShape{}}}, false},
+			Inner: &ir.TableMessageShape{Min: 2, Max: 2, Elem: 0, Inner: &ir.TableMessageShape{}}}, true},
 	}
 	m := zeroWidthModel(t)
 	for _, c := range cases {
 		entry := ir.TableVocabularyEntry{Id: 0x5a5a5a5a00000001, Kind: ir.TableKindArray, Shape: c.shape}
-		// THE ANNOUNCEMENT ACCEPTS THE SHAPE, which is what makes it hostile
-		// rather than impossible: the decode below meets it unrefused
 		encoded := entry.Encode(nil)
-		if _, _, ok := ir.DecodeShape(encoded[9:], entry.Kind); !ok {
+		_, _, accepted := ir.DecodeShape(encoded[9:], entry.Kind)
+		if c.announce {
+			if accepted {
+				t.Fatalf("%s: the announcement accepted a nested element shape", c.name)
+			}
+			continue
+		}
+		if !accepted {
 			t.Fatalf("%s: the announcement refuses the shape, so the case tests nothing", c.name)
 		}
 		v := &Vocabulary{entries: []ir.TableVocabularyEntry{entry}, announced: true}
@@ -96,12 +101,6 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 		if bound := uint64(len(data)*8) + 1; steps.n > bound {
 			t.Errorf("%s: the skip walked %d elements, more than the %d bits the batch holds", c.name, steps.n, bound)
 		}
-		if c.malformed {
-			if ok || d.fail == nil || d.fail.err == nil {
-				t.Errorf("%s: a nested run of zero-width elements was not refused as malformed: ok=%v report %+v", c.name, ok, report)
-			}
-			continue
-		}
 		if !ok || report.Refused || report.Unknown != 1 {
 			t.Errorf("%s: the entry was not skipped: ok=%v report %+v", c.name, ok, report)
 		}
@@ -111,5 +110,82 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 		if err != nil || !got || whole.Refused {
 			t.Errorf("%s: DecodeMessage did not read the batch: ok=%v err=%v report %+v", c.name, got, err, whole)
 		}
+	}
+}
+
+func TestMessageSkipRefusesElementWithNoProgress(t *testing.T) {
+	t.Parallel()
+	const limit = 1 << 20
+	m := zeroWidthModel(t)
+	cases := []struct {
+		name  string
+		shape ir.TableMessageShape
+		elems func(w *bitWriter)
+		want  bool
+	}{
+		// A NESTED ELEMENT SHAPE IS REFUSED AT THE ANNOUNCEMENT, so the
+		// walked element here is a text-list element of zero length bound:
+		// the first one steps over the alignment pad, and the second reads
+		// nothing at all
+		{
+			name: "walked text elements of zero length bound refuse",
+			shape: ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindString,
+				Inner: &ir.TableMessageShape{Max: 0}},
+			elems: func(w *bitWriter) {
+				w.align() // the first element's pad; the second has none
+			},
+			want: false,
+		},
+		{
+			name: "walked text elements with a length skip",
+			shape: ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindString,
+				Inner: &ir.TableMessageShape{Max: 1}},
+			elems: func(w *bitWriter) {
+				for range 2 {
+					w.put(0, 1) // a length of zero
+					w.align()
+				}
+			},
+			want: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			entry := ir.TableVocabularyEntry{Id: 0x5a5a5a5a00000001, Kind: ir.TableKindArray, Shape: c.shape}
+			encoded := entry.Encode(nil)
+			if _, _, ok := ir.DecodeShape(encoded[9:], entry.Kind); !ok {
+				t.Fatal("announcement refused the shape")
+			}
+			v := &Vocabulary{entries: []ir.TableVocabularyEntry{entry}, announced: true}
+			var w bitWriter
+			w.put(0, 8) // M - 1
+			w.put(1, v.RefBits())
+			c.elems(&w)
+			w.put(0, v.RefBits())
+			w.align()
+			data := append([]byte{ir.TableWireMessageForm}, w.b...)
+
+			r := newBitReader(data[1:])
+			if _, ok := r.get(8); !ok {
+				t.Fatal("batch count did not read")
+			}
+			var report tabletext.Report
+			steps := &skipSteps{limit: limit}
+			d := &bitDecoder{m: m, v: v, report: &report, r: r, refBits: v.RefBits(), steps: steps}
+			ok := d.body(m.New(m.Lookup("Probe")))
+			if ok != c.want {
+				t.Errorf("skip result = %v, want %v; failure=%v report=%+v", ok, c.want, d.fail, report)
+			}
+			if c.want && (report.Refused || report.Unknown != 1) {
+				t.Errorf("well-formed skipped entry was refused: %+v", report)
+			}
+			if !c.want && (d.fail == nil || d.fail.err == nil) {
+				t.Errorf("zero-progress element did not record damage: report=%+v", report)
+			}
+			if steps.n >= limit {
+				t.Errorf("skip walked %d elements", steps.n)
+			}
+		})
 	}
 }

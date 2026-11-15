@@ -43,7 +43,7 @@ table Guarded {
  if active { req int32 | required }
 }
 enum Key { A, B }
-table Keyed { values [Key]int32 | required }
+table KeyedSlots { values [Key]int32 | required }
 table EmptyFields {
  text string(8) | required
  values [..4]int32 | required
@@ -52,14 +52,18 @@ table EmptyFields {
 `
 	oracle := requiredGoWitnesses(t, schema)
 	runCarryCS(t, schema, []string{`{}`}, strings.NewReplacer("GO_ZERO", oracle["zero"], "GO_EMPTY", oracle["empty"], "GO_BAD_ARRAY", oracle["bad_array"]).Replace(`unsafe {
+ // THE STRICT READ (docs/SPEC-TABLES.md §4, §6.5): a missing required field
+ // refuses by name and a changed kind refuses the whole load; no counter
+ // records either.
+ bool Verdict(bool ok, TableReport report, string missing, int mismatch) {
+  if (mismatch != 0) { return !ok && report.Reason != null; }
+  if (missing != null) { return !ok && (report.Refused || report.Damaged) && report.Reason == "missing_required: " + missing; }
+  return ok && !report.Refused && !report.Damaged && report.Reason == null;
+ }
  void CheckJSON(TableTypeInfo type, string text, string missing, int mismatch = 0) {
   var value = type.Create(); var report = new TableReport();
   bool ok = Schema.TableJson.Read(value, type, Encoding.UTF8.GetBytes(text), report);
-  // The strict read: a missing required field or a kind mismatch refuses the
-  // whole read (docs/SPEC-TABLES.md §4). The verdict is the contract; the
-  // missing_required detail is asserted only where that one cause refuses.
-  bool refuse = missing != null || mismatch != 0;
-  if (ok == refuse || (mismatch == 0 && (report.Refused != refuse || report.Reason != (missing == null ? null : "missing_required: " + missing)))) throw new Exception("required JSON " + type.Name + " " + text + " => " + report.Reason);
+  if (!Verdict(ok, report, missing, mismatch)) throw new Exception("required JSON " + type.Name + " " + text + " => " + report.Reason);
  }
  byte[] Wire(byte[] body, params ulong[] ids) {
   byte[] bytes = new byte[1 + body.Length + ids.Length * 8 + 8]; bytes[0] = 1; body.CopyTo(bytes, 1);
@@ -69,16 +73,17 @@ table EmptyFields {
  void CheckWire(TableTypeInfo type, byte[] bytes, string missing, int mismatch = 0) {
   var value = type.Create(); var report = new TableReport();
   var verdict = Schema.TableWire.Load(value, type, bytes, report);
-  bool refuse = missing != null || mismatch != 0;
-  if ((verdict == Schema.TableWire.Verdict.Ok) == refuse || (mismatch == 0 && (verdict != (refuse ? Schema.TableWire.Verdict.Refused : Schema.TableWire.Verdict.Ok) || report.Refused != refuse || report.Reason != (missing == null ? null : "missing_required: " + missing)))) throw new Exception("required wire " + type.Name + " => " + report.Reason);
+  bool accept = missing == null && mismatch == 0;
+  if (!Verdict(verdict == Schema.TableWire.Verdict.Ok, report, missing, mismatch)) throw new Exception("required wire " + type.Name + " => " + report.Reason);
   long n = Schema.TableWire.LoadMeasure(type, bytes, out string why);
-  if (n < 0) throw new Exception("required native measure " + why);
+  if (n < 0 && accept) throw new Exception("required native measure " + why);
+  if (n < 0) { return; }
   void* memory = System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((n+15)&~15L), 16);
   try {
    var nativeReport = new TableReport();
    var result = Schema.TableWire.LoadRegion(type, (IntPtr)memory, n, bytes, nativeReport);
-   if ((result != IntPtr.Zero) == refuse || nativeReport.Refused != report.Refused || nativeReport.Reason != report.Reason) throw new Exception("required native " + type.Name + " => " + nativeReport.Reason);
-   if (!refuse) {
+   if ((result != IntPtr.Zero) != accept || nativeReport.Reason != report.Reason || (accept && (nativeReport.Refused || nativeReport.Damaged))) throw new Exception("required native " + type.Name + " => " + nativeReport.Reason);
+   if (accept) {
     Span<ulong> vocabulary = stackalloc ulong[4096];
     long size = Schema.TableWire.SaveRegion(result, type, Span<byte>.Empty, vocabulary, true);
     byte[] written = new byte[size];
@@ -87,8 +92,8 @@ table EmptyFields {
    TableRetain retain = default;
    var retainedReport = new TableReport();
    result = Schema.TableWire.LoadRetainRegion(type, (IntPtr)memory, n, bytes, ref retain, retainedReport);
-   if ((result != IntPtr.Zero) == refuse || retainedReport.Refused != report.Refused || retainedReport.Reason != report.Reason) throw new Exception("required retained " + type.Name + " => " + retainedReport.Reason);
-   if (!refuse) {
+   if ((result != IntPtr.Zero) != accept || retainedReport.Reason != report.Reason || (accept && (retainedReport.Refused || retainedReport.Damaged))) throw new Exception("required retained " + type.Name + " => " + retainedReport.Reason);
+   if (accept) {
     Span<ulong> vocabulary = stackalloc ulong[4096]; Span<int> slots = stackalloc int[4096];
     long size = Schema.TableWire.SaveRetainRegion(result, type, Span<byte>.Empty, vocabulary, slots, ref retain, null, true);
     byte[] written = new byte[size]; var saveReport = new TableReport();
@@ -113,8 +118,8 @@ table EmptyFields {
  if (Schema.RequiredValueSave(defaultValue,saved) != zero.Length || !saved.AsSpan().SequenceEqual(zero)) throw new Exception("required zero fields elided");
  using (var builder = new RequiredValueBuilder()) {
   var bad = new TableReport();
-  if (builder.Load(absent, bad) || !bad.Refused || bad.Verdict != Schema.TableWire.Verdict.Refused || bad.Reason != "missing_required: a, b") throw new Exception("required builder accepted absence");
-  if (!builder.Load(zero, bad) || bad.Refused || bad.Reason != null || bad.Verdict != Schema.TableWire.Verdict.Ok) throw new Exception("reused builder report poisoned clean read");
+  if (builder.Load(absent, bad) || bad.Reason != "missing_required: a, b") throw new Exception("required builder accepted absence");
+  if (!builder.Load(zero, bad) || bad.Refused || bad.Reason != null) throw new Exception("reused builder report poisoned clean read");
   byte[] result = new byte[builder.Measure()];
   if (builder.Save(result) != zero.Length || !result.AsSpan().SequenceEqual(zero)) throw new Exception("required builder zero fields elided");
  }
@@ -161,21 +166,21 @@ table EmptyFields {
  CheckWire(Schema.GraphTableType(), badGraph, "id");
  using (var builder = new GraphBuilder()) {
   var bad = new TableReport();
-  if (builder.Load(badGraph, bad) || !bad.Refused || bad.Reason != "missing_required: id" || bad.Verdict != Schema.TableWire.Verdict.Refused) throw new Exception("required pointer builder accepted absence");
+  if (builder.Load(badGraph, bad) || bad.Reason != "missing_required: id" || bad.Damaged) throw new Exception("required pointer builder accepted absence");
  }
- CheckJSON(Schema.KeyedTableType(), """{}""", "values");
- CheckJSON(Schema.KeyedTableType(), """{"values":{}}""", null);
- var keyed = new Keyed(); byte[] keyedWire = new byte[Schema.KeyedMeasure(keyed)];
- Schema.KeyedSave(keyed, keyedWire);
- byte[] expectedKeyed = Convert.FromHexString("01011002040000fb674d1acf7b27210100000000000000");
+ CheckJSON(Schema.KeyedSlotsTableType(), """{}""", "values");
+ CheckJSON(Schema.KeyedSlotsTableType(), """{"values":{}}""", null);
+ var keyedSlots = new KeyedSlots(); byte[] keyedSlotsWire = new byte[Schema.KeyedSlotsMeasure(keyedSlots)];
+ Schema.KeyedSlotsSave(keyedSlots, keyedSlotsWire);
+ byte[] expectedKeyedSlots = Convert.FromHexString("01011002040000fb674d1acf7b27210100000000000000");
 
- CheckWire(Schema.KeyedTableType(), keyedWire, null);
+ CheckWire(Schema.KeyedSlotsTableType(), keyedSlotsWire, null);
  CheckJSON(Schema.EmptyFieldsTableType(), """{}""", "text, values, items");
  CheckJSON(Schema.EmptyFieldsTableType(), """{"text":"","values":[],"items":{}}""", null);
  var empties = new EmptyFields(); byte[] emptyWire = new byte[Schema.EmptyFieldsMeasure(empties)];
  Schema.EmptyFieldsSave(empties, emptyWire); CheckWire(Schema.EmptyFieldsTableType(), emptyWire, null);
  if (!emptyWire.AsSpan().SequenceEqual(Convert.FromHexString("GO_EMPTY"))) throw new Exception("required empty fields differ from generated Go");
- if (!keyedWire.AsSpan().SequenceEqual(expectedKeyed)) throw new Exception("required keyed zero collection differs: " + Convert.ToHexString(keyedWire) + " vs " + Convert.ToHexString(expectedKeyed));
+ if (!keyedSlotsWire.AsSpan().SequenceEqual(expectedKeyedSlots)) throw new Exception("required keyed zero collection differs: " + Convert.ToHexString(keyedSlotsWire) + " vs " + Convert.ToHexString(expectedKeyedSlots));
  }`))
 }
 
@@ -189,11 +194,11 @@ func TestRequiredCSharpBeyond512(t *testing.T) {
 	schema.WriteString(" last int32 | required\n}\n")
 	runCarryCS(t, schema.String(), []string{`{}`}, `{
  var value = new Many(); var report = new TableReport();
- if (Schema.ManyFromJson(value, Encoding.UTF8.GetBytes("""{}"""), report) || !report.Refused || report.Reason != "missing_required: last") throw new Exception("required field past bitmap window silently ignored");
+ if (Schema.ManyFromJson(value, Encoding.UTF8.GetBytes("""{}"""), report) || report.Reason != "missing_required: last") throw new Exception("required field past bitmap window silently ignored");
  report = new TableReport();
  if (!Schema.ManyFromJson(value, Encoding.UTF8.GetBytes("""{"last":0}"""), report) || report.Refused) throw new Exception("required field past bitmap window not seen");
  byte[] absent = {1,0,0,0,0,0,0,0,0,0}; report = new TableReport();
- if (Schema.ManyLoad(value, absent, report) || !report.Refused || report.Reason != "missing_required: last") throw new Exception("required wire field past bitmap window silently ignored");
+ if (Schema.ManyLoad(value, absent, report) || report.Reason != "missing_required: last") throw new Exception("required wire field past bitmap window silently ignored");
  byte[] bytes = new byte[Schema.ManyMeasure(value)]; Schema.ManySave(value, bytes); report = new TableReport();
  if (!Schema.ManyLoad(value, bytes, report) || report.Refused) throw new Exception("required wire field past bitmap window not seen");
  }`)

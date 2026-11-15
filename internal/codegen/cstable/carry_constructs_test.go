@@ -34,13 +34,16 @@ table Root {
 	}
 	t.Run("variable", func(t *testing.T) { runCarryCS(t, schema, inputs) })
 	t.Run("fixed", func(t *testing.T) {
-		runCarryCS(t, strings.Replace(schema, "table Root", "fixed table Root", 1), inputs, `var fixedValue = new Root { A = -12, B = 100, C = -100 };
- var clamp = new TableReport(); Schema.RootFixedClamp(fixedValue, clamp);
- if (fixedValue.A != 0 || fixedValue.B != 9 || fixedValue.C != -3 || clamp.Clamped != 3) throw new Exception("one-sided fixed clamp");
+		runCarryCS(t, strings.Replace(schema, "table Root", "fixed table Root", 1), inputs, `var outside = new Root { A = -12, B = 100, C = -100 };
+ var clamp = new TableReport();
+ if (Schema.RootFixedClamp(outside, clamp) || !clamp.Refused || clamp.Reason != "out_of_range") throw new Exception("one-sided fixed bounds must refuse out_of_range");
+ var fixedValue = new Root { A = 0, B = 9, C = -3 };
+ var held = new TableReport();
+ if (!Schema.RootFixedClamp(fixedValue, held) || held.Refused) throw new Exception("one-sided fixed bounds refused their own ends");
  byte[] fixedWire = new byte[Schema.RootFixedMeasure(1)];
  if (Schema.RootFixedSave(fixedValue, fixedWire) != fixedWire.Length) throw new Exception("one-sided fixed save");
  var fixedBack = new Root(); var fixedReport = new TableReport();
- if (Schema.RootFixedLoad(fixedBack, fixedWire, new TableFixedEntry[32], fixedReport) != 1 || fixedBack.A != 0 || fixedBack.B != 9 || fixedBack.C != -3 || fixedReport.Clamped != 0) throw new Exception("one-sided fixed load");`)
+ if (Schema.RootFixedLoad(fixedBack, fixedWire, new TableFixedEntry[32], fixedReport) != 1 || fixedBack.A != 0 || fixedBack.B != 9 || fixedBack.C != -3 || fixedReport.Refused) throw new Exception("one-sided fixed load");`)
 	})
 
 }
@@ -98,7 +101,7 @@ func runCarryCS(t *testing.T, schema string, inputs []string, extra ...string) {
 	type result struct {
 		OK                  bool
 		Unknown, Widened    int
-		Refused             bool
+		Damaged, Refused    bool
 		Canon, Wire, Reason string
 	}
 	want := make([]result, len(inputs))
@@ -132,7 +135,7 @@ func runCarryCS(t *testing.T, schema string, inputs []string, extra ...string) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wire, err := tablewire.Encode(model, value)
+			wire, err := tablewire.EncodeVariable(model, value)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,14 +169,14 @@ class CarryProbe {
     if (Schema.RootSave(value, bytes) != bytes.Length) throw new Exception("wire write size");
     wire = Convert.ToHexString(bytes).ToLowerInvariant();
     var back = new Root(); var read = new TableReport();
-    if (!Schema.RootLoad(back, bytes, read) || read.Refused || read.Unknown != 0 || read.Widened != 0) throw new Exception("canonical wire load");
+    if (!Schema.RootLoad(back, bytes, read) || read.Damaged || read.Refused || read.Unknown != 0 || read.Widened != 0) throw new Exception("canonical wire load");
     byte[] again = new byte[Schema.RootMeasure(back)];
     if (Schema.RootSave(back, again) != again.Length || !bytes.AsSpan().SequenceEqual(again)) throw new Exception("wire changed on load/save");
     byte[] backText = new byte[Schema.RootToJsonMeasure(back)];
     long backN = Schema.RootToJson(back, backText);
     if (backN < 0 || Encoding.UTF8.GetString(backText, 0, (int)backN).TrimEnd('\n') != canon) throw new Exception("wire lost value or presence");
    }
-   Console.WriteLine(JsonSerializer.Serialize(new { OK=ok, report.Unknown, report.Widened, report.Refused, report.Reason, Canon=canon, Wire=wire }));
+   Console.WriteLine(JsonSerializer.Serialize(new { OK=ok, report.Unknown, report.Widened, report.Damaged, report.Refused, report.Reason, Canon=canon, Wire=wire }));
   }
  }
 }`

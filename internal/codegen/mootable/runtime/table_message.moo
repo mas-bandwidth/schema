@@ -1465,8 +1465,14 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		return ok
 	elseif kind == 12 then
 		local n, ok = get(r, bitsReq(0, shape.max))
-		if not ok or not ralign(r) then
+		if not ok or not ralign(r) or not has(r, n * 8) then
 			return false
+		end
+		-- ILL-FORMED TEXT IS DAMAGE ON THE SKIP PATH TOO (§3.3, §4): a string
+		-- this reader does not keep is held to the content rule a named read
+		-- holds it to (decodeText), as the Go engine's skip holds it
+		if not V.utf8(r.b, r.base + r.off // 8, n) then
+			return dmal(t)
 		end
 		return skipBits(r, n * 8)
 	elseif kind == 31 then
@@ -1493,6 +1499,11 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 			if kind == 14 then
 				n += shape.min
 			end
+		end
+		-- THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
+		-- announced maximum refuses here as it does at a named field
+		if n > shape.max then
+			return refuseRead(t, "count_over_bound")
 		end
 		if aligns(kind, shape) and not ralign(r) then
 			return false

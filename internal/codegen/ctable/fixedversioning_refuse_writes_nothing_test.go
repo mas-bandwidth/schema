@@ -7,7 +7,7 @@ package ctable
 // entry, whose COMPILED plan carries a NONEMPTY fill list (Vec.w = 88) when
 // step 11 compares the record's own hash. Only the record hash is forged — a
 // header-hash forge is a different row — and the refusal must be TOTAL:
-// malformed is FALSE because a refusal by name is not a malformed file, and
+// wire_damaged is NOT set because a refusal by name is not a damaged file, and
 // the caller's storage, poisoned 0x5A before the load, stays 0x5A in every
 // byte — not the prefill's 88, not a zero — which is what "writes nothing"
 // means.
@@ -41,9 +41,9 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
     if ( n != -1 ) { printf( "refuse_writes_nothing: the forged record hash did not refuse: n=%lld\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "refuse_writes_nothing: refused is false\n" ); return 1; }
     if ( r.reason != SCHEMA_TABLE_NO_LAYOUT ) { printf( "refuse_writes_nothing: reason=%d, not no_layout\n", r.reason ); return 1; }
-    if ( r.refused ) { printf( "refuse_writes_nothing: malformed set — a refusal by name is not a malformed file\n" ); return 1; }
-    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "refuse_writes_nothing: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.refuse_reason != 0 ) { printf( "refuse_writes_nothing: refuse_reason=%d beside the name — a refusal by name is not a damaged file\n", r.refuse_reason ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "refuse_writes_nothing: a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     {
         const uint8_t * p = (const uint8_t *) back;
         int64_t i;

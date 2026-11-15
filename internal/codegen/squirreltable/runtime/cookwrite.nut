@@ -177,7 +177,7 @@ carveField = function(T, f, value, at, extentBase, c, buf, regionBase, order, no
       local ef = T.cookForms[f.entry];
       size = ef.size; align = ef.align;
       if (value != null) {
-        if (!(value in c.maps)) c.maps[value] <- SAVE.mapWriteOrder(value, f.mapkey.member);
+        if (!(value in c.maps)) c.maps[value] <- SAVE.mapWriteOrder(value, f.mapkey);
         indices = c.maps[value];
       }
     }

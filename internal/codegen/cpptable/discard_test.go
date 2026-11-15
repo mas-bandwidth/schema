@@ -281,7 +281,7 @@ fixed table Rec
         if ( r.unknown != 0 || r.widened != 0 ) { printf( "fixed: text_ill_formed left unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
 `
-	out, err := cppRunCapability(t, path, "fxdiscard", body)
+	out, err := cppRunForging(t, path, "fxdiscard", body, nil)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}

@@ -109,7 +109,7 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
             long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
             if (n != 4) { bad += ProbeLog.Fail(@NAME@, "n=" + n); }
             if (r.Widened != 4) { bad += ProbeLog.Fail(@NAME@, "widened=" + r.Widened + " want 4"); }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved"); }`},
+            if (r.Unknown != 0 || r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a counter moved or the read refused"); }`},
 
 			{"elem_widen", "array_elem_widen", `            @OLD@.@ROOT@ want = new @OLD@.@ROOT@();
             want.Lead = 1u; want.Trail = 2u; want.ValsCount = 4;
@@ -121,7 +121,7 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
             long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
             if (n != 1) { bad += ProbeLog.Fail(@NAME@, "n=" + n); }
             if (r.Widened != 4) { bad += ProbeLog.Fail(@NAME@, "widened=" + r.Widened + " want 4"); }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved"); }`},
+            if (r.Unknown != 0 || r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a counter moved or the read refused"); }`},
 
 			{"clamped_count", "array_bounded_grow", `            @OLD@.@ROOT@[] want = new @OLD@.@ROOT@[3];
             for (int k = 0; k < 3; ++k) { want[k] = new @OLD@.@ROOT@(); want[k].Lead = 1u; want[k].Trail = 2u; want[k].ValsCount = 4; for (int j = 0; j < 4; ++j) want[k].Vals[j] = 1000 + j; }
@@ -137,9 +137,11 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
             for (int i = 0; i < back.Length; ++i) { back[i] = new @NEW@.@ROOT@(); }
             @NEW@.TableReport r = new @NEW@.TableReport();
             long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
-            if (n != 3) { bad += ProbeLog.Fail(@NAME@, "n=" + n); }
-            if (r.Clamped != 3) { bad += ProbeLog.Fail(@NAME@, "clamped=" + r.Clamped + " want 3"); }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved"); }`},
+            // THE STRICT READ (docs/SPEC-TABLES.md §3.4, §6.5): a count past the
+            // writer's bound refuses the whole load, as the C++ reference does
+            if (n != -1) { bad += ProbeLog.Fail(@NAME@, "n=" + n + " want -1"); }
+            if (!r.Refused || r.Reason != "count_over_bound") { bad += ProbeLog.Fail(@NAME@, "refused=" + r.Refused + " reason=" + r.Reason + " want count_over_bound"); }
+            if (r.Unknown != 0 || r.Widened != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved"); }`},
 
 			{"forged_ordinal", "enum_append", `            @OLD@.@ROOT@ want = new @OLD@.@ROOT@();
             want.Tier = @OLD@.Tier.Gold; want.Seq = 9;
@@ -155,17 +157,19 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
                 @NEW@.@ROOT@ back = new @NEW@.@ROOT@();
                 @NEW@.TableReport r = new @NEW@.TableReport();
                 long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
-                if (n != 1) { bad += ProbeLog.Fail(@NAME@, "compiled n=" + n); }
-                if ((int)back.Tier != 0) { bad += ProbeLog.Fail(@NAME@, "compiled lands " + (int)back.Tier + ", not None"); }
-                if (r.Clamped != 1) { bad += ProbeLog.Fail(@NAME@, "compiled clamped=" + r.Clamped + " want 1"); }
+                // a forged ordinal refuses out_of_range and the record is its
+                // declared defaults (docs/FIXED-FORM-ALGORITHM.md §4.6, the C++ reference)
+                if (n != -1) { bad += ProbeLog.Fail(@NAME@, "compiled n=" + n + " want -1"); }
+                if (back.Tier != new @NEW@.@ROOT@().Tier || back.Seq != new @NEW@.@ROOT@().Seq) { bad += ProbeLog.Fail(@NAME@, "compiled: the refused record is not its defaults"); }
+                if (!r.Refused || r.Reason != "out_of_range") { bad += ProbeLog.Fail(@NAME@, "compiled refused=" + r.Refused + " reason=" + r.Reason + " want out_of_range"); }
             }
             {
                 @OLD@.@ROOT@ back = new @OLD@.@ROOT@();
                 @OLD@.TableReport r = new @OLD@.TableReport();
                 long n = @OLD@.Schema.@ROOT@FixedLoad(back, buf, new @OLD@.TableFixedEntry[8192], r);
-                if (n != 1) { bad += ProbeLog.Fail(@NAME@, "identity n=" + n); }
-                if ((int)back.Tier != 0) { bad += ProbeLog.Fail(@NAME@, "identity lands " + (int)back.Tier + ", not None"); }
-                if (r.Clamped != 1) { bad += ProbeLog.Fail(@NAME@, "identity clamped=" + r.Clamped + " want 1"); }
+                if (n != -1) { bad += ProbeLog.Fail(@NAME@, "identity n=" + n + " want -1"); }
+                if (back.Tier != new @OLD@.@ROOT@().Tier || back.Seq != new @OLD@.@ROOT@().Seq) { bad += ProbeLog.Fail(@NAME@, "identity: the refused record is not its defaults"); }
+                if (!r.Refused || r.Reason != "out_of_range") { bad += ProbeLog.Fail(@NAME@, "identity refused=" + r.Refused + " reason=" + r.Reason + " want out_of_range"); }
             }`},
 
 			{"clean_append", "field_append", `            @OLD@.@ROOT@ want = new @OLD@.@ROOT@();
@@ -177,7 +181,7 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
             long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
             if (n != 1) { bad += ProbeLog.Fail(@NAME@, "n=" + n); }
             if (back.X != 11 || back.Y != 22 || back.Z != 33 || back.W != 77) { bad += ProbeLog.Fail(@NAME@, "values did not land"); }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved"); }`},
+            if (r.Unknown != 0 || r.Widened != 0 || r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a counter moved or the read refused"); }`},
 
 			{"unknown", "unknown_census", `            @OLD@.@ROOT@ want = new @OLD@.@ROOT@();
             want.Lead = 1u; want.Trail = 2u;
@@ -189,7 +193,7 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
             long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
             if (n != 1) { bad += ProbeLog.Fail(@NAME@, "n=" + n); }
             if (r.Unknown != 1) { bad += ProbeLog.Fail(@NAME@, "unknown=" + r.Unknown + " want 1"); }
-            if (r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved"); }`},
+            if (r.Widened != 0 || r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a counter moved or the read refused"); }`},
 		}
 
 		var calls []string
