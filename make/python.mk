@@ -61,6 +61,14 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
+# The widening control (internal/codegen/pythontable/widening_test.go): one
+# rule of the runtime's widen.py is broken at a time in a copy (the signed
+# ladder, the rungs, the widened count, a narrowing), and the ladder must go
+# red on the cell the rule decides. Registered in make/negative-controls.json.
+.PHONY: python-vt-widening-negative-control
+python-vt-widening-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtWideningNegativeControl' ./internal/codegen/pythontable/ -count=1
+
 generated/bench/tables/python/.stamp: ;
 
 TEST_LEGS             += test-python

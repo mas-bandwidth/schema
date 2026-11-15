@@ -312,6 +312,23 @@ generated class per table and per map entry, each with its descriptor
   variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
   with table arms have descriptors in this cut and refuse by name through
   `kind_unsupported.py` until their cards land.
+- **Widening on read** (SPEC-TABLES §4) is `_schema/widen.py`, one rule
+  shared by the straight-line load and the descriptor walk: where a field's
+  kind byte is not its declared kind, an integer field accepts every narrower
+  kind on its own signedness ladder (2, 3, 4, 5, 18 and 6, 7, 8, 9, 19),
+  decodes it at the writer's width with the wire kind's sign, holds it to the
+  declared range and counts one `widened`; every other pair, narrowings
+  included, refuses `kind_mismatch`. It is not a codec, so it sits beside
+  `kinds.py` rather than in it, and it is not a §2 construct, so the compiler
+  registers no carry for it. The float rung (10 into 11) and the rule at an
+  arm, an array element and a map key land with the cards that carry those
+  kinds, through the same `_accepts`/`_read` pair. `TestPythonVtWidening`
+  holds the ladder (12 declarations by 15 wire kinds, both shapes, both pins)
+  to the reference engine's read and write. The corpus rows that widen sit on
+  constructs not carried yet (a packet type in a table, lists, maps), apart
+  from `k1_as_k2`, which it holds; the test names the rest. The bench
+  (`TestPythonTableCoreShapeBench`, on the fleet host) moved by under 1% on
+  every load figure, inside its run-to-run noise.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
