@@ -399,6 +399,12 @@ export function WriteProbeSample(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
+  {
+    const x = Math.fround(value.orientation);
+    if (!Number.isFinite(x) || x < -180.0 || x > 180.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.orientation;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
     return false;
@@ -1300,6 +1306,12 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  {
+    const x = Math.fround(value.compressedFloatValue);
+    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.compressedFloatValue;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
@@ -1490,9 +1502,21 @@ export function ZeroCompressedProbe(value) {
 }
 
 export function WriteCompressedProbe(stream, value) {
+  {
+    const x = Math.fround(value.boundary);
+    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
+  }
   NUMBER_SCRATCH.value = value.boundary;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
+  }
+  {
+    const x = Math.fround(value.offset);
+    if (!Number.isFinite(x) || x < -5.0 || x > 5.0) {
+      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
+    }
   }
   NUMBER_SCRATCH.value = value.offset;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.001)) {

@@ -64,6 +64,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 2000.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
@@ -285,6 +288,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f027Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -2.0 || x > 2.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
@@ -603,6 +609,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -90.0 || x > 90.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
@@ -662,6 +671,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 30.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
@@ -690,6 +702,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -100.0 || x > 100.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
@@ -704,6 +719,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f068Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < 0.0 || x > 2000.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
@@ -737,6 +755,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
@@ -751,6 +772,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f072Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < 0.0 || x > 100.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 100.0);

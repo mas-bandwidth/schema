@@ -1122,16 +1122,18 @@ func f32lit(v float64) string {
 }
 
 // emitWriteCompressedFloat is the runtime's two-rounding float32
-// quantization with the declaration folded: value32 non-finite refused in
-// every build, clamp, quantize.
+// quantization with the declaration folded: value32 non-finite or off
+// [min, max] refused in every build (SPEC §5.1 row 10), then quantize.
 func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
-	deltaF := float32(f.FMax) - minF
+	maxF := float32(f.FMax)
+	deltaF := maxF - minF
 	mivF := float32(maxInt)
 	g.pf("%sx = Math.fround(%s);\n", ind, name)
 	g.guard("!Number.isFinite(x)", "", ind)
+	g.guard(fmt.Sprintf("x < %s || x > %s", f32lit(float64(minF)), f32lit(float64(maxF))), "", ind)
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
