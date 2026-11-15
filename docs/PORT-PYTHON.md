@@ -531,3 +531,25 @@ The straight-line reader is 3–8% faster and the writer 7–11% faster across
 every sitting on both pins, because attribute load and store on `__slots__`
 avoid `getattr`/`setattr` and loop dispatch, so the generator emits it and no
 descriptor walk ships.
+
+The array kind keeps the same shape. Its instrument is a `BenchArrays`
+fixture (a ranged `[16]int32`, a `[..16]uint16` holding 12, and an `[8]bool`;
+384 wire bits), read and written back 50,000 iterations after a 1,000-iteration
+warmup, over seven interleaved sittings per interpreter, against a prototype
+descriptor walk over the same three fields (a tuple per field, `getattr` and
+`setattr`, the element kind dispatched per element). The bench host was
+shared and loaded, so the spread is wide; the minimum and the median are both
+given:
+
+| interpreter | shape | read min / median | write min / median |
+|---|---|---|---|
+| CPython 3.11.18 (floor) | straight-line generated code (kept) | 18.71 / 28.96 µs/op | 19.47 / 27.32 µs/op |
+| CPython 3.11.18 (floor) | descriptor walk (prototype loop) | 20.06 / 29.93 µs/op | 19.89 / 27.55 µs/op |
+| CPython 3.15.2 (current) | straight-line generated code (kept) | 22.82 / 30.71 µs/op | 17.19 / 27.42 µs/op |
+| CPython 3.15.2 (current) | descriptor walk (prototype loop) | 22.85 / 30.52 µs/op | 20.88 / 28.16 µs/op |
+
+The generated loop is faster or level on every row: the reader by 3–7% on
+the floor and level on the current pin (inside the host's noise), the writer
+by 1–18%. The per-element cost is the bit layer's call, which both shapes
+pay, so the generator keeps one shape for the whole packet wire and no
+descriptor walk ships.

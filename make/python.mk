@@ -16,7 +16,7 @@
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
 .PHONY: test-python update-goldens-python python-packet-core-negative-control python-packet-arrays-negative-control python-table-core-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control deps-go
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -32,8 +32,9 @@ python-packet-core-negative-control: python-toolchain-check
 # drops the counted array's minimum from a COPY of a generated reader, so the
 # count no longer rides offset, and requires TestPythonPacketArraysNegativeControl
 # to find the hand-checked vector red by name. A Go test under the slow gate:
-# the probe runs under the pinned interpreter beside the Go reference writer.
-python-packet-arrays-negative-control: python-toolchain-check
+# the probe runs under the pinned interpreter beside the Go reference writer,
+# which needs serialize.go (deps-go); test-python needs it for the same test.
+python-packet-arrays-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketArraysNegativeControl ./internal/codegen/python/
 
 # build/schema-python is the tagged compiler the conformance tree is generated
