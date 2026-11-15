@@ -316,7 +316,9 @@ static class Program
             // This scalar-only union's public entry runs its batch core.
             bool readOK = ReadDefaultChoice(rs, ref output);
             Check(readOK, "decode DefaultChoice, same tag included");
-            bool selectedOK = rs.BitsProcessed == 7 && output.Type == DefaultChoiceType.First &&
+            // The one-packet read ends after the object: the seven object bits
+            // plus the final byte's one unused bit (SPEC §5).
+            bool selectedOK = rs.BitsProcessed == 8 && output.Type == DefaultChoiceType.First &&
                               first.EntriesCount == 0 && first.Marker == 5;
             Check(selectedOK, "DefaultChoice selected fields and bit count");
             // The control's backing-default marker requires a successful oracle decode.
@@ -1248,19 +1250,32 @@ static class Program
             TrioFirst rTrioFirst = new TrioFirst();
             TrioStraddle rStraddle = new TrioStraddle();
 
-            ReadStream rs = new ReadStream(wire);
-            Check(ReadVec2(rs, ref rVec2), "read Vec2");
-            Check(ReadSpanF64(rs, ref rSpanF64), "read SpanF64");
-            Check(ReadSpanU64(rs, ref rSpanU64), "read SpanU64");
-            Check(ReadSpanI64(rs, ref rSpanI64), "read SpanI64");
-            Check(ReadSpanOne(rs, ref rSpanOne), "read SpanOne");
-            Check(ReadSpanChunk(rs, ref rSpanChunk), "read SpanChunk");
-            Check(ReadSpanTail(rs, ref rSpanTail), "read SpanTail");
-            Check(ReadSpanTwice(rs, ref rSpanTwice), "read SpanTwice");
-            Check(ReadTrio(rs, ref rTrio), "read Trio");
-            Check(ReadTrioSole(rs, ref rTrioSole), "read TrioSole");
-            Check(ReadTrioFirst(rs, ref rTrioFirst), "read TrioFirst");
-            Check(ReadTrioStraddle(rs, ref rStraddle), "read TrioStraddle");
+            // The one-packet read ends after its object (SPEC §5), so each
+            // shape is read from its own slice of the shared golden. Every
+            // shape here is a whole number of bytes.
+            int at = 0;
+            ReadStream Slice(int bits)
+            {
+                int n = (bits + 7) / 8;
+                byte[] slice = new byte[n];
+                Array.Copy(wire, at, slice, 0, n);
+                at += n;
+                return new ReadStream(slice);
+            }
+
+            Check(ReadVec2(Slice(128), ref rVec2), "read Vec2");
+            Check(ReadSpanF64(Slice(128), ref rSpanF64), "read SpanF64");
+            Check(ReadSpanU64(Slice(128), ref rSpanU64), "read SpanU64");
+            Check(ReadSpanI64(Slice(128), ref rSpanI64), "read SpanI64");
+            Check(ReadSpanOne(Slice(64), ref rSpanOne), "read SpanOne");
+            Check(ReadSpanChunk(Slice(64), ref rSpanChunk), "read SpanChunk");
+            Check(ReadSpanTail(Slice(160), ref rSpanTail), "read SpanTail");
+            Check(ReadSpanTwice(Slice(256), ref rSpanTwice), "read SpanTwice");
+            Check(ReadTrio(Slice(64), ref rTrio), "read Trio");
+            Check(ReadTrioSole(Slice(64), ref rTrioSole), "read TrioSole");
+            Check(ReadTrioFirst(Slice(80), ref rTrioFirst), "read TrioFirst");
+            Check(ReadTrioStraddle(Slice(408), ref rStraddle), "read TrioStraddle");
+            Check(at == wire.Length, "the degenerate reads consume the whole golden");
 
             Check(rVec2.X == 1.5 && rVec2.Y == -2.25, "Vec2 round-trips");
             Check(rSpanF64.Values[0] == 3.5 && rSpanF64.Values[1] == -4.75, "SpanF64 round-trips");

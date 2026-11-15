@@ -219,6 +219,7 @@ local function shapeRead(r: any, k: number): any
 			return s
 		elseif packing == 1 and k ~= 10 then
 			local n = rLeb(r)
+			if r.bad or n > kindBits(k) then r.bad = true; return s end
 			s.bits = n
 			if k >= 18 then
 				if r.at + 16 > r.e then r.bad = true; return s end
@@ -238,12 +239,15 @@ local function shapeRead(r: any, k: number): any
 	end
 	if k == 12 then
 		s.max = rLeb(r)
+		if r.bad or s.max > 0x7FFFFFFF then r.bad = true end
 	elseif k == 14 then
 		s.min = rLeb(r)
 		s.max = rLeb(r)
+		if r.bad or s.max > 0xFFFFFFFF then r.bad = true end
 		if s.max < s.min then r.bad = true; return s end
 	elseif k == 16 then
 		s.max = rLeb(r)
+		if r.bad or s.max > 0xFFFFFFFF then r.bad = true end
 	end
 	return s
 end
@@ -253,6 +257,7 @@ local function entryRead(r: any): any
 	if r.at + 9 > r.e then r.bad = true; return e end
 	e.id = buffer.readinteger(r.b, r.at)
 	r.at = r.at + 8
+	if e.id == VERSION_ID or e.id == VOCAB_ID then r.bad = true; return e end
 	local kind = rU8(r)
 	if kind > 32 then r.bad = true; return e end
 	e.shape = shapeRead(r, kind)
@@ -323,15 +328,21 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	if form == 2 then return refuse(report, "message_form_as_file") end
 	if form ~= 1 then return refuse(report, "newer_form") end
 	if len < 9 then report.malformed = true; return false end
+	-- the count is the unsigned u64 of docs/SPEC-TABLES.md §3, not a signed
+	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(data, len - 8))
-	if count > math.floor((len - 9) / 8) then report.malformed = true; return false end
+	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return false end
 	-- the id table holds at most 4096 entries (docs/SPEC-TABLES.md §3,
 	-- ir.TableWireIdTableBound), whatever the buffer would hold
 	if count > 4096 then report.malformed = true; return false end
 	local start = len - 8 - count * 8
 	local ids = {}
+	local seen = {}
 	for i = 0, count - 1 do
-		ids[i + 1] = buffer.readinteger(data, start + i * 8)
+		local id = buffer.readinteger(data, start + i * 8)
+		if seen[id] then report.malformed = true; return false end
+		seen[id] = true
+		ids[i + 1] = id
 	end
 	local r = { b = data, at = 1, e = start, bad = false }
 	local versions = 0
@@ -367,6 +378,7 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 			if not skipStep(r, kind) then report.malformed = true; return false end
 		end
 	end
+	if r.at ~= start then report.malformed = true; return false end
 	if versions ~= 1 or vocabs ~= 1 then report.malformed = true; return false end
 	local w = { b = words :: buffer, at = 0, e = buffer.len(words :: buffer), bad = false }
 	local entries = {}

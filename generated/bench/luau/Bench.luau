@@ -418,7 +418,7 @@ function _M.ZeroBenchPacket(value: any)
   value.Y = 0
   value.Z = 0
   value.Big = 0i
-  for i = 1, 17 do value.Blob[i] = 0 end
+  buffer.fill(value.Blob, 0, 0)
 end
 
 -- ReadBenchPacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
@@ -929,7 +929,7 @@ function _M.ZeroBenchMixed(value: any)
   for i = 1, 80 do _M.ZeroMixedStat(value.Stats[i]) end
   value.StatsCount = 0
   _M.ZeroMixedEvent(value.GameEvent)
-  for i = 1, 4 do value.Loadout[i] = 0 end
+  buffer.fill(value.Loadout, 0, 0)
   buffer.fill(value.PlayerName, 0, 0)
   value.PlayerNameLength = 0
   buffer.fill(value.Payload, 0, 0)
