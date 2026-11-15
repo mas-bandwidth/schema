@@ -142,13 +142,14 @@ def _validate_map(field: FieldDesc, value: Any, path: str, seen: set[int]) -> No
         raise InvalidValue(path, f"the table {field.target} is not registered")
     key_field = entry.descriptor.fields[0]
     value_field = entry.descriptor.fields[1]
-    if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
-        # A map whose VALUE is a byte buffer, `map[K]*bytes` or `map[K]*string`,
-        # is not carried yet: refused by name, as before the buffers landed.
-        raise InvalidValue(path, kind_unsupported._RULE)
     for key, current in value.items():
         where = f"{path}[{key!r}]"
         kinds._REGISTRY[key_field.codec].validate(key_field, key, where)
+        if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
+            # A map whose VALUE is a byte buffer, `map[K]*bytes` or
+            # `map[K]*string`, is not carried yet: an entry refuses by name,
+            # as kind_unsupported.py refused it before the buffers landed.
+            raise InvalidValue(where, kind_unsupported._RULE)
         if value_field.codec == "pointer":
             kinds._REGISTRY["pointer"].validate(value_field, current, where)
             if current is not None:
