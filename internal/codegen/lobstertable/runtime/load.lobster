@@ -2005,7 +2005,17 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
         let n, framed = leb(r)
         if not framed or not has(r, n):
             return read_refuse(c.st.report, "wire_damaged")
-        if not wire_content(c, sub(r, n), ak):
+        // a union is a level when its arm is structural; the arm's own
+        // payload is the next level (docs/SPEC-TABLES.md §4)
+        let level = ak >= 13 and ak <= 16
+        if level:
+            if c.depth >= binary_max_depth:
+                return read_refuse(c.st.report, "depth_over_bound")
+            c.depth++
+        let good = wire_content(c, sub(r, n), ak)
+        if level:
+            c.depth--
+        if not good:
             return false
         r.off += n
         return true
@@ -2020,7 +2030,7 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
     return read_refuse(c.st.report, "wire_damaged")
 
 def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
-    let nested = kind >= 13 and kind <= 16
+    let nested = kind == 13 or kind == 14 or kind == 16
     if nested:
         if c.depth >= binary_max_depth:
             return read_refuse(c.st.report, "depth_over_bound")
@@ -2030,8 +2040,9 @@ def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
         c.depth--
     return ok
 
-// Structured kinds 13 through 16 add a level, including a nested union.
-// A scalar arm's length adds none. Pointer records start at depth zero.
+// Framed kinds 13, 14 and 16 add a level; a union adds one in wire_payload
+// when its arm is structural, and its frame adds none of its own. A scalar
+// arm's length adds none. Pointer records start at depth zero.
 def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
     if kind == 12:
         if not text_valid(r.b, r.off, r.hi - r.off):
