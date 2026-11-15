@@ -1834,8 +1834,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
+    let key_mark = c.jr.keys.len;
     var dup_unk = false;
     loop {
         let ch = json_peek(c.jr);
@@ -1861,21 +1860,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
-            var kh: u64 = 0xcbf29ce484222325;
-            var ki: i64 = 0;
-            while ki < n {
-                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
-                ki += 1;
-            }
-            var ui: i64 = 0;
-            while ui < seen_unk_n {
-                if seen_unk[ui] == kh { dup_unk = true; }
-                ui += 1;
-            }
-            if seen_unk_n < 64 {
-                seen_unk[seen_unk_n] = kh;
-                seen_unk_n += 1;
-            }
+            if json_key_repeat(c.jr, key_mark, key[..n]) { dup_unk = true; }
             c.jr.rep.unknown += 1;
             if !jr_skip(c, depth + 1) { return false; }
         } else if json_shape(c.jr) != shape {

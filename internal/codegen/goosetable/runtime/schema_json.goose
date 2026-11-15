@@ -534,10 +534,12 @@ struct JsonIn {
     bad: bool,
     zero: bool,
     rep: JsonReport,
+    keys: u8[>..],
 }
 
 fn json_in(text: const u8[:]) -> JsonIn {
-    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report() };
+    var keys: u8[>..] = [];
+    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), keys: copy(keys) };
     // a leading UTF-8 byte-order mark is skipped, there and nowhere else
     // (docs/SPEC-TABLES.md §16.2, §16.12)
     if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF { jr.pos = 3; }
@@ -842,33 +844,32 @@ fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
     return name == key;
 }
 
-// json_key_hash hashes one DECODED key: two spellings that decode equal are
-// one key, so a repeated name is found in every object the read walks,
-// skipped ones included (§16.2, §16.12).
-fn json_key_hash(key: const u8[:]) -> u64 {
-    var h: u64 = 0xcbf29ce484222325;
-    var i: i64 = 0;
-    while i < key.len {
-        let b: u64 = key[i];
-        h = (h ^ b) * 0x100000001b3;
-        i += 1;
+// json_key_repeat records one DECODED key and answers whether it was already
+// there: two spellings that decode equal are one key, so a repeated name is
+// found in every object the read walks, skipped ones included (§16.2,
+// §16.12). The keys are kept whole and compared exactly, in a run that grows
+// with the object: no hash stands in for a name and no count ends the record.
+fn json_key_repeat(jr: JsonIn&, mark: i64, key: const u8[:]) -> bool {
+    var at = mark;
+    while at < jr.keys.len {
+        let n: i64 = jr.keys[at];
+        at += 1;
+        if n == key.len {
+            var same = true;
+            var i: i64 = 0;
+            while i < key.len {
+                if jr.keys[at + i] != key[i] {
+                    same = false;
+                    break;
+                }
+                i += 1;
+            }
+            if same { return true; }
+        }
+        at += n;
     }
-    return h;
-}
-
-// json_key_repeat records a decoded key's hash in a fixed-size set and answers
-// whether it was already there (the scratch a recursive walk can carry).
-fn json_key_repeat(seen: u64[64]&, n: i64&, key: const u8[:]) -> bool {
-    let h = json_key_hash(key);
-    var i: i64 = 0;
-    while i < n {
-        if seen[i] == h { return true; }
-        i += 1;
-    }
-    if n < 64 {
-        seen[n] = h;
-        n += 1;
-    }
+    jr.keys.push(key.len as! u8);
+    for b in key { jr.keys.push(b); }
     return false;
 }
 
@@ -923,8 +924,7 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
         if depth > JsonMaxDepth { return json_fail(jr); }
         let closing: u8 = if c == '{' { '}' } else { ']' };
         jr.pos += 1;
-        var seen_unk: u64[64] = [0; 64];
-        var seen_unk_n: i64 = 0;
+        let key_mark = jr.keys.len;
         loop {
             let d = json_peek(jr);
             if d == closing {
@@ -939,7 +939,7 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
                 var key: u8[256] = [0; 256];
                 let n, ok = json_key(jr, key);
                 if !ok || n > JsonMaxKey { return false; }
-                if json_key_repeat(seen_unk, seen_unk_n, key[..n]) {
+                if json_key_repeat(jr, key_mark, key[..n]) {
                     jr.rep.repeated += 1;
                     return json_fail(jr);
                 }
@@ -1423,8 +1423,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
+    let key_mark = jr.keys.len;
     var dup_unk = false;
     loop {
         let c = json_peek(jr);
@@ -1452,21 +1451,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
-            var kh: u64 = 0xcbf29ce484222325;
-            var ki: i64 = 0;
-            while ki < n {
-                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
-                ki += 1;
-            }
-            var ui: i64 = 0;
-            while ui < seen_unk_n {
-                if seen_unk[ui] == kh { dup_unk = true; }
-                ui += 1;
-            }
-            if seen_unk_n < 64 {
-                seen_unk[seen_unk_n] = kh;
-                seen_unk_n += 1;
-            }
+            if json_key_repeat(jr, key_mark, key[..n]) { dup_unk = true; }
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if json_shape(jr) != shape {
@@ -1554,8 +1539,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
     }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
+    let key_mark = jr.keys.len;
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1581,7 +1565,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
             return json_fail(jr);
         }
         if index < 0 {
-            if json_key_repeat(seen_unk, seen_unk_n, key[..n]) {
+            if json_key_repeat(jr, key_mark, key[..n]) {
                 jr.rep.repeated += 1;
                 return json_fail(jr);
             }

@@ -92,6 +92,30 @@ func skippedValueJSONInputs(t *testing.T, rows []jsonRow, inline map[string][]by
 	return in
 }
 
+// manyKeys writes a run of distinct object members, u0..u<distinct-1>, and,
+// when repeat is not negative, one more naming u<repeat> after the whole run.
+func manyKeys(prefix string, distinct, repeat int) string {
+	var b strings.Builder
+	b.WriteString(prefix)
+	for i := 0; i < distinct; i++ {
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`"u`)
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(`":0`)
+	}
+	if repeat >= 0 {
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`"u`)
+		b.WriteString(strconv.Itoa(repeat))
+		b.WriteString(`":1`)
+	}
+	return b.String()
+}
+
 func TestGooseSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
 	const dir = "testdata/wire/skipped-value"
@@ -116,16 +140,22 @@ func TestGooseSkippedValueIsValidated(t *testing.T) {
 	// The shared vectors carry a zero in a skipped string and in a key, but
 	// not a name the read meets twice. A skipped object's own keys and an
 	// unknown field's key are held to §16.2's one-name rule as a placed key
-	// is, two spellings that decode equal included, so these refuse too.
-	inline := []struct{ name, text string }{
-		{"unknown-field-key-repeat.json", `{"known":1,"extra":1,"extra":2}`},
-		{"skipped-object-key-repeat.json", `{"known":1,"extra_nested":{"a":1,"a":2}}`},
-		{"skipped-object-key-equal-spelling.json", `{"known":1,"extra_nested":{"a":1,"\u0061":2}}`},
+	// is, two spellings that decode equal included; a long run of distinct
+	// names still records every one, so a later repeat refuses, and a run
+	// with no repeat reads.
+	inline := []struct{ name, text, want string }{
+		{"unknown-field-key-repeat.json", `{"known":1,"extra":1,"extra":2}`, "refused"},
+		{"skipped-object-key-repeat.json", `{"known":1,"extra_nested":{"a":1,"a":2}}`, "refused"},
+		{"skipped-object-key-equal-spelling.json", `{"known":1,"extra_nested":{"a":1,"\u0061":2}}`, "refused"},
+		{"unknown-field-key-many-repeat.json", `{` + manyKeys(`"known":1`, 65, 64) + `}`, "refused"},
+		{"skipped-object-key-many-repeat.json", `{"known":1,"extra_nested":{` + manyKeys("", 65, 64) + `}}`, "refused"},
+		{"unknown-field-key-many-control.json", `{"known":1,` + manyKeys("", 65, -1) + `}`, "read"},
+		{"skipped-object-key-many-control.json", `{"known":1,"extra_nested":{` + manyKeys("", 65, -1) + `}}`, "read"},
 	}
 	inlineText := map[string][]byte{}
 	for _, c := range inline {
 		inlineText[c.name] = []byte(c.text)
-		jsonRows = append(jsonRows, jsonRow{name: c.name, root: "Root", want: "refused"})
+		jsonRows = append(jsonRows, jsonRow{name: c.name, root: "Root", want: c.want})
 	}
 	if len(jsonRows) > 0 {
 		files, err := goose.Generate(u)
