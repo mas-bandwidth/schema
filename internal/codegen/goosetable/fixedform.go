@@ -1204,6 +1204,7 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(0, "// %sFixedSave appends a fixed-form file of values to out and returns its byte length, or -1", n)
 	e.p(0, "// (invalid_value) when any value breaks its declared contract, with nothing appended (§3.1).")
 	e.p(0, "fn %sFixedSave(values: const %s[:], out: u8[>..]&) -> i64 {", n, typ)
+	e.p(1, "if values.len == 0 { return -1; }")
 	e.p(1, "var k: i64 = 0;")
 	e.p(1, "while k < values.len {")
 	e.p(2, "if !_%sFixedCheck(values[k]) { return -1; }", n)
