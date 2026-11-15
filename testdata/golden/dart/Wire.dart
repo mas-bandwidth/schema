@@ -2213,7 +2213,6 @@ int readHeartbeatBits(
   if (bitOffset < 0 || bitOffset > numBits) {
     return -1; // the start lies inside the bits the caller vouches for
   }
-  var bitsRead = bitOffset;
   return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
