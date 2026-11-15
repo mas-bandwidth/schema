@@ -1060,6 +1060,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-fixed-class",
+      "when": "pull-request",
+      "why": "the fixed-class kind card's control (make/python.mk): one array body's count is moved in a copy of the emitted runtime, and TestPythonVtFixedClassNegativeControl must go red by name under the pinned interpreter, so the gate covers the array codec the card adds. One SCHEMA_SLOW go test, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-table-fixed-class-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

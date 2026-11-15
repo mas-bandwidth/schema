@@ -67,7 +67,7 @@ class LoadReport:
         self.retain_lost = 0
 
 
-def float32_bits_eq(a: object, b: object) -> bool:
+def _float32_bits_eq(a: object, b: object) -> bool:
     """Equality by the float32 bits, so -0.0 and 0.0 differ, as their bytes
     on the wire do (docs/PORT-PYTHON.md, Classes)."""
     if type(a) is not float or type(b) is not float:
@@ -78,7 +78,7 @@ def float32_bits_eq(a: object, b: object) -> bool:
         return struct.pack("<d", a) == struct.pack("<d", b)
 
 
-def float64_bits_eq(a: object, b: object) -> bool:
+def _float64_bits_eq(a: object, b: object) -> bool:
     """Equality by the float64 bits, so -0.0 and 0.0 differ."""
     if type(a) is not float or type(b) is not float:
         return a == b

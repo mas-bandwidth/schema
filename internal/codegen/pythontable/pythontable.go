@@ -264,11 +264,11 @@ func emitModule(u *ir.Unit, base string, file *ir.File, tables []*ir.Struct, uni
 	b.WriteString("from __future__ import annotations\n\n")
 	b.WriteString("from typing import ClassVar, Final, Self\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	b.WriteString("from ._schema import float32_bits_eq as _s_float32_bits_eq, float64_bits_eq as _s_float64_bits_eq\n")
+	b.WriteString("from ._schema import _float32_bits_eq as _s_float32_bits_eq, _float64_bits_eq as _s_float64_bits_eq\n")
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _skip, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, check_root as _s_check_root, measure_table, save_table\n\n\n")
+	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, _check_root as _s_check_root, measure_table, save_table\n\n\n")
 	for _, d := range valueDecls(file) {
 		emitValueDecl(&b, d)
 	}
@@ -642,7 +642,7 @@ func packageInit(u *ir.Unit, bases []string, filesByBase map[string]*ir.File, by
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	b.WriteString("from ._schema import float32_bits_eq as _s_float32_bits_eq, float64_bits_eq as _s_float64_bits_eq\n")
+	b.WriteString("from ._schema import _float32_bits_eq as _s_float32_bits_eq, _float64_bits_eq as _s_float64_bits_eq\n")
 	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, base := range bases {
 		fmt.Fprintf(&b, "from . import %s\n", base)

@@ -77,7 +77,7 @@ def measure_table(value: Any) -> int:
     return _encode(value, Writer(None))
 
 
-def check_root(value: Any) -> None:
+def _check_root(value: Any) -> None:
     """Refuse a root that is not exactly a generated class: a subclass could
     carry another descriptor or __eq__, and neither may change the bytes."""
     cls = descriptor.by_name(value.descriptor.name)
@@ -86,7 +86,7 @@ def check_root(value: Any) -> None:
 
 
 def _encode(value: Any, writer: Writer) -> int:
-    check_root(value)
+    _check_root(value)
     _validate(value, value.descriptor, "", set())
     ctx = Ctx()
     ctx.indices[id(value)] = 1
