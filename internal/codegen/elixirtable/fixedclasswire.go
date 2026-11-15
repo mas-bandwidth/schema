@@ -314,7 +314,10 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   # named only by a skipped field still counts as reached and a node named
   # by no payload at all refuses the whole load. A record of a type this
   # reader cannot name is held to the same rule, and its body's payloads
-  # reach as a known record's do (internal/tablewire's wire check).
+  # reach as a known record's do (internal/tablewire's wire check). The same
+  # walk judges cycles over every pointer payload (§3.1, §6.5 THE GRAPH,
+  # DEFINED ONCE): a pointer naming a node whose descent is still open, the
+  # root included, is damage, whatever field or record type carries it.
   defp strict_wire_reachable!(fields, node_fields, nodes, ids) do
     indexed = Enum.with_index(nodes, 2)
 
@@ -329,19 +332,24 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
         end
       end
 
-    bodies = node_fields |> Map.merge(unknown_fields) |> Map.put(1, fields)
-    seen = wire_reach([1], bodies, MapSet.new(), ids)
+    children =
+      node_fields
+      |> Map.merge(unknown_fields)
+      |> Map.put(1, fields)
+      |> Map.new(fn {idx, fs} -> {idx, wire_field_refs(fs, ids)} end)
 
-    if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
+    marks = wire_walk([{1, Map.get(children, 1, [])}], children, %{1 => :open})
+
+    if Enum.any?(node_indices, fn idx -> not Map.has_key?(marks, idx) end),
       do: throw(:wire_damaged)
 
     # A BLOB NAMED FROM TWO SLOTS refuses the whole read (§2.5): every pointer
     # payload in every body names, a skipped field's too, and each body is
     # counted once however many pointers reach it.
     names =
-      bodies
+      children
       |> Map.values()
-      |> Enum.flat_map(&wire_field_refs(&1, ids))
+      |> Enum.concat()
       |> Enum.frequencies()
 
     # A POINTER PAST THE NODE TABLE is damage wherever it rides (§3.1)
@@ -358,19 +366,34 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   defp blob_node?({:unknown, :blob}), do: true
   defp blob_node?(_node), do: false
 
-  defp wire_reach([], _bodies, seen, _ids), do: seen
+  # wire_walk is the depth-first descent from the root over an explicit
+  # stack of {node, pointers left}, never one recursion per pointer: a legal
+  # chain can be hundreds of thousands of nodes long. A node is :open while
+  # its descent is on the stack and :closed after; a pointer naming an open
+  # node is a cycle. Index 0 is null. The result's keys are the nodes the
+  # walk reached.
+  defp wire_walk([], _children, marks), do: marks
 
-  defp wire_reach([idx | rest], bodies, seen, ids) do
-    if MapSet.member?(seen, idx) do
-      wire_reach(rest, bodies, seen, ids)
-    else
-      refs =
-        case Map.fetch(bodies, idx) do
-          {:ok, fields} -> wire_field_refs(fields, ids)
-          :error -> []
-        end
+  defp wire_walk([{node, []} | stack], children, marks),
+    do: wire_walk(stack, children, Map.put(marks, node, :closed))
 
-      wire_reach(refs ++ rest, bodies, MapSet.put(seen, idx), ids)
+  defp wire_walk([{node, [0 | rest]} | stack], children, marks),
+    do: wire_walk([{node, rest} | stack], children, marks)
+
+  defp wire_walk([{node, [next | rest]} | stack], children, marks) do
+    case Map.get(marks, next) do
+      :open ->
+        throw(:wire_damaged)
+
+      :closed ->
+        wire_walk([{node, rest} | stack], children, marks)
+
+      nil ->
+        wire_walk(
+          [{next, Map.get(children, next, [])}, {node, rest} | stack],
+          children,
+          Map.put(marks, next, :open)
+        )
     end
   end
 
