@@ -607,9 +607,12 @@ type TableMessageShape struct {
 	QCount        uint32
 }
 
+// An entry also keeps, in the caller's storage, the first slot announcing its
+// id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID             uint64
-	Shape, Element TableMessageShape
+	ID                                   uint64
+	Shape, Element                       TableMessageShape
+	bodyFirst, bodySeenAt, bodySeenBelow uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -620,6 +623,7 @@ type TableVocabulary struct {
 	Announced, Refused bool
 	MaxBytes           int64
 	Strict             bool
+	bodyClock          uint64
 }
 
 type TableMessageReader struct {
@@ -749,10 +753,6 @@ type TableFixedDst struct {
 	Dst, Stride, Aux, Min uint32
 	Counted, Arg, Meta    uint8
 }
-
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const TableFixedDstDeprecated uint8 = 0x80
 
 type TableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -1813,6 +1813,63 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
 
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above seven bits holding that body's level) and a bit for each shallower
+// level whose body had named it: a level's mark still stands when that level's
+// open body began at or before the last naming, and the levels whose bodies
+// were opened since are dropped as the entry is named again. Two slots
+// announcing one id are one entry, the first.
+func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
+	v.bodyClock++
+	starts[depth] = v.bodyClock
+}
+
+func TableMessageSeenFirst(v *TableVocabulary) {
+	for i := range v.Count {
+		for j := range i {
+			if v.Entries[j].ID == v.Entries[i].ID {
+				v.Entries[i].bodyFirst = uint64(j + 1)
+				break
+			}
+		}
+	}
+}
+
+func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
+	}
+	at, last, below := e.bodySeenAt>>7, int(e.bodySeenAt&127), e.bodySeenBelow
+	if starts[depth] <= at {
+		if last == depth || below>>uint(depth)&1 != 0 {
+			return true
+		}
+		below &= 1<<uint(depth) - 1
+	} else {
+		kept, hi := 0, depth
+		for kept < hi {
+			mid := (kept + hi) / 2
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			below |= 1 << uint(last)
+		}
+		below &= 1<<uint(kept) - 1
+	}
+	e.bodySeenBelow = below
+	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
+	return false
+}
+
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
 		return TableMessageEntry{}, false
@@ -1906,10 +1963,14 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
 	case 12:
 		n, ok := TableMessageCount(r, s)
-		if !ok || !r.Align() {
+		if !ok || n > uint64(s.Max) || !r.Align() {
 			return false
 		}
-		return r.Skip(int64(n) * 8)
+		start := r.Offset / 8
+		if !r.Skip(int64(n) * 8) {
+			return false
+		}
+		return TableUTF8Valid(r.Buffer[start : start+int64(n)])
 	case 31:
 		if !r.Align() {
 			return false
@@ -1918,30 +1979,63 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && r.Skip(int64(n)*8)
 	case 14, 16:
 		n, ok := TableMessageCount(r, s)
-		if !ok {
+		if !ok || n > uint64(s.Max) {
 			return false
 		}
 		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
 			return false
 		}
-		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
-			width := e.Element.Bits
-			width = max(width, 0)
-			if s.Kind == 16 {
-				width += v.RefBits
-			}
+		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 || e.Element.Kind == 0 || e.Element.Kind == 32) {
+			width := max(e.Element.Bits, int64(0))
 			return r.Skip(int64(n) * width)
 		}
-		for range n {
-			if s.Kind == 16 && !r.Skip(v.RefBits) {
-				return false
+		if s.Kind == 16 {
+			var seen [64]uint64
+			keys := seen[:0]
+			for range n {
+				ref, ok := r.Get(v.RefBits)
+				if !ok {
+					return false
+				}
+				id, ok := v.Name(ref)
+				if !ok {
+					return false
+				}
+				if slices.Contains(keys, id) {
+					return false
+				}
+				keys = append(keys, id)
+				if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+					return false
+				}
 			}
+			return true
+		}
+		for range n {
 			before := r.Offset
 			if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
 				return false
 			}
 		}
 		return true
+	case 10:
+		if s.Packing == 2 {
+			index, ok := r.Get(s.Bits)
+			return ok && index <= uint64(s.QCount)
+		}
+		raw, ok := r.Get(32)
+		if !ok {
+			return false
+		}
+		f := math.Float32frombits(uint32(raw))
+		return f == f && !math.IsInf(float64(f), 0)
+	case 11:
+		raw, ok := r.Get(64)
+		if !ok {
+			return false
+		}
+		f := math.Float64frombits(raw)
+		return !math.IsNaN(f) && !math.IsInf(f, 0)
 	}
 	return s.Bits >= 0 && r.Skip(s.Bits)
 }
@@ -1951,13 +2045,25 @@ func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 	if depth > 128 {
 		return false
 	}
+	var seen [64]uint64
+	ids := seen[:0]
 	for {
 		ref, ok := r.Get(v.RefBits)
-		if !ok || ref == 0 {
-			return ok
+		if !ok {
+			return false
+		}
+		if ref == 0 {
+			return true
 		}
 		e, ok := v.Entry(ref)
-		if !ok || !TableMessageSkip(r, v, indexBits, e, depth) {
+		if !ok || e.ID >= 0xfffffffffffffffd {
+			return false
+		}
+		if slices.Contains(ids, e.ID) {
+			return false
+		}
+		ids = append(ids, e.ID)
+		if !TableMessageSkip(r, v, indexBits, e, depth) {
 			return false
 		}
 	}
@@ -2068,4 +2174,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x1dd8205132442415
+const Version uint64 = 0x11536863a144e917

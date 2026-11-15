@@ -202,6 +202,61 @@ func tableMessageBits(n uint64) int64 {
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
+
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above seven bits holding that body's level) and a bit for each shallower
+// level whose body had named it: a level's mark still stands when that level's
+// open body began at or before the last naming, and the levels whose bodies
+// were opened since are dropped as the entry is named again. Two slots
+// announcing one id are one entry, the first.
+func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
+	v.bodyClock++
+	starts[depth] = v.bodyClock
+}
+func tableMessageSeenFirst(v *TableVocabulary) {
+	for i := range v.Count {
+		for j := range i {
+			if v.Entries[j].ID == v.Entries[i].ID {
+				v.Entries[i].bodyFirst = uint64(j + 1)
+				break
+			}
+		}
+	}
+}
+func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
+	}
+	at, last, below := e.bodySeenAt>>7, int(e.bodySeenAt&127), e.bodySeenBelow
+	if starts[depth] <= at {
+		if last == depth || below>>uint(depth)&1 != 0 {
+			return true
+		}
+		below &= 1<<uint(depth) - 1
+	} else {
+		kept, hi := 0, depth
+		for kept < hi {
+			mid := (kept + hi) / 2
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			below |= 1 << uint(last)
+		}
+		below &= 1<<uint(kept) - 1
+	}
+	e.bodySeenBelow = below
+	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
+	return false
+}
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
 		return TableMessageEntry{}, false
@@ -379,6 +434,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if v.RefBits == 0 {
 		v.RefBits = 1
 	}
+	tableMessageSeenFirst(v)
 	v.Announced = true
 	return true
 }
@@ -575,10 +631,14 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1)
 	case 12:
 		n, ok := tableMessageCount(r, s)
-		if !ok || !r.Align() {
+		if !ok || n > uint64(s.Max) || !r.Align() {
 			return false
 		}
-		return r.Skip(int64(n) * 8)
+		start := r.Offset / 8
+		if !r.Skip(int64(n) * 8) {
+			return false
+		}
+		return tableUTF8Valid(r.Buffer[start : start+int64(n)])
 	case 31:
 		if !r.Align() {
 			return false
@@ -587,30 +647,63 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && r.Skip(int64(n)*8)
 	case 14, 16:
 		n, ok := tableMessageCount(r, s)
-		if !ok {
+		if !ok || n > uint64(s.Max) {
 			return false
 		}
 		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
 			return false
 		}
-		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
-			width := e.Element.Bits
-			width = max(width, 0)
-			if s.Kind == 16 {
-				width += v.RefBits
-			}
+		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 || e.Element.Kind == 0 || e.Element.Kind == 32) {
+			width := max(e.Element.Bits, int64(0))
 			return r.Skip(int64(n) * width)
 		}
-		for range n {
-			if s.Kind == 16 && !r.Skip(v.RefBits) {
-				return false
+		if s.Kind == 16 {
+			var seen [64]uint64
+			keys := seen[:0]
+			for range n {
+				ref, ok := r.Get(v.RefBits)
+				if !ok {
+					return false
+				}
+				id, ok := v.Name(ref)
+				if !ok {
+					return false
+				}
+				if slices.Contains(keys, id) {
+					return false
+				}
+				keys = append(keys, id)
+				if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+					return false
+				}
 			}
+			return true
+		}
+		for range n {
 			before := r.Offset
 			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
 				return false
 			}
 		}
 		return true
+	case 10:
+		if s.Packing == 2 {
+			index, ok := r.Get(s.Bits)
+			return ok && index <= uint64(s.QCount)
+		}
+		raw, ok := r.Get(32)
+		if !ok {
+			return false
+		}
+		f := math.Float32frombits(uint32(raw))
+		return f == f && !math.IsInf(float64(f), 0)
+	case 11:
+		raw, ok := r.Get(64)
+		if !ok {
+			return false
+		}
+		f := math.Float64frombits(raw)
+		return !math.IsNaN(f) && !math.IsInf(f, 0)
 	}
 	return s.Bits >= 0 && r.Skip(s.Bits)
 }
@@ -620,13 +713,25 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 	if depth > 128 {
 		return false
 	}
+	var seen [64]uint64
+	ids := seen[:0]
 	for {
 		ref, ok := r.Get(v.RefBits)
-		if !ok || ref == 0 {
-			return ok
+		if !ok {
+			return false
+		}
+		if ref == 0 {
+			return true
 		}
 		e, ok := v.Entry(ref)
-		if !ok || !tableMessageSkip(r, v, indexBits, e, depth) {
+		if !ok || e.ID >= 0xfffffffffffffffd {
+			return false
+		}
+		if slices.Contains(ids, e.ID) {
+			return false
+		}
+		ids = append(ids, e.ID)
+		if !tableMessageSkip(r, v, indexBits, e, depth) {
 			return false
 		}
 	}
@@ -872,9 +977,12 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 	return !w.Overflow
 }
 func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedEntity(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedEntityReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -889,11 +997,10 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x23fcfd6678e36712:
 			{
@@ -1422,9 +1529,12 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	return !w.Overflow
 }
 func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedStat(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedStatReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1439,11 +1549,10 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x80ab75f0866dbf65:
 			{
@@ -1568,9 +1677,12 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 	return !w.Overflow
 }
 func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedHitEvent(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedHitEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1585,11 +1697,10 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb7bc9ac015a25050:
 			{
@@ -1766,9 +1877,12 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 	return !w.Overflow
 }
 func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedChatEvent(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedChatEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1783,11 +1897,10 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa5013e9ad5caeda4:
 			{
@@ -1893,9 +2006,12 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 	return !w.Overflow
 }
 func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEvent) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedPickupEvent(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupEvent, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedPickupEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1910,11 +2026,10 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x9e7fd06d864fbd56:
 			{
@@ -2331,9 +2446,12 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	return !w.Overflow
 }
 func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
+	var starts [2]uint64
+	return tableMessageBodyBenchMixed(r, value, starts[:], 0)
+}
+func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	BenchMixedReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2348,11 +2466,10 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xaa38aca481f528a8:
 			{
@@ -2698,7 +2815,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					for i := range n {
 						p := &base[i]
-						if !MixedEntityLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyMixedEntity(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2738,7 +2855,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					for i := range n {
 						p := &base[i]
-						if !MixedStatLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyMixedStat(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2793,7 +2910,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 										value := &(*payload48)
 										MixedHitEventReset(&value.Hit)
 									}
-									if !MixedHitEventLoadMessageBody(r, &(*payload48).Hit) {
+									if !tableMessageBodyMixedHitEvent(r, &(*payload48).Hit, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2817,7 +2934,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 										value := &(*payload48)
 										MixedChatEventReset(&value.Chat)
 									}
-									if !MixedChatEventLoadMessageBody(r, &(*payload48).Chat) {
+									if !tableMessageBodyMixedChatEvent(r, &(*payload48).Chat, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2841,7 +2958,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 										value := &(*payload48)
 										MixedPickupEventReset(&value.Pickup)
 									}
-									if !MixedPickupEventLoadMessageBody(r, &(*payload48).Pickup) {
+									if !tableMessageBodyMixedPickupEvent(r, &(*payload48).Pickup, starts, depth+1) {
 										return false
 									}
 									if widened {

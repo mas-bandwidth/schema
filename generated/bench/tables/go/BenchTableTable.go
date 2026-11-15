@@ -474,9 +474,6 @@ type tableMapKey struct {
 	raw  uint64
 }
 
-func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
-	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
-}
 func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
 	key := tableMapKey{}
 	if f.Kind == 12 {
@@ -501,41 +498,6 @@ func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
 	} else {
 		tableJSONSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
 	}
-}
-func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
-	if f.Kind == 12 {
-		for i := 0; i < len(a.text) && i < len(b.text); i++ {
-			if a.text[i] < b.text[i] {
-				return -1
-			}
-			if a.text[i] > b.text[i] {
-				return 1
-			}
-		}
-		if len(a.text) < len(b.text) {
-			return -1
-		}
-		if len(a.text) > len(b.text) {
-			return 1
-		}
-		return 0
-	}
-	if f.Kind >= 2 && f.Kind <= 5 {
-		if int64(a.raw) < int64(b.raw) {
-			return -1
-		}
-		if int64(a.raw) > int64(b.raw) {
-			return 1
-		}
-		return 0
-	}
-	if a.raw < b.raw {
-		return -1
-	}
-	if a.raw > b.raw {
-		return 1
-	}
-	return 0
 }
 
 // A guarded group rides only when its guard reads true — the wire's own elision
@@ -919,8 +881,6 @@ func (r *TableReport) Err() error {
 
 const tableIDCapacity = 78
 const tableIDBuckets = 256
-const tableWireBytesID uint64 = 0x2f2ec0474f1c4fe4
-const tableWireStringID uint64 = 0x704be0d8faaffc58
 
 // TableIds interns the writer's ids in first-use order. Bucket links are
 // one-based so its zero value is ready to use, including for hash zero.
@@ -1491,30 +1451,19 @@ func tableUTF8Valid(data []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
-func tableUTF8Clamp(data []byte, n int64) int64 {
-	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
-		n--
-	}
-	return n
-}
-
 // tableBinaryMaxDepth is the binary nesting bound (mas-bandwidth/schema docs/SPEC-TABLES.md §4,
 // binary_max_depth): a root body or a node record is level 0, each table,
 // array or keyed body one level deeper, and level 129 refuses.
 const tableBinaryMaxDepth = 128
 
 type tableWireCheck struct {
-	depth   int32
-	ids     int
-	nodes   uint64
-	records TableReader
-	graph   []uint64
-	release bool
-	head    uint64
-	gen     uint32
-	reason  TableRefuseReason
-	mark    func(uint64)
-	stamp   [4097]uint32
+	depth  int32
+	ids    uint64
+	nodes  uint64
+	gen    uint32
+	reason TableRefuseReason
+	mark   func(uint64)
+	stamp  [4097]uint32
 }
 
 func (c *tableWireCheck) fail(reason TableRefuseReason) bool {
@@ -1542,25 +1491,6 @@ func (c *tableWireCheck) edge(index uint64) bool {
 	if index == 1 || index > c.nodes+1 {
 		return c.fail(TableRefuseWireDamaged)
 	}
-	if c.graph == nil {
-		return true
-	}
-	at := &c.graph[2*(index-1)]
-	if !c.release {
-		if uint32(*at) == ^uint32(0) {
-			return c.fail(TableRefuseWireDamaged)
-		}
-		*at++
-		return true
-	}
-	if uint32(*at) == 0 {
-		return c.fail(TableRefuseWireDamaged)
-	}
-	*at--
-	if uint32(*at) == 0 {
-		*at |= c.head << 32
-		c.head = index + 1
-	}
 	return true
 }
 
@@ -1583,7 +1513,7 @@ func (c *tableWireCheck) body(r TableReader, root bool) (int64, bool) {
 		if ref == 0 {
 			break
 		}
-		if ref > uint64(c.ids) || !probe.Has(1) {
+		if ref > c.ids || !probe.Has(1) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 		if c.stamp[ref] == gen {
@@ -1652,7 +1582,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 30:
 		ref, ok := r.Leb()
-		if !ok || ref > uint64(c.ids) {
+		if !ok || ref > c.ids {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 	case 15:
@@ -1729,7 +1659,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 	if count > math.MaxInt32 {
 		return 0, c.fail(TableRefuseCountOverExtentCap)
 	}
-	if count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
+	if sub.Offset < 0 || count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	if !keyed {
@@ -1747,7 +1677,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 	probe := sub
 	for range count {
 		key, ok := probe.Leb()
-		if !ok || key == 0 || key > uint64(c.ids) {
+		if !ok || key == 0 || key > c.ids {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 		if c.stamp[key] == gen {
@@ -1772,7 +1702,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 // arm's kind and its L-framed payload.
 func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	ref, ok := r.Leb()
-	if !ok || ref > uint64(c.ids) {
+	if !ok || ref > c.ids {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	if ref == 0 {
@@ -1805,143 +1735,12 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	return r.Offset, true
 }
 
-// record walks the node record at offset in the node table: a blob's bytes, or
-// a table body of any type, named or not.
-func (c *tableWireCheck) record(at int64) bool {
-	r := c.records
-	r.Offset = at
-	ref, _ := r.Leb()
-	id, _ := r.Resolve(ref)
-	body, _ := r.Body()
-	switch id {
-	case tableWireBytesID:
-		return true
-	case tableWireStringID:
-		return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
-	}
-	return c.framed(body, 13)
-}
-
-// tableWireVerify holds every wire-alone condition over an opened file
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): the root body, the node table and every
-// record in it, and the pointer graph. scratch holds two words per node,
-// at the node index less one (record i of the table is node i+1); a nil or
-// short scratch is allocated here, which only a file with a node table needs.
-func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
-	var c tableWireCheck
-	c.ids = len(r.Ids) / 8
-	// the node table, found by the root's headers: a declared count, then that
-	// many records, each a type reference and an L-framed body, filling the field
-	probe := r
-	probe.Offset = 0
-	for {
-		ref, ok := probe.Leb()
-		if !ok || ref == 0 {
-			break
-		}
-		id, ok := probe.Resolve(ref)
-		if !ok || !probe.Has(1) {
-			break
-		}
-		kind := probe.Get8()
-		if id == 0xffffffffffffffff && kind == 12 {
-			payload, ok := probe.Body()
-			if !ok {
-				break
-			}
-			count, ok := payload.Leb()
-			if !ok || count > uint64(len(payload.Buffer)) {
-				return TableRefuseWireDamaged
-			}
-			c.records = payload
-			c.nodes = count
-			break
-		}
-		if !probe.Skip(kind) {
-			break
-		}
-	}
-	if c.nodes > 0 {
-		if uint64(len(scratch)) < 2*(c.nodes+1) {
-			scratch = make([]uint64, 2*(c.nodes+1))
-		}
-		c.graph = scratch[:2*(c.nodes+1)]
-		clear(c.graph)
-		rec := c.records
-		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
-			ref, ok := rec.Leb()
-			if !ok {
-				return TableRefuseWireDamaged
-			}
-			if _, ok := rec.Resolve(ref); !ok {
-				return TableRefuseWireDamaged
-			}
-			if _, ok := rec.Body(); !ok {
-				return TableRefuseWireDamaged
-			}
-		}
-		if rec.Offset != int64(len(rec.Buffer)) {
-			return TableRefuseWireDamaged
-		}
-	}
-	// the first pass: every check, and each record's in-degree
-	root := r
-	root.Offset = 0
-	if end, ok := c.body(root, true); !ok || end != int64(len(root.Buffer)) {
-		return c.failed()
-	}
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if !c.record(int64(c.graph[2*(i-1)+1])) {
-			return c.failed()
-		}
-	}
-	if c.nodes == 0 {
-		return TableRefuseOk
-	}
-	// a blob named twice is shared, and a record no pointer names is unreachable
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
-			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
-			ref, _ := rec.Leb()
-			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
-				return TableRefuseBlobShared
-			}
-		}
-	}
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
-			return TableRefuseWireDamaged
-		}
-	}
-	// Kahn's algorithm from the root: a record a cycle holds is never released
-	c.release = true
-	if _, ok := c.body(root, true); !ok {
-		return c.failed()
-	}
-	visited := uint64(0)
-	for c.head != 0 {
-		i := c.head - 1
-		c.head = c.graph[2*(i-1)] >> 32
-		c.graph[2*(i-1)] &= 0xffffffff
-		visited++
-		if !c.record(int64(c.graph[2*(i-1)+1])) {
-			return c.failed()
-		}
-	}
-	if visited != c.nodes {
-		return TableRefuseWireDamaged
-	}
-	return TableRefuseOk
-}
-
 // tableWireSkipValue walks one unknown payload with the wire-alone rules while
 // the body read skips it, so a field this reader cannot name is still held to
 // every condition the wire alone decides (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
-	c.ids = len(r.Ids) / 8
+	c.ids = uint64(len(r.Ids)) / 8
 	c.depth = r.Depth
 	c.nodes = 0 // tableWireSkipNodes
 	at, ok := c.value(*r, kind)
@@ -1954,7 +1753,7 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 }
 func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 	var c tableWireCheck
-	c.ids = len(r.Ids) / 8
+	c.ids = uint64(len(r.Ids)) / 8
 	c.depth = r.Depth
 	if arm && (kind == 13 || kind == 14 || kind == 16) {
 		c.depth--
@@ -1965,23 +1764,6 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 		return false
 	}
 	return true
-}
-
-// tableWireRecordCheck walks one node record whose type this reader does not
-// name, so no LoadBody reaches it, with the same wire-alone rules the body read
-// applies to a record it does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). nodes is the
-// table's record count, which bounds every pointer index; mark, when not nil,
-// names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
-	var c tableWireCheck
-	c.ids = ids
-	c.nodes = nodes
-	c.mark = mark
-	end, ok := c.body(body, false)
-	if !ok || end != int64(len(body.Buffer)) {
-		return c.failed()
-	}
-	return c.reason
 }
 
 // tableOpenChecked opens a form-1 file and answers the report as a refusal for
@@ -2051,9 +1833,13 @@ type TableMessageShape struct {
 	QMin, QDelta  float32
 	QCount        uint32
 }
+
+// An entry also keeps, in the caller's storage, the first slot announcing its
+// id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID             uint64
-	Shape, Element TableMessageShape
+	ID                                   uint64
+	Shape, Element                       TableMessageShape
+	bodyFirst, bodySeenAt, bodySeenBelow uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -2064,6 +1850,7 @@ type TableVocabulary struct {
 	Announced, Refused bool
 	MaxBytes           int64
 	Strict             bool
+	bodyClock          uint64
 }
 type TableMessageReader struct {
 	Bits       TableBitReader
@@ -2208,10 +1995,6 @@ type TableFixedDst struct {
 	Dst, Stride, Aux, Min uint32
 	Counted, Arg, Meta    uint8
 }
-
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
 
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -2467,15 +2250,15 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
 }
 
-func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
-func tableFixedPut16(b []byte, v uint16)       { binary.LittleEndian.PutUint16(b, v) }
-func tableFixedPut32(b []byte, v uint32)       { binary.LittleEndian.PutUint32(b, v) }
-func tableFixedPut64(b []byte, v uint64)       { binary.LittleEndian.PutUint64(b, v) }
-func tableFixedPutF32(b []byte, v float32)     { tableFixedPut32(b, math.Float32bits(v)) }
-func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64bits(v)) }
-func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
-func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
-func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
+func tableFixedPut8(b []byte, v uint8)     { b[0] = v }
+func tableFixedPut16(b []byte, v uint16)   { binary.LittleEndian.PutUint16(b, v) }
+func tableFixedPut32(b []byte, v uint32)   { binary.LittleEndian.PutUint32(b, v) }
+func tableFixedPut64(b []byte, v uint64)   { binary.LittleEndian.PutUint64(b, v) }
+func tableFixedPutF32(b []byte, v float32) { tableFixedPut32(b, math.Float32bits(v)) }
+func tableFixedPutF64(b []byte, v float64) { tableFixedPut64(b, math.Float64bits(v)) }
+
+func tableFixedGet32(b []byte) uint32 { return binary.LittleEndian.Uint32(b) }
+func tableFixedGet64(b []byte) uint64 { return binary.LittleEndian.Uint64(b) }
 
 func tableFixedCopyRun(d, s []byte, n uint32) {
 	if n == 0 {
@@ -3183,12 +2966,12 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
 	// worth of them — are layout_malformed and not one of the seven.
-	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
+	if int64(len(bytes)) < int64(tableFixedLayoutHeaderBytes) {
 		return out, "layout_malformed"
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+	if count == 0 || count > 0x7fffffff || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
 	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
@@ -3409,9 +3192,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -8079,7 +7859,11 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut64(b[26:], uint64(value.Nonce))
 	tableFixedPut64(b[34:], uint64(value.WorldTime))
 	tableFixedPut64(b[42:], uint64(value.FrameTick))
-	tableFixedPutF32(b[50:], value.ServerTime)
+	if value.ServerTime == 0 {
+		tableFixedPutF32(b[50:], 0)
+	} else {
+		tableFixedPutF32(b[50:], value.ServerTime)
+	}
 	tableFixedPut32(b[54:], uint32(value.EntitiesCount))
 	{
 		livei := min(max(int64(value.EntitiesCount), 0), 8)
@@ -8114,14 +7898,30 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	copy(b[1128:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1147:], uint32(value.PayloadLength))
 	copy(b[1147:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1167:], value.AimX)
-	tableFixedPutF32(b[1171:], value.AimY)
-	tableFixedPutF32(b[1175:], value.AimZ)
+	if value.AimX == 0 {
+		tableFixedPutF32(b[1167:], 0)
+	} else {
+		tableFixedPutF32(b[1167:], value.AimX)
+	}
+	if value.AimY == 0 {
+		tableFixedPutF32(b[1171:], 0)
+	} else {
+		tableFixedPutF32(b[1171:], value.AimY)
+	}
+	if value.AimZ == 0 {
+		tableFixedPutF32(b[1175:], 0)
+	} else {
+		tableFixedPutF32(b[1175:], value.AimZ)
+	}
 	tableFixedPutF32(b[1179:], value.Recoil)
 	tableFixedPutF64(b[1183:], value.Drift)
 	tableFixedPut64(b[1191:], uint64(value.WideKey))
 	tableFixedPut64(b[1199:], uint64(value.Flux))
-	tableFixedPutF32(b[1207:], value.Ping)
+	if value.Ping == 0 {
+		tableFixedPutF32(b[1207:], 0)
+	} else {
+		tableFixedPutF32(b[1207:], value.Ping)
+	}
 	tableFixedPut32(b[1211:], uint32(value.CrcHint))
 	{
 		p := uint8(0)
@@ -8805,10 +8605,10 @@ func TableEntityFixedMeasure(count int64) int64 {
 }
 
 // TableEntityFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
 	need := TableEntityFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -8927,6 +8727,11 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -9061,10 +8866,10 @@ func TableStatFixedMeasure(count int64) int64 {
 }
 
 // TableStatFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
 	need := TableStatFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9183,6 +8988,11 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -9541,10 +9351,10 @@ func TableMixedFixedMeasure(count int64) int64 {
 }
 
 // TableMixedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableMixedFixedSave(values []TableMixed, buffer []byte) int64 {
 	need := TableMixedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9664,6 +9474,11 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}

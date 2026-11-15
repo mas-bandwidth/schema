@@ -868,10 +868,19 @@ def wc_slot(sl:Slot) -> bool:
     if f.present != "" and not sl.present:
         return true
     if f.s == "map":
-        for(sl.entries) entry:
-            let er = entry.tab
+        // a map's keys are distinct: the wire carries them strictly
+        // ascending (docs/SPEC-TABLES.md §2.8), so a key held twice is
+        // refused here, in the order the encoder writes them
+        let key = table_of(f.t).fields[0]
+        var last = Value {}
+        for(sg_map_order(f, sl)) at, i:
+            let er = sl.entries[at].tab
             if er and not wc_body(er):
                 return false
+            let k = if er: er.fields[0].cell else: Value {}
+            if i > 0 and map_key_order(key, last, k) >= 0:
+                return false
+            last = k
         return true
     if f.s == "arr":
         var n = length(sl.elems)

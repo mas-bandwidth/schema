@@ -27,7 +27,7 @@ const (
 	// The ceiling is the measured count rounded up to the next multiple of 250
 	// lines: a card edits a constant only when its measurement crosses a step,
 	// and adds no comment line for it.
-	goOneTableLineBudget = 10500
+	goOneTableLineBudget = 10250
 	goExamplesLineBudget = 60500
 )
 

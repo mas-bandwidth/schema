@@ -57,6 +57,8 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
   scratchBits += 2;
   for (var i0 = 0; i0 < value.entriesCount; i0++) {
     final e0 = value.entries[i0];
+    assert(e0.retries >= -2147483648);
+    assert(e0.retries <= 2147483647);
     assert(e0.preferred >= 0);
     assert(e0.preferred <= 15);
     v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -253,6 +255,8 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
       scratchBits += 2;
       for (var i0 = 0; i0 < value.first.entriesCount; i0++) {
         final e0 = value.first.entries[i0];
+        assert(e0.retries >= -2147483648);
+        assert(e0.retries <= 2147483647);
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
         v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -284,6 +288,8 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
       scratchBits += 2;
       for (var i0 = 0; i0 < value.second.entriesCount; i0++) {
         final e0 = value.second.entries[i0];
+        assert(e0.retries >= -2147483648);
+        assert(e0.retries <= 2147483647);
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
         v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -535,6 +541,8 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
       scratchBits += 2;
       for (var i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         final e0 = value.choice.first.entries[i0];
+        assert(e0.retries >= -2147483648);
+        assert(e0.retries <= 2147483647);
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
         v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -566,6 +574,8 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
       scratchBits += 2;
       for (var i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         final e0 = value.choice.second.entries[i0];
+        assert(e0.retries >= -2147483648);
+        assert(e0.retries <= 2147483647);
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
         v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -821,6 +831,8 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   scratchBits += 2;
   for (var i0 = 0; i0 < value.payload.entriesCount; i0++) {
     final e0 = value.payload.entries[i0];
+    assert(e0.retries >= -2147483648);
+    assert(e0.retries <= 2147483647);
     assert(e0.preferred >= 0);
     assert(e0.preferred <= 15);
     v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -1091,6 +1103,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
       scratchBits += 2;
       for (var i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         final e0 = value.first.payload.entries[i0];
+        assert(e0.retries >= -2147483648);
+        assert(e0.retries <= 2147483647);
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
         v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
@@ -1167,6 +1181,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
       scratchBits += 2;
       for (var i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         final e0 = value.second.payload.entries[i0];
+        assert(e0.retries >= -2147483648);
+        assert(e0.retries <= 2147483647);
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
         v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
