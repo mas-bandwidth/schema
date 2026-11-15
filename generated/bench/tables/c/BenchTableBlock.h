@@ -50,13 +50,13 @@ extern "C" {
 
 #ifndef SCHEMA_BENCHTABLE_TABLE_ALLOCATOR_RUNTIME
 #define SCHEMA_BENCHTABLE_TABLE_ALLOCATOR_RUNTIME
-#ifndef schema_benchtable_allocate
+#ifndef schema_allocate
 #include <stdlib.h>
-#define schema_benchtable_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
 #endif
-#ifndef schema_benchtable_release
+#ifndef schema_release
 #include <stdlib.h>
-#define schema_benchtable_release(pointer) free(pointer)
+#define schema_release(pointer) free(pointer)
 #endif
 typedef struct benchtable_table_allocator_t
 {
@@ -65,9 +65,9 @@ typedef struct benchtable_table_allocator_t
     void * context;
 } benchtable_table_allocator_t;
 static SCHEMA_UNUSED void * benchtable_table_default_allocate(void * context,int64_t bytes)
-{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_benchtable_allocate(bytes) : NULL; }
+{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
 static SCHEMA_UNUSED void benchtable_table_default_release(void * context,void * pointer)
-{ (void)context; schema_benchtable_release(pointer); }
+{ (void)context; schema_release(pointer); }
 static SCHEMA_UNUSED benchtable_table_allocator_t benchtable_table_default_allocator(void)
 {
     benchtable_table_allocator_t allocator={benchtable_table_default_allocate,benchtable_table_default_release,NULL}; return allocator;
@@ -108,8 +108,8 @@ typedef benchtable_table_allocator_t benchtable_table_block_allocator_t;
 
 /* The default triple, for a caller that has no allocator of its own to hand
    in. Nothing in the generated surface reaches for it: a caller names it. */
-static SCHEMA_UNUSED void * benchtable_table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_benchtable_allocate(bytes) : NULL; }
-static SCHEMA_UNUSED void benchtable_table_block_default_free( void * context, void * pointer ) { (void) context; schema_benchtable_release( pointer ); }
+static SCHEMA_UNUSED void * benchtable_table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
+static SCHEMA_UNUSED void benchtable_table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
 
 static SCHEMA_UNUSED benchtable_table_block_allocator_t benchtable_table_block_default_allocator( void )
 {

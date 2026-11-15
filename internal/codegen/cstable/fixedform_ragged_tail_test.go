@@ -43,9 +43,9 @@ func TestFixedFormRaggedTail(t *testing.T) {
             TableReport rf = new TableReport();
             TableFixedEntry[] planf = new TableFixedEntry[8192];
             long nf = Schema.@TABLE@FixedLoad(full, data, planf, rf);
-            if (nf != 1 || rf.Refused || rf.Malformed || rf.Reason != null)
+            if (nf != 1 || rf.Refused || rf.Damaged || rf.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "the fixture does not read cleanly at its true length: n=" + nf + " refused=" + rf.Refused + " malformed=" + rf.Malformed + " reason=" + rf.Reason);
+                bad += ProbeLog.Fail(@NAME@, "the fixture does not read cleanly at its true length: n=" + nf + " refused=" + rf.Refused + " malformed=" + rf.Damaged + " reason=" + rf.Reason);
             }
             // THE RECORD SIZE IS THE SELECTED LINEAGE ENTRY'S, read off the
             // emitted lineage (Schema.@TABLE@FixedKnown) by the file's hash and
@@ -84,12 +84,12 @@ func TestFixedFormRaggedTail(t *testing.T) {
                 long n = Schema.@TABLE@FixedLoad(back, ragged, plan, r);
                 if (n != -1)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a record region that is not whole records must be malformed and return -1: extra=" + extra + " n=" + n + " malformed=" + r.Malformed + " refused=" + r.Refused);
+                    bad += ProbeLog.Fail(@NAME@, "a record region that is not whole records must be malformed and return -1: extra=" + extra + " n=" + n + " malformed=" + r.Damaged + " refused=" + r.Refused);
                     continue;
                 }
-                if (!r.Malformed)
+                if (!r.Damaged)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a ragged tail is malformed, never clean: extra=" + extra + " malformed=" + r.Malformed);
+                    bad += ProbeLog.Fail(@NAME@, "a ragged tail is malformed, never clean: extra=" + extra + " malformed=" + r.Damaged);
                 }
                 if (r.Refused)
                 {
@@ -103,9 +103,9 @@ func TestFixedFormRaggedTail(t *testing.T) {
                 {
                     bad += ProbeLog.Fail(@NAME@, "this leg answers Verdict.Damaged alongside Malformed: extra=" + extra + " verdict=" + r.Verdict);
                 }
-                if (r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+                if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a malformed read: extra=" + extra + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " clamped=" + r.Clamped + " duplicate=" + r.Duplicate + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a malformed read: extra=" + extra + " unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
                 }
                 if (r.LayoutHash != 0)
                 {
@@ -134,9 +134,9 @@ func TestFixedFormRaggedTail(t *testing.T) {
                 TableReport rw = new TableReport();
                 TableFixedEntry[] planw = new TableFixedEntry[8192];
                 long nw = Schema.@TABLE@FixedLoad(one, whole, planw, rw);
-                if (nw != -1 || !rw.Refused || rw.Reason != "batch_too_large" || rw.Malformed)
+                if (nw != -1 || !rw.Refused || rw.Reason != "batch_too_large" || rw.Damaged)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "extra == recordBytes is one more whole record and owes batch_too_large, not malformed: n=" + nw + " refused=" + rw.Refused + " reason=" + rw.Reason + " malformed=" + rw.Malformed);
+                    bad += ProbeLog.Fail(@NAME@, "extra == recordBytes is one more whole record and owes batch_too_large, not malformed: n=" + nw + " refused=" + rw.Refused + " reason=" + rw.Reason + " malformed=" + rw.Damaged);
                 }
             }`},
 	}

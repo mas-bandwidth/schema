@@ -282,6 +282,19 @@ local function width_of(kind)
   return 0
 end
 
+-- THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+-- 14) opens with 1–13, 15, 17 or 18–30, and an enum-keyed body (kind 16) with
+-- 1–11, 13 or 18–30. Any other element kind is damage under any count, a count
+-- of 0 included, in a declared field and in an unknown one alike. The header's
+-- element kind byte is judged before any comparison with the reader's own.
+local function array_elem_kind_allowed(kind)
+  return (kind >= 1 and kind <= 13) or kind == 15 or kind == 17 or (kind >= 18 and kind <= 30)
+end
+
+local function keyed_elem_kind_allowed(kind)
+  return (kind >= 1 and kind <= 11) or kind == 13 or (kind >= 18 and kind <= 30)
+end
+
 -- skipping a field the reader cannot name (§3): fixed widths first, then
 -- references, then lengths, and a unknown kind is damage (not skippable).
 local function skip(r, kind)
@@ -462,12 +475,21 @@ local function node_scan(bytes, o, report, variable, st)
       report.wireDamaged = true
       return nil
     end
+    local tid = o.table[tref]
+    -- A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+    -- MALFORMED (§3.1, §3.3): a record's type cannot be one of the three ids
+    -- the language holds back. The two blob ids are lawful record types (§2.5).
+    if tid == NODE_TABLE_ID or tid == BUILD_VERSION_ID or tid == MESSAGE_VOCABULARY_ID then
+      report.damaged = true
+      report.wireDamaged = true
+      return nil
+    end
     local entry = rawpool[#raw + 1]
     if entry == nil then
       entry = {}
       rawpool[#raw + 1] = entry
     end
-    entry.tid, entry.at, entry.lim = o.table[tref], rec.at, rec.at + n
+    entry.tid, entry.at, entry.lim = tid, rec.at, rec.at + n
     raw[#raw + 1] = entry
     rec.at = rec.at + n
   end
@@ -663,6 +685,14 @@ local function scalar_at(r, d, kind, report, ctx)
       report.outOfRange = report.outOfRange + 1
     end
   end
+  -- A RANGED FLOAT IS HELD TO ITS DECLARED [fmin, fmax] (docs/SPEC-TABLES.md,
+  -- the float table's VARIABLE row; docs/SPEC.md §5.1 row 10): a finite value
+  -- outside it counts out of range and the strict read refuses it; no
+  -- reader clamps. A field, an element, a map value and a union arm all land
+  -- here, as fixed.lua and message.lua hold the same bound.
+  if d.fmin ~= nil and d.fmax ~= nil and (x < d.fmin or x > d.fmax) then
+    report.outOfRange = report.outOfRange + 1
+  end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
   -- declared kind is TBits): a flags field's descriptor carries its wire bits
   -- for the JSON writer, and an undeclared flag bit on the wire lands as it
@@ -746,12 +776,37 @@ end
 -- earlier occurrence left keeps that occurrence's unreplaced slots (decode.go
 -- arrayBody leaves fv.Elems standing). A pointer slot there is still queued
 -- against the earlier array, so its entries are pointed at the new one, where
--- they resolve before the repeat's own entries for the same slots.
+-- they resolve before the repeat's own entries for the same slots. The move is
+-- recorded, not applied by reading the queue: resolution follows it (moved_to),
+-- so a repeat costs one step whatever the load queued before it.
 local function adopt(ctx, from, to)
-  local pending = ctx.pending
-  for i = 1, ctx.np do
-    local p = pending[i]
-    if p.holder == from then p.holder = to end
+  ctx.moved[from] = to
+end
+
+-- the holder a queued slot lands in: its own, or the array the repeats of a
+-- fixed array moved it to, the chain shortened as it is walked
+local function moved_to(moved, holder)
+  local to = moved[holder]
+  if to == nil then return holder end
+  local last = to
+  while moved[last] ~= nil do
+    last = moved[last]
+  end
+  while to ~= last do
+    moved[holder] = last
+    holder = to
+    to = moved[to]
+  end
+  return last
+end
+
+-- the moves of a load are given back empty
+local function clear_moved(ctx)
+  local moved = ctx.moved
+  if next(moved) ~= nil then
+    for k in pairs(moved) do
+      moved[k] = nil
+    end
   end
 end
 
@@ -1026,6 +1081,15 @@ end
 array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
   local report = ctx.report
 
+  -- THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+  -- with the field's declaration (docs/SPEC-TABLES.md §3, §4).
+  local allowed = array_elem_kind_allowed
+  if fd.keyed ~= nil then allowed = keyed_elem_kind_allowed end
+  if not allowed(ek) then
+    report.damaged = true
+    return nil, false
+  end
+
   if fd.shape == "bytes" then
     local expected = 6
     if ek ~= expected then
@@ -1086,6 +1150,8 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     local last = nil
     local landed = false
     local widened = false
+    -- the queue range of the entry that placed the key `last` holds
+    local placed0, placed1 = 0, 0
     local i = 0
     while math.ult(i, count) do
       i = i + 1
@@ -1129,6 +1195,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         local inst = fresh(T, entry)
         sub.at = at
         local elim, ebad = narrow(sub, n)
+        local np0 = ctx.np
         read_body(T, ctx, entry, sub, inst, true, keyname)
         restore(sub, at, n, elim, ebad)
         local dkey = inst[keyname]
@@ -1138,7 +1205,10 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
           -- resolves and counts, as the engine resolves every slot while it
           -- reads the entry (decodenodes.go resolveCell), so an index past
           -- the node table is damage even in an entry a later key replaces.
-          for j = 1, ctx.np do
+          -- The slots under that key are the ones the entry that placed it
+          -- queued (an earlier entry of the key already went to the sink),
+          -- so only that entry's range is read: the cost stays the entry's.
+          for j = placed0 + 1, placed1 do
             local pp = ctx.pending[j]
             if pp.holder == out and pp.key == last then pp.holder = ctx.sink end
           end
@@ -1153,10 +1223,13 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         -- itself under the entry's key, so resolve lands the value there.
         -- An entry whose value is null is still an entry (§2.8, §3.1): a key
         -- cannot hold nil, so it holds false, as a null list element does.
+        -- Only the slots this entry queued are read, so an entry costs its
+        -- own slots, never every slot the load queued before it.
+        placed0, placed1 = np0, ctx.np
         local vf = fd.value_field
         if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
           out[dkey] = false
-          for j = ctx.np, 1, -1 do
+          for j = ctx.np, np0 + 1, -1 do
             local pp = ctx.pending[j]
             if pp.holder == inst then
               pp.holder = out
@@ -1791,11 +1864,15 @@ end
 -- (checked against the reader's own root type), k + 1 is record k. A blob
 -- record resolves to its NODE BOX, so two slots naming one record land one
 -- Lua reference and two distinct records of equal bytes stay two (§3.1, §6.3).
+-- A record whose type this reader DECLARES but which is not the type the slot
+-- requires is damage (docs/rulings.json pointer-target-type-checked); only a
+-- record of a type it cannot name at all reads null.
 local function resolve(ctx, root, rootdesc)
   local report = ctx.report
   local good = ctx.good
   local seen_blob = nil
   local pending = ctx.pending
+  local moved = ctx.moved
   for i = 1, ctx.np do
     local p = pending[i]
     local d = p.d
@@ -1826,7 +1903,8 @@ local function resolve(ctx, root, rootdesc)
                 seen_blob[p.index] = true
               end
             else
-              report.kindChanged = report.kindChanged + 1
+              report.damaged = true
+              report.wireDamaged = true
             end
           elseif d.shape == "bytes_blob" then
             if node.kind == "b" then
@@ -1838,12 +1916,14 @@ local function resolve(ctx, root, rootdesc)
                 seen_blob[p.index] = true
               end
             else
-              report.kindChanged = report.kindChanged + 1
+              report.damaged = true
+              report.wireDamaged = true
             end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
           else
-            report.kindChanged = report.kindChanged + 1
+            report.damaged = true
+            report.wireDamaged = true
           end
         elseif d.shape == "pointer" then
           value = false
@@ -1857,11 +1937,12 @@ local function resolve(ctx, root, rootdesc)
     -- not resolve is WRITTEN null rather than left alone, because an earlier
     -- occurrence of the same slot may already have resolved into it.
     if value == nil then value = p.null end
-    p.holder[p.key] = value
+    moved_to(moved, p.holder)[p.key] = value
     -- the queue keeps its entries for the next load, and no value it named
     p.holder, p.d = nil, nil
   end
   ctx.np = 0
+  clear_moved(ctx)
 end
 
 -- THE LOADER STATE (docs/PORTING.md M1: the read path allocates nothing, and the
@@ -1902,6 +1983,9 @@ function L.NewState()
       report = nil,
       pending = {},
       np = 0,
+      -- the moves the repeats of a fixed array record (adopt), emptied when
+      -- the queue resolves or is released
+      moved = {},
       nodes = NO_NODES,
       good = false,
       owner = nil,
@@ -1922,6 +2006,7 @@ local function release(ctx)
     p.holder, p.d = nil, nil
   end
   ctx.np = 0
+  clear_moved(ctx)
   local sink = ctx.sink
   if next(sink) ~= nil then
     for k in pairs(sink) do
@@ -2320,6 +2405,9 @@ end
 local function wc_array(c, b, at, lim)
   local ek, count, off = wc_header(c, b, at, lim)
   if ek == nil then return nil end
+  -- THE ELEMENT KIND IS CLOSED, judged under any count, a count of 0 included
+  -- (docs/SPEC-TABLES.md §3, §4).
+  if not array_elem_kind_allowed(ek) then return wc_fail(c, "wire_damaged") end
   for _ = 1, count do
     off = wc_payload(c, b, off, lim, ek)
     if off == nil then return nil end
@@ -2331,6 +2419,9 @@ end
 local function wc_keyed(c, b, at, lim)
   local ek, count, off = wc_header(c, b, at, lim)
   if ek == nil then return nil end
+  -- THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+  -- count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+  if not keyed_elem_kind_allowed(ek) then return wc_fail(c, "wire_damaged") end
   local seen = wc_set(c.slots, c.depth)
   for _ = 1, count do
     local key, nx = wc_leb(b, off, lim)

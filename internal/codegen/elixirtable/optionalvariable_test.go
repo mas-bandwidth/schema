@@ -259,6 +259,9 @@ IO.puts("ok")
 	elixirPatch(t, planted,
 		"defp clamp_count(n, %{max_count: max}, _report) when n > max,\n    do: {max, throw(:wire_damaged)}",
 		"defp clamp_count(n, %{max_count: max}, report) when n > max,\n    do: {max, report}")
+	// The framing walk over every body (strict_syntax!) refuses this wire
+	// too, so the witness plants it out beside the rule it pins.
+	elixirPatch(t, planted, "        strict_syntax!(body, nodes, ids)\n", "")
 	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
 		t.Fatalf("the reader with its count refusal planted out still passed: the probe does not see the rule\n%s", out)
 	}
@@ -324,6 +327,9 @@ IO.puts("ok")
 	if k == 0 {
 		t.Fatal("the witness found no early-terminator check in the generated reader")
 	}
+	// The framing walk over every body (strict_syntax!) refuses this wire
+	// too, so the witness plants it out beside the rule it pins.
+	elixirPatch(t, planted, "        strict_syntax!(body, nodes, ids)\n", "")
 	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
 		t.Fatalf("the reader without its early-terminator check still passed: the probe does not see the rule\n%s", out)
 	}
@@ -379,6 +385,9 @@ IO.puts("ok")
 	if k == 0 {
 		t.Fatal("the witness found no nested node-id check in the generated reader")
 	}
+	// The framing walk over every body (strict_syntax!) refuses this wire
+	// too, so the witness plants it out beside the rule it pins.
+	elixirPatch(t, planted, "        strict_syntax!(body, nodes, ids)\n", "")
 	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
 		t.Fatalf("the reader without its nested node-id check still passed: the probe does not see the rule\n%s", out)
 	}

@@ -68,12 +68,23 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     CHECK(lower.b == defaults.b);
     CHECK(r4.refused && r4.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
 
+    /* each one-sided end past its bound, forged after the save: the writer
+       asserts its write check, so a debug build never writes them
+       (docs/SPEC.md §5.1). The record body is a, b, c at 0, 8 and 10, and
+       the valid values saved there are checked before they are replaced. */
     fixed_one_sided_reset(&w);
-    w.a = -12345;
-    w.b = 999;
-    w.c = -128;
+    w.a = 0x0102030405060708;
+    w.b = 7;
+    w.c = 5;
     fn = fixed_one_sided_fixed_save(&w, 1, fixed_buf, (int64_t)sizeof(fixed_buf));
     CHECK(fn > 0);
+    {
+        uint8_t * body = fixed_buf + kTableFixedHeaderBytes + 4 + fixed_one_sided_fixed_layout_bytes + 8;
+        CHECK(table_fixed_get64(body) == 0x0102030405060708ull && body[8] == 7 && body[9] == 0 && body[10] == 5);
+        table_fixed_put64(body, (uint64_t)(int64_t)-12345);
+        table_fixed_put16(body + 8, 999u);
+        table_fixed_put8(body + 10, (uint8_t)(int8_t)-128);
+    }
     memset(&r2, 0, sizeof(r2));
     CHECK(fixed_one_sided_fixed_load(&loaded, 1, fixed_buf, fn, NULL, 0, NULL, &r2) < 0);
     CHECK(loaded.a == defaults.a && loaded.b == defaults.b && loaded.c == defaults.c);

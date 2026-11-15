@@ -93,6 +93,10 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 	tail[bytes.Index(tail, self)+2] = 0
 	overwritten = append(overwritten, tail...)
 	overwrittenPath := put("overwritten_self_cycle", overwritten)
+	var overwrittenReport tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup("ListNode")), overwritten, &overwrittenReport); ok || !tablewire.ReadRefusal(err) || !overwrittenReport.Refused {
+		t.Fatalf("overwritten_self_cycle oracle: ok=%v err=%v report=%+v", ok, err, overwrittenReport)
+	}
 
 	var probe strings.Builder
 	probe.WriteString(elixirCycleProbeHelpers)
@@ -117,8 +121,9 @@ IO.puts("ok: Elixir cycle and final-slot graph contract")
 # A pointered value is {root, nodes}; node numbers are deterministic across
 # independent loads (§3.1): one node, one number.
 small_wire = File.read!(%q)
-{:ok, first, _first_report} = Graphdemo.Table.load("ListNode", small_wire)
-{:ok, second, _second_report} = Graphdemo.Table.load("ListNode", small_wire)
+{:ok, first, first_report} = Graphdemo.Table.load("ListNode", small_wire)
+{:ok, second, second_report} = Graphdemo.Table.load("ListNode", small_wire)
+CycleProbe.check(first_report.reason == "" and second_report.reason == "", "identity: chain refused")
 CycleProbe.check(first == second, "identity: identical loads changed public value equality")
 {first_root, first_nodes} = first
 CycleProbe.check(is_tuple(first_nodes), "identity: loaded value has no node directory")
@@ -183,16 +188,16 @@ defmodule CycleProbe do
   # already-empty test buffer empty. Capacities still belong to the caller.
   def retain, do: %{records: [{[], 1, 4, <<7, 0, 0, 0>>}], used: 13,
                     cap: 1_048_576, ids: [1], id_cap: 131_072}
-  def report, do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0,
-                    malformed: false, retained: 0, retain_lost: 0}
+  def report, do: %{unknown: 0, widened: 0, retained: 0, retain_lost: 0,
+                    reason: "", missing_required: 0}
 
   def damage(module, root, wire, label) do
     case module.load(root, wire) do
-      {:error, :malformed, %{reason: "wire_damaged"}} -> :ok
+      {:error, :malformed, %{reason: reason}} when reason != "" -> :ok
       _ -> check(false, label <> ": plain load did not discard")
     end
     case module.load_retain(root, wire, retain(), report()) do
-      {:error, :malformed, %{reason: "wire_damaged"}, %{records: [], used: 0, ids: [], cap: 1_048_576, id_cap: 131_072}} -> :ok
+      {:error, :malformed, %{reason: reason}, %{records: [], used: 0, ids: [], cap: 1_048_576, id_cap: 131_072}} when reason != "" -> :ok
       _ -> check(false, label <> ": retaining load did not discard")
     end
   end

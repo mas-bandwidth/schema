@@ -123,12 +123,16 @@ import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 import '../../../build/tables-generated-dart/features/FeaturewitnessesWire.dart' as feature;
 import '../../../build/tables-generated-dart/features/FeaturesCook.dart' as featurecook;
 
-// Decode JSON bytes before entering a generated String reader. Dart's UTF-8
-// decoder skips one leading BOM, matching the Go reader's whole-text boundary.
+// Decode JSON bytes before entering a generated String reader. The generated
+// reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
+// §16.12), so the boundary hands it the text unchanged, as the JS driver's
+// ignoreBOM does. Dart's UTF-8 decoder drops one leading BOM, so it is put back.
 String? readJsonTextFile(String path) {
   final bytes = File(path).readAsBytesSync();
+  final bom = bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
   try {
-    return utf8.decode(bytes, allowMalformed: false);
+    final text = utf8.decode(bytes, allowMalformed: false);
+    return bom ? '\uFEFF$text' : text;
   } on FormatException {
     return null;
   }

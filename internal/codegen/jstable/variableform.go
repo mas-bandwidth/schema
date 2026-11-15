@@ -667,6 +667,10 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
 		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
 		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
+		// a counted array is BORN AT ITS MINIMUM count (docs/SPEC.md §5), each
+		// slot at the element's default
+		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:
@@ -919,6 +923,15 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("  },\n")
 	}
 	g.pf("};\n")
+	// THE TYPES THIS READER DECLARES, whatever a pointer below a root reaches
+	// (§3.1): a record of one that a slot names at the wrong type is damage,
+	// and only a record of a type outside this set reads null.
+	declared := make([]string, 0, len(g.unit.Tables))
+	for _, st := range g.unit.Tables {
+		declared = append(declared, jsId(ir.TableWireId(st.WireName())))
+	}
+	sort.Strings(declared)
+	g.pf("const TableVariableDeclaredTypes = new Set([%s]);\n", strings.Join(declared, ", "))
 	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n")
 	g.pf("TableVariableFreeze(TableVariableCodecs);\n")
 	g.pf("TableVariableFreeze(TableVariableUnions);\n\n")
@@ -989,8 +1002,12 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		if f.IsTextList() {
 			fmt.Fprintf(&b, "tl: true, plain: %v, total: %d, ", ir.TextListPlain(f), f.TextTotal)
 		}
-		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
+		min := ""
+		if f.Array == ir.ArrayCounted && f.ArrayMin != 0 {
+			min = fmt.Sprintf(", min: %d", f.ArrayMin)
+		}
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d%s, ek: %d, esz: %d, eal: %d, e: %s }",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, min, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
 		b.WriteString("s: \"sblob\", js: \"s\" }")
 	case f.Type.Pointer && f.Type.Blob():
@@ -1165,6 +1182,9 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
+		g.pf("}\n\n")
 	}
 	g.emitRootLoadMeasure(st)
 }
@@ -1209,6 +1229,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 		g.pf("}\n\n")
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
+		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
 		g.pf("}\n\n")
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)

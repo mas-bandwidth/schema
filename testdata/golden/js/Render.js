@@ -74,7 +74,7 @@ export function WriteRenderSprite(stream, value) {
   return true;
 }
 
-export function ReadRenderSprite(stream, value) {
+export function ReadRenderSprite(stream, value, nested) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -95,7 +95,7 @@ export function ReadRenderSprite(stream, value) {
     return false;
   }
   value.team = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type RenderBlock
@@ -158,7 +158,7 @@ export function WriteRenderBlock(stream, value) {
   return true;
 }
 
-export function ReadRenderBlock(stream, value) {
+export function ReadRenderBlock(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
@@ -172,10 +172,10 @@ export function ReadRenderBlock(stream, value) {
   }
   value.spritesCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.spritesCount; i++) {
-    if (!ReadRenderSprite(stream, value.sprites[i])) {
+    if (!ReadRenderSprite(stream, value.sprites[i], true)) {
       return false;
     }
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 

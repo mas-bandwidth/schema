@@ -23,13 +23,15 @@ package elixirtable
 // counts one `clamped` — §4.6 "an ENUM ORDINAL past the plan's top variant,
 // lands `None` ... and `COUNT clamped`".
 //
-// elixir/C12 [verify]: §4.5's last row — "a `bool` ... lands as `byte != 0`".
+// elixir/C12 [verify]: §4.5's last row — "a byte of `0` or `1` lands as the
+// language's own false or true".
 //
-// elixir/C13 [verify]: §4.5's last row — a "PRESENT FLAG lands as `byte != 0`".
+// elixir/C13 [verify]: the same row for a PRESENT FLAG.
 //
-// elixir/R17 [verify]: §4.5's last row — "normalised to the language's own
-// true. `0x02` is not a bool a reader stores verbatim (fix 2)", and the
-// normalisation is not a bounds-pass clamp, so it "counts nothing".
+// elixir/R17 [verify]: the same row — "any other byte refuses `wire_damaged`",
+// and "`0x02` is neither stored verbatim nor normalized" (2026-11-03; it used
+// to normalise to true). The refusal is not a bounds-pass clamp: it counts
+// nothing.
 //
 // elixir/C1 [weak]: §4.5 `count`, "if `v < 0` then `v := 0, COUNT clamped`".
 //
@@ -147,30 +149,35 @@ func t06C10(t *testing.T) {
 
 // ---- elixir/C12 -------------------------------------------------------------
 
-// t06C12 holds elixir/C12 to §4.5's last row: a bool byte lands as `byte != 0`.
+// t06C12 holds elixir/C12 to §4.5's last row: a bool byte of 0 or 1 lands as
+// false or true, through R.flag/1.
 func t06C12(t *testing.T) {
-	module, _ := t06Emit(t)
-	t06Has(t, module, "b: f_b != 0", "C12 a bool byte lands as `byte != 0`")
+	module, runtime := t06Emit(t)
+	t06Has(t, module, "b: R.flag(f_b)", "C12 a bool byte lands through R.flag/1")
+	t06Has(t, runtime, "def flag(0), do: false", "C12 a 0 byte lands false")
+	t06Has(t, runtime, "def flag(1), do: true", "C12 a 1 byte lands true")
 }
 
 // ---- elixir/C13 -------------------------------------------------------------
 
-// t06C13 holds elixir/C13 to §4.5's last row: a present flag byte lands as
-// `byte != 0`.
+// t06C13 holds elixir/C13 to §4.5's last row: a present flag byte of 0 or 1
+// lands as false or true, through R.flag/1, before its payload is read.
 func t06C13(t *testing.T) {
 	module, _ := t06Emit(t)
-	t06Has(t, module, "o_present: p_o != 0", "C13 a present byte lands as `byte != 0`")
+	t06Has(t, module, "p_o = R.flag(p_o)", "C13 a present byte lands through R.flag/1")
+	t06Has(t, module, "o_present: p_o", "C13 the present flag is the checked byte")
 }
 
 // ---- elixir/R17 -------------------------------------------------------------
 
 // t06R17 holds elixir/R17 to §4.5's last row: a bool or present byte that is
-// not 0/1 normalises to the language's own true and COUNTS NOTHING — the
-// normalisation is a projection and not a bounds-pass clamp.
+// not 0/1 refuses the whole read `wire_damaged` and COUNTS NOTHING — it is
+// neither normalised nor a bounds-pass clamp.
 func t06R17(t *testing.T) {
-	module, _ := t06Emit(t)
-	t06Has(t, module, "b: f_b != 0", "R17 a hostile bool normalises")
-	t06Has(t, module, "o_present: p_o != 0", "R17 a hostile present byte normalises")
+	module, runtime := t06Emit(t)
+	t06Has(t, runtime, "def flag(_byte), do: throw({:refuse, :wire_damaged})", "R17 a hostile bool or present byte refuses")
+	t06HasNot(t, module, "f_b != 0", "R17 a hostile bool is not normalised")
+	t06HasNot(t, module, "p_o != 0", "R17 a hostile present byte is not normalised")
 	t06HasNot(t, module, "R.clamps(c, f_b", "R17 a bool byte counts no clamp")
 	t06HasNot(t, module, "R.past(c, f_b", "R17 a bool byte counts no ordinal clamp")
 	t06HasNot(t, module, "R.clamps(c, p_o", "R17 a present byte counts no clamp")

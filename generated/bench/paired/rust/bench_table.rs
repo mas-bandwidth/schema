@@ -266,12 +266,15 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
     let mut seen = [false; 2];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
+    let mut seen_ids_inline = [0u64; 3];
+    let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
+        else if seen_ids_len < 3 { seen_ids_inline[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -315,9 +318,9 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 let unknown_was_damaged = report.damaged;
+                if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedChatEvent", id); continue; }
                 nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
-                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedChatEvent", id); continue; }
                     if (report.damaged && !unknown_was_damaged) || nodes.count_refused { return false; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
@@ -327,8 +330,7 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -357,12 +359,15 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
     let mut seen = [false; 14];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
+    let mut seen_ids_inline = [0u64; 15];
+    let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
+        else if seen_ids_len < 15 { seen_ids_inline[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -555,9 +560,9 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 let unknown_was_damaged = report.damaged;
+                if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedEntity", id); continue; }
                 nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
-                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedEntity", id); continue; }
                     if (report.damaged && !unknown_was_damaged) || nodes.count_refused { return false; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
@@ -567,8 +572,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -597,12 +601,15 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
     let mut seen = [false; 4];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
+    let mut seen_ids_inline = [0u64; 5];
+    let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
+        else if seen_ids_len < 5 { seen_ids_inline[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -667,9 +674,9 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 let unknown_was_damaged = report.damaged;
+                if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedHitEvent", id); continue; }
                 nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
-                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedHitEvent", id); continue; }
                     if (report.damaged && !unknown_was_damaged) || nodes.count_refused { return false; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
@@ -679,8 +686,7 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -709,12 +715,15 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
     let mut seen = [false; 2];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
+    let mut seen_ids_inline = [0u64; 3];
+    let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
+        else if seen_ids_len < 3 { seen_ids_inline[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -758,9 +767,9 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 let unknown_was_damaged = report.damaged;
+                if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedPickupEvent", id); continue; }
                 nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
-                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedPickupEvent", id); continue; }
                     if (report.damaged && !unknown_was_damaged) || nodes.count_refused { return false; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
@@ -770,8 +779,7 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -800,12 +808,15 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
     let mut seen = [false; 2];
     let mut seen_unknown: Vec<u64> = Vec::new();
     let mut seen_node = false;
+    let mut seen_ids_inline = [0u64; 3];
+    let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
-        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
+        if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
+        else if seen_ids_len < 3 { seen_ids_inline[seen_ids_len] = id; seen_ids_len += 1; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
@@ -849,9 +860,9 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 let unknown_was_damaged = report.damaged;
+                if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedStat", id); continue; }
                 nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
-                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedStat", id); continue; }
                     if (report.damaged && !unknown_was_damaged) || nodes.count_refused { return false; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
                         Some(resolved) => {
@@ -861,8 +872,7 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                                 ret.bytes.extend_from_slice(&path.depth.to_le_bytes());
                                 ret.bytes.extend_from_slice(&id.to_le_bytes());
                                 ret.bytes.push(kind);
-                                for i in 0..path.depth as usize {
-                                    let (o, x) = path.steps[i];
+                                for &(o, x) in path.steps.iter().take(path.depth as usize) {
                                     ret.bytes.extend_from_slice(&o.to_le_bytes());
                                     ret.bytes.extend_from_slice(&x.to_le_bytes());
                                 }
@@ -953,8 +963,9 @@ fn variable_node_stub_alloc(type_id: u64) -> Option<Rc<dyn Any>> {
 
 #[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
 fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {
+    nodes.wire_edge_owner = k + 1;
     let (type_id, start, end) = nodes.recs[k];
-    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };
+    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new(), nodes: Default::default() };
     let retaining = nodes.retaining;
     let node: Option<Rc<dyn Any>> = match type_id {
         _ => None,
