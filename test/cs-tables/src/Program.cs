@@ -504,7 +504,9 @@ static partial class Program
         Check(Demo.Schema.LoadoutConfigSave(enums, new byte[need]) == need, "enum arrays: exact capacity");
     }
 
-    // ---- storage invariants: the write side validates what it reads ----
+    // ---- storage invariants: the write side's debug asserts ----
+    // (docs/SPEC.md §5.1: C# is an assert leg, so a count, length or tag off
+    // its storage is a Debug.Assert and a Release build checks nothing)
 
     static void TestStorageInvariants()
     {
@@ -512,31 +514,31 @@ static partial class Program
 
         Demo.RootConfig root = new Demo.RootConfig();
         root.WeaponsCount = 9; // bound is 8
-        Check(Demo.Schema.RootConfigMeasure(root) == -1, "count above bound: measure refuses");
-        Check(Demo.Schema.RootConfigSave(root, buffer) == -1, "count above bound: save refuses");
+        CheckAsserts(() => Demo.Schema.RootConfigMeasure(root), "count above bound: measure asserts");
+        CheckAsserts(() => Demo.Schema.RootConfigSave(root, buffer), "count above bound: save asserts");
 
         V1.Cfg cfg = new V1.Cfg();
         cfg.NameLength = -1;
-        Check(V1.Schema.CfgMeasure(cfg) == -1, "negative length: measure refuses");
-        Check(V1.Schema.CfgSave(cfg, buffer) == -1, "negative length: save refuses");
+        CheckAsserts(() => V1.Schema.CfgMeasure(cfg), "negative length: measure asserts");
+        CheckAsserts(() => V1.Schema.CfgSave(cfg, buffer), "negative length: save asserts");
 
         V1.Cfg cfg2 = new V1.Cfg();
         cfg2.ItemsCount = -3;
-        Check(V1.Schema.CfgMeasure(cfg2) == -1, "negative count: measure refuses");
-        Check(V1.Schema.CfgSave(cfg2, buffer) == -1, "negative count: save refuses");
+        CheckAsserts(() => V1.Schema.CfgMeasure(cfg2), "negative count: measure asserts");
+        CheckAsserts(() => V1.Schema.CfgSave(cfg2, buffer), "negative count: save asserts");
 
-        // a violation deep inside a nested, guarded table propagates up
+        // a violation deep inside a nested, guarded table asserts too
         Demo.ProfileConfig profile = new Demo.ProfileConfig();
         profile.HasLoadout = true;
         profile.Loadout.AttachmentsCount = -5;
-        Check(Demo.Schema.ProfileConfigMeasure(profile) == -1, "nested violation: measure refuses");
-        Check(Demo.Schema.ProfileConfigSave(profile, buffer) == -1, "nested violation: save refuses");
+        CheckAsserts(() => Demo.Schema.ProfileConfigMeasure(profile), "nested violation: measure asserts");
+        CheckAsserts(() => Demo.Schema.ProfileConfigSave(profile, buffer), "nested violation: save asserts");
 
-        // an out-of-range union tag refuses in measure exactly as in write
+        // an out-of-range union tag asserts in measure exactly as in write
         Demo.WeaponConfig weapon = new Demo.WeaponConfig();
         weapon.Effect.Type = (Demo.EffectType)9;
-        Check(Demo.Schema.WeaponConfigMeasure(weapon) == -1, "bad union tag: measure refuses");
-        Check(Demo.Schema.WeaponConfigSave(weapon, buffer) == -1, "bad union tag: save refuses");
+        CheckAsserts(() => Demo.Schema.WeaponConfigMeasure(weapon), "bad union tag: measure asserts");
+        CheckAsserts(() => Demo.Schema.WeaponConfigSave(weapon, buffer), "bad union tag: save asserts");
     }
 
     // ---- bounded elements: a count the body length cannot cover never reads
@@ -933,25 +935,26 @@ static partial class Program
 
     static void TestUnnameableEnumRefused()
     {
+        // a write check: a debug assert on this leg (docs/SPEC.md §5.1)
         byte[] buffer = new byte[256];
         V1.Cfg cfg = new V1.Cfg();
         cfg.Grade = (V1.Grade)9;
-        Check(V1.Schema.CfgMeasure(cfg) == -1, "unnameable enum: measure refuses");
-        Check(V1.Schema.CfgSave(cfg, buffer) == -1, "unnameable enum: save refuses");
+        CheckAsserts(() => V1.Schema.CfgMeasure(cfg), "unnameable enum: measure asserts");
+        CheckAsserts(() => V1.Schema.CfgSave(cfg, buffer), "unnameable enum: save asserts");
 
         V1.Cfg counted = new V1.Cfg();
         counted.GradesCount = 2;
         counted.Grades[0] = V1.Grade.Gold;
         counted.Grades[1] = (V1.Grade)9;
-        Check(V1.Schema.CfgMeasure(counted) == -1, "unnameable enum element: measure refuses");
-        Check(V1.Schema.CfgSave(counted, buffer) == -1, "unnameable enum element: save refuses");
+        CheckAsserts(() => V1.Schema.CfgMeasure(counted), "unnameable enum element: measure asserts");
+        CheckAsserts(() => V1.Schema.CfgSave(counted, buffer), "unnameable enum element: save asserts");
         counted.GradesCount = 1; // the bad element is now above the count
         Check(V1.Schema.CfgMeasure(counted) > 0, "unnameable enum element: only elements below the count are examined");
 
         V1.Cfg fixedArr = new V1.Cfg();
         fixedArr.Podium[2] = (V1.Grade)9;
-        Check(V1.Schema.CfgMeasure(fixedArr) == -1, "unnameable enum fixed element: measure refuses");
-        Check(V1.Schema.CfgSave(fixedArr, buffer) == -1, "unnameable enum fixed element: save refuses");
+        CheckAsserts(() => V1.Schema.CfgMeasure(fixedArr), "unnameable enum fixed element: measure asserts");
+        CheckAsserts(() => V1.Schema.CfgSave(fixedArr, buffer), "unnameable enum fixed element: save asserts");
     }
 
     static void TestUnnameableEnumElementRead()
@@ -1817,6 +1820,7 @@ static partial class Program
 
     static int Main(string[] args)
     {
+        InstallWriteAssertListener();
         goldenDir = FindGoldenDir();
 
         // `alloc` runs the per-path allocation gate alone (its own sensitivity
