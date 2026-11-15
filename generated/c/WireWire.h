@@ -243,6 +243,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_sample( seria
     {
         return 0;
     }
+    serialize_assert( value->orientation >= -180.0f && value->orientation <= 180.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->orientation, 36000u, 16, 360.0f, -180.0f ) )
     {
         return 0;
@@ -1068,6 +1069,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test_data( serializ
     {
         return 0;
     }
+    serialize_assert( value->compressed_float_value >= 0.0f && value->compressed_float_value <= 10.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->compressed_float_value, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
@@ -1367,10 +1369,12 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test_data( serialize_
 /* Writes CompressedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_compressed_probe( serialize_write_stream_t * stream, const example_compressed_probe_t * value )
 {
+    serialize_assert( value->boundary >= 0.0f && value->boundary <= 10.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->boundary, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->offset >= -5.0f && value->offset <= 5.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->offset, 10000u, 14, 10.0f, -5.0f ) )
     {
         return 0;
