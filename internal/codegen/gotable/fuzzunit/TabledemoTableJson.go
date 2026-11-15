@@ -401,8 +401,6 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch c {
-		case 0:
-			out.invalid = true // text holds a zero byte (§16.14 W8)
 		case '"':
 			out.text("\\\"")
 		case '\\':
@@ -420,6 +418,7 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 		default:
 			switch {
 			case c < 0x20:
+				out.invalid = out.invalid || c == 0 // text holds no zero byte (§16.14 W8)
 				var escape [6]byte
 				escape[0], escape[1], escape[2], escape[3] = '\\', 'u', '0', '0'
 				escape[4], escape[5] = hex[c>>4], hex[c&0xf]
