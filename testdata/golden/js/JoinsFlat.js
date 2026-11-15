@@ -104,6 +104,9 @@ export function ReadArmsAgreeFlat(view, numBits, value) {
   out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  if (((24 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -232,6 +235,14 @@ export function ReadArmsDisagreeFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -363,6 +374,14 @@ export function ReadArmEmptyFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -554,6 +573,14 @@ export function ReadArmsNestedFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3f) >>> 0;
   value.tail = v;
+  br += 6;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -797,6 +824,14 @@ export function ReadArmAlignFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1007,6 +1042,14 @@ export function ReadArmArrayFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1101,6 +1144,12 @@ export function ReadNarrowFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0x7) >>> 0;
   value.n = v;
+  if (((3 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(0) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1150,6 +1199,12 @@ export function ReadWideFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.w = bg;
+  if (((37 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(4) & 0xe0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1284,6 +1339,13 @@ export function ReadUnevenFlat(view, numBits, value) {
       br += 5;
       break;
     }
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -1486,6 +1548,14 @@ export function ReadHoldsUnevenFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7ff) >>> 0;
   value.tail = v;
+  br += 11;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1733,6 +1803,14 @@ export function ReadArrUnevenFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   value.tail = v;
+  br += 3;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -2025,6 +2103,14 @@ export function ReadRegainAfterAlignFlat(view, numBits, value) {
   value.r = v;
   v = (out >>> 19) & 0xf;
   value.tail = v;
+  br += 23;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 

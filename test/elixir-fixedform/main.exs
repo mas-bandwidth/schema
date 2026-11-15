@@ -1049,7 +1049,11 @@ _ = union_arm_text_compiled
 Leg.section("hostile ordinals, flags and bools: what each one lands as")
 
 fe_file = fn body ->
-  Tblfe1.FE1Fixed.fe_root_fixed_save([]) <>
+  binary_part(
+    Tblfe1.FE1Fixed.fe_root_fixed_save([%Tblfe1.FeRoot{}]),
+    0,
+    Tblfe1.FE1Fixed.fe_root_fixed_measure(0)
+  ) <>
     <<Tblfe1.FE1Fixed.fe_root_fixed_hash()::little-unsigned-64, body::binary>>
 end
 
@@ -1702,7 +1706,11 @@ hostile =
      # name_length, the first four bytes of Chain's body, made absurd
      <<_::little-signed-32, rest::binary>> = body
 
-     Tblp1.P1Fixed.chain_fixed_save([]) <>
+     binary_part(
+       Tblp1.P1Fixed.chain_fixed_save([%Tblp1.Chain{}]),
+       0,
+       Tblp1.P1Fixed.chain_fixed_measure(0)
+     ) <>
        <<Tblp1.P1Fixed.chain_fixed_hash()::little-unsigned-64, 9999::little-signed-32,
          rest::binary>>
    end).()

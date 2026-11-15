@@ -207,7 +207,7 @@ func TestCppJsonKeyMatchesWholeKey(t *testing.T) {
 	}
 
 	got := map[string]cppJsonKeyAnswer{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		var name, value string
 		var ok int
 		var unknown int64

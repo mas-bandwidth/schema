@@ -208,9 +208,21 @@ public final class Render {
     }
 
     // readRenderSprite decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readRenderSprite(RenderSprite value, byte[] data, int numBits) {
-        return readRenderSpriteBits(value, data, 0, numBits) >= 0;
+        final int end = readRenderSpriteBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type RenderBlock
@@ -349,8 +361,20 @@ public final class Render {
     }
 
     // readRenderBlock decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readRenderBlock(RenderBlock value, byte[] data, int numBits) {
-        return readRenderBlockBits(value, data, 0, numBits) >= 0;
+        final int end = readRenderBlockBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }
