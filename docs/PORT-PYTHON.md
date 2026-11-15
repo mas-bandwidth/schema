@@ -498,33 +498,13 @@ the core stands against the P4 row; the rules of this page are unchanged.
   declaration is emitted now: module constants, the enum and flags classes
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
-<<<<<<< HEAD
-  readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
-  ranged), raw `uint128` and ranged `int128`, enums, flags, types by value,
-  unions, `if`/`else` branches, and the storage-less wire constructs `const`,
-  `reserved` and `align`. The branch and the three storage-less items are each
-  their own emitter file, registered in the core's item table, so a later
-  layout construct adds a file and one registration line. A field or item of
-  any other kind (`bits`, `string`, `bytes` or an array) is refused at
-  generate time by its kind, naming P4 the packet wire. The class surface
-  knows how to birth and compare those kinds already; only their wire
-  emitters are still to come.
-- **The 128-bit integers are the core's own shape.** `uint128` is one
-  `serialize_uint128` call (128 bits, low 64-bit half first) and `int128`,
-  always ranged, goes through the same ranged call the 64-bit kinds use,
-  picked by the range (`serialize_int`, `serialize_int64` or
-  `serialize_int128`, the same bytes wherever a narrower call fits). The
-  write holds the value to its declared range in every build. There is no
-  second code shape to measure: the emitter adds no hot path the core's
-  straight-line form does not already have. With no C++-pinned golden that
-  uses only these kinds and the core's (every examples128 golden declares
-  `fixed` too), TestPythonPacketInt128 holds them to the generated Go unit
-  over serialize.go on fixture schemas of its own.
-=======
   readable `__repr__`. The codec carries each kind marked carried below. A
   field or item of a kind marked refused is refused at generate time by its
   kind, naming P4 the packet wire. The class surface knows how to birth and
   compare those kinds already; only their wire emitters are still to come.
+  The `if`/`else` branch and the storage-less items `const`, `reserved` and
+  `align` are each their own emitter file, registered in the core's item
+  table, so a later layout construct adds a file and one registration line.
 
   - `bool`: carried
 
@@ -554,15 +534,14 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - an array: refused
 
-  - `const`: refused
+  - `const`: carried
 
-  - `reserved`: refused
+  - `reserved`: carried
 
-  - `align`: refused
+  - `align`: carried
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))
->>>>>>> b5f0c22106b29dd236293d292171e9ec1bdfd3b8
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
