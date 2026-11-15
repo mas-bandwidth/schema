@@ -2551,12 +2551,22 @@ jobs:
       # before — it moved down this lane, not out of it.
       - name: CI lints itself — action pins and the .NET SDK pin
         run: go test ./internal/ci/
+      # A FRESH ANALYSIS CACHE per job. The restored action cache held
+      # results recorded under another checkout's absolute paths, and with
+      # them golangci-lint's generated-file filter failed ("Can't process
+      # results by generated_file_filter"), so findings in generated Go
+      # (internal/codegen/gotable/fuzzunit, tables/goruntime) went red.
+      # Uncached, the run measured 14 s on a fleet bench with a warm Go
+      # build cache (2026-11-15).
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        env:
+          GOLANGCI_LINT_CACHE: ${{ runner.temp }}/golangci-lint-cache
         with:
           # pinned so releases with new checks break CI deliberately, not
           # randomly; bump by hand
           version: v2.12.2
+          skip-cache: true
       # PINNED for the same reason as golangci-lint above: a release with new
       # rules breaks CI deliberately, not overnight. The version is gopls's own
       # module tag; bump by hand.
