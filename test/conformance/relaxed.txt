@@ -17,29 +17,6 @@ cpp cook-write root_default relax/cook-dead-slots-zero-ports
 cpp cook-write root_default-be relax/cook-dead-slots-zero-ports
 cpp cook-write root_full relax/cook-dead-slots-zero-ports
 cpp cook-write root_full-be relax/cook-dead-slots-zero-ports
-<<<<<<< HEAD
-dart cook-write archive relax/cook-dead-slots-zero-ports
-dart cook-write archive-be relax/cook-dead-slots-zero-ports
-dart cook-write loadout_full relax/cook-dead-slots-zero-ports
-dart cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-dart cook-write profile_elide relax/cook-dead-slots-zero-ports
-dart cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-dart cook-write root_default relax/cook-dead-slots-zero-ports
-dart cook-write root_default-be relax/cook-dead-slots-zero-ports
-dart cook-write root_full relax/cook-dead-slots-zero-ports
-dart cook-write root_full-be relax/cook-dead-slots-zero-ports
-=======
-cs cook-write archive relax/cook-dead-slots-zero-ports
-cs cook-write archive-be relax/cook-dead-slots-zero-ports
-cs cook-write loadout_full relax/cook-dead-slots-zero-ports
-cs cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-cs cook-write profile_elide relax/cook-dead-slots-zero-ports
-cs cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-cs cook-write root_default relax/cook-dead-slots-zero-ports
-cs cook-write root_default-be relax/cook-dead-slots-zero-ports
-cs cook-write root_full relax/cook-dead-slots-zero-ports
-cs cook-write root_full-be relax/cook-dead-slots-zero-ports
->>>>>>> 676d569043f352b4228ca5ce5e9abf39bfeec38d
 elixir cook-write archive relax/cook-dead-slots-zero-ports
 elixir cook-write archive-be relax/cook-dead-slots-zero-ports
 elixir cook-write loadout_full relax/cook-dead-slots-zero-ports
