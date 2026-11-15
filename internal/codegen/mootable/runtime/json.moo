@@ -1418,6 +1418,25 @@ type Reader = {
 	graph: { [any]: { open: boolean, node: any, t: string? } }?,
 }
 
+-- commentTextHolds: the bytes of one comment, from..to inclusive, are text like
+-- the rest of the input (docs/SPEC-TABLES.md §16.2): well-formed UTF-8 with no
+-- zero byte. A sequence that would run past the comment's end is truncated.
+local function commentTextHolds(s: string, from: number, to: number): boolean
+	local i = from
+	while i <= to do
+		local c = string.byte(s, i) :: number
+		if c == 0 then
+			return false
+		end
+		local width = utf8Sequence(s, i)
+		if width < 0 or i + width - 1 > to then
+			return false
+		end
+		i += width
+	end
+	return true
+end
+
 local function space(r: Reader)
 	local t, n = r.t, r.n
 	while r.pos <= n do
@@ -1427,13 +1446,23 @@ local function space(r: Reader)
 		elseif c == 47 then
 			local nx = string.byte(t, r.pos + 1)
 			if nx == 47 then
+				-- only LF ends a line comment: a lone CR is inside it
 				local e = string.find(t, "\n", r.pos + 2, true)
+				local stop = if e == nil then n else (e :: number) - 1
+				if not commentTextHolds(t, r.pos + 2, stop) then
+					r.bad = true
+					return
+				end
 				r.pos = if e == nil then n + 1 else e
 			elseif nx == 42 then
 				local _, e = string.find(t, "*/", r.pos + 2, true)
 				if e == nil then
 					r.bad = true
 					r.pos = n + 1
+					return
+				end
+				if not commentTextHolds(t, r.pos + 2, (e :: number) - 2) then
+					r.bad = true
 					return
 				end
 				r.pos = (e :: number) + 1
