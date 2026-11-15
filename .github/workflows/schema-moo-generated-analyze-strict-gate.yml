@@ -17,43 +17,8 @@ name: schema moo generated analyze strict gate
 # for any commit but the pin).
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-moo-generated-analyze-strict-gate.mk'
-      - 'make/moo.mk'
-      - '.github/workflows/schema-moo-generated-analyze-strict-gate.yml'
-      - '.github/actions/moo/**'
-      - 'internal/ci/schema_moo_generated_analyze_strict_gate_test.go'
-      - 'internal/codegen/moo/**'
-      - 'internal/codegen/mootable/**'
-      - 'compiler/target_moo.go'
-      - 'ir/**'
-      - 'internal/check/**'
-      - 'examples/**'
-      - 'examples128/**'
-      - 'bench/corpus/**'
-      - 'tables/**'
-      - 'test/packet-*/**'
-      - 'test/tables/**'
-  pull_request:
-    paths:
-      - 'make/schema-moo-generated-analyze-strict-gate.mk'
-      - 'make/moo.mk'
-      - '.github/workflows/schema-moo-generated-analyze-strict-gate.yml'
-      - '.github/actions/moo/**'
-      - 'internal/ci/schema_moo_generated_analyze_strict_gate_test.go'
-      - 'internal/codegen/moo/**'
-      - 'internal/codegen/mootable/**'
-      - 'compiler/target_moo.go'
-      - 'ir/**'
-      - 'internal/check/**'
-      - 'examples/**'
-      - 'examples128/**'
-      - 'bench/corpus/**'
-      - 'tables/**'
-      - 'test/packet-*/**'
-      - 'test/tables/**'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '41 3 * * *'
   workflow_dispatch:

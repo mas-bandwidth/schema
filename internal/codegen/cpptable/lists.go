@@ -801,6 +801,9 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.pf("%s    uint64_t count = 0;\n", ind)
 	g.pf("%s    const bool counted_ok = r.getleb( count );\n", ind)
 	g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
+	g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged under any count before the\n", ind)
+	g.pf("%s    // reader's declaration (§3, §4).\n", ind)
+	g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 	g.pf("%s    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's\n", ind)
 	g.pf("%s    // element-kind rule: the field reads EMPTY and one kind_mismatch counts\n", ind)
 	if widenableElement(f) {
