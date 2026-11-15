@@ -3645,6 +3645,29 @@ inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
     }
 }
 
+// A LOAD OF ONE VALUE OUT OF NATIVE STORAGE, zero-extended: the inverse of
+// TableFixedStoreNative. The known-range pass reads a landed value through
+// it, never through a memcpy of a narrow width into a 64-bit word, which on a
+// big-endian host fills the word's high bytes.
+inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
+{
+    uint64_t v = 0;
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { v = ( v << 8 ) | (uint64_t) src[i]; }
+        return v;
+    }
+    switch ( size )
+    {
+        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
+        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
+        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
+        case 8: { memcpy( &v, src, 8 ); break; }
+        default: break;
+    }
+    return v;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -5139,7 +5162,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         const TableFixedKnownRange & b = ranges[i];
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
-        memcpy( &raw, dst + b.dst, b.width );
+        raw = TableFixedLoadNative( dst + b.dst, b.width );
         // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
         // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
         // max and never below the min. An unsigned kind's bounds are never
@@ -5174,7 +5197,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         {
             continue;
         }
-        memcpy( dst + b.dst, &landed, b.width );
+        TableFixedStoreNative( dst + b.dst, landed, b.width );
     }
     if ( report != NULL )
     {
@@ -31314,12 +31337,15 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
     }
     table_cook_put( at + 288, (uint64_t) (uint32_t) value.origins_count, 4, order );
     table_cook_put( at + 300, (uint64_t) ( value.modes_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 2; i++ )
+    if ( value.modes_present )
     {
-        table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
+        // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
+        }
+        table_cook_put( at + 296, (uint64_t) (uint32_t) value.modes_count, 4, order );
     }
-    table_cook_put( at + 296, (uint64_t) (uint32_t) value.modes_count, 4, order );
     return true;
 }
 
@@ -31436,14 +31462,20 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
         }
     }
     table_cook_put( at + 1588, (uint64_t) ( value.checkpoints_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    for ( int32_t i = 0; i < 2; i++ )
+    if ( value.checkpoints_present )
     {
-        table_cook_put( at + 1580 + i * 4, (uint64_t) value.checkpoints[i], 4, order );
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            table_cook_put( at + 1580 + i * 4, (uint64_t) value.checkpoints[i], 4, order );
+        }
     }
     table_cook_put( at + 1624, (uint64_t) ( value.snapshots_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    for ( int32_t i = 0; i < 2; i++ )
+    if ( value.snapshots_present )
     {
-        if ( !SelectionCookBody( at + 1592 + i * 16, value.snapshots[i], order ) ) { return false; }
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            if ( !SelectionCookBody( at + 1592 + i * 16, value.snapshots[i], order ) ) { return false; }
+        }
     }
     return true;
 }
@@ -31482,13 +31514,13 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                         case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
                         case OriginType::Pid:
                         {
-                table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
+                            table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
                             break;
                         }
                         case OriginType::Note:
                         {
-                table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
-                table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
+                            table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
+                            table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
                             break;
                         }
                         default: break; // every byte outside the set arm stays zero
@@ -31533,13 +31565,13 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                             case OriginType::Script: if ( !ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.script, order ) ) { return false; } break;
                             case OriginType::Pid:
                             {
-                table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[i].origin.pid, 4, order );
+                                table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[i].origin.pid, 4, order );
                                 break;
                             }
                             case OriginType::Note:
                             {
-                table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.note.value, value.history[i].origin.note.value_length, 25 );
-                table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[i].origin.note.value_length, 4, order );
+                                table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.note.value, value.history[i].origin.note.value_length, 25 );
+                                table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[i].origin.note.value_length, 4, order );
                                 break;
                             }
                             default: break; // every byte outside the set arm stays zero
@@ -31553,16 +31585,22 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     }
     table_cook_put( at + 4928, (uint64_t) (uint32_t) value.history_count, 4, order );
     table_cook_put( at + 5164, (uint64_t) ( value.trace_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 3; i++ )
+    if ( value.trace_present )
     {
-        if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[i], order ) ) { return false; }
+        // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+        for ( int32_t i = 0; i < 3; i++ )
+        {
+            if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[i], order ) ) { return false; }
+        }
+        table_cook_put( at + 5160, (uint64_t) (uint32_t) value.trace_count, 4, order );
     }
-    table_cook_put( at + 5160, (uint64_t) (uint32_t) value.trace_count, 4, order );
     table_cook_put( at + 5167, (uint64_t) ( value.marks_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    for ( int32_t i = 0; i < 2; i++ )
+    if ( value.marks_present )
     {
-        table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[i], 1, order );
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[i], 1, order );
+        }
     }
     return true;
 }

@@ -325,6 +325,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.pf("%s    elem_kind = table_reader_get8( &sub );\n", ind)
 			g.pf("%s    if ( !table_reader_leb( &sub, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n%s    {\n", ind, ind)
 		}
+		g.pf("%s        if ( !table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 		g.pf("%s        if ( elem_kind != %d )\n%s        {\n", ind, kind, ind)
 		g.pf("%s            if ( !(%s) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n%s            r->report->widened++;\n%s        }\n", ind, wireElementWidenTest(f, kind, "elem_kind"), ind, ind)
 		g.retainReplace(f, ind+"        ")
@@ -417,6 +418,7 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );\n", ind)
 	g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+	g.pf("%s    if ( !table_keyed_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 	g.pf("%s    if ( elem_kind != %d ) { if ( !(%s) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }\n", ind, kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.pf("%s    for ( i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref, key; int32_t slot = -1; TableReader elem;\n", ind)
