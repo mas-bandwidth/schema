@@ -329,7 +329,7 @@ func t03GoR32(t *testing.T) {
 	at := strings.Index(load, "if pick < LineageFixedFloor {")
 	known := strings.Index(load, "known := &LineageFixedKnown[pick]")
 	bytes := strings.Index(load, "layout[i] != known.Layout[i]")
-	records := strings.Index(load, "for k := range n {")
+	records := strings.Index(load, "for k := range values[:n] {")
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
@@ -404,7 +404,7 @@ func t03GoR15(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
 	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)`)
-	records := strings.Index(load, "for k := range n {")
+	records := strings.Index(load, "for k := range values[:n] {")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
 	}

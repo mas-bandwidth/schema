@@ -85,8 +85,8 @@ func emittedClause(t *testing.T, src, head string) string {
 		t.Fatalf("generated read has no %q clause", head)
 	}
 	rest := src[at+len(head):]
-	if end := strings.Index(rest, "\n  defp "); end >= 0 {
-		return head + rest[:end]
+	if before, _, ok := strings.Cut(rest, "\n  defp "); ok {
+		return head + before
 	}
 	return head + rest
 }

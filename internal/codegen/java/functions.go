@@ -522,6 +522,8 @@ func (g *gen) hasCheckScalar(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		return true
+	case ir.TBits:
+		return f.Type.Width < 64
 	case ir.TFixed:
 		return true
 	case ir.TInt:
@@ -622,6 +624,11 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+	case ir.TBits:
+		if f.Type.Width < 64 {
+			max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+			g.assertRange(name, big.NewInt(0), max, true, ind)
+		}
 	case ir.TFixed:
 		rawMin, rawMax, _ := fixedRaw(f)
 		if f.Type.Width == 128 {
