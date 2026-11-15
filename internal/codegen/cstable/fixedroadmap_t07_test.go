@@ -223,11 +223,12 @@ func t07C14(t *testing.T) {
 	}
 }
 
-// t07W4: W4 [verify] "read slack unspecified" — SPEC-TABLES §3.4: "ZERO on write
-// past the count, UNSPECIFIED on read, never a refusal"; "A reader validates the
-// USED UNITS ONLY and never looks at the slack". The count op reads the count word
-// and clamps it into [0, size] counting a clamp; the run sets no Malformed from a
-// value, so slack is never a refusal.
+// t07W4: W4 [verify] "count walks live units; check pass refuses nonzero slack"
+// — SPEC-TABLES §3.4: the slack past the count is dead and a non-zero byte
+// refuses wire_damaged in the check pass. The count op reads the count word and
+// clamps it into [0, size] counting a clamp, walking the live units only; the
+// check pass separately holds the dead slots to zero, so the run sets no
+// Malformed from a value.
 func t07W4(t *testing.T) {
 	src := t07Src(t, t07Clamp)
 	block := t07Block(t, src, "case Count:", "case Text:")
@@ -237,7 +238,7 @@ func t07W4(t *testing.T) {
 	t07Has(t, n, `if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }`,
 		"W4 the bound is the plan's own size, and an out-of-range count refuses")
 	if strings.Contains(block, "Malformed") {
-		t.Error("W4: the run marks slack malformed; a reader validates the used units only and never looks at the slack")
+		t.Error("W4: the run marks slack malformed; the count op walks live units and the check pass separately refuses non-zero slack")
 	}
 }
 
