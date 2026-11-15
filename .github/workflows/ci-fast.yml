@@ -844,12 +844,7 @@ jobs:
   #   wire-fuzz           — tables-lobster-wire-fuzz
   #   packages-type-fixed — the type surface and the four corpus-reading
   #                         fixed-form tests (make/lobster.mk)
-  #   packages-forgery    — the forgery fuzz oracle, every image but
-  #                         block_render
-  #   packages-forgery-render-a / -b / -c / -d
-  #                       — block_render's forgery chunks, two each (alone
-  #                         in one row the oracle took 177 s, most of it
-  #                         block_render's)
+  #   packages-forgery    — the forgery fuzz oracle over every image
   #   packages-forgery-block-extent / -used-length / -cook
   #                       — one reversed witness each
   #   packages-cook       — the cook-write suite
@@ -879,7 +874,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, wire-fuzz, packages-type-fixed, packages-forgery, packages-forgery-render-a, packages-forgery-render-b, packages-forgery-render-c, packages-forgery-render-d, packages-forgery-block-extent, packages-forgery-used-length, packages-forgery-cook, packages-cook, packages-proof-values-a, packages-proof-values-b, packages-proof-values-c, packages-proof-control-a, packages-proof-control-b, packages-proof-control-c, packages-rest-a, packages-rest-b, gates ]
+        part: [ conformance-a, conformance-b, wire-fuzz, packages-type-fixed, packages-forgery, packages-forgery-block-extent, packages-forgery-used-length, packages-forgery-cook, packages-cook, packages-proof-values-a, packages-proof-values-b, packages-proof-values-c, packages-proof-control-a, packages-proof-control-b, packages-proof-control-c, packages-rest-a, packages-rest-b, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -926,10 +921,6 @@ jobs:
             wire-fuzz)     make toolchain-lobster $w ;;
             packages-type-fixed) make test-lobster-packages-type test-lobster-packages-fixed ;;
             packages-forgery)    make test-lobster-packages-forgery ;;
-            packages-forgery-render-a) make test-lobster-packages-forgery-render-a ;;
-            packages-forgery-render-b) make test-lobster-packages-forgery-render-b ;;
-            packages-forgery-render-c) make test-lobster-packages-forgery-render-c ;;
-            packages-forgery-render-d) make test-lobster-packages-forgery-render-d ;;
             packages-forgery-block-extent) make test-lobster-packages-forgery-block-extent ;;
             packages-forgery-used-length)  make test-lobster-packages-forgery-used-length ;;
             packages-forgery-cook)         make test-lobster-packages-forgery-cook ;;

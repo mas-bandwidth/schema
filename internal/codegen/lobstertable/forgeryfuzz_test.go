@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,17 +56,10 @@ const (
 	lobsterForgeryDefaultSeed = uint64(0x4C4F42464F524745)
 	// lobsterForgeryDefaultN is the mutants per image.
 	lobsterForgeryDefaultN = 300
-	// lobsterForgeryResumes is how many VM errors one job may meet before
+	// lobsterForgeryResumes is how many VM errors one image may meet before
 	// the run stops: a correct reader meets none, and a sabotaged one shows
 	// itself in the first few.
 	lobsterForgeryResumes = 8
-	// lobsterForgeryChunks is how many pieces one image's mutants are cut
-	// into. The cost is not spread evenly across images: block_render is
-	// most of the run, so a per-image job would still walk it alone. Each
-	// chunk is a whole, independent mutant range of the same image and a
-	// subtest of its own, so the chunks run side by side and CI can spread
-	// block_render's across rows.
-	lobsterForgeryChunks = 8
 )
 
 func lobsterForgeryKnobs(t *testing.T) (seed uint64, n int) {
@@ -364,16 +356,9 @@ func (r lobsterForgeryResult) summary() string {
 		r.mutants, r.refused, r.opened, r.walked, r.walkRefused, len(r.findings))
 }
 
-// lobsterForgerySlots bounds the probe processes every forgery run in the
-// package has open at once, one per core: the per-image subtests and the
-// controls draw from the same slots, so running them side by side never
-// oversubscribes the machine.
-var lobsterForgerySlots = make(chan struct{}, runtime.GOMAXPROCS(0))
-
-// lobsterForgeryStage stages every image and generates the two load units
-// once. edit, when non-nil, patches one emitted runtime file of every unit
-// (the negative controls).
-func lobsterForgeryStage(t *testing.T, file string, edit func(string) string) ([]*lobsterForgeryImage, map[string]*loadUnit) {
+// runLobsterForgeryFuzz fuzzes every staged image. edit, when non-nil,
+// patches one emitted runtime file of every unit (the negative controls).
+func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit func(string) string) lobsterForgeryResult {
 	t.Helper()
 	blocks, cooks := lobsterForgeryImages(t)
 	gens := map[string]*loadUnit{}
@@ -399,150 +384,105 @@ func lobsterForgeryStage(t *testing.T, file string, edit func(string) string) ([
 		}
 		gens[unit] = g
 	}
-	return append(append([]*lobsterForgeryImage{}, blocks...), cooks...), gens
-}
-
-// runLobsterForgeryFuzz fuzzes every staged image, with the load units edit
-// patched when it is non-nil.
-func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit func(string) string) lobsterForgeryResult {
-	t.Helper()
-	images, gens := lobsterForgeryStage(t, file, edit)
-	return runLobsterForgeryImages(t, seed, n, images, gens)
-}
-
-// lobsterForgeryJob is one chunk of one image's mutants: its own directory,
-// its own probe process, and the answers that process gave.
-type lobsterForgeryJob struct {
-	im      *lobsterForgeryImage
-	start   int // this chunk's first mutant in the image
-	dir     string
-	mutants []lobsterForgeryMutant
-	whole   []bool // a cook the tool's cook-check accepts
-	answers map[int]string
-	threw   map[int]string
-}
-
-// lobsterForgeryChunk is the mutant range [lo, hi) of chunk c of n mutants.
-func lobsterForgeryChunk(n, c int) (lo, hi int) {
-	size := (n + lobsterForgeryChunks - 1) / lobsterForgeryChunks
-	return min(c*size, n), min((c+1)*size, n)
-}
-
-// newLobsterForgeryJob stages chunk [lo, hi) of im's mutants in a directory
-// of its own beside the load unit g.
-func newLobsterForgeryJob(t *testing.T, seed uint64, im *lobsterForgeryImage, g *loadUnit, lo, hi int) *lobsterForgeryJob {
-	t.Helper()
-	j := &lobsterForgeryJob{im: im, start: lo, dir: t.TempDir(), answers: map[int]string{}, threw: map[int]string{}}
-	entries, err := os.ReadDir(g.dir)
-	if err != nil {
-		t.Fatal(err)
+	type job struct {
+		im      *lobsterForgeryImage
+		dir     string
+		mutants []lobsterForgeryMutant
+		whole   []bool // a cook the tool's cook-check accepts
+		answers map[int]string
+		threw   map[int]string
 	}
-	for _, e := range entries {
-		data, err := os.ReadFile(filepath.Join(g.dir, e.Name()))
+	var jobs []*job
+	for _, im := range append(append([]*lobsterForgeryImage{}, blocks...), cooks...) {
+		g := gens[im.unit]
+		j := &job{im: im, dir: t.TempDir(), answers: map[int]string{}, threw: map[int]string{}}
+		entries, err := os.ReadDir(g.dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(j.dir, e.Name()), data, 0o644); err != nil {
+		for _, e := range entries {
+			data, err := os.ReadFile(filepath.Join(g.dir, e.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(j.dir, e.Name()), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var b strings.Builder
+		for _, mod := range g.mods {
+			fmt.Fprintf(&b, "import .%s\n", mod)
+		}
+		b.WriteString("import .block_form\nimport .cook\n")
+		b.WriteString(lobsterForgeryProbe)
+		if err := os.WriteFile(filepath.Join(j.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
 			t.Fatal(err)
 		}
-	}
-	var b strings.Builder
-	for _, mod := range g.mods {
-		fmt.Fprintf(&b, "import .%s\n", mod)
-	}
-	b.WriteString("import .block_form\nimport .cook\n")
-	b.WriteString(lobsterForgeryProbe)
-	if err := os.WriteFile(filepath.Join(j.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for i := lo; i < hi; i++ {
-		mu := lobsterForgeryMutate(im.bytes, im.words, seed^forgeryFNV64(im.name)^(uint64(i+1)*0x9E3779B97F4A7C15))
-		j.mutants = append(j.mutants, mu)
-		whole := false
-		if im.m != nil && mu.lead == 0 {
-			_, err := tablecook.Check(im.m, mu.bytes)
-			whole = err == nil
-		}
-		j.whole = append(j.whole, whole)
-	}
-	return j
-}
-
-// run walks the job's mutants in one probe process, resuming past each
-// mutant whose read ended the program, in one of the package's probe slots.
-func (j *lobsterForgeryJob) run(t *testing.T) {
-	t.Helper()
-	lobsterForgerySlots <- struct{}{}
-	defer func() { <-lobsterForgerySlots }()
-	walk := make([]byte, len(j.whole))
-	for i, w := range j.whole {
-		walk[i] = '0'
-		if w {
-			walk[i] = '1'
-		}
-	}
-	kind := "block"
-	if j.im.m != nil {
-		kind = "cook"
-	}
-	inputs := map[string][]byte{"mutants.bin": lobsterForgeryFile(j.mutants)}
-	from := 0
-	for resume := 0; from < len(j.mutants) && resume <= lobsterForgeryResumes; resume++ {
-		out, code := lobsterrun.RunExit(t, j.dir, "main.lobster", inputs, strconv.Itoa(from), kind, j.im.root, string(walk))
-		began := -1
-		var last string
-		for line := range strings.SplitSeq(string(out), "\n") {
-			switch {
-			case strings.HasPrefix(line, "B "):
-				began, _ = strconv.Atoi(line[2:])
-			case strings.HasPrefix(line, "A "):
-				rest := line[2:]
-				sp := strings.IndexByte(rest, ' ')
-				i, _ := strconv.Atoi(rest[:sp])
-				j.answers[i] = rest[sp+1:]
-			case line != "":
-				last = line
+		for i := range n {
+			mu := lobsterForgeryMutate(im.bytes, im.words, seed^forgeryFNV64(im.name)^(uint64(i+1)*0x9E3779B97F4A7C15))
+			j.mutants = append(j.mutants, mu)
+			whole := false
+			if im.m != nil && mu.lead == 0 {
+				_, err := tablecook.Check(im.m, mu.bytes)
+				whole = err == nil
 			}
+			j.whole = append(j.whole, whole)
 		}
-		if code == 0 {
-			break
-		}
-		if began < 0 || j.answers[began] != "" {
-			j.threw[from] = fmt.Sprintf("the probe failed before a mutant began (exit %d): %s", code, last)
-			break
-		}
-		j.threw[began] = last
-		from = began + 1
-	}
-}
-
-// runLobsterForgeryImages fuzzes the given images against the staged units:
-// each image's mutants are cut into chunks, and the chunks run side by side
-// in the package's probe slots.
-func runLobsterForgeryImages(t *testing.T, seed uint64, n int, images []*lobsterForgeryImage, gens map[string]*loadUnit) lobsterForgeryResult {
-	t.Helper()
-	var jobs []*lobsterForgeryJob
-	for _, im := range images {
-		for c := range lobsterForgeryChunks {
-			if lo, hi := lobsterForgeryChunk(n, c); lo < hi {
-				jobs = append(jobs, newLobsterForgeryJob(t, seed, im, gens[im.unit], lo, hi))
-			}
-		}
+		jobs = append(jobs, j)
 	}
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, 6)
 	for _, j := range jobs {
-		wg.Go(func() { j.run(t) })
+		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			walk := make([]byte, len(j.whole))
+			for i, w := range j.whole {
+				walk[i] = '0'
+				if w {
+					walk[i] = '1'
+				}
+			}
+			kind := "block"
+			if j.im.m != nil {
+				kind = "cook"
+			}
+			inputs := map[string][]byte{"mutants.bin": lobsterForgeryFile(j.mutants)}
+			from := 0
+			for resume := 0; from < len(j.mutants) && resume <= lobsterForgeryResumes; resume++ {
+				out, code := lobsterrun.RunExit(t, j.dir, "main.lobster", inputs, strconv.Itoa(from), kind, j.im.root, string(walk))
+				began := -1
+				var last string
+				for line := range strings.SplitSeq(string(out), "\n") {
+					switch {
+					case strings.HasPrefix(line, "B "):
+						began, _ = strconv.Atoi(line[2:])
+					case strings.HasPrefix(line, "A "):
+						rest := line[2:]
+						sp := strings.IndexByte(rest, ' ')
+						i, _ := strconv.Atoi(rest[:sp])
+						j.answers[i] = rest[sp+1:]
+					case line != "":
+						last = line
+					}
+				}
+				if code == 0 {
+					break
+				}
+				if began < 0 || j.answers[began] != "" {
+					j.threw[from] = fmt.Sprintf("the probe failed before a mutant began (exit %d): %s", code, last)
+					break
+				}
+				j.threw[began] = last
+				from = began + 1
+			}
+		})
 	}
 	wg.Wait()
-	return lobsterForgeryTally(jobs)
-}
-
-// lobsterForgeryTally holds what the jobs' probes answered to the oracle.
-func lobsterForgeryTally(jobs []*lobsterForgeryJob) lobsterForgeryResult {
 	var res lobsterForgeryResult
 	for _, j := range jobs {
 		for i, mu := range j.mutants {
-			where := fmt.Sprintf("%s mutant %d (%s, base +%d)", j.im.name, j.start+i, mu.describe, mu.lead)
+			where := fmt.Sprintf("%s mutant %d (%s, base +%d)", j.im.name, i, mu.describe, mu.lead)
 			if msg, ok := j.threw[i]; ok {
 				res.mutants++
 				res.findings = append(res.findings, fmt.Sprintf("%s: a read of the forgery left the bytes (THREW: %s)", where, msg))
@@ -619,45 +559,14 @@ func TestLobsterForgeryFuzz(t *testing.T) {
 	slowtest.Gate(t, "the Lobster toolchain (it runs the forgery fuzz over the generated Lobster)")
 	seed, n := lobsterForgeryKnobs(t)
 	t.Logf("Lobster forgery fuzz: SEED=%#x N=%d per image", seed, n)
-	images, gens := lobsterForgeryStage(t, "", nil)
-	// one parallel subtest per image, and under it one per chunk, so every
-	// chunk runs side by side and a CI row can take a subset by name
-	// (TestLobsterForgeryFuzz/<image>/<chunk>). The image's oracle reads the
-	// chunks that ran once they all end.
-	for _, im := range images {
-		t.Run(im.name, func(t *testing.T) {
-			t.Parallel()
-			var mu sync.Mutex
-			var ran []*lobsterForgeryJob
-			t.Cleanup(func() {
-				if len(ran) == 0 {
-					return // no chunk of this image was selected
-				}
-				res := lobsterForgeryTally(ran)
-				t.Log(res.summary())
-				if res.refused == 0 || res.opened == 0 || res.walked == 0 {
-					t.Errorf("%s: a fuzz that refuses nothing, opens nothing or walks nothing proves nothing", res.summary())
-				}
-				if len(res.findings) > 0 {
-					k := min(len(res.findings), 5)
-					t.Errorf("%s; first %d:\n%s", res.summary(), k, strings.Join(res.findings[:k], "\n"))
-				}
-			})
-			for c := range lobsterForgeryChunks {
-				lo, hi := lobsterForgeryChunk(n, c)
-				if lo >= hi {
-					continue
-				}
-				t.Run(strconv.Itoa(c), func(t *testing.T) {
-					t.Parallel()
-					j := newLobsterForgeryJob(t, seed, im, gens[im.unit], lo, hi)
-					j.run(t)
-					mu.Lock()
-					ran = append(ran, j)
-					mu.Unlock()
-				})
-			}
-		})
+	res := runLobsterForgeryFuzz(t, seed, n, "", nil)
+	t.Log(res.summary())
+	if res.refused == 0 || res.opened == 0 || res.walked == 0 {
+		t.Fatalf("%s: a fuzz that refuses nothing, opens nothing or walks nothing proves nothing", res.summary())
+	}
+	if len(res.findings) > 0 {
+		k := min(len(res.findings), 5)
+		t.Fatalf("%s; first %d:\n%s", res.summary(), k, strings.Join(res.findings[:k], "\n"))
 	}
 }
 
