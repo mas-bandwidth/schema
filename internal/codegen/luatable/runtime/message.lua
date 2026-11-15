@@ -523,9 +523,7 @@ skip_body = function(R, ctx, depth)
     if not ok then return false end
     if ref == 0 then return true end
     local fe = ctx.vocab[ref]
-    if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
-      return false
-    end
+    if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then return false end
     if not skip_entry(R, fe, ctx, depth) then return false end
   end
 end
