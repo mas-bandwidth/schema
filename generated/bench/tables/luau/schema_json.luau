@@ -1009,10 +1009,9 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
       local c = peek(inp)
       if c == '}' then inp.p = inp.p + 1; return required_seen(desc, v, seen, report) end
       if c == nil then inp.bad = true; return false end
-      local start = inp.p
-      local _, ok = scan_name(inp)
+      local scanned, ok = scan_name(inp)
       if not ok then return false end
-      key = inp.t:sub(start + 1, inp.p - 2)
+      key = scanned :: string
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
     end
@@ -1098,10 +1097,9 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
     return required_seen(T.Tables[d.target], node, {}, report)
   end
   if c == nil then inp.bad = true; return false end
-  local start = inp.p
-  local _, ok = scan_name(inp)
+  local scanned, ok = scan_name(inp)
   if not ok then return false end
-  local k = inp.t:sub(start + 1, inp.p - 2)
+  local k = scanned :: string
   if peek(inp) ~= ':' then inp.bad = true; return false end
   inp.p = inp.p + 1
   if k ~= "&node" then
@@ -1401,10 +1399,9 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    local start = inp.p
-    local _, ok = scan_name(inp)
+    local scanned, ok = scan_name(inp)
     if not ok then return false end
-    local name = inp.t:sub(start + 1, inp.p - 2)
+    local name = scanned :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
     local slot = nil
@@ -1449,10 +1446,9 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   if peek(inp) ~= '{' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
-  local start = inp.p
-  local _, ok = scan_name(inp)
+  local scanned, ok = scan_name(inp)
   if not ok then return nil end
-  local name = inp.t:sub(start + 1, inp.p - 2)
+  local name = scanned :: string
   if peek(inp) ~= ':' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   local tag: number, arm: any = 0, nil
@@ -1660,10 +1656,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     holder[key] = out
     return true
   elseif s == "enum" then
-    local start = inp.p
-    local _, ok = scan_name(inp)
+    local scanned, ok = scan_name(inp)
     if not ok then return false end
-    local name = inp.t:sub(start + 1, inp.p - 2)
+    local name = scanned :: string
     -- §16.2 enum row: "None" and an unknown name read as the enum zero, which
     -- is false in an element slot (zero_elem: a map entry stays an entry, a
     -- list keeps its length) and nil in a field slot. An explicit branch,
@@ -1690,10 +1685,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         report.kindMismatch = report.kindMismatch + 1
         if not skip_value(inp, depth + 1, graph) then return false end
       else
-        local st = inp.p
-        local _, ok = scan_name(inp)
+        local scanned, ok = scan_name(inp)
         if not ok then return false end
-        local nm = inp.t:sub(st + 1, inp.p - 2)
+        local nm = scanned :: string
         local found = false
         local names = d.variants or {}
         for i, v in ipairs(names) do
