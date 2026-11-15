@@ -13,11 +13,17 @@
 #include <stdlib.h> /* the text form: exact number conversion */
 #include <locale.h> /* the text form: the runtime's decimal point */
 
+#include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---- json walk: begin ----
 
    The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
    reflection descriptors (§8). Reading fills ONE caller-owned instance and
-   allocates nothing beyond it; writing targets a caller buffer with the
+   allocates nothing beyond it but the key set of an object of many keys;
+   writing targets a caller buffer with the
    wire's measure/write symmetry. Everything AROUND this — which file goes
    with which instance, what key an instance is filed under, how instances
    link into a root table's collections — is a packer's opinion and stays
@@ -25,8 +31,8 @@
 
    The dialect: trailing commas are accepted on read (the authoring files
    this exists for carry them) and never written; comments are not JSON and
-   are refused; unknown keys are skipped and counted; a repeated key is
-   last-wins and counted; a key present with the wrong JSON type is skipped
+   are refused; unknown keys are skipped and counted; a repeated key, in
+   any object of the text, refuses the read; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
 #define TABLEDEMO_K_TABLE_JSON_MAX_DEPTH 128
@@ -34,9 +40,16 @@
 /* A key longer than this cannot name a field, so it is skipped as unknown. */
 #define TABLEDEMO_K_TABLE_JSON_MAX_KEY 256
 
-/* The longest numeric token the walk will convert. Anything longer is a
-   value no field can hold and counts as a kind mismatch. */
-#define TABLEDEMO_K_TABLE_JSON_MAX_NUMBER 512
+/* The longest spelling handed to the runtime's number converter. A number
+   TOKEN has no length limit (§16.2): the document's own size bounds the scan,
+   and the token is read where it lies in the text. A token too long to hand
+   over whole is handed over as the same value in at most
+   kTableJsonMaxNumber - 32 significant digits: every digit past them is folded
+   into the exponent, and a non-zero one is kept as one sticky digit so the
+   rounding is the token's own. A point halfway between two doubles spells in
+   at most 767 significant digits, so no such point lies between the token and
+   the digits the converter is handed. */
+#define TABLEDEMO_K_TABLE_JSON_MAX_NUMBER 800
 
 /* The decimal point the C runtime is CURRENTLY using. Number conversion is
    the one locale-sensitive corner of the grammar — JSON's point is always
@@ -130,8 +143,16 @@ typedef struct tabledemo_table_json_wide_t
 } tabledemo_table_json_wide_t;
 
 static SCHEMA_UNUSED int tabledemo_table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
-static SCHEMA_UNUSED int tabledemo_table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+static SCHEMA_UNUSED int tabledemo_table_json_kind_wide_signed( uint8_t kind ) { return kind == 5 || kind == 18 || ( kind >= 20 && kind <= 24 ); }
 static SCHEMA_UNUSED int tabledemo_table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+/* the integer-shaped kinds whose storage is wider than 32 bits: int64, uint64,
+   int128, uint128, and the 64- and 128-bit fixed-point kinds. These are the
+   kinds the JSON form writes as a STRING of decimal digits (§16.2). */
+static SCHEMA_UNUSED int tabledemo_table_json_kind_wide_integer( uint8_t kind )
+{
+    return kind == 5 || kind == 9 || kind == 18 || kind == 19 ||
+           kind == 23 || kind == 24 || kind == 28 || kind == 29;
+}
 
 static SCHEMA_UNUSED int tabledemo_table_json_wide_zero( tabledemo_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
 static SCHEMA_UNUSED int tabledemo_table_json_wide_negative( tabledemo_table_json_wide_t v ) { return ( v.hi >> 63 ) != 0; }
@@ -350,6 +371,22 @@ static SCHEMA_UNUSED char tabledemo_table_json_element_shape( const tabledemo_ta
     return 'n';
 }
 
+/* A wide integer declares the number shape and READS a string or a number
+   (§16.2); every other shape is exact. */
+static SCHEMA_UNUSED int tabledemo_table_json_shape_accepts( const tabledemo_table_field_info_t * f, char got )
+{
+    char want = tabledemo_table_json_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && tabledemo_table_json_kind_wide_integer( f->kind );
+}
+
+static SCHEMA_UNUSED int tabledemo_table_json_element_shape_accepts( const tabledemo_table_field_info_t * f, char got )
+{
+    char want = tabledemo_table_json_element_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && tabledemo_table_json_kind_wide_integer( f->kind );
+}
+
 /* A guarded group rides only when its guard reads true — the wire's own
    elision (§4), carried into the text so a text and a wire written from one
    instance say the same thing. The guard is spelled as its branch condition
@@ -525,6 +562,11 @@ static SCHEMA_UNUSED void tabledemo_table_json_write_string( tabledemo_table_jso
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
+        /* A zero byte is not text for this writer either (docs/SPEC-TABLES.md
+           §16.3, §16.14 W0): no read stores U+0000, so a program-built value
+           holding one is off the write contract (docs/SPEC.md §5.1 row 8).
+           C is an assert leg, so the refusal is a debug assert. */
+        schema_assert( c != 0 );
         switch ( c )
         {
             case '"':  tabledemo_table_json_raw( out, "\\\"", 2 ); break;
@@ -596,7 +638,7 @@ static SCHEMA_UNUSED void tabledemo_table_json_write_signed( tabledemo_table_jso
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED void tabledemo_table_json_write_wide( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f )
+static SCHEMA_UNUSED void tabledemo_table_json_write_wide_digits( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f )
 {
     int is_signed = tabledemo_table_json_kind_wide_signed( f->kind );
     tabledemo_table_json_wide_t v = tabledemo_table_json_wide_load( storage, f->elem_size, is_signed );
@@ -639,6 +681,20 @@ static SCHEMA_UNUSED void tabledemo_table_json_write_wide( tabledemo_table_json_
         if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
         else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     }
+}
+
+/* a kind wider than 32 bits is a STRING of decimal digits (§16.2); one of 32
+   bits and under is a bare number. */
+static SCHEMA_UNUSED void tabledemo_table_json_write_wide( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f )
+{
+    if ( !tabledemo_table_json_kind_wide_integer( f->kind ) )
+    {
+        tabledemo_table_json_write_wide_digits( out, storage, f );
+        return;
+    }
+    tabledemo_table_json_put( out, '"' );
+    tabledemo_table_json_write_wide_digits( out, storage, f );
+    tabledemo_table_json_put( out, '"' );
 }
 
 
@@ -871,7 +927,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
         tabledemo_table_json_put( out, ']' );
         return 1;
     }
-    if ( tabledemo_table_json_kind_wide( f->kind ) ) { tabledemo_table_json_write_wide( out, storage, f ); return 1; }
+    if ( tabledemo_table_json_kind_wide( f->kind ) || tabledemo_table_json_kind_wide_integer( f->kind ) ) { tabledemo_table_json_write_wide( out, storage, f ); return 1; }
     switch ( f->kind )
     {
         case 1:
@@ -1031,17 +1087,40 @@ typedef struct tabledemo_table_json_in_t
     void * graph;
 } tabledemo_table_json_in_t;
 
+/* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
+   or block comment are well-formed UTF-8 and hold no NUL. A comment carrying an
+   ill-formed sequence or a zero byte is not JSON and refuses the read, exactly
+   as a byte at a string site does. Linear in the comment's length. */
+static SCHEMA_UNUSED int tabledemo_table_json_comment_text( const char * s, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        unsigned char c = (unsigned char) s[i];
+        int32_t width = 0;
+        int64_t left = length - i;
+        if ( c == 0 ) { return 0; }
+        if ( c < 0x80 ) { i++; continue; }
+        if ( tabledemo_table_json_utf8( s + i, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { return 0; }
+        i += width;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED void tabledemo_table_json_space( tabledemo_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        /* SPEC-TABLES 16.2: comments are whitespace on read, and their bytes are text. */
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
         {
+            int64_t start;
             in->pos += 2;
+            start = in->pos;
             while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            if ( !tabledemo_table_json_comment_text( in->text + start, in->pos - start ) ) { in->bad = 1; return; }
             continue;
         }
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
@@ -1049,6 +1128,7 @@ static SCHEMA_UNUSED void tabledemo_table_json_space( tabledemo_table_json_in_t 
             int64_t at = in->pos + 2;
             while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
             if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            if ( !tabledemo_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) ) { in->bad = 1; return; }
             in->pos = at + 2;
             continue;
         }
@@ -1115,21 +1195,35 @@ static SCHEMA_UNUSED int tabledemo_table_json_hex4( tabledemo_table_json_in_t * 
    c is the body byte just taken (at in->pos - 1). -1, with in->bad set, when
    it is not JSON: a raw byte below 0x20, a backslash that begins no escape,
    or a byte at or above 0x80 that begins no UTF-8 sequence (string_not_utf8,
-   §16.3). 0 when it begins valid JSON that is never a base64 symbol, an
-   escape or a UTF-8 sequence, consumed whole so an escaped quote cannot end
-   the body. 1 when the byte stands alone for the base64 grammar to judge. */
-static SCHEMA_UNUSED int tabledemo_table_json_base64_step( tabledemo_table_json_in_t * in, char c )
+   §16.3). 0 when it begins valid JSON whose decoded character is never a
+   base64 symbol, a UTF-8 sequence or an escape of a character at or above
+   U+0080, consumed whole. 1, with *decoded set, when it decodes to one ASCII
+   character, the byte alone or an escape consumed whole (\/ is a solidus, so an
+   escaped quote cannot end the body): the base64 grammar judges the string's
+   DECODED value. */
+static SCHEMA_UNUSED int tabledemo_table_json_base64_step( tabledemo_table_json_in_t * in, char c, char * decoded )
 {
     if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
     if ( c == '\\' )
     {
         char escape;
+        int code;
         if ( in->pos >= in->size ) { in->bad = 1; return -1; }
         escape = in->text[in->pos++];
         switch ( escape )
         {
-            case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't': return 0;
-            case 'u': if ( tabledemo_table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
+            case '"': case '\\': case '/': *decoded = escape; return 1;
+            case 'b': *decoded = '\b'; return 1;
+            case 'f': *decoded = '\f'; return 1;
+            case 'n': *decoded = '\n'; return 1;
+            case 'r': *decoded = '\r'; return 1;
+            case 't': *decoded = '\t'; return 1;
+            case 'u':
+                code = tabledemo_table_json_hex4( in );
+                if ( code < 0 ) { in->bad = 1; return -1; }
+                if ( code >= 0x80 ) { return 0; }
+                *decoded = (char) code;
+                return 1;
             default: in->bad = 1; return -1;
         }
     }
@@ -1141,7 +1235,89 @@ static SCHEMA_UNUSED int tabledemo_table_json_base64_step( tabledemo_table_json_
         in->pos += width - 1;
         return 0;
     }
+    *decoded = c;
     return 1;
+}
+
+/* A base64 body (docs/SPEC-TABLES.md §16.2, §16.8): the JSON string at the
+   cursor, decoded first, then held to CANONICAL base64, the standard alphabet,
+   padded, pad bits zero, exactly the text the writer writes. -1, with in->bad
+   set, when the text is not JSON. 0 when the decoded value is not canonical,
+   with *reason the refusal: the wrong kind when it does not decode at all,
+   base64_not_canonical when it decodes but is another spelling. 1 when it is
+   canonical, with *mark its first body byte and *length its decoded bytes.
+   On 0 and 1 the cursor is past the closing quote. Nothing is stored. */
+static SCHEMA_UNUSED int tabledemo_table_json_base64_scan( tabledemo_table_json_in_t * in, int64_t * mark, int64_t * length, int * reason )
+{
+    int64_t symbols = 0;
+    int64_t pad = 0;
+    int32_t last = 0;
+    int damaged = 0;
+    if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return -1; }
+    in->pos++;
+    *mark = in->pos;
+    for ( ;; )
+    {
+        char c;
+        char decoded = 0;
+        int32_t val;
+        int step;
+        if ( in->pos >= in->size ) { in->bad = 1; return -1; }
+        c = in->text[in->pos++];
+        if ( c == '"' ) { break; }
+        step = tabledemo_table_json_base64_step( in, c, &decoded );
+        if ( step < 0 ) { return -1; }
+        if ( step == 0 ) { damaged = 1; continue; }
+        if ( damaged ) { continue; }
+        if ( decoded == '=' ) { pad++; continue; }
+        if ( pad > 0 ) { damaged = 1; continue; }
+        val = tabledemo_table_json_base64_value( (uint8_t) decoded );
+        if ( val < 0 ) { damaged = 1; continue; }
+        last = val;
+        symbols++;
+    }
+    if ( damaged || symbols % 4 == 1 || ( pad > 0 && ( pad > 2 || ( symbols + pad ) % 4 != 0 ) ) )
+    {
+        *reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        return 0;
+    }
+    /* it decodes; the canonical spelling pads the last group whole and
+       leaves the bits its last symbol carries past the last byte zero */
+    if ( ( symbols + pad ) % 4 != 0 || ( symbols % 4 == 2 && ( last & 0x0f ) != 0 ) || ( symbols % 4 == 3 && ( last & 0x03 ) != 0 ) )
+    {
+        *reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL;
+        return 0;
+    }
+    *length = symbols * 6 / 8;
+    return 1;
+}
+
+/* The bytes of a body table_json_base64_scan held canonical, decoded again
+   from mark: at most capacity of them into out. The cursor is left where the
+   scan left it. */
+static SCHEMA_UNUSED void tabledemo_table_json_base64_decode( tabledemo_table_json_in_t * in, int64_t mark, uint8_t * out, int64_t capacity )
+{
+    int64_t end = in->pos;
+    int64_t placed = 0;
+    uint32_t accumulator = 0;
+    int32_t held = 0;
+    in->pos = mark;
+    for ( ;; )
+    {
+        char c = in->text[in->pos++];
+        char decoded = 0;
+        if ( c == '"' ) { break; }
+        (void) tabledemo_table_json_base64_step( in, c, &decoded );
+        if ( decoded == '=' ) { break; }
+        accumulator = ( accumulator << 6 ) | (uint32_t) tabledemo_table_json_base64_value( (uint8_t) decoded );
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+        }
+    }
+    in->pos = end;
 }
 
 static SCHEMA_UNUSED int32_t tabledemo_table_json_encode_utf8( uint32_t code, char * unit )
@@ -1369,39 +1545,108 @@ static SCHEMA_UNUSED int tabledemo_table_json_walk_number( tabledemo_table_json_
     return 1;
 }
 
-/* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int tabledemo_table_json_scan_number( tabledemo_table_json_in_t * in, char * token, int32_t capacity, int32_t * length, int * integral )
+/* the same production, with the token kept for conversion: it is read where
+   it lies in the text, so its length is never a reason to refuse it */
+static SCHEMA_UNUSED int tabledemo_table_json_scan_number( tabledemo_table_json_in_t * in, const char ** token, int64_t * length, int * integral )
 {
     int64_t start;
-    int64_t count;
     tabledemo_table_json_space( in );
     start = in->pos;
     if ( !tabledemo_table_json_walk_number( in, integral ) ) { return 0; }
-    count = in->pos - start;
-    if ( count <= 0 || count >= capacity ) { return 0; }
-    memcpy( token, in->text + start, (size_t) count );
-    token[count] = 0;
-    *length = (int32_t) count;
+    if ( in->pos <= start ) { return 0; }
+    *token = in->text + start;
+    *length = in->pos - start;
+    return 1;
+}
+
+/* AN INTEGER TOKEN (§16.2): an optional minus, then digits with no leading
+   zero, and not -0. A fraction, an exponent, a plus and a negative zero are
+   each the wrong shape for an integer field, never coerced. */
+static SCHEMA_UNUSED int tabledemo_table_json_integer_token( const char * text, int64_t length )
+{
+    int64_t i = 0;
+    int negative = 0;
+    if ( i < length && text[i] == '-' ) { negative = 1; i++; }
+    if ( i >= length ) { return 0; }
+    if ( text[i] == '0' ) { return !negative && i + 1 == length; }
+    if ( text[i] < '1' || text[i] > '9' ) { return 0; }
+    for ( ; i < length; i++ )
+    {
+        if ( text[i] < '0' || text[i] > '9' ) { return 0; }
+    }
     return 1;
 }
 
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
-   character on its way in */
-static SCHEMA_UNUSED double tabledemo_table_json_token_double( const char * token, int32_t length, int single )
+   character on its way in. A token too long to copy whole is handed over as
+   the same value, [-]0.<significant digits>e<exponent>: leading zeros move
+   the exponent, digits past kTableJsonMaxNumber - 32 are folded into it, and
+   a non-zero one among them leaves one sticky digit behind. */
+static SCHEMA_UNUSED double tabledemo_table_json_token_double( const char * token, int64_t length, int single )
 {
     char work[TABLEDEMO_K_TABLE_JSON_MAX_NUMBER];
-    char point;
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
-    point = tabledemo_table_json_decimal_point();
-    if ( point != '.' )
+    char point = tabledemo_table_json_decimal_point();
+    if ( length < (int64_t) sizeof( work ) )
     {
-        int32_t i;
-        for ( i = 0; i < length; i++ )
+        memcpy( work, token, (size_t) length );
+        work[length] = 0;
+        if ( point != '.' )
         {
-            if ( work[i] == '.' ) { work[i] = point; }
+            int64_t i;
+            for ( i = 0; i < length; i++ )
+            {
+                if ( work[i] == '.' ) { work[i] = point; }
+            }
         }
+    }
+    else
+    {
+        int64_t i = 0;
+        int64_t exponent = 0;    /* the point's place after the digits kept: 0.<digits> times ten to this */
+        int64_t written = 0;     /* the exponent the token spells */
+        int fraction = 0;
+        int seen = 0;            /* a non-zero digit has been read */
+        int sticky = 0;          /* a non-zero digit was dropped */
+        int32_t kept = 0;
+        int32_t n = 0;
+        if ( token[i] == '-' ) { work[n++] = '-'; i++; }
+        work[n++] = '0';
+        work[n++] = point;
+        for ( ; i < length && token[i] != 'e' && token[i] != 'E'; i++ )
+        {
+            const char c = token[i];
+            if ( c == '.' ) { fraction = 1; continue; }
+            if ( !seen && c == '0' )
+            {
+                if ( fraction ) { exponent--; }
+                continue;
+            }
+            seen = 1;
+            if ( !fraction ) { exponent++; }
+            if ( kept < TABLEDEMO_K_TABLE_JSON_MAX_NUMBER - 32 ) { work[n++] = c; kept++; }
+            else if ( c != '0' ) { sticky = 1; }
+        }
+        if ( i < length )
+        {
+            int negative = 0;
+            i++;
+            if ( token[i] == '-' || token[i] == '+' ) { negative = token[i] == '-'; i++; }
+            for ( ; i < length; i++ )
+            {
+                /* past this no document holds enough digits to bring the
+                   value back from overflow or underflow */
+                if ( written < 100000000000000000LL ) { written = written * 10 + ( token[i] - '0' ); }
+            }
+            exponent += negative ? -written : written;
+        }
+        if ( !seen ) { work[n++] = '0'; exponent = 0; }
+        if ( sticky ) { work[n++] = '1'; }
+        /* ten to the 99999 overflows and ten to the -99999 underflows whatever
+           seven hundred digits stand in front of it */
+        if ( exponent > 99999 ) { exponent = 99999; }
+        if ( exponent < -99999 ) { exponent = -99999; }
+        snprintf( work + n, sizeof( work ) - (size_t) n, "e%d", (int) exponent );
     }
     if ( single ) { return (double) strtof( work, NULL ); }
     return strtod( work, NULL );
@@ -1458,12 +1703,119 @@ static SCHEMA_UNUSED int tabledemo_table_json_skipped_ampersand( tabledemo_table
 { (void)key; in->bad = 1; return 0; }
 #endif
 
+/* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
+   the read, in every object of the text, whatever the key names — a field, a
+   key no field has, a key inside a value the walk only skips. Every object
+   walked keeps every key it decodes, as the key's place in the text and the
+   hash of its decoded bytes, in an open-addressed set: on the stack for an
+   object of a few keys and on the heap past that, so the set is as large as
+   the object's own keys and never limited by the table's width. Two keys are
+   the same key when their DECODED bytes are, so an escape spells the same key
+   as the character it names. */
+#define TABLEDEMO_K_TABLE_JSON_KEYS_LOCAL 16
+
+#ifndef schema_allocate
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#endif
+#ifndef schema_release
+#define schema_release(pointer) free(pointer)
+#endif
+
+typedef struct tabledemo_table_json_key_t
+{
+    int64_t at;    /* one past the key's opening quote in the text; 0 is an empty slot */
+    uint64_t hash; /* of the key's decoded bytes */
+} tabledemo_table_json_key_t;
+
+typedef struct tabledemo_table_json_keys_t
+{
+    tabledemo_table_json_key_t * slots;
+    int64_t capacity; /* a power of two */
+    int64_t count;
+    tabledemo_table_json_key_t local[TABLEDEMO_K_TABLE_JSON_KEYS_LOCAL];
+} tabledemo_table_json_keys_t;
+
+static SCHEMA_UNUSED void tabledemo_table_json_keys_init( tabledemo_table_json_keys_t * keys )
+{
+    memset( keys->local, 0, sizeof( keys->local ) );
+    keys->slots = keys->local;
+    keys->capacity = TABLEDEMO_K_TABLE_JSON_KEYS_LOCAL;
+    keys->count = 0;
+}
+
+static SCHEMA_UNUSED void tabledemo_table_json_keys_free( tabledemo_table_json_keys_t * keys )
+{
+    if ( keys->slots != keys->local ) { schema_release( keys->slots ); }
+    keys->slots = keys->local;
+}
+
+/* the key a slot holds, decoded again from the text, against this one */
+static SCHEMA_UNUSED int tabledemo_table_json_key_equal( const tabledemo_table_json_in_t * in, int64_t at, const char * key, int32_t length )
+{
+    tabledemo_table_json_in_t scan = *in;
+    tabledemo_table_report_t scratch;
+    char held[TABLEDEMO_K_TABLE_JSON_MAX_KEY];
+    int32_t held_length = 0;
+    memset( &scratch, 0, sizeof( scratch ) );
+    scan.report = &scratch;
+    scan.pos = at - 1;
+    if ( !tabledemo_table_json_scan_text( &scan, held, TABLEDEMO_K_TABLE_JSON_MAX_KEY - 1, &held_length ) ) { return 0; }
+    return held_length == length && memcmp( held, key, (size_t) length ) == 0;
+}
+
+/* 1: the key is new to its object and now held; 0: the object already holds
+   it; -1: the set could not grow, and the walk stops (in->bad). quote is the
+   key's opening quote in the text. */
+static SCHEMA_UNUSED int tabledemo_table_json_keys_add( tabledemo_table_json_in_t * in, tabledemo_table_json_keys_t * keys, int64_t quote, const char * key, int32_t length )
+{
+    uint64_t hash = 1469598103934665603ULL;
+    int64_t mask;
+    int64_t i;
+    int32_t k;
+    for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
+    if ( ( keys->count + 1 ) * 2 > keys->capacity )
+    {
+        const int64_t capacity = keys->capacity * 2;
+        tabledemo_table_json_key_t * grown;
+        int64_t j;
+        if ( (uint64_t) capacity > SIZE_MAX / sizeof( tabledemo_table_json_key_t ) ) { in->bad = 1; return -1; }
+        grown = (tabledemo_table_json_key_t *) schema_allocate( capacity * (int64_t) sizeof( tabledemo_table_json_key_t ) );
+        if ( grown == NULL ) { in->bad = 1; return -1; }
+        memset( grown, 0, (size_t) capacity * sizeof( tabledemo_table_json_key_t ) );
+        for ( j = 0; j < keys->capacity; j++ )
+        {
+            if ( keys->slots[j].at == 0 ) { continue; }
+            i = (int64_t) ( keys->slots[j].hash & (uint64_t) ( capacity - 1 ) );
+            while ( grown[i].at != 0 ) { i = ( i + 1 ) & ( capacity - 1 ); }
+            grown[i] = keys->slots[j];
+        }
+        tabledemo_table_json_keys_free( keys );
+        keys->slots = grown;
+        keys->capacity = capacity;
+    }
+    mask = keys->capacity - 1;
+    for ( i = (int64_t) ( hash & (uint64_t) mask ); keys->slots[i].at != 0; i = ( i + 1 ) & mask )
+    {
+        if ( keys->slots[i].hash == hash && tabledemo_table_json_key_equal( in, keys->slots[i].at, key, length ) ) { return 0; }
+    }
+    keys->slots[i].at = quote + 1;
+    keys->slots[i].hash = hash;
+    keys->count++;
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_skip_value( tabledemo_table_json_in_t * in, int32_t depth );
 
-static SCHEMA_UNUSED int tabledemo_table_json_skip_container( tabledemo_table_json_in_t * in, char close, int32_t depth )
+static SCHEMA_UNUSED int tabledemo_table_json_skip_members( tabledemo_table_json_in_t * in, char close, int32_t depth, tabledemo_table_json_keys_t * keys )
 {
-    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    /* a skipped object's keys are held to the layer's rule too: a zero in one
+       refuses the read, and a repeated key refuses in every object (§16.2,
+       §16.3). The repeat set is bounded and allocation-free like the table's. */
+    uint64_t seen[64];
+    int32_t seen_count = 0;
     int first = 1;
+    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
@@ -1475,10 +1827,23 @@ static SCHEMA_UNUSED int tabledemo_table_json_skip_container( tabledemo_table_js
         {
             char key[TABLEDEMO_K_TABLE_JSON_MAX_KEY];
             int32_t length = 0;
-            if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
+            const int64_t quote = in->pos;
+            int added;
+            uint64_t hash = 1469598103934665603ULL;
+            int32_t k;
+            if ( !tabledemo_table_json_scan_text(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
             key[length] = 0;
+            for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
+            for ( k = 0; k < seen_count; k++ )
+            {
+                if ( seen[k] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; in->bad = 1; return 0; }
+            }
+            if ( seen_count < 64 ) { seen[seen_count++] = hash; }
             if ( tabledemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
+            added = tabledemo_table_json_keys_add( in, keys, quote, key, length );
+            if ( added < 0 ) { return 0; }
+            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
             if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !tabledemo_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
         }
         first = 0;
@@ -1491,6 +1856,17 @@ static SCHEMA_UNUSED int tabledemo_table_json_skip_container( tabledemo_table_js
     }
 }
 
+static SCHEMA_UNUSED int tabledemo_table_json_skip_container( tabledemo_table_json_in_t * in, char close, int32_t depth )
+{
+    tabledemo_table_json_keys_t keys;
+    int ok;
+    if ( close != '}' ) { return tabledemo_table_json_skip_members( in, close, depth, NULL ); }
+    tabledemo_table_json_keys_init( &keys );
+    ok = tabledemo_table_json_skip_members( in, close, depth, &keys );
+    tabledemo_table_json_keys_free( &keys );
+    return ok;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_skip_value( tabledemo_table_json_in_t * in, int32_t depth )
 {
     char c = tabledemo_table_json_peek( in );
@@ -1498,7 +1874,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_skip_value( tabledemo_table_json_i
     {
         case '{': return tabledemo_table_json_skip_container( in, '}', depth );
         case '[': return tabledemo_table_json_skip_container( in, ']', depth );
-        case '"': return tabledemo_table_json_scan_string( in, NULL, 0, NULL );
+        /* a skipped string is held to the text rules of a placed value: a
+           U+0000 refuses the read (§16.3), as text_holds_zero does at a field */
+        case '"': return tabledemo_table_json_scan_text( in, NULL, 0, NULL );
         case 't': return tabledemo_table_json_literal( in, "true" );
         case 'f': return tabledemo_table_json_literal( in, "false" );
         case 'n': return tabledemo_table_json_literal( in, "null" );
@@ -1517,7 +1895,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_skip_value( tabledemo_table_json_i
 }
 
 static SCHEMA_UNUSED int tabledemo_table_json_read_table( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth );
-static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key );
+static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote );
 
 typedef struct tabledemo_table_json_integer_t
 {
@@ -1531,7 +1909,7 @@ typedef struct tabledemo_table_json_integer_t
 // THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
 // no locale can move it, and through the runtime's converter only where the
 // spelling carries a fraction or an exponent
-static SCHEMA_UNUSED tabledemo_table_json_integer_t tabledemo_table_json_interpret( const char * token, int32_t length, int integral )
+static SCHEMA_UNUSED tabledemo_table_json_integer_t tabledemo_table_json_interpret( const char * token, int64_t length, int integral )
 {
     tabledemo_table_json_integer_t out;
     out.magnitude = 0;
@@ -1541,7 +1919,7 @@ static SCHEMA_UNUSED tabledemo_table_json_integer_t tabledemo_table_json_interpr
     out.finite = 1;
     if ( integral )
     {
-        int32_t i = 0;
+        int64_t i = 0;
         if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
         {
             out.negative = 1;
@@ -1624,18 +2002,25 @@ static SCHEMA_UNUSED int64_t tabledemo_table_json_integer_in_domain( tabledemo_t
 }
 
 
-static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in_t * in, const char * token, int32_t length, void * storage, const tabledemo_table_field_info_t * f )
+static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in_t * in, const char * token, int64_t length, void * storage, const tabledemo_table_field_info_t * f )
 {
     int is_signed = tabledemo_table_json_kind_wide_signed( f->kind );
     int frac = f->frac_bits;
-    int32_t i = 0;
+    int64_t i = 0;
     int negative = 0;
+    /* a 128-bit INTEGER takes an integer token only (§16.2); a fixed-point
+       kind keeps its exact decimal spelling */
+    if ( !tabledemo_table_json_kind_fixed( f->kind ) && !tabledemo_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
-    int32_t int_len = 0;
+    int64_t int_len = 0;
     while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
     const char * frac_digits = token + i;
-    int32_t frac_len = 0;
+    int64_t frac_len = 0;
     if ( i < length && token[i] == '.' )
     {
         i++;
@@ -1650,14 +2035,15 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in
         if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
         while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
-            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            // held past any count of digits a document can put in front
+            if ( exp < 100000000000000000LL ) { exp = exp * 10 + ( token[i] - '0' ); }
             i++;
         }
         if ( exp_negative ) { exp = -exp; }
     }
     // the digits, with the point after "point" of them; leading and trailing
     // zeros stripped. digit( k ) reads the k-th of the int and frac runs.
-    int32_t start = 0, end = int_len + frac_len;
+    int64_t start = 0, end = int_len + frac_len;
     int64_t point = int_len + exp;
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
@@ -1688,10 +2074,19 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in
         // its magnitude: its digits, with the zeros a negative point puts in
         // front, doubled F times; each doubling's carry is the next bit, and
         // the value is exact iff nothing is left after the last one
-        char fd[TABLEDEMO_K_TABLE_JSON_MAX_NUMBER + 48];
+        char fd[256];
         int32_t fn = 0;
+        // a fraction exact in F bits spells in at most F decimal digits (its
+        // last digit is not zero, so 10^n divides digits * 2^F only for n <= F):
+        // a longer one is inexact without being doubled out
+        const int64_t fraction_digits = ( point < 0 ? -point : 0 ) + ( end - start - ( point > 0 ? point : 0 ) );
+        if ( fraction_digits > frac || fraction_digits > (int64_t) sizeof( fd ) )
+        {
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
@@ -1940,9 +2335,10 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_text_total_keep_( tabledemo
 
 static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_in_t * in, void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
-    char token[TABLEDEMO_K_TABLE_JSON_MAX_NUMBER];
-    int32_t length = 0;
+    const char * token = NULL;
+    int64_t length = 0;
     int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_tabledemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
@@ -1963,7 +2359,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
         in->pos++;
         tabledemo_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( tabledemo_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
-        if ( !tabledemo_table_json_scan_string( in, key, TABLEDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
+        if ( !tabledemo_table_json_scan_text( in, key, TABLEDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
         if ( tabledemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -1982,7 +2378,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
             const tabledemo_table_field_info_t * arm = arms->arms[tag].field;
             char want = arm != NULL ? tabledemo_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( tabledemo_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && tabledemo_table_json_value_shape(in) == 'z') ) {
+            if ( !( arm != NULL ? tabledemo_table_json_shape_accepts( arm, tabledemo_table_json_value_shape( in ) ) : tabledemo_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && tabledemo_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
@@ -2057,6 +2453,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
                     const char * variant = tabledemo_table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
+                        /* a known variant named twice is a repeated key, refused like one
+                           (§16.2): a conforming writer writes each set bit's name once */
+                        if ( ( bits & ( (uint64_t) 1 << bit ) ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                         bits |= (uint64_t) 1 << bit;
                         found = 1;
                         break;
@@ -2088,7 +2487,17 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
         tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !tabledemo_table_json_scan_number( in, token, TABLEDEMO_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
+    if ( tabledemo_table_json_kind_wide_integer( f->kind ) && tabledemo_table_json_peek( in ) == '"' )
+    {
+        /* a wide integer reads as a string OR a number, the same digits (§16.2) */
+        int32_t text_length = 0;
+        if ( !tabledemo_table_json_scan_text( in, textbuf, (int32_t) sizeof( textbuf ) - 1, &text_length ) ) { return 0; }
+        if ( in->report->refused ) { return 1; }
+        token = textbuf;
+        length = text_length;
+        integral = 1;
+    }
+    else if ( !tabledemo_table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -2131,14 +2540,17 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
         }
         return 1;
     }
-    // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
-    // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
-    // and 1e3 IS 1000. A library that round-trips numbers through a double
-    // emits them that way, and this walker's own float writer emits 1e+21. Only
-    // a genuinely fractional value is the wrong shape for the kind.
+    // EVERY INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2): digits with an
+    // optional minus, no fraction, no exponent, not -0. The value never passes
+    // through a double and its range is tested on the exact value.
+    if ( !tabledemo_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     const int is_signed = f->kind >= 2 && f->kind <= 5;
-    const tabledemo_table_json_integer_t number = tabledemo_table_json_interpret( token, length, integral );
-    if ( !number.finite || number.fractional )
+    const tabledemo_table_json_integer_t number = tabledemo_table_json_interpret( token, length, 1 );
+    if ( !number.finite )
     {
         in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
@@ -2146,8 +2558,19 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
     if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // A 64-bit integer's range is compared on the exact 128-bit lanes: a value
+    // at or above 2^53 is never rounded through a double on its way to a bound.
+    if ( f->wide != NULL && ( f->kind == 5 || f->kind == 9 ) )
+    {
+        tabledemo_table_json_wide_t v = { number.magnitude, 0 };
+        tabledemo_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
+        tabledemo_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( number.negative ) { v = tabledemo_table_json_wide_neg( v ); }
+        if ( tabledemo_table_json_wide_compare( v, lo, is_signed ) < 0 ) { v = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( tabledemo_table_json_wide_compare( v, hi, is_signed ) > 0 ) { v = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        tabledemo_table_json_set_raw( storage, f->elem_size, v.lo );
+        return 1;
+    }
     tabledemo_table_json_integer_t bounded = number;
     if ( f->has_range )
     {
@@ -2184,84 +2607,29 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
     }
     if ( tabledemo_table_json_is_bytes( f ) )
     {
-        /* The JSON layer decides first (table_json_base64_step): a body that
-           is not a JSON string is damaged, and one that is JSON but carries
-           an escape or a non-ASCII character is simply not base64. Validate the
-           stream and its padding before touching storage, so a body that is not
-           base64 leaves the declared default. */
-        int64_t mark;
-        int64_t symbols = 0;
-        int64_t pad = 0;
-        int damaged = 0;
-        int64_t at;
-        int32_t placed = 0;
-        uint32_t accumulator = 0;
-        int32_t held = 0;
-        int out_of_range = 0;
-        if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
-        in->pos++;
-        mark = in->pos;
-        for ( ;; )
+        /* The JSON layer decides first (table_json_base64_scan): a body that
+           is not a JSON string is damaged; the string's decoded value is then
+           held to canonical base64 before storage is touched, so a body that
+           is not the canonical spelling leaves the declared default. */
+        int64_t mark = 0;
+        int64_t length = 0;
+        int reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
+        int scanned = tabledemo_table_json_base64_scan( in, &mark, &length, &reason );
+        if ( scanned < 0 ) { return 0; }
+        if ( scanned == 0 )
         {
-            char c;
-            int32_t val;
-            int step;
-            if ( in->pos >= in->size ) { in->bad = 1; return 0; }
-            c = in->text[in->pos++];
-            if ( c == '"' ) { break; }
-            step = tabledemo_table_json_base64_step( in, c );
-            if ( step < 0 ) { return 0; }
-            if ( step == 0 ) { damaged = 1; continue; }
-            if ( damaged ) { continue; }
-            if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { damaged = 1; continue; }
-            val = tabledemo_table_json_base64_value( (uint8_t) c );
-            if ( val < 0 ) { damaged = 1; continue; }
-            symbols++;
-        }
-        if ( !damaged )
-        {
-            if ( pad > 0 )
-            {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { damaged = 1; }
-            }
-            else if ( symbols % 4 == 1 )
-            {
-                damaged = 1;
-            }
-        }
-        if ( damaged )
-        {
-            /* a body that is not base64 is the wrong shape for the kind: the
-               field keeps its default and the event is counted */
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            /* the field keeps its default and the event is counted */
+            in->report->refused=1, in->report->refuse_reason=reason;
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        tabledemo_table_json_set_count( base, f, 0 );
-        for ( at = mark; ; at++ )
+        tabledemo_table_json_base64_decode( in, mark, storage, f->array_bound );
+        if ( length > f->array_bound )
         {
-            char c = in->text[at];
-            int32_t symbol;
-            if ( c == '"' || c == '=' ) { break; }
-            symbol = tabledemo_table_json_base64_value( (uint8_t) c );
-            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
-            held += 6;
-            if ( held >= 8 )
-            {
-                held -= 8;
-                if ( placed < f->array_bound )
-                {
-                    storage[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff );
-                }
-                else
-                {
-                    out_of_range = 1;
-                }
-            }
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+            length = f->array_bound;
         }
-        if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-        tabledemo_table_json_set_count( base, f, placed );
+        tabledemo_table_json_set_count( base, f, (int32_t) length );
         return 1;
     }
     if ( tabledemo_table_json_is_keyed( f ) )
@@ -2270,7 +2638,6 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
            omits keeps them and a repeated field key cannot leave an earlier
            occurrence's slots standing */
         int32_t i;
-        char shape;
         uint64_t seen[8];
         if ( tabledemo_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -2280,7 +2647,6 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = tabledemo_table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -2300,7 +2666,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             int64_t v;
             if ( c == '}' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !tabledemo_table_json_scan_string( in, key, TABLEDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
+            if ( !tabledemo_table_json_scan_text( in, key, TABLEDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
             if ( tabledemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
@@ -2336,7 +2702,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
                 in->report->unknown++;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( tabledemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && tabledemo_table_json_value_shape(in) == 'z') )
+            else if ( !tabledemo_table_json_element_shape_accepts( f, tabledemo_table_json_value_shape( in ) ) && !(f->kind == 17 && tabledemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2363,7 +2729,6 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
-        char shape;
         if ( tabledemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
@@ -2382,7 +2747,6 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
         tabledemo_table_json_set_count( base, f, 0 );
-        shape = tabledemo_table_json_element_shape( f );
         for ( ;; )
         {
             char c = tabledemo_table_json_peek( in );
@@ -2402,7 +2766,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( tabledemo_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && tabledemo_table_json_value_shape(in) == 'z') )
+            else if ( !tabledemo_table_json_element_shape_accepts( f, tabledemo_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && tabledemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2437,7 +2801,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
-   counted, a repeated key is last-wins and counted. The instance is already
+   counted, a repeated key refuses the read. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
 static SCHEMA_UNUSED int schema_tabledemo_table_json_require_seen_( tabledemo_table_json_in_t * in, const void * base, const tabledemo_table_type_info_t * info, const uint64_t * seen )
@@ -2457,10 +2821,11 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_require_seen_( tabledemo_ta
     return 1;
 }
 
-static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key )
+static SCHEMA_UNUSED int tabledemo_table_json_read_table_members( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote, tabledemo_table_json_keys_t * keys )
 {
-    /* repeated tracking, bounded and allocation-free: a table with more
-       fields than this still reads, its repeats simply stop being counted */
+    /* the fields seen, bounded and allocation-free, for the required check;
+       a repeated key, of any field or of none and at any width, is refused
+       through the key set (keys) */
     uint64_t seen[8];
     memset( seen, 0, sizeof( seen ) );
     for ( ;; )
@@ -2468,18 +2833,25 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         char c = 0;
         char key[TABLEDEMO_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
+        int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,strlen(first_key)+1); first_key = NULL; }
+        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
         else
         {
             c = tabledemo_table_json_peek(in);
             if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
+            quote = in->pos;
+            if ( !tabledemo_table_json_scan_text(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
             if ( tabledemo_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
+        }
+        {
+            const int added = tabledemo_table_json_keys_add( in, keys, quote, key, key_length );
+            if ( added < 0 ) { return 0; }
+            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
         }
         for ( i = 0; i < info->num_fields; i++ )
         {
@@ -2528,7 +2900,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
             }
             else
             {
-                if ( got != tabledemo_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( !tabledemo_table_json_shape_accepts( f, got ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -2552,6 +2924,18 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
     }
 }
 
+/* first_key, when the caller decoded the object's first key already: its
+   decoded bytes, their length and its opening quote in the text */
+static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote )
+{
+    tabledemo_table_json_keys_t keys;
+    int ok;
+    tabledemo_table_json_keys_init( &keys );
+    ok = tabledemo_table_json_read_table_members( in, base, info, depth, first_key, first_length, first_quote, &keys );
+    tabledemo_table_json_keys_free( &keys );
+    return ok;
+}
+
 /* ---- the two entry points the per-table wrappers name ---- */
 
 static SCHEMA_UNUSED int tabledemo_table_json_read_table( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth )
@@ -2564,7 +2948,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table( tabledemo_table_json_i
     }
     if ( tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
-    return tabledemo_table_json_read_table_keys(in,base,info,depth,NULL);
+    return tabledemo_table_json_read_table_keys(in,base,info,depth,NULL,0,-1);
 }
 
 static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledemo_table_type_info_t * info, const char * text, int64_t bytes, tabledemo_table_report_t * report )
@@ -2719,9 +3103,8 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_blob( tabledemo_table_json_in
 {
     tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph;
     tabledemo_table_ref_t * ref=(tabledemo_table_ref_t *)slot;
-    int64_t mark, symbols=0, pad=0, length, placed=0, at;
-    int damaged=0, held=0;
-    uint32_t accumulator=0;
+    int64_t mark=0, length=0;
+    int reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OK, scanned;
     uint8_t * data;
     if(graph==NULL || tabledemo_table_json_peek(in)!='"') { in->bad=1; return 0; }
     ref->value=0;
@@ -2735,47 +3118,12 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_blob( tabledemo_table_json_in
         if(text==NULL) { in->bad=1; return 0; }
         return tabledemo_table_json_scan_text(in,text,count,&written);
     }
-    mark=++in->pos;
-    for(;;)
-    {
-        char c;
-        int step;
-        if(in->pos>=in->size) { in->bad=1; return 0; }
-        c=in->text[in->pos++];
-        if(c=='"') { break; }
-        step=tabledemo_table_json_base64_step(in,c);
-        if(step<0) { return 0; }
-        if(step==0) { damaged=1; continue; }
-        if(damaged) { continue; }
-        if(c=='=') { pad++; continue; }
-        if(pad>0) { damaged=1; continue; }
-        if(tabledemo_table_json_base64_value((uint8_t)c)<0) { damaged=1; continue; }
-        symbols++;
-    }
-    if(!damaged)
-    {
-        if(pad>0)
-        {
-            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { damaged=1; }
-        }
-        else if(symbols%4==1)
-        {
-            damaged=1;
-        }
-    }
-    if(damaged) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
-    length=symbols*6/8;
+    scanned=tabledemo_table_json_base64_scan(in,&mark,&length,&reason);
+    if(scanned<0) { return 0; }
+    if(scanned==0) { in->report->refused=1, in->report->refuse_reason=reason; return 1; }
     data=tabledemo_table_bytes_emplace(graph->worker,ref,length);
     if(data==NULL) { in->bad=1; return 0; }
-    for(at=mark; ; at++)
-    {
-        char c = in->text[at];
-        int32_t symbol;
-        if(c=='"' || c=='=') { break; }
-        symbol=tabledemo_table_json_base64_value((uint8_t)c);
-        accumulator=(accumulator<<6)|(uint32_t)symbol; held+=6;
-        if(held>=8) { held-=8; if(placed<length) { data[placed++]=(uint8_t)((accumulator>>held)&0xff); } }
-    }
+    tabledemo_table_json_base64_decode(in,mark,data,length);
     return 1;
 }
 
@@ -2785,6 +3133,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     tabledemo_table_json_graph_entry_t * entry;
     char key[TABLEDEMO_K_TABLE_JSON_MAX_KEY], c;
     int32_t length = 0;
+    int64_t quote;
     uint64_t label = 0;
     int taken = 0, bare;
     void * node;
@@ -2795,8 +3144,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     {
         node = tabledemo_table_json_emplace(graph,slot,f->table);
         if ( node == NULL ) { in->bad = 1; return 0; }
-        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL);
+        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1);
     }
+    quote = in->pos;
     if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
     key[length] = 0;
     if ( tabledemo_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
@@ -2805,7 +3155,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     {
         node = tabledemo_table_json_emplace(graph,slot,f->table);
         if ( node == NULL ) { in->bad = 1; return 0; }
-        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,key);
+        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,key,length,quote);
     }
     if ( !tabledemo_table_json_scan_label(in,&label) ) { return 0; }
     entry = tabledemo_table_json_graph_reach(&graph->labels,label,&taken);
@@ -2826,7 +3176,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     node = tabledemo_table_json_emplace(graph,slot,f->table);
     if ( node == NULL ) { in->bad = 1; return 0; }
     entry->open = 1;
-    if ( !tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL) ) { return 0; }
+    if ( !tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1) ) { return 0; }
     entry = tabledemo_table_json_graph_find(&graph->labels,label);
     if ( entry == NULL ) { in->bad = 1; return 0; }
     entry->node = (uint32_t)((tabledemo_table_ref_t *)slot)->value; entry->type = f->table; entry->open = 0; return 1;
@@ -2956,7 +3306,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_list(tabledemo_table_json_ou
 static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_t * in,void * storage,const tabledemo_table_field_info_t * f,int32_t depth)
 {
     tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph;
-    TableSequence * list=(TableSequence *)storage; char shape=tabledemo_table_json_element_shape(f);
+    TableSequence * list=(TableSequence *)storage;
     int64_t spent=0; int full=0;
     if(graph==NULL || tabledemo_table_json_peek(in)!='[') { in->bad=1; return 0; }
     memset(list,0,sizeof(*list)); in->pos++;
@@ -2974,7 +3324,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_
         element=table_sequence_add(graph->worker,list,f->elem_size);
         if(element==NULL) { in->bad=1; return 0; }
         if(f->kind==13 || f->text_list!=0) { f->table->reset(element); }
-        if(tabledemo_table_json_value_shape(in)!=shape && !((f->kind==17 || f->text_list==2) && tabledemo_table_json_value_shape(in)=='z')) {
+        if(!tabledemo_table_json_element_shape_accepts(f,tabledemo_table_json_value_shape(in)) && !((f->kind==17 || f->text_list==2) && tabledemo_table_json_value_shape(in)=='z')) {
             in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
         } else if(!tabledemo_table_json_read_scalar(in,element,f,depth+1)) { return 0; }
         else if(f->text_total>0 && !schema_tabledemo_table_json_text_total_keep_(in,element,f,&spent)) {
@@ -3077,13 +3427,16 @@ static SCHEMA_UNUSED int tabledemo_table_json_map_key_value(const char * token,i
     tabledemo_table_report_t scratch={0}; tabledemo_table_json_in_t probe; tabledemo_table_json_integer_t number; int integral=0,moved=0;
     memset(&probe,0,sizeof(probe)); probe.text=token; probe.size=length; probe.report=&scratch; *fits=0;
     tabledemo_table_json_space(&probe); if(probe.pos!=0 || !tabledemo_table_json_walk_number(&probe,&integral) || probe.pos!=length) { return 0; }
+    /* the KEY takes the integer-token spelling (§16.2): a fraction, an
+       exponent or -0 is the wrong shape, and the value is tested exactly */
+    if ( !tabledemo_table_json_integer_token(token,length) ) { return 1; }
     number=tabledemo_table_json_interpret_exact(token,length); if(number.fractional || number.saturated) { return 1; }
     *value=tabledemo_table_json_integer_in_domain(number,key->kind>=2 && key->kind<=5,(int32_t)key->elem_size,&moved); *fits=!moved; return 1;
 }
 static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t * in,void * storage,const tabledemo_table_field_info_t * f,int32_t depth)
 {
     tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph; TableSequence * map=(TableSequence *)storage;
-    const tabledemo_table_field_info_t * key=&f->table->fields[0]; const tabledemo_table_field_info_t * value=&f->table->fields[1]; char shape=tabledemo_table_json_shape(value);
+    const tabledemo_table_field_info_t * key=&f->table->fields[0]; const tabledemo_table_field_info_t * value=&f->table->fields[1];
     if(graph==NULL || tabledemo_table_json_peek(in)!='{' || depth+1>TABLEDEMO_K_TABLE_JSON_MAX_DEPTH) { in->bad=1; return 0; }
     memset(map,0,sizeof(*map)); in->pos++;
     for(;;) {
@@ -3130,7 +3483,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t
         else if(value->optional && c=='z') {
             if(!tabledemo_table_json_literal(in,"null")) { return 0; }
         } else {
-            if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+            if(!tabledemo_table_json_shape_accepts(value,c) && !(value->kind==17 && !value->is_array && c=='z')) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
             } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
             if(value->optional) { tabledemo_table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
@@ -3163,6 +3516,10 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
     return tabledemo_table_json_scan_text(in,text,count,&written);
 }
 #endif
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_signed_i64_span_range_ = { { 9223372036854775808ull, 18446744073709551615ull }, { 9223372036854775807ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_signed_i64_low_range_ = { { 9223372036854775808ull, 18446744073709551615ull }, { 9223372036854775806ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_signed_i64_high_range_ = { { 9223372036854775809ull, 18446744073709551615ull }, { 9223372036854775807ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_signed_i64_inside_range_ = { { 9223372036854775809ull, 18446744073709551615ull }, { 9223372036854775806ull, 0ull } };
 static const tabledemo_table_field_info_t schema_tabledemo_ranged_signed_fields_[] = {
     { "i8_span", "i8_span", "int8", 0x48121511bf702eb5ull, 2, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i8_span ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i8_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -128.0, 127.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "i8_low", "i8_low", "int8", 0x942bfe3168090f7dull, 2, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i8_low ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i8_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -128.0, 126.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
@@ -3176,15 +3533,20 @@ static const tabledemo_table_field_info_t schema_tabledemo_ranged_signed_fields_
     { "i32_low", "i32_low", "int32", 0x065ee827cf99fbb4ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i32_low ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i32_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483648e+09, 2.147483646e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "i32_high", "i32_high", "int32", 0xc9b121c4c2a186eeull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i32_high ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i32_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483647e+09, 2.147483647e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "i32_inside", "i32_inside", "int32", 0xd363dfa465acf27aull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i32_inside ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i32_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483647e+09, 2.147483646e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "i64_span", "i64_span", "int64", 0x7549c70700c49d6full, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_span ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "i64_low", "i64_low", "int64", 0x1cce6617419771dbull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_low ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "i64_high", "i64_high", "int64", 0x3b54fa60620b5597ull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_high ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_inside ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "i64_span", "i64_span", "int64", 0x7549c70700c49d6full, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_span ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, &schema_tabledemo_ranged_signed_i64_span_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "i64_low", "i64_low", "int64", 0x1cce6617419771dbull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_low ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, &schema_tabledemo_ranged_signed_i64_low_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "i64_high", "i64_high", "int64", 0x3b54fa60620b5597ull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_high ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, &schema_tabledemo_ranged_signed_i64_high_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_signed_t, i64_inside ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->i64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, &schema_tabledemo_ranged_signed_i64_inside_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "edges", "edges", "int16", 0xc70cde6b85b6197dull, 3, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_ranged_signed_t, edges ), (uint32_t) sizeof( ( (tabledemo_ranged_signed_t *) 0 )->edges[0] ), (uint32_t) offsetof( tabledemo_ranged_signed_t, edges_count ), 0xffffffffu, NULL, 1, -32768.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_ranged_signed_info_ = { "RangedSigned", (uint32_t) sizeof( tabledemo_ranged_signed_t ), 17, schema_tabledemo_ranged_signed_fields_, schema_tabledemo_ranged_signed_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_unsigned_u64_span_range_ = { { 0ull, 0ull }, { 18446744073709551615ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_unsigned_u64_low_range_ = { { 0ull, 0ull }, { 18446744073709551614ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_unsigned_u64_high_range_ = { { 1ull, 0ull }, { 18446744073709551615ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_unsigned_u64_inside_range_ = { { 1ull, 0ull }, { 18446744073709551614ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_unsigned_counts_range_ = { { 0ull, 0ull }, { 18446744073709551615ull, 0ull } };
 static const tabledemo_table_field_info_t schema_tabledemo_ranged_unsigned_fields_[] = {
     { "u8_span", "u8_span", "uint8", 0x0f8897557f37c021ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u8_span ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u8_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "u8_low", "u8_low", "uint8", 0x2e17553f8200a2a1ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u8_low ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u8_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 254.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
@@ -3198,22 +3560,24 @@ static const tabledemo_table_field_info_t schema_tabledemo_ranged_unsigned_field
     { "u32_low", "u32_low", "uint32", 0xa53d2f2a31b5acb0ull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u32_low ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u32_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967294e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "u32_high", "u32_high", "uint32", 0x9759be8ea1a4e3d2ull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u32_high ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u32_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "u32_inside", "u32_inside", "uint32", 0x8dc515fc082e3c0eull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u32_inside ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u32_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 4.294967294e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "u64_span", "u64_span", "uint64", 0xbeecef11dbdf8973ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_span ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "u64_low", "u64_low", "uint64", 0x0117ad66e0fff227ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_low ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "u64_high", "u64_high", "uint64", 0xf2b45af3b50689dbull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_high ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_inside ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, counts ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->counts[0] ), (uint32_t) offsetof( tabledemo_ranged_unsigned_t, counts_count ), 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "u64_span", "u64_span", "uint64", 0xbeecef11dbdf8973ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_span ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, &schema_tabledemo_ranged_unsigned_u64_span_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "u64_low", "u64_low", "uint64", 0x0117ad66e0fff227ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_low ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, &schema_tabledemo_ranged_unsigned_u64_low_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "u64_high", "u64_high", "uint64", 0xf2b45af3b50689dbull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_high ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, &schema_tabledemo_ranged_unsigned_u64_high_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, u64_inside ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->u64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, &schema_tabledemo_ranged_unsigned_u64_inside_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_ranged_unsigned_t, counts ), (uint32_t) sizeof( ( (tabledemo_ranged_unsigned_t *) 0 )->counts[0] ), (uint32_t) offsetof( tabledemo_ranged_unsigned_t, counts_count ), 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, &schema_tabledemo_ranged_unsigned_counts_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_ranged_unsigned_info_ = { "RangedUnsigned", (uint32_t) sizeof( tabledemo_ranged_unsigned_t ), 17, schema_tabledemo_ranged_unsigned_fields_, schema_tabledemo_ranged_unsigned_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_widths_b64_range_ = { { 0ull, 0ull }, { 18446744073709551615ull, 0ull } };
+static const tabledemo_table_wide_range_t schema_tabledemo_ranged_widths_b48_range_ = { { 0ull, 0ull }, { 281474976710655ull, 0ull } };
 static const tabledemo_table_field_info_t schema_tabledemo_ranged_widths_fields_[] = {
     { "b8", "b8", "bits(8)", 0x08a60c07b54d8dc7ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b8 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b8 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "b16", "b16", "bits(16)", 0xff95701912ad97beull, 7, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b16 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b16 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "b32", "b32", "bits(32)", 0xff9c5c1912b39470ull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b32 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b32 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "b64", "b64", "bits(64)", 0xff92701912ab61e7ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b64 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b64 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "b64", "b64", "bits(64)", 0xff92701912ab61e7ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b64 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b64 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, &schema_tabledemo_ranged_widths_b64_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "b12", "b12", "bits(12)", 0xff95741912ad9e8aull, 7, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b12 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b12 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b48 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b48 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ranged_widths_t, b48 ), (uint32_t) sizeof( ( (tabledemo_ranged_widths_t *) 0 )->b48 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, &schema_tabledemo_ranged_widths_b48_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_ranged_widths_info_ = { "RangedWidths", (uint32_t) sizeof( tabledemo_ranged_widths_t ), 6, schema_tabledemo_ranged_widths_fields_, schema_tabledemo_ranged_widths_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
