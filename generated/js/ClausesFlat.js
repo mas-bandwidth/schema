@@ -120,6 +120,13 @@ export function ReadW13Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 13;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -213,6 +220,13 @@ export function ReadW17Flat(view, numBits, value) {
     v = (out & 0x1ffff) >>> 0;
     value.items[i0] = v | 0;
     br += 17;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -308,6 +322,13 @@ export function ReadW26Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 26;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -402,6 +423,13 @@ export function ReadW1Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 1;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -450,7 +478,7 @@ export function WriteW52Flat(view, value) {
   lo = (((value.itemsCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (value.items[i0] > 4503599627370495n) {
+    if (value.items[i0] < 0n || value.items[i0] > 4503599627370495n) {
       return -1;
     }
     SC.setBigUint64(0, value.items[i0], true);
@@ -514,6 +542,13 @@ export function ReadW52Flat(view, numBits, value) {
     value.items[i0] = bg;
     br += 20;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -570,7 +605,7 @@ export function WriteW50Flat(view, value) {
   lo = (((value.itemsCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (value.items[i0] > 1125899906842623n) {
+    if (value.items[i0] < 0n || value.items[i0] > 1125899906842623n) {
       return -1;
     }
     SC.setBigUint64(0, value.items[i0], true);
@@ -633,6 +668,13 @@ export function ReadW50Flat(view, numBits, value) {
     bg = SC.getBigUint64(0, true);
     value.items[i0] = bg;
     br += 18;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -721,6 +763,13 @@ export function ReadF13Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 13;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -748,10 +797,17 @@ export function ReadF13FlatBits(view, numBits, value) {
 
 // ---- type Tri3: the flat codec ----
 
-// WriteTri3Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold Tri3MaxBytes.
+// WriteTri3Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Tri3MaxBytes.
 export function WriteTri3Flat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 3) {
+    return -1;
+  }
   lo = ((value.a & 0x1) | ((value.b & 0x3) << 1));
   view.setUint32(0, lo, true);
   return 1;
@@ -769,6 +825,12 @@ export function ReadTri3Flat(view, numBits, value) {
   value.a = v;
   v = (out >>> 1) & 0x3;
   value.b = v;
+  if (((3 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(0) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -803,6 +865,12 @@ export function WriteArrTri3Flat(view, value) {
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
+      return -1;
+    }
+    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 3) {
+      return -1;
+    }
     v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
@@ -849,6 +917,13 @@ export function ReadArrTri3Flat(view, numBits, value) {
     e0.b = v;
     br += 3;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -889,10 +964,17 @@ export function ReadArrTri3FlatBits(view, numBits, value) {
 
 // ---- type Eleven: the flat codec ----
 
-// WriteElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ElevenMaxBytes.
+// WriteElevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ElevenMaxBytes.
 export function WriteElevenFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 7) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 255) {
+    return -1;
+  }
   lo = ((value.a & 0x7) | ((value.b & 0xff) << 3));
   view.setUint32(0, lo, true);
   return 2;
@@ -910,6 +992,12 @@ export function ReadElevenFlat(view, numBits, value) {
   value.a = v;
   v = (out >>> 3) & 0xff;
   value.b = v;
+  if (((11 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -932,12 +1020,19 @@ export function ReadElevenFlatBits(view, numBits, value) {
 
 // ---- type ArrEleven: the flat codec ----
 
-// WriteArrElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ArrElevenMaxBytes.
+// WriteArrElevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArrElevenMaxBytes.
 export function WriteArrElevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.items[i0];
+    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+      return -1;
+    }
+    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+      return -1;
+    }
     v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
@@ -973,6 +1068,13 @@ export function ReadArrElevenFlat(view, numBits, value) {
     v = (out >>> 3) & 0xff;
     e0.b = v;
     br += 11;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -1012,7 +1114,10 @@ export function WriteEmptyAFlat() {
 
 // ReadEmptyAFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadEmptyAFlat() {
+export function ReadEmptyAFlat(view, numBits) {
+  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1034,7 +1139,10 @@ export function WriteEmptyBFlat() {
 
 // ReadEmptyBFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadEmptyBFlat() {
+export function ReadEmptyBFlat(view, numBits) {
+  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1075,7 +1183,7 @@ export function WriteEmptyUnionFlat(view, value) {
 // ReadEmptyUnionFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
 export function ReadEmptyUnionFlat(view, numBits, value) {
-  let v = 0, out = 0;
+  let v = 0, s2 = 0, out = 0, br = 0;
   if (2 > numBits) {
     return false;
   }
@@ -1085,6 +1193,7 @@ export function ReadEmptyUnionFlat(view, numBits, value) {
     return false;
   }
   value.type = v;
+  br = 2;
   switch (value.type) {
     case 1: {
       break;
@@ -1092,6 +1201,13 @@ export function ReadEmptyUnionFlat(view, numBits, value) {
     case 2: {
       break;
     }
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -1130,6 +1246,9 @@ export function ReadEmptyUnionFlatBits(view, numBits, value) {
 // must hold HoldsEmptyUnionMaxBytes.
 export function WriteHoldsEmptyUnionFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1142,6 +1261,9 @@ export function WriteHoldsEmptyUnionFlat(view, value) {
     case 2: {
       break;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1196,6 +1318,14 @@ export function ReadHoldsEmptyUnionFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1250,6 +1380,9 @@ export function ReadHoldsEmptyUnionFlatBits(view, numBits, value) {
 // must hold StrsMaxBytes.
 export function WriteStrsFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
@@ -1323,6 +1456,9 @@ export function WriteStrsFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (8 - sb);
       }
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+    return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1427,6 +1563,14 @@ export function ReadStrsFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   value.tail = v;
+  br += 3;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1531,6 +1675,9 @@ export function ReadStrsFlatBits(view, numBits, value) {
 // must hold ArrNestedMaxBytes.
 export function WriteArrNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -1538,6 +1685,12 @@ export function WriteArrNestedFlat(view, value) {
   sb = 8;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+      return -1;
+    }
+    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+      return -1;
+    }
     v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
@@ -1547,6 +1700,9 @@ export function WriteArrNestedFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+    return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1609,6 +1765,14 @@ export function ReadArrNestedFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   value.tail = v;
+  br += 3;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1666,10 +1830,14 @@ export function ReadArrNestedFlatBits(view, numBits, value) {
 
 // ---- type Sole: the flat codec ----
 
-// WriteSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold SoleMaxBytes.
+// WriteSoleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SoleMaxBytes.
 export function WriteSoleFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.only) || value.only < 0 || value.only > 8191) {
+    return -1;
+  }
   lo = ((value.only & 0x1fff));
   view.setUint32(0, lo, true);
   return 2;
@@ -1685,6 +1853,12 @@ export function ReadSoleFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0x1fff) >>> 0;
   value.only = v;
+  if (((13 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0xe0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 

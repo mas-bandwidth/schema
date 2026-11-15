@@ -714,8 +714,7 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	g.fn.Reset()
 	g.resetNeeds()
 	emit()
-	// the last window's advance is dead: `return true` is all that follows
-	g.readDrop()
+	g.emitReadEnd("  ")
 	body := g.readBody(g.fn.String())
 	g.fn.Reset()
 
@@ -724,6 +723,30 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	// a parameter nothing reads is not declared (eslint no-unused-vars) — an
 	// empty type reads none; a caller's arguments are accepted and ignored
 	g.bpf("export function Read%sFlat(%s) {\n%s  return true;\n}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
+}
+
+// emitReadEnd appends the packet's one end check (SPEC §5, "Read termination"):
+// the bits consumed, rounded up to a whole byte, must be the packet's length in
+// bytes as numBits gives it, and the final byte's unused bits must be zero. It
+// settles the read window first, so the cursor names the true position.
+func (g *fgen) emitReadEnd(ind string) {
+	g.readClose()
+	if g.rKnown {
+		consumed := g.rBr
+		g.rawf("%sif (((%d + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes\n", ind, consumed)
+		g.rawf("%s  return false;\n%s}\n", ind, ind)
+		if sh := consumed & 7; sh != 0 {
+			mask := (0xff << uint(sh)) & 0xff
+			g.rawf("%sif ((view.getUint8(%d) & 0x%02x) !== 0) { // nonzero unused bits in the final byte\n", ind, consumed>>3, mask)
+			g.rawf("%s  return false;\n%s}\n", ind, ind)
+		}
+		return
+	}
+	g.rawf("%ss2 = (br + 7) >> 3;\n", ind)
+	g.rawf("%sif (s2 !== ((numBits + 7) >> 3)) { // trailing bytes\n", ind)
+	g.rawf("%s  return false;\n%s}\n", ind, ind)
+	g.rawf("%sif ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte\n", ind)
+	g.rawf("%s  return false;\n%s}\n", ind, ind)
 }
 
 // emitReadFlatBits emits Read<name>FlatBits beside Read<name>Flat (SPEC §5,
@@ -1030,7 +1053,9 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
 		w := int64(f.Type.Width)
+		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
 		if w <= 32 {
+			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %s", name, name, name, max.String()), "", ind)
 			if w == 32 {
 				g.chunkAdd(fmt.Sprintf("(%s >>> 0)", name), w, ind)
 			} else {
@@ -1038,6 +1063,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			return
 		}
+		g.guard(fmt.Sprintf("%s < 0n || %s > %sn", name, name, max.String()), "", ind)
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
@@ -1049,6 +1075,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
 		g.chunkFlush(ind)
+		g.guard(fmt.Sprintf("!Number.isFinite(%s)", name), " // a bare float must be finite", ind)
 		if g.wKnown && g.wSb == 0 {
 			// word-aligned at a static offset: the double's two little-endian
 			// words, low first, are exactly one little-endian 8-byte store
@@ -1077,23 +1104,14 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 	}
 }
 
-// emitWriteF32 is serialize.js float32BitsFromNumber inlined: hardware
-// conversion for non-NaN, software payload narrowing for NaN (quiet bit not
-// forced except the all-low-payload case).
+// emitWriteF32 refuses a value whose float32 rounding is not finite, then
+// writes the hardware-converted 32-bit pattern (SPEC §4.3, §5.1).
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sx = %s;\n", ind, name)
-	g.pf("%sif (x === x) {\n", ind)
-	g.pf("%s  SC.setFloat32(0, x, true);\n", ind)
-	g.pf("%s  v = SC.getUint32(0, true);\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  SC.setFloat64(0, x, true);\n", ind)
-	g.pf("%s  bg = SC.getBigUint64(0, true);\n", ind)
-	g.pf("%s  t0 = Number(bg >> 63n) << 31;\n", ind)
-	g.pf("%s  t1 = Number((bg >> 29n) & 0x7fffffn);\n", ind)
-	g.pf("%s  if (t1 === 0) { t1 = 0x400000; }\n", ind)
-	g.pf("%s  v = (t0 | 0x7f800000 | t1) >>> 0;\n", ind)
-	g.pf("%s}\n", ind)
+	g.guard("!Number.isFinite(Math.fround(x))", " // a bare float must be finite", ind)
+	g.pf("%sSC.setFloat32(0, x, true);\n", ind)
+	g.pf("%sv = SC.getUint32(0, true);\n", ind)
 	g.mergeW(32, ind)
 }
 
@@ -1104,16 +1122,18 @@ func f32lit(v float64) string {
 }
 
 // emitWriteCompressedFloat is the runtime's two-rounding float32
-// quantization with the declaration folded: value32 non-finite refused in
-// every build, clamp, quantize.
+// quantization with the declaration folded: value32 non-finite or off
+// [min, max] refused in every build (SPEC §5.1 row 10), then quantize.
 func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
-	deltaF := float32(f.FMax) - minF
+	maxF := float32(f.FMax)
+	deltaF := maxF - minF
 	mivF := float32(maxInt)
 	g.pf("%sx = Math.fround(%s);\n", ind, name)
 	g.guard("!Number.isFinite(x)", "", ind)
+	g.guard(fmt.Sprintf("x < %s || x > %s", f32lit(float64(minF)), f32lit(float64(maxF))), "", ind)
 	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
 	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
@@ -1257,21 +1277,11 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 }
 
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and
-// full-range unsigned): vacuous guard halves elided per the storage bounds
-// (the C# discipline), offset via asUintN.
+// full-range unsigned): BigInt has no storage bound, so both halves of the
+// declared range test are always live; offset via asUintN.
 func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
-	sMin, sMax := storageBoundsBig(f.Type)
-	guardLo := f.IntMin.Cmp(sMin) > 0
-	guardHi := f.IntMax.Cmp(sMax) < 0
-	switch {
-	case guardLo && guardHi:
-		g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
-	case guardLo:
-		g.guard(fmt.Sprintf("%s < %sn", name, f.IntMin.String()), "", ind)
-	case guardHi:
-		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), "", ind)
-	}
+	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 	off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {
 		off = name

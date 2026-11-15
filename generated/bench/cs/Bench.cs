@@ -343,6 +343,15 @@ namespace Bench
 
         public static bool ReadBenchPacket(ReadStream stream, ref BenchPacket value)
         {
+            if (!ReadBenchPacketBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadBenchPacketBody(ReadStream stream, ref BenchPacket value)
+        {
             if (!stream.SerializeInt(ref value.A, -100, 100))
             {
                 return false;
@@ -472,6 +481,15 @@ namespace Bench
 
         public static bool ReadBenchInts(ReadStream stream, ref BenchInts value)
         {
+            if (!ReadBenchIntsBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadBenchIntsBody(ReadStream stream, ref BenchInts value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBenchIntsBatch(ref batch, ref value);
             batch.End();
@@ -593,6 +611,15 @@ namespace Bench
         }
 
         public static bool ReadBenchBits(ReadStream stream, ref BenchBits value)
+        {
+            if (!ReadBenchBitsBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadBenchBitsBody(ReadStream stream, ref BenchBits value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadBenchBitsBatch(ref batch, ref value);
@@ -831,6 +858,15 @@ namespace Bench
 
         public static bool ReadMixedEntity(ReadStream stream, ref MixedEntity value)
         {
+            if (!ReadMixedEntityBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadMixedEntityBody(ReadStream stream, ref MixedEntity value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMixedEntityBatch(ref batch, ref value);
             batch.End();
@@ -944,6 +980,15 @@ namespace Bench
 
         public static bool ReadMixedStat(ReadStream stream, ref MixedStat value)
         {
+            if (!ReadMixedStatBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadMixedStatBody(ReadStream stream, ref MixedStat value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMixedStatBatch(ref batch, ref value);
             batch.End();
@@ -1018,6 +1063,15 @@ namespace Bench
 
         public static bool ReadMixedHitEvent(ReadStream stream, ref MixedHitEvent value)
         {
+            if (!ReadMixedHitEventBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadMixedHitEventBody(ReadStream stream, ref MixedHitEvent value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMixedHitEventBatch(ref batch, ref value);
             batch.End();
@@ -1091,6 +1145,15 @@ namespace Bench
 
         public static bool ReadMixedChatEvent(ReadStream stream, ref MixedChatEvent value)
         {
+            if (!ReadMixedChatEventBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadMixedChatEventBody(ReadStream stream, ref MixedChatEvent value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMixedChatEventBatch(ref batch, ref value);
             batch.End();
@@ -1159,6 +1222,15 @@ namespace Bench
         }
 
         public static bool ReadMixedPickupEvent(ReadStream stream, ref MixedPickupEvent value)
+        {
+            if (!ReadMixedPickupEventBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadMixedPickupEventBody(ReadStream stream, ref MixedPickupEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMixedPickupEventBatch(ref batch, ref value);
@@ -1254,6 +1326,15 @@ namespace Bench
         }
 
         public static bool ReadMixedEvent(ReadStream stream, ref MixedEvent value)
+        {
+            if (!ReadMixedEventBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadMixedEventBody(ReadStream stream, ref MixedEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadMixedEventBatch(ref batch, ref value);
@@ -1523,6 +1604,7 @@ namespace Bench
             }
             {
                 float compressedValue = value.AimX;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -1.0f && compressedValue <= 1.0f, "value.AimX out of range [-1.0f, 1.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
                 {
                     return false;
@@ -1530,6 +1612,7 @@ namespace Bench
             }
             {
                 float compressedValue = value.AimY;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -1.0f && compressedValue <= 1.0f, "value.AimY out of range [-1.0f, 1.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
                 {
                     return false;
@@ -1537,6 +1620,7 @@ namespace Bench
             }
             {
                 float compressedValue = value.AimZ;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -1.0f && compressedValue <= 1.0f, "value.AimZ out of range [-1.0f, 1.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
                 {
                     return false;
@@ -1591,6 +1675,15 @@ namespace Bench
         }
 
         public static bool ReadBenchMixed(ReadStream stream, ref BenchMixed value)
+        {
+            if (!ReadBenchMixedBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadBenchMixedBody(ReadStream stream, ref BenchMixed value)
         {
             {
                 // flat run: 240 bits in 4 chunk(s) — one bounds check per chunk,

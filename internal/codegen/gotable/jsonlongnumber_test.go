@@ -79,7 +79,7 @@ func TestLongNumber(t *testing.T) {
 	out:=make([]byte,4096)
 	n:=RootToJSON(&v,out)
 	if n<0 { t.Fatal("the writer refused the value it read") }
-	want:=[]byte("{\n  \"f\": 1,\n  \"i\": 0,\n  \"w\": 0,\n  \"g\": 1.0\n}\n")
+	want:=[]byte("{\n  \"f\": 1,\n  \"i\": 0,\n  \"w\": \"0\",\n  \"g\": 1.0\n}\n")
 	if !bytes.Equal(out[:n],want) { t.Fatalf("text %q, want %q",out[:n],want) }
 }
 `)

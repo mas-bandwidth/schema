@@ -282,6 +282,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/fn2 test/tables/FN2.schema
 	$(1) generate --lang cpp --out $(2)/fu1 test/tables/FU1.schema
 	$(1) generate --lang cpp --out $(2)/fu2 test/tables/FU2.schema
+	$(1) generate --lang cpp --out $(2)/fd1 test/tables/FD1.schema
 	$(1) generate --lang cpp --out $(2)/fh1 test/tables/FH1.schema
 	$(1) generate --lang cpp --out $(2)/fh2 test/tables/FH2.schema
 	$(1) generate --lang cpp --out $(2)/fg1 test/tables/FG1.schema
@@ -317,6 +318,7 @@ define tables_generate
 	# nested TYPE the older side has no name for
 	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
 	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
+	$(1) generate --lang cpp --out $(2)/fnz test/tables/FNZ.schema
 	# THE DEAD-BYTE CORPUS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3):
 	# one fixed root carrying every dead region the zero rule names
 	$(1) generate --lang cpp --out $(2)/dead test/tables/DeadBytes.schema
@@ -374,7 +376,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -3043,9 +3045,29 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 # tree, and one job made the run pay their SUM. The CI job is a matrix of one
 # row per piece, so the longest piece is the job instead of the sum.
 .PHONY: tables-big-endian-tables
-tables-big-endian-tables: build/schema_test_tables_be
+tables-big-endian-tables: build/schema_test_tables_be build/schema_test_fixed_endian build/schema_test_fixed_endian_be
 	$(BE_RUN) ./build/schema_test_tables_be
+	./build/schema_test_fixed_endian write build/fixed-endian/le.bin
+	$(BE_RUN) ./build/schema_test_fixed_endian_be check build/fixed-endian/le.bin
+	$(BE_RUN) ./build/schema_test_fixed_endian_be write build/fixed-endian/be.bin
+	./build/schema_test_fixed_endian check build/fixed-endian/be.bin
 	@echo "big-endian leg: the wire crosses the byte order"
+
+# THE C++ FIXED FORM CROSSING THE BYTE ORDER (docs/FIXED-FORM-ALGORITHM.md:
+# every integer on the wire is little-endian). One program, built for this host
+# and for s390x: a record written on either host is checked by value on the
+# other (test/tables/fixed_endian_main.cpp), so a read that lands the wire in
+# host order is red in one direction or the other.
+build/fixed-endian/.stamp: bin/schema test/tables/FixedEndian.schema
+	@mkdir -p build/fixed-endian
+	./bin/schema generate --lang cpp --out build/fixed-endian test/tables/FixedEndian.schema
+	@touch $@
+
+build/schema_test_fixed_endian: build/fixed-endian/.stamp test/tables/fixed_endian_main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
+
+build/schema_test_fixed_endian_be: build/fixed-endian/.stamp test/tables/fixed_endian_main.cpp
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
 
 .PHONY: tables-big-endian-collections
 tables-big-endian-collections: build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
@@ -6809,8 +6831,8 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -Ibuild/tables-generated/dead \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 -Ibuild/tables-generated/fd1 \
+	    -Ibuild/tables-generated/dead -Ibuild/tables-generated/fnz \
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \

@@ -494,8 +494,20 @@ int main(void)
         {
             memcpy(file, wire, (size_t) need);
             if (path == 1) { T08_REHASH(file); }
-            if (poison == 1) { T08_BODY(file)[OUTER_AT] = 2; }
-            if (poison == 2) { T08_BODY(file)[NEXT_AT] = 2; }
+            /* A FORGED TAG MAKES THE OLD ARM INACTIVE, so the bytes behind it
+               are dead and must be zero: the forge clears them and keeps the
+               tag, which leaves a lawful record whose chain must not run
+               (docs/rulings.json fixed-dead-bytes-are-zero). */
+            if (poison == 1)
+            {
+                T08_BODY(file)[OUTER_AT] = 2;
+                memset(T08_BODY(file) + OUTER_AT + 1, 0, (size_t)(need - (T08_BODY(file) - file) - (OUTER_AT + 1)));
+            }
+            if (poison == 2)
+            {
+                T08_BODY(file)[NEXT_AT] = 2;
+                memset(T08_BODY(file) + NEXT_AT + 1, 0, (size_t)(need - (T08_BODY(file) - file) - (NEXT_AT + 1)));
+            }
             memset(&back, 0xAA, sizeof(back));
             memset(&r, 0, sizeof(r));
             if (path == 1)
