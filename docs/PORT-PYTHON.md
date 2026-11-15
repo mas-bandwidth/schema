@@ -289,11 +289,13 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
+  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
+  `kind_pointer.py`; the directory is the list). A later card adds its module
+  and one registration line, never an edit to the body walk.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -330,7 +332,10 @@ generated class per table and per map entry, each with its descriptor
 
   - `[E]T`: refused
 
-  - maps: refused
+  - `map[K]V` for the base key and value kinds: carried
+    ([the table maps](port-python/table-maps.md))
+
+  - `?map[K]V`: refused
 
   - unions with table arms: refused
 
