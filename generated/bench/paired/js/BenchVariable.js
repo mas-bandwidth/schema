@@ -429,7 +429,7 @@ function tableRetainReserved(id) { return id === 0n || id === TableNodeTableId |
 // string copy verbatim. Kind 17 (a node index) is an excluded class and returns
 // false, as does any framing the walk cannot take.
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   // THE BODY IS ITS OWN CURSOR: a reference or length must not read past the
   // bytes its framing gave it, exactly as the reference's sub-cursor bounds it
   // (internal/tablewire retain.go walkBody).
@@ -444,7 +444,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
     out.u64(id);
     if (rd.at >= end) { return false; }
     const k = rd.u8(); out.u8(k);
-    if (!TableVariableRetainResolve(rd, table, k, out, depth + 1)) { return false; }
+    if (!TableVariableRetainResolve(rd, table, k, out, depth)) { return false; }
     if (rd.at > end) { return false; }
   }
 }
@@ -456,7 +456,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
 // array, 15 and 30 carry a resolved reference, and every other kind copies the
 // framed bytes as they stand.
 function TableVariableRetainResolveContent(r, table, kind, out, depth, end) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   const rd = new TableVariableReader(r.b, r.at, end);
   let ok = false;
   switch (kind) {
@@ -495,11 +495,13 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
       const eend = rd.at + elen;
       const mark = out.len;
       out.u32(0);
-      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + 1, eend)) { return false; }
+      // a framed table, array or keyed element is one level deeper (§4)
+      const framedLevel = ek === 13 || ek === 14 || ek === 16 ? 1 : 0;
+      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + framedLevel, eend)) { return false; }
       if (rd.at !== eend) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
-    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth + 1)) {
+    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth)) {
       return false;
     }
     if (rd.at > end) { return false; }
@@ -510,7 +512,7 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
 }
 
 function TableVariableRetainResolve(r, table, kind, out, depth) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
@@ -557,7 +559,11 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
       const end = r.at + L;
       const mark = out.len;
       out.u32(0);
-      if (!TableVariableRetainResolveContent(r, table, k, out, depth + 1, end)) { return false; }
+      // a union is a level when its arm is structural, and the arm's framed
+      // table, array or keyed body is one more; a union's frame adds none (§4)
+      const structural = k === 13 || k === 14 || k === 15 || k === 16;
+      const framedLevel = k === 13 || k === 14 || k === 16 ? 1 : 0;
+      if (!TableVariableRetainResolveContent(r, table, k, out, depth + (structural ? 1 : 0) + framedLevel, end)) { return false; }
       if (r.at !== end) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
@@ -574,7 +580,10 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // is one retainLost and never 'damaged' (§6.6).
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
+  // The resolving walk shares §4's binary nesting bound.
+  const depthLimit = 128;
   const out = new TableVariableWriter();
+  out.depthLimit = depthLimit;
   if (!TableVariableRetainResolve(src, table, kind, out, 0) || src.at !== end) { report.retainLost++; return; }
   const depth = path.length;
   const total = 4 + 1 + 8 * depth + 8 + 1 + 1 + 4 + out.len;
