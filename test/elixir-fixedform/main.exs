@@ -1175,11 +1175,11 @@ Leg.check(
   Map.get(whole_report, :forged, false) == true
 )
 
-# A PRESENT BYTE AND A BOOL BYTE ARE BOTH `!= 0` AND NEVER `== 1`, which is
-# what a form that writes 0 or 1 and reads anything owes a hostile writer. Both
-# land through the PROJECTION, which the identity and compiled paths share, so
-# planting the byte once reaches both. The offset is found by writing the same
-# value twice with only that flag moved, so no offset is hard-coded here.
+# A PRESENT BYTE AND A BOOL BYTE ARE 0 OR 1 (docs/SPEC-TABLES.md §3.4): the
+# load is the one strict read, so any other byte is damage and the whole load
+# refuses `wire_damaged`; 0 and 1 land as absent/false and present/true. The
+# offset is found by writing the same value twice with only that flag moved, so
+# no offset is hard-coded here.
 only_diff = fn a, b ->
   Enum.find(0..(byte_size(a) - 1)//1, fn i -> :binary.at(a, i) != :binary.at(b, i) end)
 end
@@ -1193,14 +1193,22 @@ absent_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: false}]
 present_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: true}])
 present_at = only_diff.(absent_bytes, present_bytes)
 
-{:ok, [seven], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7))
-Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_present, true)
+Leg.eq(
+  "a present byte of 7 refuses the load `wire_damaged` — a present byte is 0 or 1",
+  Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7)) |> elem(1),
+  :wire_damaged
+)
 
-{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
-Leg.eq("and only 0 is absent", zero.link_present, false)
+{:ok, [one], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 1))
+Leg.eq("a present byte of 1 lands present", one.link_present, true)
 
-# LIVE-count: an absent optional's payload is ignored and moves no counter,
-# both paths. C++ skips the payload when the present byte is 0.
+{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(absent_bytes)
+Leg.eq("and 0 is absent", zero.link_present, false)
+
+# DEAD BYTES ARE ZERO (docs/rulings.json fixed-dead-bytes-are-zero, 2026-11-10):
+# an absent optional's payload is dead, so the LOAD refuses a non-zero one as
+# `wire_damaged`. The bare plan run below lands no dead byte and still moves no
+# counter: the dead-byte check is the load's pass, not the plan's.
 value0 = %{present | link_present: true, link: %{present.link | value: 0}}
 value1 = %{present | link_present: true, link: %{present.link | value: 1}}
 
@@ -1213,8 +1221,11 @@ value_at =
 hostile_opt =
   Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
 
-{:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
-Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.unknown, 0)
+Leg.eq(
+  "identity: absent optional payload 0xFF is a non-zero dead byte and refuses `wire_damaged`",
+  Tblp3.P3Fixed.chain_fixed_load(hostile_opt) |> elem(1),
+  :wire_damaged
+)
 
 opt_body =
   bodies_of.(hostile_opt, Tblp3.P3Fixed.chain_fixed_body_bytes())
@@ -1261,8 +1272,11 @@ hp_at = only_diff.(hp1, hp2)
 hostile_hp =
   Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
 
-{:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
-Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.unknown, 0)
+Leg.eq(
+  "identity: counted-array slack 0xFF is a non-zero dead byte and refuses `wire_damaged`",
+  Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp) |> elem(1),
+  :wire_damaged
+)
 
 hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
 
@@ -1299,8 +1313,11 @@ bool_off = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, false)])
 bool_on = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, true)])
 bool_at = only_diff.(bool_off, bool_on)
 
-{:ok, [two], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2))
-Leg.eq("a bool byte of 2 LANDS TRUE", Enum.at(two.ships, 0).gunner.tracking, true)
+Leg.eq(
+  "a bool byte of 2 refuses the load `wire_damaged` — a bool is 0 or 1",
+  Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2)) |> elem(1),
+  :wire_damaged
+)
 
 {:ok, [off], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_on, bool_at, 0))
 Leg.eq("and only 0 is false", Enum.at(off.ships, 0).gunner.tracking, false)
