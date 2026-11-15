@@ -1911,7 +1911,7 @@ conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness
 	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-message
-conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,if value.sku_length < 0 || value.sku_length > 32 { return false; },if false { return false; },write-refusal-message,message)
 
 # THE PACKET END CHECK (docs/SPEC.md §5 "Read termination";

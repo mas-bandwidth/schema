@@ -211,7 +211,13 @@ func runDartTextDifferential(t *testing.T, schema string, seed uint64, n int, ed
 	if err != nil {
 		return probeOut, fmt.Errorf("dart probe (seed=%d n=%d): %w", seed, n, err)
 	}
-	m := tabletext.NewModel(u)
+	// The probe writes each instance through the generated form-1 save, and
+	// the engine refuses a form-1 file at a declared fixed root as
+	// previous_form before it reads a byte (docs/SPEC-TABLES.md §3.4). So the
+	// engine reads these wires through the same declarations as a variable
+	// table, the class whose file form is form 1: the fields, and so the text,
+	// are the same.
+	m := tabletext.NewModel(buildUnit(t, strings.Replace(schema, "fixed table Root", "table Root", 1)))
 	msgs, err := compareDartTextDifferential(m, out, n)
 	if err != nil {
 		return probeOut, fmt.Errorf("seed=%d n=%d: %w", seed, n, err)
