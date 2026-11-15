@@ -2208,10 +2208,6 @@ type TableFixedDst struct {
 	Counted, Arg, Meta    uint8
 }
 
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
-
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count   int32
@@ -3359,9 +3355,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -8006,7 +7999,11 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut64(b[26:], uint64(value.Nonce))
 	tableFixedPut64(b[34:], uint64(value.WorldTime))
 	tableFixedPut64(b[42:], uint64(value.FrameTick))
-	tableFixedPutF32(b[50:], value.ServerTime)
+	if value.ServerTime == 0 {
+		tableFixedPutF32(b[50:], 0)
+	} else {
+		tableFixedPutF32(b[50:], value.ServerTime)
+	}
 	tableFixedPut32(b[54:], uint32(value.EntitiesCount))
 	{
 		livei := min(max(int64(value.EntitiesCount), 0), 8)
@@ -8041,14 +8038,30 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	copy(b[1128:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1147:], uint32(value.PayloadLength))
 	copy(b[1147:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1167:], value.AimX)
-	tableFixedPutF32(b[1171:], value.AimY)
-	tableFixedPutF32(b[1175:], value.AimZ)
+	if value.AimX == 0 {
+		tableFixedPutF32(b[1167:], 0)
+	} else {
+		tableFixedPutF32(b[1167:], value.AimX)
+	}
+	if value.AimY == 0 {
+		tableFixedPutF32(b[1171:], 0)
+	} else {
+		tableFixedPutF32(b[1171:], value.AimY)
+	}
+	if value.AimZ == 0 {
+		tableFixedPutF32(b[1175:], 0)
+	} else {
+		tableFixedPutF32(b[1175:], value.AimZ)
+	}
 	tableFixedPutF32(b[1179:], value.Recoil)
 	tableFixedPutF64(b[1183:], value.Drift)
 	tableFixedPut64(b[1191:], uint64(value.WideKey))
 	tableFixedPut64(b[1199:], uint64(value.Flux))
-	tableFixedPutF32(b[1207:], value.Ping)
+	if value.Ping == 0 {
+		tableFixedPutF32(b[1207:], 0)
+	} else {
+		tableFixedPutF32(b[1207:], value.Ping)
+	}
 	tableFixedPut32(b[1211:], uint32(value.CrcHint))
 	{
 		p := uint8(0)
