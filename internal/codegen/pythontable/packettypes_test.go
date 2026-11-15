@@ -41,6 +41,25 @@ table Field
 }
 `
 
+// packetKeyedSchema is a packet type whose own field is an enum-keyed array:
+// a kind the packet wire still refuses after the text, bytes, union and layout
+// cards land, so a refusal row naming it does not go green by a kind the packet
+// core gains.
+const packetKeyedSchema = `package packetkeyed
+
+enum Slot { Alpha, Beta }
+
+type Board
+{
+    per_slot [Slot]int32
+}
+
+table Holder
+{
+    board Board
+}
+`
+
 // loadPaths builds one compilation unit from schema paths, a directory
 // contributing its *.schema files (the table emitter's manifest units are
 // multi-file).
@@ -159,34 +178,36 @@ print("OK")
 // TestPythonTablePacketTypesRefusals holds the other edge: the blanket refusal
 // is gone, and only a packet kind the packet wire still lacks is refused, by
 // name, naming the kind and the packet card. graphdemo's packet type uses
-// carried kinds only; tblw1's Badge uses string, tabledemo's ScoreBoard uses a
-// keyed array (its float32 Attachment is carried since the packet floats
-// landed), and neither may be refused as "a packet type".
+// carried kinds only; tabledemo's ScoreBoard and this test's inline Board each
+// use an enum-keyed array, a kind the packet wire still lacks after the text,
+// bytes, union and layout cards land, and neither may be refused as "a packet
+// type".
 func TestPythonTablePacketTypesRefusals(t *testing.T) {
 	t.Parallel()
 	if _, err := Generate(loadPaths(t, filepath.Join("..", "..", "..", "tables", "pointers"))); err != nil {
 		t.Fatalf("graphdemo was refused for its packet type: %v", err)
 	}
 	for _, c := range []struct {
-		path string
+		name string
+		u    *ir.Unit
 		kind string
 	}{
-		{filepath.Join("..", "..", "..", "test", "tables", "W1.schema"), "string"},
-		{filepath.Join("..", "..", "..", "tables", "examples"), "array"},
+		{"tabledemo", loadPaths(t, filepath.Join("..", "..", "..", "tables", "examples")), "keyed array"},
+		{"packetkeyed", loadUnit(t, packetKeyedSchema), "keyed array"},
 	} {
-		_, err := Generate(loadPaths(t, c.path))
+		_, err := Generate(c.u)
 		if err == nil {
-			t.Errorf("%s was accepted, but its packet type uses %s, which the packet wire does not carry", c.path, c.kind)
+			t.Errorf("%s was accepted, but its packet type uses %s, which the packet wire does not carry", c.name, c.kind)
 			continue
 		}
-		if !strings.Contains(err.Error(), c.kind) {
-			t.Errorf("%s: the refusal does not name the kind %q: %v", c.path, c.kind, err)
+		if want := "uses the packet kind " + c.kind + ","; !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: the refusal does not name the exact kind %q: %v", c.name, c.kind, err)
 		}
 		if !strings.Contains(err.Error(), "P4 the packet wire") {
-			t.Errorf("%s: the refusal does not name the packet card: %v", c.path, err)
+			t.Errorf("%s: the refusal does not name the packet card: %v", c.name, err)
 		}
 		if strings.Contains(err.Error(), "does not carry packet types yet") {
-			t.Errorf("%s: the blanket packet-type refusal is still there: %v", c.path, err)
+			t.Errorf("%s: the blanket packet-type refusal is still there: %v", c.name, err)
 		}
 	}
 }
