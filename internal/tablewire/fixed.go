@@ -164,8 +164,8 @@ func encodeFixedPayload(m *tabletext.Model, b []byte, fv *tabletext.Field) error
 			}
 		}
 	case f.Array == ir.ArrayCounted:
-		if fv.Count < 0 || int64(fv.Count) > f.ArrayBound {
-			return fmt.Errorf("field %s: count %d is outside 0..%d, and save refuses it (docs/SPEC-TABLES.md §3.4)", f.Name, fv.Count, f.ArrayBound)
+		if fv.Count < 0 || int64(fv.Count) < f.ArrayMin || int64(fv.Count) > f.ArrayBound {
+			return fmt.Errorf("field %s: count %d is outside %d..%d, and save refuses it (docs/SPEC-TABLES.md §3.4)", f.Name, fv.Count, f.ArrayMin, f.ArrayBound)
 		}
 		binary.LittleEndian.PutUint32(b, uint32(fv.Count))
 		for i := 0; i < fv.Count; i++ {
@@ -352,7 +352,7 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 // fixedDecoder is the identity read of one record body. Its checks over live
 // data (a count past its bound, a bool or present byte other than 0 or 1, a
 // forged ordinal or tag, a value outside the range) are tla/FixedLive.tla's,
-// and each refuses the whole read.
+// and each refuses the whole read, as does a dead byte that is not zero.
 type fixedDecoder struct {
 	m      *tabletext.Model
 	report *tabletext.Report
@@ -386,11 +386,28 @@ func (d *fixedDecoder) field(b []byte, fv *tabletext.Field) string {
 		}
 		fv.Present = b[0] != 0
 		if !fv.Present {
-			return ""
+			// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD, and every dead byte is zero
+			return fixedDead(b[ir.TableFixedPresentBytes:])
 		}
 		return d.payload(b[ir.TableFixedPresentBytes:], fv)
 	}
 	return d.payload(b, fv)
+}
+
+// fixedDead answers wire_damaged when a dead range holds a byte other than
+// zero, and "" otherwise. EVERY DEAD BYTE IN A FIXED RECORD IS ZERO ON WRITE
+// AND REFUSED ON READ WHEN NOT ZERO (docs/rulings.json fixed-dead-bytes-are-zero;
+// docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): an absent optional's
+// payload, a counted array's slots past its count, a text's or bytes' units
+// past its used length, and an inactive union arm. A dead range is never read
+// as a value.
+func fixedDead(b []byte) string {
+	for _, c := range b {
+		if c != 0 {
+			return ReasonWireDamaged
+		}
+	}
+	return ""
 }
 
 func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
@@ -411,8 +428,11 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 		}
 	case f.Array == ir.ArrayCounted:
 		count := int32(binary.LittleEndian.Uint32(b))
-		if count < 0 || int64(count) > f.ArrayBound {
+		if count < 0 || int64(count) < f.ArrayMin || int64(count) > f.ArrayBound {
 			return FixedReasonCountOverBound
+		}
+		if reason := fixedDead(b[ir.TableFixedCountBytes+int64(count)*elem : ir.TableFixedCountBytes+f.ArrayBound*elem]); reason != "" {
+			return reason // a slot past the count is dead
 		}
 		fv.Count = int(count)
 		for i := 0; i < fv.Count; i++ {
@@ -424,6 +444,9 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 		used := int32(binary.LittleEndian.Uint32(b))
 		if used < 0 || int64(used) > f.Type.Size {
 			return FixedReasonLengthOverBound
+		}
+		if reason := fixedDead(b[4+int64(used) : 4+f.Type.Size]); reason != "" {
+			return reason // the units past the used length are dead
 		}
 		text := b[4 : 4+used]
 		if f.Type.Kind == ir.TString && (!textValid(text) || bytes.IndexByte(text, 0) >= 0) {
@@ -447,8 +470,9 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		tagBytes := ir.TableFixedUnionTagBytes(un)
 		tag := getFixedUint(b, tagBytes)
 		*cell = tabletext.Cell{}
+		span := ir.TableFixedUnionBytes(un)
 		if tag == 0 {
-			return ""
+			return fixedDead(b[tagBytes:span]) // tag 0 names no arm: all of it is dead
 		}
 		if tag > uint64(len(un.Variants)) {
 			// A FORGED TAG: outside the writer's set, which on the identity
@@ -456,6 +480,13 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 			return FixedReasonOutOfRange
 		}
 		arm := un.Variants[tag-1]
+		live := tagBytes
+		if !arm.Void() {
+			live += ir.TableFixedFieldBytes(arm.F)
+		}
+		if reason := fixedDead(b[live:span]); reason != "" {
+			return reason // the bytes past a narrower taken arm are dead
+		}
 		cell.U = tag
 		switch {
 		case arm.Void():

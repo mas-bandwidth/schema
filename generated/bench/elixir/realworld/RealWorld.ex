@@ -693,6 +693,15 @@ defmodule Realworld.RealWorld do
     sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 5
+
+    if is_number(value_f004_cf32) and value_f004_cf32 < 0.0 do
+      raise ArgumentError, "value.f004_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f004_cf32) and value_f004_cf32 > 2000.0 do
+      raise ArgumentError, "value.f004_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000, 20000.0)
     scratch = scratch ||| v <<< 26
 
@@ -743,6 +752,15 @@ defmodule Realworld.RealWorld do
     v = f32_bits(value_f010f32)
     sc6 = scratch
     scratch = v
+
+    if value_f011_bits < 0 do
+      raise ArgumentError, "value.f011_bits is below the wire minimum"
+    end
+
+    if value_f011_bits > 1023 do
+      raise ArgumentError, "value.f011_bits is above the wire maximum"
+    end
+
     v = value_f011_bits &&& 0x3FF
     scratch = scratch ||| v <<< 32
     v = if value_f012_bool, do: 1, else: 0
@@ -858,6 +876,15 @@ defmodule Realworld.RealWorld do
     sc10 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
+
+    if value_f023_bits < 0 do
+      raise ArgumentError, "value.f023_bits is below the wire minimum"
+    end
+
+    if value_f023_bits > 33_554_431 do
+      raise ArgumentError, "value.f023_bits is above the wire maximum"
+    end
+
     v = value_f023_bits &&& 0x1FFFFFF
     sc11 = scratch
     scratch = scratch >>> 32
@@ -877,12 +904,39 @@ defmodule Realworld.RealWorld do
 
     v = value_f025_fixed + 30464
     scratch = scratch ||| v <<< 34
+
+    if value_f026_bits < 0 do
+      raise ArgumentError, "value.f026_bits is below the wire minimum"
+    end
+
+    if value_f026_bits > 511 do
+      raise ArgumentError, "value.f026_bits is above the wire maximum"
+    end
+
     v = value_f026_bits &&& 0x1FF
     sc13 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 2
+
+    if is_number(value_f027_cf32) and value_f027_cf32 < -2.0 do
+      raise ArgumentError, "value.f027_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f027_cf32) and value_f027_cf32 > 2.0 do
+      raise ArgumentError, "value.f027_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16, 16.0)
     scratch = scratch ||| v <<< 11
+
+    if value_f028_bits < 0 do
+      raise ArgumentError, "value.f028_bits is below the wire minimum"
+    end
+
+    if value_f028_bits > 15 do
+      raise ArgumentError, "value.f028_bits is above the wire maximum"
+    end
+
     v = value_f028_bits &&& 0xF
     scratch = scratch ||| v <<< 16
     v = value_f029i64 &&& 0xFFFFFFFF
@@ -895,6 +949,15 @@ defmodule Realworld.RealWorld do
     sc15 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 4
+
+    if value_f031_bits < 0 do
+      raise ArgumentError, "value.f031_bits is below the wire minimum"
+    end
+
+    if value_f031_bits > 1 do
+      raise ArgumentError, "value.f031_bits is above the wire maximum"
+    end
+
     v = value_f031_bits &&& 0x1
     scratch = scratch ||| v <<< 36
 
@@ -931,6 +994,15 @@ defmodule Realworld.RealWorld do
 
     v = value_f034_uint
     scratch = scratch ||| v <<< 18
+
+    if value_f035_bits < 0 do
+      raise ArgumentError, "value.f035_bits is below the wire minimum"
+    end
+
+    if value_f035_bits > 511 do
+      raise ArgumentError, "value.f035_bits is above the wire maximum"
+    end
+
     v = value_f035_bits &&& 0x1FF
     scratch = scratch ||| v <<< 32
     v = Realworld.PacketMode.to_int(value_f036_enum)
@@ -939,6 +1011,15 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< 44
     v = if value_f038_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 45
+
+    if value_f039_bits < 0 do
+      raise ArgumentError, "value.f039_bits is below the wire minimum"
+    end
+
+    if value_f039_bits > 524_287 do
+      raise ArgumentError, "value.f039_bits is above the wire maximum"
+    end
+
     v = value_f039_bits &&& 0x7FFFF
     sc17 = scratch
     scratch = scratch >>> 40
@@ -965,6 +1046,15 @@ defmodule Realworld.RealWorld do
 
     v = value_f041_int + 55
     scratch = scratch ||| v <<< 41
+
+    if value_f042_bits < 0 do
+      raise ArgumentError, "value.f042_bits is below the wire minimum"
+    end
+
+    if value_f042_bits > 1_073_741_823 do
+      raise ArgumentError, "value.f042_bits is above the wire maximum"
+    end
+
     v = value_f042_bits &&& 0x3FFFFFFF
     sc18 = scratch
     scratch = v
@@ -991,6 +1081,15 @@ defmodule Realworld.RealWorld do
 
         v = f32_bits(value_f044f32)
         scratch = scratch ||| v <<< 7
+
+        if value_f045_bits < 0 do
+          raise ArgumentError, "value.f045_bits is below the wire minimum"
+        end
+
+        if value_f045_bits > 4095 do
+          raise ArgumentError, "value.f045_bits is above the wire maximum"
+        end
+
         v = value_f045_bits &&& 0xFFF
         scratch = scratch ||| v <<< 39
 
@@ -1150,9 +1249,27 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if value_f060_bits < 0 do
+      raise ArgumentError, "value.f060_bits is below the wire minimum"
+    end
+
+    if value_f060_bits > 255 do
+      raise ArgumentError, "value.f060_bits is above the wire maximum"
+    end
+
     v = value_f060_bits &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if is_number(value_f061_cf32) and value_f061_cf32 < -90.0 do
+      raise ArgumentError, "value.f061_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f061_cf32) and value_f061_cf32 > 90.0 do
+      raise ArgumentError, "value.f061_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f061_cf32, -90.0, 180.0, 360, 360.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
@@ -1194,6 +1311,15 @@ defmodule Realworld.RealWorld do
     v = value_f064_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if is_number(value_f065_cf32) and value_f065_cf32 < 0.0 do
+      raise ArgumentError, "value.f065_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f065_cf32) and value_f065_cf32 > 30.0 do
+      raise ArgumentError, "value.f065_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f065_cf32, 0.0, 30.0, 60, 60.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
@@ -1213,12 +1339,39 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if is_number(value_f067_cf32) and value_f067_cf32 < -100.0 do
+      raise ArgumentError, "value.f067_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f067_cf32) and value_f067_cf32 > 100.0 do
+      raise ArgumentError, "value.f067_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f067_cf32, -100.0, 200.0, 800, 800.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
+
+    if is_number(value_f068_cf32) and value_f068_cf32 < 0.0 do
+      raise ArgumentError, "value.f068_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f068_cf32) and value_f068_cf32 > 2000.0 do
+      raise ArgumentError, "value.f068_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f068_cf32, 0.0, 2000.0, 2000, 2000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+
+    if value_f069_bits < 0 do
+      raise ArgumentError, "value.f069_bits is below the wire minimum"
+    end
+
+    if value_f069_bits > 2047 do
+      raise ArgumentError, "value.f069_bits is above the wire maximum"
+    end
+
     v = value_f069_bits &&& 0x7FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
@@ -1234,6 +1387,15 @@ defmodule Realworld.RealWorld do
     v = value_f070_uint
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
+
+    if is_number(value_f071_cf32) and value_f071_cf32 < 0.0 do
+      raise ArgumentError, "value.f071_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f071_cf32) and value_f071_cf32 > 10.0 do
+      raise ArgumentError, "value.f071_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f071_cf32, 0.0, 10.0, 500, 500.0)
     sc25 = scratch
     fl25 = scratch_bits >>> 3
@@ -1241,6 +1403,15 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if is_number(value_f072_cf32) and value_f072_cf32 < 0.0 do
+      raise ArgumentError, "value.f072_cf32 is below the compressed float minimum"
+    end
+
+    if is_number(value_f072_cf32) and value_f072_cf32 > 100.0 do
+      raise ArgumentError, "value.f072_cf32 is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000, 10000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
@@ -1318,6 +1489,15 @@ defmodule Realworld.RealWorld do
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 6
+
+        if value_f078_bits < 0 do
+          raise ArgumentError, "value.f078_bits is below the wire minimum"
+        end
+
+        if value_f078_bits > 511 do
+          raise ArgumentError, "value.f078_bits is above the wire maximum"
+        end
+
         v = value_f078_bits &&& 0x1FF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 9
@@ -1349,9 +1529,27 @@ defmodule Realworld.RealWorld do
     v = if value_f080_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if value_f081_bits < 0 do
+      raise ArgumentError, "value.f081_bits is below the wire minimum"
+    end
+
+    if value_f081_bits > 536_870_911 do
+      raise ArgumentError, "value.f081_bits is above the wire maximum"
+    end
+
     v = value_f081_bits &&& 0x1FFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 29
+
+    if value_f082_bits < 0 do
+      raise ArgumentError, "value.f082_bits is below the wire minimum"
+    end
+
+    if value_f082_bits > 33_554_431 do
+      raise ArgumentError, "value.f082_bits is above the wire maximum"
+    end
+
     v = value_f082_bits &&& 0x1FFFFFF
     sc26 = scratch
     fl26 = scratch_bits >>> 3
@@ -1374,6 +1572,15 @@ defmodule Realworld.RealWorld do
     v = value_f084_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if value_f085_bits < 0 do
+      raise ArgumentError, "value.f085_bits is below the wire minimum"
+    end
+
+    if value_f085_bits > 2_097_151 do
+      raise ArgumentError, "value.f085_bits is above the wire maximum"
+    end
+
     v = value_f085_bits &&& 0x1FFFFF
     sc27 = scratch
     fl27 = scratch_bits >>> 3
@@ -1420,6 +1627,15 @@ defmodule Realworld.RealWorld do
     v = value_f088_int + 694
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+
+    if value_f089_bits < 0 do
+      raise ArgumentError, "value.f089_bits is below the wire minimum"
+    end
+
+    if value_f089_bits > 281_474_976_710_655 do
+      raise ArgumentError, "value.f089_bits is above the wire maximum"
+    end
+
     v = value_f089_bits &&& 0xFFFFFFFF
     sc30 = scratch
     fl30 = scratch_bits >>> 3
@@ -1457,6 +1673,15 @@ defmodule Realworld.RealWorld do
     v = if value_f092_bool, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if value_f093_bits < 0 do
+      raise ArgumentError, "value.f093_bits is below the wire minimum"
+    end
+
+    if value_f093_bits > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.f093_bits is above the wire maximum"
+    end
+
     v = value_f093_bits &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1486,9 +1711,27 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 28
+
+    if value_f096_bits < 0 do
+      raise ArgumentError, "value.f096_bits is below the wire minimum"
+    end
+
+    if value_f096_bits > 262_143 do
+      raise ArgumentError, "value.f096_bits is above the wire maximum"
+    end
+
     v = value_f096_bits &&& 0x3FFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
+
+    if value_f097_bits < 0 do
+      raise ArgumentError, "value.f097_bits is below the wire minimum"
+    end
+
+    if value_f097_bits > 4095 do
+      raise ArgumentError, "value.f097_bits is above the wire maximum"
+    end
+
     v = value_f097_bits &&& 0xFFF
     sc34 = scratch
     fl34 = scratch_bits >>> 3
@@ -2088,8 +2331,17 @@ defmodule Realworld.RealWorld do
   @spec read_real_packet(binary(), non_neg_integer()) :: {:ok, Realworld.RealPacket.t()} | :error
   def read_real_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_real_packet_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 end

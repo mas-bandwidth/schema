@@ -59,6 +59,24 @@ public final class MixedEntityFixed {
 
         /** bool */
         public boolean firing;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            entityId = 0;
+            posX = 0;
+            posY = 0;
+            posZ = 0;
+            yaw = 0;
+            pitch = 0;
+            velX = 0;
+            velY = 0;
+            velZ = 0;
+            health = 0;
+            weapon = (byte) 0;
+            damage = 0L;
+            moving = false;
+            firing = false;
+        }
     }
 
     /**
@@ -94,7 +112,17 @@ public final class MixedEntityFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert (v.entityId & 0xfffffffffffff000L) == 0;
+        assert v.posX >= -16383L && v.posX <= 16383L;
+        assert v.posY >= -16383L && v.posY <= 16383L;
+        assert v.posZ >= -16383L && v.posZ <= 16383L;
+        assert (v.yaw & 0xfffffffffffffe00L) == 0;
+        assert (v.pitch & 0xfffffffffffffe00L) == 0;
+        assert v.velX >= -2048L && v.velX <= 2047L;
+        assert v.velY >= -2048L && v.velY <= 2047L;
+        assert v.velZ >= -2048L && v.velZ <= 2047L;
+        assert v.health >= 0L && v.health <= 1000L;
+        assert v.weapon >= 0 && v.weapon <= 15;
         return true;
     }
 
@@ -103,17 +131,18 @@ public final class MixedEntityFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.entityId = TableFixed.get32(b, at + 0);
-        if (v.entityId > 4095L) {
+        if (Integer.compareUnsigned(v.entityId, 4095) > 0) {
             v.entityId = (int) (4095L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -165,14 +194,14 @@ public final class MixedEntityFixed {
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
-        if (v.yaw > 511L) {
+        if (Integer.compareUnsigned(v.yaw, 511) > 0) {
             v.yaw = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
         } // bits(9) clamps to 2^N - 1
         v.pitch = TableFixed.get32(b, at + 20);
-        if (v.pitch > 511L) {
+        if (Integer.compareUnsigned(v.pitch, 511) > 0) {
             v.pitch = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);

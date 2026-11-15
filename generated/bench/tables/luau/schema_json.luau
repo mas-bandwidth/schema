@@ -20,7 +20,6 @@ type Input = { t: string, p: number, bad: boolean, zero: boolean?, notutf8: bool
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
-local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 -- A float32's text is C's %.*g at the fewest digits from 6 up to this cap that
@@ -35,10 +34,10 @@ local function lshift(a: number, n: number): number return a * 2 ^ n end
 local function rshift(a: number, n: number): number return math.floor(a / 2 ^ n) end
 local function ult(a: number, b: number): boolean
   if a < 0 then
-    if b >= 0 then return true end
+    if b >= 0 then return false end
     return a < b
   end
-  if b < 0 then return false end
+  if b < 0 then return true end
   return a < b
 end
 
@@ -95,6 +94,26 @@ local function byte_order_mark(inp: Input)
   if inp.p == 1 and inp.t:sub(1, 3) == "\xEF\xBB\xBF" then inp.p = 4 end
 end
 
+-- A COMMENT'S BYTES ARE TEXT (docs/SPEC-TABLES.md §16.2): well-formed UTF-8
+-- and no NUL (0x00), in a line comment or a block comment. A comment holding
+-- an ill-formed sequence or a zero byte refuses the read; only LF ends a line
+-- comment, so a lone CR is an ordinary byte inside it.
+local function comment_text(inp: Input, from: number, to: number): boolean
+  local i = from
+  while i <= to do
+    local c = inp.t:byte(i)
+    if c == 0 then return false end
+    if c < 0x80 then
+      i = i + 1
+    else
+      local width = utf8_seq(inp.t, i)
+      if width < 0 then return false end
+      i = i + width
+    end
+  end
+  return true
+end
+
 local function space(inp: Input)
   while inp.p <= #inp.t do
     local c = inp.t:byte(inp.p)
@@ -103,11 +122,14 @@ local function space(inp: Input)
     elseif c == 47 then
       local n = inp.t:byte(inp.p + 1)
       if n == 47 then
-        inp.p = inp.p + 2
+        local start = inp.p + 2
+        inp.p = start
         while inp.p <= #inp.t and inp.t:byte(inp.p) ~= 10 do inp.p = inp.p + 1 end
+        if not comment_text(inp, start, inp.p - 1) then inp.bad = true; return end
       elseif n == 42 then
         local e = inp.t:find("*/", inp.p + 2, true)
         if e == nil then inp.bad = true; inp.p = #inp.t + 1; return end
+        if not comment_text(inp, inp.p + 2, e - 1) then inp.bad = true; return end
         inp.p = e + 2
       else
         inp.bad = true
@@ -239,6 +261,18 @@ local function scan_string(inp: Input, cap: number, store: boolean?): (string?, 
   return table.concat(out), clamped, true
 end
 
+-- ONE SCHEMA-NAME string: at most MAX_KEY bytes after decoding. A longer name
+-- refuses the read wherever it is met, an unknown enum name included
+-- (docs/SPEC-TABLES.md §16.2, §16.12). store says the name is bound for text
+-- storage too, where a U+0000 refuses (§16.3). A map key and a string VALUE are
+-- data and are scanned by scan_string directly, never capped here.
+local function scan_name(inp: Input, store: boolean?): (string?, boolean)
+  local out, clamped, ok = scan_string(inp, MAX_KEY, store)
+  if not ok then return nil, false end
+  if clamped then inp.bad = true; return nil, false end
+  return out, true
+end
+
 -- ONE RFC 8259 number; the token kept for conversion
 local function scan_number(inp: Input): string?
   space(inp)
@@ -271,7 +305,7 @@ local function scan_number(inp: Input): string?
     while digit() do inp.p = inp.p + 1 end
   end
   local n = inp.p - start
-  if n <= 0 or n > MAX_NUMBER then return nil end
+  if n <= 0 then return nil end
   return inp.t:sub(start, inp.p - 1)
 end
 
@@ -295,11 +329,14 @@ local function scan_label(inp: Input): number?
   return v
 end
 
-local skip_value: (Input, number, any) -> boolean
+local skip_value: (Input, number, any, boolean?) -> boolean
 
 -- a skipped OBJECT may still be a pointer's: `&node` opening it takes its
--- label with no node, so a later reference reads null (§16.7)
-local function skip_container(inp: Input, close: string, depth: number, graph: any): boolean
+-- label with no node, so a later reference reads null (§16.7). text says the
+-- walk is the TABLE walk, where a skipped string or object key is held to the
+-- text rules of a placed one (docs/SPEC-TABLES.md §16.3); the JSON layer's
+-- own grammar probe passes it false.
+local function skip_container(inp: Input, close: string, depth: number, graph: any, text: boolean?): boolean
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
@@ -313,7 +350,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
     if c == nil then inp.bad = true; return false end
     local labelled = false
     if close == '}' then
-      local scanned, _, ok = scan_string(inp, MAX_KEY)
+      local scanned, ok = scan_name(inp, text)
       if not ok then return false end
       local key = scanned :: string -- an ok scan returns its string
       if keys[key] then inp.bad = true; return false end
@@ -335,7 +372,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
     end
     if not labelled then
       first = false
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, text) then return false end
       c = peek(inp)
       if c == ',' then
         inp.p = inp.p + 1
@@ -350,11 +387,13 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   end
 end
 
-skip_value = function(inp: Input, depth: number, graph: any): boolean
+skip_value = function(inp: Input, depth: number, graph: any, text: boolean?): boolean
   local c = peek(inp)
-  if c == '{' then return skip_container(inp, '}', depth, graph) end
-  if c == '[' then return skip_container(inp, ']', depth, graph) end
-  if c == '"' then local _, _, ok = scan_string(inp, -1); return ok end
+  if c == '{' then return skip_container(inp, '}', depth, graph, text) end
+  if c == '[' then return skip_container(inp, ']', depth, graph, text) end
+  -- A SKIPPED STRING IS HELD TO THE TEXT RULES OF A PLACED ONE
+  -- (docs/SPEC-TABLES.md §16.3): a string that decodes to U+0000 refuses.
+  if c == '"' then local _, _, ok = scan_string(inp, -1, text); return ok end
   if c == 't' then return literal(inp, "true") end
   if c == 'f' then return literal(inp, "false") end
   if c == 'n' then return literal(inp, "null") end
@@ -459,6 +498,18 @@ walk_default = function(T: any, desc: any): any
   return out
 end
 
+-- §16.2: an integer or fixed-point kind wider than 32 bits writes as a JSON
+-- string of digits and reads from a string or a number. A timestamp is a
+-- string only, and flags ride under shape == "flags".
+local function wide_int(d: any): boolean
+  return d.shape == "int" and not d.timestamp and (d.width or 0) > 4
+end
+
+local function shape_matches(want: string, got: string?): boolean
+  if want == got then return true end
+  return want == 'N' and (got == 's' or got == 'n')
+end
+
 -- §16.10: a table value uses its declared array-root shape at every depth.
 local function shape_of(T: any, d: any): string
   local s = d.shape
@@ -468,6 +519,7 @@ local function shape_of(T: any, d: any): string
   if s == "enum" then return 's' end
   -- a timestamp's text is a JSON STRING, never the count's number (§16.2)
   if s == "int" and d.timestamp then return 's' end
+  if wide_int(d) then return 'N' end
   if s == "flags" then return 'a' end
   if s == "table" then
     local target = T.Tables[d.target]
@@ -519,23 +571,6 @@ local function dec_integer(digits: string, neg: boolean): integer
   return v
 end
 
-local function dec_int128(digits: string, neg: boolean): any
-  local lo, hi = 0i, 0i
-  for i = 1, #digits do
-    local d = integer.create(digits:byte(i) - 48)
-    local l = integer.mul(lo, TEN)
-    local h = integer.mul(hi, TEN)
-    local l2 = integer.add(l, d)
-    if integer.ult(l2, l) then h = integer.add(h, 1i) end
-    lo, hi = l2, h
-  end
-  if neg then
-    lo = integer.add(integer.bnot(lo), 1i)
-    hi = integer.add(integer.bnot(hi), lo == 0i and 1i or 0i)
-  end
-  return { lo = lo, hi = hi }
-end
-
 local function int128_neg(v: any): boolean
   return integer.lt(v.hi, 0i)
 end
@@ -548,27 +583,83 @@ local function int128_cmp(a: any, b: any): number
   return 0
 end
 
-local function int128_cmp_signed(a: any, b: any): number
-  local an, bn = int128_neg(a), int128_neg(b)
-  if an ~= bn then return an and -1 or 1 end
-  return int128_cmp(a, b)
+-- exact RFC 8259 number token check with no leading or trailing whitespace
+local function is_json_number_token(s: string): boolean
+  local n = #s
+  if n == 0 then return false end
+  local p = 1
+  if s:byte(p) == 45 then p += 1 end
+  if p > n then return false end
+  local c = s:byte(p)
+  if c == 48 then
+    p += 1
+  elseif c >= 49 and c <= 57 then
+    p += 1
+    while p <= n do
+      local b = s:byte(p)
+      if b < 48 or b > 57 then break end
+      p += 1
+    end
+  else
+    return false
+  end
+  if p <= n and s:byte(p) == 46 then
+    p += 1
+    if p > n then return false end
+    local d = s:byte(p)
+    if d < 48 or d > 57 then return false end
+    p += 1
+    while p <= n do
+      local b = s:byte(p)
+      if b < 48 or b > 57 then break end
+      p += 1
+    end
+  end
+  if p <= n then
+    local e = s:byte(p)
+    if e == 101 or e == 69 then
+      p += 1
+      if p <= n then
+        local sign = s:byte(p)
+        if sign == 45 or sign == 43 then p += 1 end
+      end
+      if p > n then return false end
+      local d = s:byte(p)
+      if d < 48 or d > 57 then return false end
+      p += 1
+      while p <= n do
+        local b = s:byte(p)
+        if b < 48 or b > 57 then break end
+        p += 1
+      end
+    end
+  end
+  return p == n + 1
 end
 
-local function norm_digits(token: string, integral: boolean): (string, boolean, boolean, boolean)
-  -- (digits, neg, finite, frac)
-  local neg = token:sub(1, 1) == "-"
-  local t = neg and token:sub(2) or token
-  if integral then
-    return t:gsub("^0+", ""), neg and t ~= "" and t:match("^0*$") == nil, true, false
+-- §16.2 integer token: optional '-', digits with no leading zero, and not '-0'
+local function is_integer_token(s: string): boolean
+  local n = #s
+  if n == 0 then return false end
+  local p = 1
+  local neg = false
+  if s:byte(p) == 45 then
+    neg = true
+    p += 1
   end
-  local x = tonumber(token)
-  if x == nil or x ~= x or x == math.huge or x == -math.huge then
-    return "", false, false, false
+  if p > n then return false end
+  local c = s:byte(p)
+  if c == 48 then
+    return not neg and p == n
   end
-  if math.floor(x) ~= x then return "", false, true, true end
-  local digits = string.format("%.0f", math.abs(x)):gsub("^0+", "")
-  if digits == "" then digits = "0" end
-  return digits, x < 0, true, false
+  if c < 49 or c > 57 then return false end
+  p += 1
+  while p <= n do
+    local b = s:byte(p)
+    if b < 48 or b > 57 then return false end
+    p += 1
+  end
+  return true
 end
 
 local function mag_sat(digits: string): boolean
@@ -576,59 +667,22 @@ local function mag_sat(digits: string): boolean
 end
 
 -- one integer token into the field's own domain (docs/PORT-LUAU.md, THE TYPE
--- MAPPING): dom is "number", "integer" or "int128". A magnitude past the
--- domain saturates and counts clamped (§16.2).
-local function place_integer(fd: any, token: string, integral: boolean, report: any): any
-  local digits, neg, finite, frac = norm_digits(token, integral)
-  if not finite or frac then report.kindMismatch = report.kindMismatch + 1; return nil end
-  local sat = false
-  if fd.dom == "int128" then
-    local v = dec_int128(digits == "" and "0" or digits, neg)
-    if fd.bits ~= nil and fd.bits > 0 and fd.bits < 128 then
-      -- range is clamped below
-    end
-    if fd.lo ~= nil and fd.hi ~= nil then
-      if int128_cmp_signed(v, fd.lo) < 0 then v = fd.lo; report.clamped = report.clamped + 1
-      elseif int128_cmp_signed(v, fd.hi) > 0 then v = fd.hi; report.clamped = report.clamped + 1 end
-    end
-    return v
-  end
-  if fd.dom == "number" then
-    local n = tonumber(digits == "" and "0" or digits) or 0
-    if neg then n = -n end
-    if mag_sat(digits) then sat = true end
-    if sat then report.clamped = report.clamped + 1 end
-    if fd.lo ~= nil and fd.hi ~= nil then
-      local lo = typeof(fd.lo) == "integer" and integer.tonumber(fd.lo) or fd.lo
-      local hi = typeof(fd.hi) == "integer" and integer.tonumber(fd.hi) or fd.hi
-      if n < lo then n = lo; report.clamped = report.clamped + 1
-      elseif n > hi then n = hi; report.clamped = report.clamped + 1 end
-    end
-    if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
-      local bmax = 2 ^ fd.bits - 1
-      if n > bmax then n = bmax; report.clamped = report.clamped + 1 end
-    end
-    local width = fd.width or 8
-    if fd.signed then
-      local hi = width < 8 and 2 ^ (width * 8 - 1) - 1 or 2 ^ 63 - 1
-      local lo = width < 8 and -2 ^ (width * 8 - 1) or -2 ^ 63
-      if n < lo then n = lo; report.clamped = report.clamped + 1
-      elseif n > hi then n = hi; report.clamped = report.clamped + 1 end
-    else
-      if n < 0 then n = 0; report.clamped = report.clamped + 1 end
-      local hi = width < 8 and 2 ^ (width * 8) - 1 or 2 ^ 64 - 1
-      if n > hi then n = hi; report.clamped = report.clamped + 1 end
-    end
-    return n
-  end
+-- MAPPING): dom is "number" or "integer" (64-bit integer arithmetic with no
+-- double conversion). A magnitude past the domain saturates and counts clamped (§16.2).
+local function place_integer(fd: any, token: string, report: any): any
+  if not is_integer_token(token) then report.kindMismatch = report.kindMismatch + 1; return nil end
+  local neg = token:byte(1) == 45
+  local raw_digits = if neg then token:sub(2) else token
+  local digits = if raw_digits == "0" then "" else raw_digits
   -- THE ENGINE'S ORDER (internal/tabletext placeInteger): a magnitude past 64
   -- bits saturates at 2^64-1 and counts clamped; then the declared range, then
   -- the storage domain, which counts once however far the value moved. v holds
   -- a uint64 at or past 2^63 as a negative 64-bit integer, so every bound of an
   -- unsigned field is compared unsigned.
   local unsigned = fd.signed == false
-  if mag_sat(digits) then report.clamped = report.clamped + 1 end
-  local mag = if mag_sat(digits) then -1i else dec_integer(digits == "" and "0" or digits, false)
+  local sat = mag_sat(digits)
+  if sat then report.clamped = report.clamped + 1 end
+  local mag = if sat then -1i else dec_integer(digits == "" and "0" or digits, false)
   local min64 = integer.bnot(0x7fffffffffffffffi)
   local v = mag
   local moved = false
@@ -639,26 +693,27 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
   elseif integer.ult(0x7fffffffffffffffi, mag) then
     v = 0x7fffffffffffffffi; moved = true
   end
-  local function cmp(a: any, b: any): number
-    if typeof(a) == "integer" and typeof(b) == "integer" then
-      if unsigned then
-        if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 else return 0 end
-      end
-      if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 else return 0 end
+  local function to_i64(b: any): integer
+    if typeof(b) == "integer" then return b end
+    return integer.create(b) :: integer
+  end
+  local function cmp(a: integer, b: integer): number
+    if unsigned then
+      if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 else return 0 end
     end
-    local x: number = if typeof(a) == "integer" then integer.tonumber(a) else a
-    local y: number = if typeof(b) == "integer" then integer.tonumber(b) else b
-    if x < y then return -1 elseif x > y then return 1 else return 0 end
+    if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 else return 0 end
   end
   -- a declared range (or a bits width) holds the value inside the domain, so
   -- a clamp to it supersedes the domain's move
   if fd.lo ~= nil and fd.hi ~= nil then
-    if moved and neg and not unsigned then v = fd.lo; moved = false; report.clamped = report.clamped + 1
-    elseif moved and not neg then v = fd.hi; moved = false; report.clamped = report.clamped + 1
-    elseif cmp(v, fd.lo) < 0 then v = fd.lo; moved = false; report.clamped = report.clamped + 1
-    elseif cmp(v, fd.hi) > 0 then v = fd.hi; moved = false; report.clamped = report.clamped + 1 end
+    local lo = to_i64(fd.lo)
+    local hi = to_i64(fd.hi)
+    if moved and neg and not unsigned then v = lo; moved = false; report.clamped = report.clamped + 1
+    elseif moved and not neg then v = hi; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, lo) < 0 then v = lo; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, hi) > 0 then v = hi; moved = false; report.clamped = report.clamped + 1 end
   elseif fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
-    local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
+    local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits) :: integer), 1i)
     if neg then
       v = 0i; moved = false; report.clamped = report.clamped + 1
     elseif moved or cmp(v, bmax) > 0 then
@@ -668,12 +723,12 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
   local width = fd.width or 8
   if width < 8 then
     if fd.signed then
-      local high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
-      local low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1) :: integer), 1i)
+      local low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1) :: integer))
       if integer.lt(v, low) then v = low; moved = true
       elseif integer.gt(v, high) then v = high; moved = true end
     else
-      local high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i)
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8) :: integer), 1i)
       if integer.ult(high, v) then v = high; moved = true end
     end
   end
@@ -909,16 +964,16 @@ local function place_wide(fd: any, token: string, report: any): any
   return integer.tonumber(raw.lo)
 end
 
--- one map key: the token is the whole string and must be a JSON number
+-- one map key: the token is the whole string and must be a JSON number, and
+-- the key is exactly the integer it names: a token that placement moves (past
+-- the key kind's range, or negative for an unsigned kind) is no key of the map
+-- (§16.2 map[K]V row; read.go readMap)
 local function map_int_key(fd: any, key: string): (any, string?)
-  local probe = new_in(key)
-  local token = scan_number(probe)
-  if token == nil or probe.p ~= #key + 1 then return false, "malformed" end
-  local integral = not (token:find("[%.eE]") ~= nil)
-  local _, _, finite, frac = norm_digits(token, integral)
-  if not finite or frac then return false, "mismatch" end
-  local v = place_integer(fd, token, integral, { kindMismatch = 0, clamped = 0 })
-  if v == nil then return false, "mismatch" end
+  if not is_json_number_token(key) then return false, "malformed" end
+  if not is_integer_token(key) then return false, "mismatch" end
+  local placed = { kindMismatch = 0, clamped = 0 }
+  local v = if fd.dom == "int128" then place_wide(fd, key, placed) else place_integer(fd, key, placed)
+  if v == nil or placed.kindMismatch > 0 or placed.clamped > 0 then return false, "mismatch" end
   return v, nil
 end
 
@@ -971,10 +1026,11 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
       local c = peek(inp)
       if c == '}' then inp.p = inp.p + 1; return required_seen(desc, v, seen, report) end
       if c == nil then inp.bad = true; return false end
-      local start = inp.p
-      local _, _, ok = scan_string(inp, MAX_KEY)
+      -- every object key is held to the text rules of a placed string
+      -- (docs/SPEC-TABLES.md §16.3): a key that decodes to U+0000 refuses.
+      local scanned, ok = scan_name(inp, true)
       if not ok then return false end
-      key = inp.t:sub(start + 1, inp.p - 2)
+      key = scanned :: string
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
     end
@@ -982,7 +1038,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
     local fd = find_key(desc, key)
     if fd == nil then
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     else
       if seen[fd.name] then report.duplicate = report.duplicate + 1 end
       seen[fd.name] = true
@@ -1000,9 +1056,9 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
         end
       else
         local want = shape_of(T, fd)
-        if shape ~= want then
+        if not shape_matches(want, shape) then
           report.kindMismatch = report.kindMismatch + 1
-          if not skip_value(inp, depth + 1, graph) then return false end
+          if not skip_value(inp, depth + 1, graph, true) then return false end
           -- §16.2 optional row: the KEY is presence whatever its value, and
           -- §4's declared default fills it, so a wrong-shaped present value
           -- is the default and PRESENT (Go writes the default object/array).
@@ -1060,10 +1116,9 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
     return required_seen(T.Tables[d.target], node, {}, report)
   end
   if c == nil then inp.bad = true; return false end
-  local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local scanned, ok = scan_name(inp, true)
   if not ok then return false end
-  local k = inp.t:sub(start + 1, inp.p - 2)
+  local k = scanned :: string
   if peek(inp) ~= ':' then inp.bad = true; return false end
   inp.p = inp.p + 1
   if k ~= "&node" then
@@ -1103,6 +1158,7 @@ end
 local function read_base64(inp: Input, bound: number, report: any): (string | false)?
   if peek(inp) ~= '"' then inp.bad = true; return nil end
   inp.p = inp.p + 1
+  local start = inp.p
   local out = {}
   local acc, held = 0, 0
   local clamped, bad = false, false
@@ -1131,6 +1187,32 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
     end
   end
   if bad then
+    report.kindMismatch = report.kindMismatch + 1
+    return false
+  end
+  -- §16.8: only the canonical spelling the writer writes is accepted — the
+  -- standard alphabet, padded, pad bits zero. A body that decodes in another
+  -- spelling (a pad bit set, missing padding) is refused.
+  local body = inp.t:sub(start, inp.p - 2)
+  local n = #body
+  local pad = 0
+  if n >= 1 and body:sub(n, n) == "=" then pad = 1 end
+  if n >= 2 and body:sub(n - 1, n - 1) == "=" then pad = 2 end
+  local data = n - pad
+  local canonical = n % 4 == 0
+  if canonical then
+    for i = 1, data do
+      if body:sub(i, i) == "=" then canonical = false; break end
+    end
+  end
+  if canonical and pad == 1 then
+    local at = BASE64:find(body:sub(data, data), 1, true)
+    if at == nil or (at - 1) % 4 ~= 0 then canonical = false end
+  elseif canonical and pad == 2 then
+    local at = BASE64:find(body:sub(data, data), 1, true)
+    if at == nil or (at - 1) % 16 ~= 0 then canonical = false end
+  end
+  if not canonical then
     report.kindMismatch = report.kindMismatch + 1
     return false
   end
@@ -1177,10 +1259,10 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
     local before = placed
     if full then
       if seen > bound then report.clamped = report.clamped + 1 end
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     elseif placed >= bound then
       report.clamped = report.clamped + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     elseif fd.elem.shape == "pointer" and vs == 'z' then
       literal(inp, "null")
       placed = placed + 1
@@ -1199,9 +1281,9 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
         if not read_value(T, vf, inp, rec, vf.name, depth + 1, graph, report, false) then return false end
         rec[vf.name .. "_present"] = true
       end
-    elseif vs ~= eshape then
+    elseif not shape_matches(eshape, vs) then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
     else
@@ -1249,7 +1331,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if c == nil then inp.bad = true; return false end
     -- a map key is text storage whatever its kind (§16.2, §16.3), and the
     -- key stored is the string's DECODED bytes, escapes included
-    local keytext, clamped, ok = scan_string(inp, MAX_KEY, true)
+    local keytext, clamped, ok = scan_string(inp, -1, true)
     if not ok then return false end
     local kraw = keytext :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1288,7 +1370,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
-    elseif not skip and value_shape(inp) ~= shape_of(T, vf) then
+    elseif not skip and not shape_matches(shape_of(T, vf), value_shape(inp)) then
       report.kindMismatch = report.kindMismatch + 1
       skip = true
     end
@@ -1298,7 +1380,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
       seen[kval] = true
       out[kval] = false
     elseif skip then
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
@@ -1336,10 +1418,9 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    local scanned, ok = scan_name(inp, true)
     if not ok then return false end
-    local name = inp.t:sub(start + 1, inp.p - 2)
+    local name = scanned :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
     local slot = nil
@@ -1348,13 +1429,13 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
       if seen_unknown[name] then dup_unknown = true end
       seen_unknown[name] = true
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 1, graph, true) then return false end
     else
       if seen[slot] then report.duplicate = report.duplicate + 1 end
       seen[slot] = true
-      if value_shape(inp) ~= eshape then
+      if not shape_matches(eshape, value_shape(inp)) then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 1, graph, true) then return false end
       else
         if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true) then
           return false
@@ -1384,10 +1465,9 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   if peek(inp) ~= '{' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
-  local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local scanned, ok = scan_name(inp, true)
   if not ok then return nil end
-  local name = inp.t:sub(start + 1, inp.p - 2)
+  local name = scanned :: string
   if peek(inp) ~= ':' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   local tag: number, arm: any = 0, nil
@@ -1395,11 +1475,11 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 1, graph, true) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= 'z' then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return nil end
+      if not skip_value(inp, depth + 1, graph, true) then return nil end
     else
       literal(inp, "null")
       out.tag = tag
@@ -1410,9 +1490,9 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     -- reads `null` as the arm selected with a null reference
     literal(inp, "null")
     out.tag = tag
-  elseif value_shape(inp) ~= shape_of(T, arm.field) then
+  elseif not shape_matches(shape_of(T, arm.field), value_shape(inp)) then
     report.kindMismatch = report.kindMismatch + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 1, graph, true) then return nil end
   else
     out.tag = tag
     if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false) then
@@ -1466,11 +1546,58 @@ local function decimal_cmp(a: string, b: string): number
   return pa < pb and -1 or 1
 end
 
+-- the exact decimal of a positive finite double, as digits or digits-and-exponent
+-- that decimal_cmp reads. ax = sig·2^exp2 with sig an integer (math.frexp);
+-- a negative power of two is sig·5^(-exp2) / 10^(-exp2), in the base-10^7
+-- limbs above. string.format("%.99e") keeps only 100 significant digits, and
+-- a subnormal float32 midpoint is m·2^-150, whose exact decimal is longer, so
+-- a rounded midpoint compares one unit away from the token (docs/SPEC-TABLES.md
+-- §16.2 Numbers).
+local function double_exact_decimal(ax: number): string
+  local mant, e = math.frexp(ax)
+  local sig = mant * 2 ^ 53
+  local exp2 = e - 53
+  local a: { number } = {}
+  local x = sig
+  if x == 0 then
+    a[1] = 0
+  else
+    while x > 0 do
+      local q = math.floor(x / BN_BASE)
+      a[#a + 1] = x - q * BN_BASE
+      x = q
+    end
+  end
+  a = bn_norm(a)
+  if exp2 >= 0 then
+    local n = exp2
+    while n >= 16 do
+      a = bn_muladd(a, 65536, 0)
+      n -= 16
+    end
+    if n > 0 then a = bn_muladd(a, 2 ^ n, 0) end
+    return bn_digits(a)
+  end
+  local pow = -exp2
+  local n = pow
+  while n >= 6 do
+    a = bn_muladd(a, 15625, 0) -- 5^6, under bn_muladd's 65536 factor
+    n -= 6
+  end
+  if n > 0 then a = bn_muladd(a, 5 ^ n, 0) end
+  local digits = bn_digits(a)
+  -- trailing zeros are factors of ten the exponent can carry
+  local stripped = digits:match("^(.-)0*$")
+  local body = if stripped ~= nil and stripped ~= "" then stripped else "0"
+  local exp = -pow + (#digits - #body)
+  if exp == 0 then return body end
+  return body .. "e" .. tostring(exp)
+end
+
 -- A double that sits EXACTLY midway between two float32 values is a tie the
 -- double cannot break: its own rounding already chose one neighbour. The Go
 -- engine rounds the decimal TOKEN (ties to even), so the token's exact decimal
--- against the midpoint's decides. `string.format("%.99e", v)` gives the
--- double's exact leading decimal digits (a double is a finite decimal).
+-- against the midpoint's exact decimal decides.
 local function f32_tie(x: number, token: string): number?
   if x == 0 or x ~= x or x == math.huge or x == -math.huge then return nil end
   local ax = math.abs(x)
@@ -1483,7 +1610,7 @@ local function f32_tie(x: number, token: string): number?
   if q ~= math.floor(q) or math.floor(q) % 2 == 0 then return nil end
   local lo, hi = ax - half, ax + half
   local t = token:sub(1, 1) == "-" and token:sub(2) or token
-  local c = decimal_cmp(t, string.format("%.99e", ax))
+  local c = decimal_cmp(t, double_exact_decimal(ax))
   local mag
   if c > 0 then
     mag = hi
@@ -1548,10 +1675,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     holder[key] = out
     return true
   elseif s == "enum" then
-    local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    local scanned, ok = scan_name(inp)
     if not ok then return false end
-    local name = inp.t:sub(start + 1, inp.p - 2)
+    local name = scanned :: string
     -- §16.2 enum row: "None" and an unknown name read as the enum zero, which
     -- is false in an element slot (zero_elem: a map entry stays an entry, a
     -- list keeps its length) and nil in a field slot. An explicit branch,
@@ -1576,16 +1702,23 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       if c == nil then inp.bad = true; return false end
       if c ~= '"' then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 1, graph, true) then return false end
       else
-        local st = inp.p
-        local _, _, ok = scan_string(inp, MAX_KEY)
+        local scanned, ok = scan_name(inp)
         if not ok then return false end
-        local nm = inp.t:sub(st + 1, inp.p - 2)
+        local nm = scanned :: string
         local found = false
         local names = d.variants or {}
         for i, v in ipairs(names) do
-          if v == nm then bits = bor(bits, lshift(1, i - 1)); found = true; break end
+          if v == nm then
+            -- §16.2 flags row: a KNOWN variant named twice in one array is
+            -- malformed, as a repeated key is; a conforming writer writes
+            -- each set bit's name once.
+            if band(bits, lshift(1, i - 1)) ~= 0 then inp.bad = true; return false end
+            bits = bor(bits, lshift(1, i - 1))
+            found = true
+            break
+          end
         end
         if not found then report.unknown = report.unknown + 1 end
       end
@@ -1642,6 +1775,19 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         x = tie ~= nil and tie or narrow
       end
     end
+    if d.lo ~= nil then
+      -- a compressed float holds its DECLARED range on the value at its own
+      -- width (§16.2 Numbers, §3.3): a finite value past an end is clamped
+      -- and counted, which the plain read refuses, and its -0 lands as +0
+      if x < d.lo then
+        x = d.lo
+        report.clamped = report.clamped + 1
+      elseif x > d.hi then
+        x = d.hi
+        report.clamped = report.clamped + 1
+      end
+      if x == 0 then x = 0 end
+    end
     holder[key] = x
     return true
   elseif s == "int" then
@@ -1660,14 +1806,32 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       holder[key] = ns
       return true
     end
-    local token = scan_number(inp)
-    if token == nil then inp.bad = true; return false end
-    local v
-    if d.fbits ~= nil or d.dom == "int128" then
-      v = place_wide(d, token, report)
+    local token: string?
+    if wide_int(d) and value_shape(inp) == 's' then
+      local text, _, ok = scan_string(inp, -1)
+      if not ok then return false end
+      local s_tok = text :: string
+      if not is_json_number_token(s_tok) then
+        report.kindMismatch = report.kindMismatch + 1
+        return true
+      end
+      token = s_tok
     else
-      local integral = not (token:find("[%.eE]") ~= nil)
-      v = place_integer(d, token, integral, report)
+      token = scan_number(inp)
+      if token == nil then inp.bad = true; return false end
+    end
+    local tok = token :: string
+    local v
+    if d.fbits ~= nil then
+      v = place_wide(d, tok, report)
+    elseif d.dom == "int128" then
+      if not is_integer_token(tok) then
+        report.kindMismatch = report.kindMismatch + 1
+        return true
+      end
+      v = place_wide(d, tok, report)
+    else
+      v = place_integer(d, tok, report)
     end
     if v ~= nil then holder[key] = v end
     return true
@@ -1835,8 +1999,12 @@ local function narrow_text_ok(s: string, bound: number): boolean
   return true
 end
 
-local function int_cmp(a: any, b: any): number
+local function int_cmp(a: any, b: any, unsigned: boolean): number
   if typeof(a) == "integer" and typeof(b) == "integer" then
+    if unsigned then
+      if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 end
+      return 0
+    end
     if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 end
     return 0
   end
@@ -1873,12 +2041,18 @@ local function int_ok(fd: any, v: any): boolean
       local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
       if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then refuse_reason = "out_of_range"; return false end
     else
-      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then refuse_reason = "out_of_range"; return false end
+      local u = fd.signed == false
+      if int_cmp(v, fd.lo, u) < 0 or int_cmp(v, fd.hi, u) > 0 then refuse_reason = "out_of_range"; return false end
     end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
-    local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
-    if n < 0 or n > 2 ^ fd.bits - 1 then refuse_reason = "out_of_range"; return false end
+    if typeof(v) == "integer" then
+      local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits) :: integer), 1i)
+      if integer.ult(bmax, v) then refuse_reason = "out_of_range"; return false end
+    else
+      local n = v :: number
+      if n < 0 or n > 2 ^ fd.bits - 1 then refuse_reason = "out_of_range"; return false end
+    end
   end
   local width = fd.width or 8
   if width < 8 then
@@ -2158,6 +2332,14 @@ local function map_entries(cache: any, fd: any, x: any): { any }
   for key in pairs(x) do keys[#keys + 1] = key end
   table.sort(keys, function(a: any, b: any): boolean
     if kf.shape == "string" then return bytes_less(a, b) end
+    if kf.dom == "int128" then
+      return (if kf.signed then int128_cmp(a, b) else wide_ucmp(a, b)) < 0
+    end
+    if typeof(a) == "integer" and typeof(b) == "integer" then
+      if kf.signed then return integer.lt(a, b) end
+      return integer.ult(a, b)
+    end
+    if typeof(a) ~= typeof(b) then return typeof(a) < typeof(b) end
     if kf.signed then return a < b end
     return ult(a, b)
   end)
@@ -2498,7 +2680,14 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
   elseif s == "int" then
     if d.timestamp then write_timestamp(w, val); return true end
     if not int_ok(d, val) then return false end
-    raw(w, d.fbits ~= nil and fixed_text(d, val) or int_text(d, val))
+    local text = d.fbits ~= nil and fixed_text(d, val) or int_text(d, val)
+    if wide_int(d) then
+      put(w, '"')
+      raw(w, text)
+      put(w, '"')
+    else
+      raw(w, text)
+    end
     return true
   end
   return false
@@ -2696,6 +2885,14 @@ local function from_string(s: any, capacity: number?): buffer
   return b
 end
 
+-- a byte array is the element storage the constructor gives a buffer: a
+-- unsigned 8-bit integer, 0-based (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function is_byte_array(fd: any): boolean
+  local e = fd.elem
+  return e ~= nil and e.raw ~= nil and e.raw.s == "int"
+    and e.raw.kw == 1 and e.raw.signed == false
+end
+
 local function enum_name(fd: any, n: any): string
   local i = typeof(n) == "number" and n or 0
   if i == 0 then return "None" end
@@ -2748,9 +2945,18 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
     end
     return out
   elseif s == "array" then
+    if is_byte_array(fd) then
+      -- a [N]uint8, [..N]uint8 or [E]uint8 rides in a 0-based buffer
+      local n = #x
+      local cap = fd.bound or 0
+      if cap < n then cap = n end
+      local out = buffer.create(cap)
+      for i = 1, n do buffer.writeu8(out, i - 1, x[i]) end
+      return out
+    end
     if typeof(x) == "buffer" then
       local out = {}
-      -- a [N]uint8 or an array of string buffers
+      -- an array of string buffers
       return out
     end
     local out = {}
@@ -2865,6 +3071,16 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     end
     return out
   elseif s == "array" then
+    if typeof(x) == "buffer" then
+      -- a [N]uint8, [..N]uint8 or [E]uint8 is its buffer's live bytes,
+      -- 0-based in the storage and 1-based in the walk
+      local out = {}
+      local n = memo.count[x]
+      if n == nil then n = buffer.len(x) end
+      if n > buffer.len(x) then n = buffer.len(x) end
+      for i = 1, n do out[i] = buffer.readu8(x, i - 1) end
+      return out
+    end
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
@@ -2975,6 +3191,10 @@ from_lua = function(desc: any, v: any, A: any, memo: any): any
           out[fd.name .. "Length"] = vlen(lv)
         elseif fd.raw.s == "bytes" then out[fd.name .. "Length"] = vlen(lv)
         elseif fd.raw.s == "arr" and fd.raw.array == "counted" then out[fd.name .. "Count"] = #lv end
+      else
+        -- an absent or null optional carries its present slot as the
+        -- constructor's false, never nil
+        out[fd.raw.present] = false
       end
     else
       out[fd.name] = conv_to_lua(fd, lv, A, memo)

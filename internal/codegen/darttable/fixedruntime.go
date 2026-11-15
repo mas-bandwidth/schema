@@ -50,8 +50,9 @@ const int tableFixedForm = 3;
 /// The guard offset an entry that belongs to no union arm carries.
 const int tableFixedNoGuard = -1;
 
-/// THE OPS ARE THE WHOLE SET. The identity plan carries the first three; the
-/// other four are what a plan compiled from another writer's layout adds.
+/// THE OPS ARE THE WHOLE SET. The identity plan carries copy, count, text and
+/// the two dead-byte checks; the other four move or remap a value from a plan
+/// compiled from another writer's layout.
 abstract final class TableFixedOp {
   static const int copy = 0; // move size bytes
   static const int count = 1; // a count: clamp it to the reader's own bound
@@ -61,6 +62,8 @@ abstract final class TableFixedOp {
   static const int constant = 5; // a constant this reader's storage takes
   static const int widenFloat = 6; // f32 into f64, §4's float rung
   static const int present = 7; // a constant 1 into the reader's present byte
+  static const int dead = 8; // a source range must be zero; lands nothing
+  static const int presentCopy = 9; // the present byte, then its dead payload
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
@@ -1078,6 +1081,7 @@ int tableFixedRun(
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
     final size = plan[b + TableFixedLane.size];
+    final aux = plan[b + TableFixedLane.aux];
     switch (plan[b + TableFixedLane.op]) {
       case TableFixedOp.copy:
         image.setRange(d, d + size, source, s);
@@ -1086,6 +1090,14 @@ int tableFixedRun(
         final counted = sourceView.getInt32(s, Endian.little);
         if (counted < 0 || counted > size) {
           return TableFixedRefusal.countOverBound;
+        }
+        // THE SLOTS PAST THE LIVE COUNT ARE DEAD, and every dead byte is zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). aux is the
+        // element stride, so the check runs over the writer's own bound.
+        for (var i = s + 4 + counted * aux; i < s + 4 + size * aux; i++) {
+          if (source[i] != 0) {
+            return TableFixedRefusal.damaged;
+          }
         }
         imageView.setInt32(d, counted, Endian.little);
         break;
@@ -1107,6 +1119,13 @@ int tableFixedRun(
         )) {
           return TableFixedRefusal.textIllFormed;
         }
+        // THE UNITS PAST THE USED LENGTH ARE DEAD, and every dead byte is zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
+        for (var i = s + 4 + used; i < s + 4 + size; i++) {
+          if (source[i] != 0) {
+            return TableFixedRefusal.damaged;
+          }
+        }
         imageView.setInt32(d, used, Endian.little);
         image.setRange(
           plan[b + TableFixedLane.aux],
@@ -1114,6 +1133,31 @@ int tableFixedRun(
           source,
           s + 4,
         );
+        break;
+      case TableFixedOp.presentCopy:
+        // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/FIXED-FORM-ALGORITHM.md
+        // §3.1, §4.5, §5.3 step 11): aux is the writer's payload span, and a
+        // clear flag requires every byte of it to be zero. The present byte
+        // still lands for the decode's own 0/1 check.
+        final flag = source[s];
+        image[d] = flag;
+        if (flag == 0) {
+          for (var i = s + 1; i < s + 1 + aux; i++) {
+            if (source[i] != 0) {
+              return TableFixedRefusal.damaged;
+            }
+          }
+        }
+        break;
+      case TableFixedOp.dead:
+        // AN INACTIVE UNION ARM, or the bytes past a narrower taken arm, are
+        // DEAD and must be zero (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+        // §5.3 step 11). The entry lands nothing.
+        for (var i = s; i < s + size; i++) {
+          if (source[i] != 0) {
+            return TableFixedRefusal.damaged;
+          }
+        }
         break;
       case TableFixedOp.ordinal:
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
@@ -1207,8 +1251,10 @@ int tableFixedRun(
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
 /// well-formed UTF-8 with no zero byte for string(N). bytes(N) carries no
-/// content rule at all, and the SLACK past the used bytes is unspecified and
-/// never a refusal. used is the clamped length; at is the first byte.
+/// content rule at all. The bytes past the used length are DEAD, and the text
+/// entry holds them to zero in tableFixedRun rather than judging them as
+/// content (docs/rulings.json fixed-dead-bytes-are-zero). used is the clamped
+/// length; at is the first byte.
 bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
     return false;
@@ -1579,7 +1625,20 @@ abstract final class TableFixedCompiler {
     }
     switch (myKind) {
       case 35: // the OPTIONAL wrapper: the present byte, then the payload
-        push(plan, TableFixedOp.copy, theirAt, auxAt, 1, 0, guard, arg, 0);
+        // THE WRITER'S PRESENT BYTE AND ITS DEAD PAYLOAD: aux is the payload
+        // span, so a clear flag holds every byte behind it to zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
+        push(
+          plan,
+          TableFixedOp.presentCopy,
+          theirAt,
+          auxAt,
+          1,
+          theirSize > 0 ? theirSize - 1 : 0,
+          guard,
+          arg,
+          0,
+        );
         compileEntry(
           plan,
           ti + 1,
@@ -1625,7 +1684,7 @@ abstract final class TableFixedCompiler {
             theirAt,
             auxAt,
             theirN,
-            0,
+            theirElem,
             guard,
             arg,
             0,
@@ -1722,6 +1781,38 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
+        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
+        // every arm byte is dead; a taken arm leaves the bytes past it inside
+        // the widest arm's span dead. Each dead entry reads the writer's
+        // record and lands nothing.
+        final theirWidest = theirSize - theirTag;
+        if (theirWidest > 0) {
+          if (plan.chainLen >= 65) {
+            plan.overflow = true;
+            return;
+          }
+          final savedAt = plan.chainAt;
+          final l = plan.chainLen * 3;
+          plan.chain[l] = theirAt;
+          plan.chain[l + 1] = 0;
+          plan.chain[l + 2] = plan.argw <= 0 ? 1 : plan.argw;
+          plan.chainLen++;
+          plan.chainAt = -1;
+          push(
+            plan,
+            TableFixedOp.dead,
+            theirAt + theirTag,
+            0,
+            theirWidest,
+            0,
+            theirAt,
+            0,
+            0,
+          );
+          plan.chainLen--;
+          plan.chainAt = savedAt;
+        }
         var myArm = mi + 1;
         for (var k = 0; k < myArms; k++) {
           var theirArm = ti + 1;
@@ -1753,6 +1844,20 @@ abstract final class TableFixedCompiler {
                 j + 1,
                 0,
               );
+              final theirArmSize = theirs.size(theirArm);
+              if (theirWidest - theirArmSize > 0) {
+                push(
+                  plan,
+                  TableFixedOp.dead,
+                  theirAt + theirTag + theirArmSize,
+                  0,
+                  theirWidest - theirArmSize,
+                  0,
+                  theirAt,
+                  j + 1,
+                  0,
+                );
+              }
               compileEntry(
                 plan,
                 theirArm,
@@ -1825,14 +1930,11 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
-        // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
-        // would otherwise TEXT every bound slot, and slack lengths would
-        // count. The decode both paths share clamps LIVE used-lengths.
-        // A bound that MOVED still needs the text op (min units).
-        if (theirSize == mySize) {
-          push(plan, TableFixedOp.copy, theirAt, at, mySize, 0, guard, arg, 0);
-          break;
-        }
+        // EVERY TEXT NEEDS THE TEXT OP, same size or not: the bytes past the
+        // used length are DEAD and the op holds them to zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). A counted
+        // array of wrapped strings TEXTS every bound slot for that reason;
+        // the decode both paths share still clamps LIVE used-lengths.
         final units = (mySize - 4) < (theirSize - 4)
             ? (mySize - 4)
             : (theirSize - 4);
@@ -1921,6 +2023,9 @@ abstract final class TableFixedCompiler {
     lands[2] = 0;
     lands[3] = 0;
     switch (plan[b + TableFixedLane.op]) {
+      case TableFixedOp.dead:
+        // a check lands nothing
+        break;
       case TableFixedOp.count:
         lands[1] = dst + 4;
         break;

@@ -90,22 +90,8 @@ name: CI full
 # no longer skips itself on the workflow_dispatch runs a worker falls back to.
 
 on:
-  push:
-    # THE MERGE GATE. main, dev (where work streams land serially before
-    # promoting to main), and the fixed-form integration branch while the
-    # nine language legs land on it (2026-09-09): a merge into those branches
-    # runs the whole of this file. Feature branches do not: their pull request
-    # already ran it on the same head (2026-10-29).
-    branches: [ main, dev, fixed-table-form ]
-  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
-  pull_request:
-    # A pull request runs this file only when it carries the `full-ci` label —
-    # every job below is gated on that, except `generated`, `pins` and
-    # `cs-tables` which run on every pull request. The label is how a branch
-    # near the hot paths, or anything that moves the C++ emitters, asks for the
-    # whole suite before merging; `gh workflow run ci-full.yml --ref <branch>`
-    # is the other way, and needs no label.
-    types: [ opened, synchronize, reopened, labeled ]
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
     # toolchains and the vulnerability database, which move on their own
@@ -1322,7 +1308,81 @@ jobs:
         if: matrix.group == 'goose' && github.event_name == 'schedule'
         run: make test-goose-tagged-harness
 
+  # THE PR SELECTION for the two jobs below that still start on an unlabelled
+  # pull request, `pins` and `cs-tables`: the owner, 2026-11-15: heavy suite
+  # failure on main is fine, like a hierarchical merge. A whole-tree guard
+  # that catches staleness may catch it on main after the merge, so on a pull
+  # request each runs only when the diff touches what it protects, and on a
+  # merge, the nightly and a dispatch it runs as before. This job runs on pull
+  # requests only; the jobs that read it say `always() && !cancelled()` so a
+  # push, where it is skipped, still runs them.
+  #
+  #   pins — the compiler and every package bin/schema links except the
+  #          emitters of languages that write no pin (their goldens under
+  #          testdata/golden/<lang> are the TestGolden* set that ci-fast.yml's
+  #          go-test-touched already runs for an emitter or golden diff), the
+  #          C, C++ and C# emitters, test/tables, the C++ conformance driver and
+  #          harness, the packet test mains, testdata/ (wire, conformance, the
+  #          table and C/C++/C# goldens), the corpora and their make files.
+  #   cs   — the C# leg's paths, exactly ci-fast.yml plan's `cs` row.
+  # The shared roots (ci-fast.yml plan's broad rule, with this file in place
+  # of that one) select both. The `full-ci` label still selects both.
+  pr-select:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    outputs:
+      pins: ${{ steps.pick.outputs.pins }}
+      cs: ${{ steps.pick.outputs.cs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the merge base names the diff; blobless, as ci-fast.yml's plan
+          fetch-depth: 0
+          filter: blob:none
+      - name: what this pull request touches
+        id: pick
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$BASE"
+          files=$(git diff --name-only "origin/$BASE...HEAD")
+          if [ -z "$files" ]; then
+            echo "::notice::the diff is empty against origin/$BASE — selecting both"
+            files="ir/"
+          fi
+
+          # THE PR SELECTION.
+          broad=no
+          if echo "$files" | grep -E '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-full\.yml$)' >/dev/null; then
+            broad=yes
+          fi
+          pins=no
+          pin_files=$(echo "$files" | grep -vE '^internal/(ci|fuzz|slowtest|docgate|jsontestsuite|memceiling|publicapi)/|^internal/codegen/(dart|darttable|elixir|elixirtable|golang|gotable|goose|goosetable|java|javatable|js|jstable|lobster|lobstertable|lua|luatable|luau|luautable|moo|mootable|python|rust|rusttable|squirrel|squirreltable)/|^testdata/golden/(build-version|dart|elixir|go|java|js|lua|luau|ludicrous|rust)/' || true)
+          if [ "$broad" = yes ] || echo "$pin_files" | grep -E '^(cmd/|internal/|examples/|examples128/|bench/corpus/|test/(main|second|ludicrous_main)\.cpp$|test/(bench|tables|packet-defaults|conformance/harness|conformance/cpp)/|testdata/|go\.sum$|make/(c|cpp|cs)[.-])' >/dev/null; then
+            pins=yes
+          fi
+          cs=no
+          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$|make/cs-[^/]*\.mk$)' >/dev/null; then
+            cs=yes
+          fi
+          printf 'pins=%s\ncs=%s\n' "$pins" "$cs" >> "$GITHUB_OUTPUT"
+          printf '### ci-full on this pull request\n\n* broad: **%s**\n* pins: **%s**\n* C# tables leg: **%s**\n' "$broad" "$pins" "$cs" >> "$GITHUB_STEP_SUMMARY"
+
   generated:
+    # ON A PULL REQUEST ONLY WITH THE `full-ci` LABEL since 2026-11-15 (the
+    # owner, 2026-11-15: heavy suite failure on main is fine, like a
+    # hierarchical merge), which supersedes issue #1421 for the PR gate only:
+    # every sprint stream runs `make generated-current` as a card gate before
+    # it finishes, so on a pull request this duplicated that, and a stale tree
+    # that slips through is caught here on the merge to main. It runs, as
+    # below, on every merge, the nightly and a dispatch. The text that follows
+    # is the history:
+    #
     # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
     # this is the one check that names a stale committed generated/ tree, and a
     # pull request into fixed-table-form runs no other — ci-fast.yml's leg gate is
@@ -1357,7 +1417,7 @@ jobs:
     # the other units are tables-block-zero-cost-c-rest. Each row runs its
     # two arms together.
     name: generated (${{ matrix.row }})
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     strategy:
@@ -1461,6 +1521,12 @@ jobs:
   # entry point, and `nightly-conformance.yml` also runs the full C++ reference
   # corpus check nightly.
   pins:
+    # ON A PULL REQUEST ONLY WHEN pr-select SAYS THE DIFF TOUCHES WHAT PINS
+    # PROTECT, or with the `full-ci` label (the owner, 2026-11-15: heavy suite
+    # failure on main is fine, like a hierarchical merge; this supersedes
+    # issue #1421 for the PR gate only). Every merge, the nightly and a dispatch
+    # run all eight rows. The text that follows is the history:
+    #
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
     # self-consistent" failure, and a pull request into dev or
@@ -1471,7 +1537,8 @@ jobs:
     # THE FLEET'S RUNNERS (standing rule, 2026-10-21: every CI job on fleet
     # runners, never GitHub-hosted). The setup steps below run only on a
     # hosted fallback.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: pr-select
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes' || contains(github.event.pull_request.labels.*.name, 'full-ci'))))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     name: pins (${{ matrix.row }})
     timeout-minutes: 5
@@ -2237,6 +2304,12 @@ jobs:
         run: make ${{ matrix.target }} DART=dart
 
 
+  # THE C# TABLES LEG, PER C# PULL REQUEST: since 2026-11-15 an unlabelled pull
+  # request runs it only when pr-select finds the C# leg's paths or a shared
+  # root in the diff (the owner, 2026-11-15: heavy suite failure on main is
+  # fine, like a hierarchical merge); every merge, nightly and dispatch runs it.
+  # The history:
+  #
   # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no
   # pull-request job at all — it was reached only through `make test` and the
   # nightly certification — and on 2026-09-08 #728's pull-request checks were
@@ -2257,11 +2330,12 @@ jobs:
   # this job runs one half per row.
   #
   # internal/ci/tableslegs_test.go is what keeps this job from being quietly
-  # deleted: TestEveryNamedTableLegRunsOnEveryPullRequest refuses a named leg
-  # with no pull-request coverage.
+  # deleted: TestEveryNamedTableLegRunsOnItsPullRequests refuses a named leg
+  # with no pull-request coverage on its own paths and the shared roots.
   cs-tables:
     name: C# tables leg (${{ matrix.config }})
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: pr-select
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes' || contains(github.event.pull_request.labels.*.name, 'full-ci'))))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     defaults:

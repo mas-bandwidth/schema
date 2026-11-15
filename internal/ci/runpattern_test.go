@@ -29,7 +29,11 @@ import (
 
 // runRecipe is one `go test ... -run <pattern>` recipe line.
 type runRecipe struct {
-	where   string // "make/go.mk:438"
+	file    string // "make/go.mk"
+	line    int    // physical line the -run token sits on, for messages
+	rule    string // the target whose recipe holds it, or "define NAME"
+	ordinal int    // 1-based among this rule's recipes with the same pattern
+	where   string // "<file> <rule>", or "<file> <rule> #N" when that pattern repeats under one rule
 	pattern string // the regex handed to -run, with $$ folded to $
 	pkg     string // the repo-relative package, or "" when unresolvable
 }
@@ -41,10 +45,12 @@ var runArg = regexp.MustCompile(`-run\s+('[^']*'|"[^"]*"|\S+)`)
 // runRecipes extracts every `go test ... -run` recipe from one makefile's text.
 // A recipe may wrap across lines with a trailing backslash; the extractor joins
 // those continuations the same way ci_test.go does and reports each -run at the
-// physical line it sits on, so an exception can name `file:line` and stay
-// pinned to it.
+// physical line it sits on. It also records the rule (or `define NAME`) whose
+// recipe holds that line, and the ordinal among that rule's recipes with the
+// same pattern, so an exception can name the rule instead of a line number.
 func runRecipes(name, text string) []runRecipe {
 	physical := strings.Split(text, "\n")
+	rules := makefileRules(physical)
 
 	type logical struct {
 		text     string
@@ -99,14 +105,115 @@ func runRecipes(name, text string) []runRecipe {
 
 			off := m[0] + rm[0]
 			idx := sort.Search(len(ll.segStart), func(k int) bool { return ll.segStart[k] > off }) - 1
+			line := ll.segLine[idx]
 			recipes = append(recipes, runRecipe{
-				where:   fmt.Sprintf("%s:%d", name, ll.segLine[idx]),
+				file:    name,
+				line:    line,
+				rule:    rules[line-1],
 				pattern: pattern,
 				pkg:     pkg,
 			})
 		}
 	}
+
+	type recipeKey struct{ rule, pattern string }
+	totals := map[recipeKey]int{}
+	for _, r := range recipes {
+		totals[recipeKey{r.rule, r.pattern}]++
+	}
+	seen := map[recipeKey]int{}
+	for i := range recipes {
+		k := recipeKey{recipes[i].rule, recipes[i].pattern}
+		seen[k]++
+		recipes[i].ordinal = seen[k]
+		recipes[i].where = fmt.Sprintf("%s %s", recipes[i].file, recipes[i].rule)
+		if totals[k] > 1 {
+			recipes[i].where = fmt.Sprintf("%s #%d", recipes[i].where, recipes[i].ordinal)
+		}
+	}
 	return recipes
+}
+
+// makefileRules returns, for each physical line, the rule that line sits under:
+// a target whose recipe holds it, or the `define NAME` it sits in. A recipe
+// line is tab-indented, a rule head is an unindented `target:` line, and a
+// define runs to its matching endef, whose body is not a recipe of any make
+// target.
+func makefileRules(physical []string) []string {
+	rules := make([]string, len(physical))
+	var current, define string
+	for i, line := range physical {
+		stripped := strings.TrimSpace(line)
+		if define != "" {
+			rules[i] = "define " + define
+			if stripped == "endef" {
+				define = ""
+				current = ""
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "\t") {
+			rules[i] = current
+			continue
+		}
+		if name, ok := makeDefineName(stripped); ok {
+			define = name
+			current = "define " + name
+			rules[i] = current
+			continue
+		}
+		if target, ok := makeRuleTarget(stripped); ok {
+			current = target
+		}
+		rules[i] = current
+	}
+	return rules
+}
+
+// makeDefineName reads the NAME from an unindented `define NAME` line.
+func makeDefineName(stripped string) (string, bool) {
+	rest, ok := strings.CutPrefix(stripped, "define ")
+	if !ok {
+		return "", false
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return "", false
+	}
+	return fields[0], true
+}
+
+// makeRuleTarget reads the first target from an unindented make rule head. It
+// refuses assignments, directives, comments and continuation-free text that is
+// not a rule.
+func makeRuleTarget(stripped string) (string, bool) {
+	if stripped == "" || strings.HasPrefix(stripped, "#") {
+		return "", false
+	}
+	for _, directive := range []string{
+		"include ", "-include ", "sinclude ", "ifeq", "ifneq", "ifdef", "ifndef",
+		"else", "endif", "export ", "unexport ", "override ", "undefine ", "vpath ",
+	} {
+		if strings.HasPrefix(stripped, directive) {
+			return "", false
+		}
+	}
+	colon := strings.IndexByte(stripped, ':')
+	if colon < 0 {
+		return "", false
+	}
+	if eq := strings.IndexByte(stripped, '='); eq >= 0 && eq < colon {
+		return "", false
+	}
+	rest := stripped[colon:]
+	if strings.HasPrefix(rest, ":=") || strings.HasPrefix(rest, "::=") {
+		return "", false
+	}
+	fields := strings.Fields(stripped[:colon])
+	if len(fields) == 0 {
+		return "", false
+	}
+	return fields[0], true
 }
 
 // makefileSet is the Makefile plus every file it includes, in include order.
@@ -244,11 +351,11 @@ func matchNames(t *testing.T, pattern string, listed []string) []string {
 // statically, and the reason it may stay. An exception is a choice somebody
 // wrote down; the gate refuses an empty reason and a stale where, so a pattern
 // cannot leave the gate silently. The pattern binds the exception to that
-// exact -run text at where, so a recipe whose pattern changes at an excepted
-// line is listed like any other, and the gate refuses an exception with no
-// pattern.
+// exact -run text under where, so a recipe whose pattern changes under an
+// excepted rule is listed like any other, and the gate refuses an exception
+// with no pattern.
 type runPatternException struct {
-	where   string // "make/go.mk:191"
+	where   string // "<file> <rule or define NAME>[ #N]"
 	why     string // why the pattern cannot be listed
 	pattern string // the exact -run pattern the exception is written for
 }
@@ -262,34 +369,39 @@ type runPatternException struct {
 // runs; and slow-gate-coverage's pattern is emitted by tools/slowgatescan
 // when its recipe runs.
 var runPatternExceptions = []runPatternException{
-	{"make/go.mk:338", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
-	{"make/go.mk:474", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
-	{"make/go.mk:552", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},
-	{"make/go.mk:582", "same separate test/go-tables module, -run Fuzz", "Fuzz"},
-	{"make/go.mk:583", "same separate test/go-tables module, -run Fuzz under -race", "Fuzz"},
-	{"make/go.mk:620", "same separate test/go-tables module, and it runs under a -overlay built at recipe time", "BlockForgeryFuzz"},
-	{"make/go.mk:1005", "same separate test/go-tables module, -run '^TestSoak$$'", "^TestSoak$"},
-	{"make/go.mk:1157", "same separate test/go-tables module, -run '^TestUsage$$'", "^TestUsage$"},
-	{"make/go.mk:1175", "same separate test/go-tables module, -run '^TestKeyed'", "^TestKeyed"},
-	{"make/go.mk:562", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone", "^$"},
-	{"make/go.mk:576", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone", "^$"},
-	{"make/moo-text.mk:28", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it", "$(MOO_TEXT_GATES)"},
-	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it", "TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)"},
-	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
-	{"make/moo-readiness.mk:35", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
-	{"Makefile:5911", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
-	{"make/js.mk:1541", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
-	{"Makefile:7472", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7500", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7504", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"make/go.mk cards-corpus-create", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
+	{"make/go.mk cards-fuzz-fixture", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
+	{"make/go.mk tables-go-soak", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},
+	{"make/go.mk tables-go-fuzz #1", "same separate test/go-tables module, -run Fuzz", "Fuzz"},
+	{"make/go.mk tables-go-fuzz #2", "same separate test/go-tables module, -run Fuzz under -race", "Fuzz"},
+	{"make/go.mk define go_fuzz_sabotage", "same separate test/go-tables module, and it runs under a -overlay built at recipe time", "BlockForgeryFuzz"},
+	{"make/go.mk tables-go-release", "same separate test/go-tables module, -run '^TestSoak$$'", "^TestSoak$"},
+	{"make/go.mk tables-go-usage", "same separate test/go-tables module, -run '^TestUsage$$'", "^TestUsage$"},
+	{"make/go.mk tables-go-keyed", "same separate test/go-tables module, -run '^TestKeyed'", "^TestKeyed"},
+	{"make/go.mk fuzz-tables-go", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone", "^$"},
+	{"make/go.mk fuzz-generated-readers-go", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone", "^$"},
+	{"make/moo-text.mk tables-moo-json", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it", "$(MOO_TEXT_GATES)"},
+	{"make/moo-text.mk tables-moo-json-negative-controls", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it", "TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)"},
+	{"make/moo-tables.mk test-moo-tables", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
+	{"make/moo-readiness.mk tables-moo-compiler-claims", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
+	{"Makefile define message_form_control", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
+	{"make/js.mk define js_jstable_control", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
+	{"Makefile slow-gate-coverage", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile slow-gate-coverage-codegen", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile slow-gate-coverage-rest", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
 }
 
-// checkRunPatterns is the shared code path for both tests. It extracts every
-// go test -run recipe from files, refuses an empty set, holds the exception
-// list tight, dedupes the (pattern, package) pairs, and lists each one. It
-// returns one message per recipe whose pattern matches no test.
-func checkRunPatterns(t *testing.T, root string, files map[string]string, exceptions []runPatternException) []string {
-	t.Helper()
+type runRecipeBound struct {
+	where   string
+	pattern string
+}
+
+// bindRunPatternExceptions extracts every -run recipe from files and holds the
+// exception list to the recipes it names. It returns the recipes, the set of
+// (rule key, pattern) bindings the valid exceptions establish, and one message
+// per exception that is stale or malformed. It reads text only, so a test can
+// run it over an in-memory, shifted makefile set without listing packages.
+func bindRunPatternExceptions(files map[string]string, exceptions []runPatternException) ([]runRecipe, map[runRecipeBound]bool, []string) {
 	var recipes []runRecipe
 	names := make([]string, 0, len(files))
 	for n := range files {
@@ -299,37 +411,65 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 	for _, n := range names {
 		recipes = append(recipes, runRecipes(n, files[n])...)
 	}
+	bound := map[runRecipeBound]bool{}
 	if len(recipes) == 0 {
-		t.Fatal("no go test -run recipes found in the makefile set: this gate is looking at the wrong text")
+		return recipes, bound, []string{"no go test -run recipes found in the makefile set: this gate is looking at the wrong text"}
 	}
 
 	byWhere := map[string]map[string]bool{}
+	whereLines := map[string][]string{}
 	for _, r := range recipes {
 		if byWhere[r.where] == nil {
 			byWhere[r.where] = map[string]bool{}
 		}
 		byWhere[r.where][r.pattern] = true
+		whereLines[r.where] = append(whereLines[r.where], fmt.Sprintf("%s:%d", r.file, r.line))
 	}
-	type bound struct{ where, pattern string }
-	exceptBound := map[bound]bool{}
+	at := func(where string) string {
+		if lines := whereLines[where]; len(lines) > 0 {
+			return fmt.Sprintf("%s (%s)", where, strings.Join(lines, ", "))
+		}
+		return where
+	}
+
+	var problems []string
 	for _, e := range exceptions {
 		if strings.TrimSpace(e.why) == "" {
-			t.Errorf("the -run exception at %s carries no reason: a pattern that cannot be listed may not leave the gate silently", e.where)
+			problems = append(problems, fmt.Sprintf("the -run exception at %s carries no reason: a pattern that cannot be listed may not leave the gate silently", at(e.where)))
 		}
 		patterns, ok := byWhere[e.where]
 		if !ok {
-			t.Errorf("the -run exception at %s no longer names a go test -run recipe line: drop it or update the line", e.where)
+			problems = append(problems, fmt.Sprintf("the -run exception at %s no longer names a go test -run recipe rule: drop it or update the rule", e.where))
 			continue
 		}
 		if e.pattern == "" {
-			t.Errorf("the -run exception at %s names no -run pattern: an exception is bound to the exact pattern it excuses, so a changed pattern at that line is listed", e.where)
+			problems = append(problems, fmt.Sprintf("the -run exception at %s names no -run pattern: an exception is bound to the exact pattern it excuses, so a changed pattern under that rule is listed", at(e.where)))
 			continue
 		}
 		if !patterns[e.pattern] {
-			t.Errorf("the -run exception at %s no longer names a recipe with -run %q: drop it or update the pattern", e.where, e.pattern)
+			problems = append(problems, fmt.Sprintf("the -run exception at %s no longer names a recipe with -run %q: drop it or update the pattern", at(e.where), e.pattern))
 			continue
 		}
-		exceptBound[bound{e.where, e.pattern}] = true
+		bound[runRecipeBound{e.where, e.pattern}] = true
+	}
+	return recipes, bound, problems
+}
+
+// checkRunPatterns is the shared code path for both tests. It extracts every
+// go test -run recipe from files, refuses an empty set, holds the exception
+// list tight, dedupes the (pattern, package) pairs, and lists each one. It
+// returns one message per recipe whose pattern matches no test.
+func checkRunPatterns(t *testing.T, root string, files map[string]string, exceptions []runPatternException) []string {
+	t.Helper()
+	recipes, exceptBound, problems := bindRunPatternExceptions(files, exceptions)
+	if len(recipes) == 0 {
+		for _, p := range problems {
+			t.Fatal(p)
+		}
+		t.Fatal("no go test -run recipes found in the makefile set: this gate is looking at the wrong text")
+	}
+	for _, p := range problems {
+		t.Errorf("%s", p)
 	}
 
 	type pair struct{ pattern, pkg string }
@@ -340,7 +480,7 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 	scanned, listed := 0, 0
 	for _, r := range recipes {
 		scanned++
-		if exceptBound[bound{r.where, r.pattern}] {
+		if exceptBound[runRecipeBound{r.where, r.pattern}] {
 			continue
 		}
 		p := pair{r.pattern, r.pkg}
@@ -359,7 +499,7 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 	var offenders []string
 	for _, r := range todo {
 		if got := matchNames(t, r.pattern, listings[r.pkg]); len(got) == 0 {
-			offenders = append(offenders, fmt.Sprintf("%s: `go test ... -run %q` matches no test in %s", r.where, r.pattern, r.pkg))
+			offenders = append(offenders, fmt.Sprintf("%s:%d: `go test ... -run %q` matches no test in %s", r.file, r.line, r.pattern, r.pkg))
 		}
 	}
 	t.Logf("scanned %d -run recipes, listed %d distinct (pattern, package) pairs", scanned, listed)

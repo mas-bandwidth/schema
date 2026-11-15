@@ -94,9 +94,8 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
 {
     TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
     TableRef * ref=(TableRef *)slot;
-    int64_t mark, symbols=0, pad=0, length, placed=0, at;
-    int damaged=0, held=0;
-    uint32_t accumulator=0;
+    int64_t mark=0, length=0;
+    int reason=SCHEMA_TABLE_REFUSE_OK, scanned;
     uint8_t * data;
     if(graph==NULL || table_json_peek(in)!='"') { in->bad=1; return 0; }
     ref->value=0;
@@ -110,47 +109,12 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
         if(text==NULL) { in->bad=1; return 0; }
         return table_json_scan_text(in,text,count,&written);
     }
-    mark=++in->pos;
-    for(;;)
-    {
-        char c;
-        int step;
-        if(in->pos>=in->size) { in->bad=1; return 0; }
-        c=in->text[in->pos++];
-        if(c=='"') { break; }
-        step=table_json_base64_step(in,c);
-        if(step<0) { return 0; }
-        if(step==0) { damaged=1; continue; }
-        if(damaged) { continue; }
-        if(c=='=') { pad++; continue; }
-        if(pad>0) { damaged=1; continue; }
-        if(table_json_base64_value((uint8_t)c)<0) { damaged=1; continue; }
-        symbols++;
-    }
-    if(!damaged)
-    {
-        if(pad>0)
-        {
-            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { damaged=1; }
-        }
-        else if(symbols%4==1)
-        {
-            damaged=1;
-        }
-    }
-    if(damaged) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return 1; }
-    length=symbols*6/8;
+    scanned=table_json_base64_scan(in,&mark,&length,&reason);
+    if(scanned<0) { return 0; }
+    if(scanned==0) { in->report->refused=1, in->report->refuse_reason=reason; return 1; }
     data=table_bytes_emplace(graph->worker,ref,length);
     if(data==NULL) { in->bad=1; return 0; }
-    for(at=mark; ; at++)
-    {
-        char c = in->text[at];
-        int32_t symbol;
-        if(c=='"' || c=='=') { break; }
-        symbol=table_json_base64_value((uint8_t)c);
-        accumulator=(accumulator<<6)|(uint32_t)symbol; held+=6;
-        if(held>=8) { held-=8; if(placed<length) { data[placed++]=(uint8_t)((accumulator>>held)&0xff); } }
-    }
+    table_json_base64_decode(in,mark,data,length);
     return 1;
 }
 
@@ -160,6 +124,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     TableJsonGraphEntry * entry;
     char key[kTableJsonMaxKey], c;
     int32_t length = 0;
+    int64_t quote;
     uint64_t label = 0;
     int taken = 0, bare;
     void * node;
@@ -170,8 +135,9 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     {
         node = table_json_emplace(graph,slot,f->table);
         if ( node == NULL ) { in->bad = 1; return 0; }
-        return table_json_read_table_keys(in,node,f->table,depth+1,NULL);
+        return table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1);
     }
+    quote = in->pos;
     if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
     key[length] = 0;
     if ( table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
@@ -180,7 +146,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     {
         node = table_json_emplace(graph,slot,f->table);
         if ( node == NULL ) { in->bad = 1; return 0; }
-        return table_json_read_table_keys(in,node,f->table,depth+1,key);
+        return table_json_read_table_keys(in,node,f->table,depth+1,key,length,quote);
     }
     if ( !table_json_scan_label(in,&label) ) { return 0; }
     entry = table_json_graph_reach(&graph->labels,label,&taken);
@@ -201,7 +167,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     node = table_json_emplace(graph,slot,f->table);
     if ( node == NULL ) { in->bad = 1; return 0; }
     entry->open = 1;
-    if ( !table_json_read_table_keys(in,node,f->table,depth+1,NULL) ) { return 0; }
+    if ( !table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1) ) { return 0; }
     entry = table_json_graph_find(&graph->labels,label);
     if ( entry == NULL ) { in->bad = 1; return 0; }
     entry->node = (uint32_t)((TableRef *)slot)->value; entry->type = f->table; entry->open = 0; return 1;
@@ -331,7 +297,7 @@ static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * s
 static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth)
 {
     TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
-    TableSequence * list=(TableSequence *)storage; char shape=table_json_element_shape(f);
+    TableSequence * list=(TableSequence *)storage;
     int64_t spent=0; int full=0;
     if(graph==NULL || table_json_peek(in)!='[') { in->bad=1; return 0; }
     memset(list,0,sizeof(*list)); in->pos++;
@@ -349,7 +315,7 @@ static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,co
         element=table_sequence_add(graph->worker,list,f->elem_size);
         if(element==NULL) { in->bad=1; return 0; }
         if(f->kind==13 || f->text_list!=0) { f->table->reset(element); }
-        if(table_json_value_shape(in)!=shape && !((f->kind==17 || f->text_list==2) && table_json_value_shape(in)=='z')) {
+        if(!table_json_element_shape_accepts(f,table_json_value_shape(in)) && !((f->kind==17 || f->text_list==2) && table_json_value_shape(in)=='z')) {
             in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; if(!table_json_skip_value(in,depth+1)) { return 0; }
         } else if(!table_json_read_scalar(in,element,f,depth+1)) { return 0; }
         else if(f->text_total>0 && !schema_table_json_text_total_keep_(in,element,f,&spent)) {
@@ -452,13 +418,16 @@ static SCHEMA_UNUSED int table_json_map_key_value(const char * token,int32_t len
     TableReport scratch={0}; TableJsonIn probe; TableJsonInteger number; int integral=0,moved=0;
     memset(&probe,0,sizeof(probe)); probe.text=token; probe.size=length; probe.report=&scratch; *fits=0;
     table_json_space(&probe); if(probe.pos!=0 || !table_json_walk_number(&probe,&integral) || probe.pos!=length) { return 0; }
+    /* the KEY takes the integer-token spelling (§16.2): a fraction, an
+       exponent or -0 is the wrong shape, and the value is tested exactly */
+    if ( !table_json_integer_token(token,length) ) { return 1; }
     number=table_json_interpret_exact(token,length); if(number.fractional || number.saturated) { return 1; }
     *value=table_json_integer_in_domain(number,key->kind>=2 && key->kind<=5,(int32_t)key->elem_size,&moved); *fits=!moved; return 1;
 }
 static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth)
 {
     TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph; TableSequence * map=(TableSequence *)storage;
-    const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1]; char shape=table_json_shape(value);
+    const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1];
     if(graph==NULL || table_json_peek(in)!='{' || depth+1>kTableJsonMaxDepth) { in->bad=1; return 0; }
     memset(map,0,sizeof(*map)); in->pos++;
     for(;;) {
@@ -505,7 +474,7 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
         else if(value->optional && c=='z') {
             if(!table_json_literal(in,"null")) { return 0; }
         } else {
-            if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+            if(!table_json_shape_accepts(value,c) && !(value->kind==17 && !value->is_array && c=='z')) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; if(!table_json_skip_value(in,depth+1)) { return 0; }
             } else if(!table_json_read_field(in,entry,value,depth+1)) { return 0; }
             if(value->optional) { table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }

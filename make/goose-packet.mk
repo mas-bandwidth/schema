@@ -13,6 +13,8 @@
 #                          byte and bit pins, reused storage
 #   packet-finite-goose    test/packet-finite: SPEC §4.3's finite floats, both
 #                          directions, a control per direction
+#   packet-end-goose       test/packet-end: SPEC §5's one end check after the
+#                          top-level object, a control that removes it
 #
 # The target lives behind the schema_leg_goose tag until the port joins the
 # builtins, so every generation here uses build/schema-goose.
@@ -123,3 +125,78 @@ packet-finite-goose-negative-control: packet-finite-goose
 
 test-goose: packet-utf8-goose packet-utf8-goose-negative-control \
 	packet-defaults-goose packet-defaults-goose-negative-control packet-finite-goose packet-finite-goose-negative-control
+
+# ---- packet end: SPEC §5's one end check after the top-level object ----
+
+.PHONY: packet-end-goose packet-end-goose-negative-control
+packet-end-goose: goose-packet-ready
+	@rm -rf build/packet-end/goose && mkdir -p build/packet-end/goose
+	./build/schema-goose generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
+	cp test/packet-end/goose/main.goose build/packet-end/goose/
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end
+
+# Removes the public read's runtime end call (SPEC §5): a whole trailing byte
+# and set padding must then read as the value, so the driver's two refusal
+# rows go red by name.
+packet-end-goose-negative-control: packet-end-goose
+	$(call goose-packet-sabotaged,build/packet-end/goose-negative,packet-end-goose,internal/codegen/goose/wire.go)
+	@rm -rf build/packet-end/goose-negative/generated && mkdir -p build/packet-end/goose-negative/generated
+	./build/packet-end/goose-negative/schema generate --lang goose --out build/packet-end/goose-negative/generated test/packet-end/End.schema
+	cp test/packet-end/goose/main.goose build/packet-end/goose-negative/generated/
+	@if env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose-negative/generated/main.goose -- testdata/wire/packet-end > build/packet-end/goose-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the end check was removed and the Goose packet-end driver stayed green'; exit 1; fi
+	@grep -Fq 'FAILED: trailing' build/packet-end/goose-negative/log || { cat build/packet-end/goose-negative/log; exit 1; }
+	@grep -Fq 'FAILED: padding' build/packet-end/goose-negative/log || { cat build/packet-end/goose-negative/log; exit 1; }
+	@echo 'packet end Goose negative control: the removed end call accepts trailing bytes and set padding'
+
+test-goose: packet-end-goose packet-end-goose-negative-control
+
+# ---- packet compressed float write range ----
+.PHONY: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
+packet-write-cfloat-goose: goose-packet-ready
+	@rm -rf build/packet-write-cfloat/goose && mkdir -p build/packet-write-cfloat/goose
+	./build/schema-goose generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
+	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
+	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
+	$(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
+
+packet-write-cfloat-goose-negative-control: packet-write-cfloat-goose
+	$(call goose-packet-sabotaged,build/packet-write-cfloat/goose-negative,packet-write-cfloat-goose,internal/codegen/goose/write.go)
+	@rm -rf build/packet-write-cfloat/goose-negative/generated && mkdir -p build/packet-write-cfloat/goose-negative/generated
+	./build/packet-write-cfloat/goose-negative/schema generate --lang goose --out build/packet-write-cfloat/goose-negative/generated test/packet-write-cfloat/CFloat.schema
+	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose-negative/generated/
+	@if $(GOOSE) run build/packet-write-cfloat/goose-negative/generated/main.goose < build/packet-write-cfloat/goose/cases > build/packet-write-cfloat/goose-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: range check removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: above-max: writer accepted a refused value' build/packet-write-cfloat/goose-negative/log || { cat build/packet-write-cfloat/goose-negative/log; exit 1; }
+	@echo 'packet compressed float Goose negative control: removed range check accepts above-max'
+
+test-goose: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
+
+# ---- packet write text: SPEC §5.1 row 8's string content on the Write ----
+# The writer refuses, in every build, used bytes that are not well-formed
+# UTF-8 or that hold a zero byte; test/packet-write-text/cases.txt is the
+# shared case list. The control removes the write-side text checks and must
+# fail exactly the shared list's refused cases.
+.PHONY: packet-write-text-goose packet-write-text-goose-negative-control
+packet-write-text-goose: goose-packet-ready
+	@rm -rf build/packet-write-text/goose && mkdir -p build/packet-write-text/goose
+	./build/schema-goose generate --lang goose --out build/packet-write-text/goose test/packet-write-text/Text.schema
+	cp test/goose/driverlib.goose test/packet-write-text/goose/main.goose build/packet-write-text/goose/
+	go run ./test/packet-write-text/goose/cases.go test/packet-write-text/cases.txt > build/packet-write-text/goose/cases
+	$(GOOSE) run build/packet-write-text/goose/main.goose < build/packet-write-text/goose/cases
+
+packet-write-text-goose-negative-control: packet-write-text-goose
+	$(call goose-packet-sabotaged,build/packet-write-text/goose-negative,packet-write-text-goose,internal/codegen/goose/write.go)
+	@rm -rf build/packet-write-text/goose-negative/generated && mkdir -p build/packet-write-text/goose-negative/generated
+	./build/packet-write-text/goose-negative/schema generate --lang goose --out build/packet-write-text/goose-negative/generated test/packet-write-text/Text.schema
+	cp test/goose/driverlib.goose test/packet-write-text/goose/main.goose build/packet-write-text/goose-negative/generated/
+	@if $(GOOSE) run build/packet-write-text/goose-negative/generated/main.goose < build/packet-write-text/goose/cases > build/packet-write-text/goose-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the write-side text checks were removed and the Goose driver stayed green'; exit 1; fi
+	@awk -F'\t' '$$2 == "refused" { print $$1 }' build/packet-write-text/goose/cases | LC_ALL=C sort > build/packet-write-text/goose-negative/expected
+	@sed -n 's|^FAILED: \([^:]*\): writer accepted a refused value$$|\1|p' build/packet-write-text/goose-negative/log | LC_ALL=C sort > build/packet-write-text/goose-negative/failed
+	@test -s build/packet-write-text/goose-negative/expected || { echo 'NEGATIVE CONTROL FAILED: the shared list has no refused case'; exit 1; }
+	@diff -u build/packet-write-text/goose-negative/expected build/packet-write-text/goose-negative/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the removed checks did not fail exactly the refused cases'; cat build/packet-write-text/goose-negative/log; exit 1; }
+	@echo "packet write text Goose negative control: the removed checks accept all $$(wc -l < build/packet-write-text/goose-negative/failed | tr -d ' ') refused cases"
+
+test-goose: packet-write-text-goose packet-write-text-goose-negative-control

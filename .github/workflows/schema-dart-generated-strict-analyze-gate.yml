@@ -5,7 +5,7 @@ name: schema Dart generated strict analyze gate
 # strict-raw-types plus a curated correctness lint set, fatal on infos, over the
 # generated Dart the Makefile's own generate targets write.
 #
-# THE FAST PART runs on every push and pull request: the committed packet trees
+# THE FAST PART runs on every push (on a pull request: ci-fast.yml lang-lint, by path): the committed packet trees
 # (examples, the 128-bit ludicrous unit, the bench units) and the planted raw
 # type control. It regenerates through the same make targets, so a stale
 # generated tree cannot make it green, and it stays inside the owner's
@@ -16,9 +16,8 @@ name: schema Dart generated strict analyze gate
 # analyzer pass. The table half is never per push.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '23 7 * * *'
   workflow_dispatch:

@@ -103,6 +103,13 @@ const TableFixedOpOrdinal = 3; // a variant ordinal, remapped through the plan's
 const TableFixedOpWiden = 4;   // a narrower source into a wider destination
 const TableFixedOpConst = 5;   // a constant this reader's own storage takes: a remapped union tag
 const TableFixedOpWidenF = 6;  // f32 into f64, SPEC-TABLES §4's float rung
+// THE DEAD-BYTE CHECKS (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.5, §5.3 step
+// 11): each reads the source record and refuses wire_damaged for a non-zero
+// dead byte. They write no destination byte.
+const TableFixedOpDeadAbsent = 7;  // an absent optional's whole payload
+const TableFixedOpDeadCounted = 8; // a counted array's slots past its count
+const TableFixedOpDeadText = 9;    // a text or bytes field's capacity past its length
+const TableFixedOpDeadUnion = 10;  // an inactive union arm, or the span past a narrower one
 
 // the flavours an TableFixedOpText entry lands its units under
 const TableFixedTextUtf8 = 1;
@@ -576,6 +583,52 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         }
         break;
       }
+      case TableFixedOpDeadAbsent: {
+        // AN ABSENT OPTIONAL'S WHOLE PAYLOAD IS DEAD (§4.1, §4.5): the present
+        // byte at src says absent, and every payload byte behind it is zero.
+        if (src[s] === 0) {
+          for (let k = 1; k <= size; k++) {
+            if (src[s + k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
+      case TableFixedOpDeadCounted: {
+        // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5): walk the
+        // writer's element span, read its live count, and hold the rest to zero.
+        const v = TableFixedGetU32(src, s) | 0;
+        const stride = e[b + TableFixedLaneAux];
+        if (v >= 0 && v <= size) {
+          const end = s + 4 + size * stride;
+          for (let k = s + 4 + v * stride; k < end; k++) {
+            if (src[k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
+      case TableFixedOpDeadText: {
+        // A TEXT OR BYTES FIELD'S BYTES PAST ITS USED LENGTH ARE DEAD (§4.5).
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v >= 0 && v <= size) {
+          const end = s + 4 + size;
+          for (let k = s + 4 + v; k < end; k++) {
+            if (src[k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
+      case TableFixedOpDeadUnion: {
+        // AN INACTIVE UNION ARM IS DEAD (§4.5): under tag 0 the entry carries a
+        // zero taken span, and past a narrower arm it carries the arm's size
+        // against the widest span. Only the bytes outside the taken arm are read.
+        const widest = e[b + TableFixedLaneAux];
+        if (size < widest) {
+          for (let k = s + size; k < s + widest; k++) {
+            if (src[k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
       default: break;
     }
   }
@@ -968,7 +1021,10 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
       if (w === 0) { w = 1; }
       if (guard >= plan.record || guard + w > plan.record) { plan.hostile = true; return; }
     }
-    const reach = src + size + (op === TableFixedOpText ? 4 : 0);
+    let reach = src + size + (op === TableFixedOpText ? 4 : 0);
+    if (op === TableFixedOpDeadText) { reach = src + 4 + size; }
+    if (op === TableFixedOpDeadCounted) { reach = src + 4 + size * aux; }
+    if (op === TableFixedOpDeadUnion) { reach = src + (aux > size ? aux : size); }
     if (reach > plan.record) { plan.hostile = true; return; }
   }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
@@ -1135,6 +1191,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   switch (myKind) {
     case 35: { // the OPTIONAL wrapper: payload ops run only when present
       TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);
+      // THE PAYLOAD UNDER A PRESENT BYTE OF 0 IS DEAD (§4.1, §4.5).
+      if (theirSize > 1) { TableFixedPush(plan, TableFixedOpDeadAbsent, theirAt, 0, theirSize - 1, 0, guard, arg, 0); }
       if (plan.chainLen >= 65) { plan.overflow = true; return; }
       const savedAt = plan.chainAt;
       const savedArgw = plan.argw;
@@ -1173,6 +1231,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
         TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
+        // THE ELEMENT SLOTS PAST THE COUNT ARE DEAD (§4.5).
+        if (theirN > 0 && theirElem > 0) {
+          TableFixedPush(plan, TableFixedOpDeadCounted, theirAt, 0, theirN, theirElem, guard, arg, 0);
+        }
       }
       const theirBase = theirAt + head;
       const n = theirN < myN ? theirN : myN;
@@ -1232,6 +1294,32 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const savedArgw = plan.argw;
       plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
       const theirArms = TableFixedChildren(theirs, ti);
+      // THE DEAD ARM SPANS (§4.5): tag 0 names no arm, so its whole widest span
+      // is dead; a taken arm leaves everything past its own bytes dead. Each
+      // entry answers to its tag, and to every tag outside it through the chain.
+      {
+        const widest = TableFixedUnionArmBytes(theirs, ti);
+        const pushDeadArm = (ordinal, taken) => {
+          if (plan.chainLen >= 65) { plan.overflow = true; return; }
+          const savedAt = plan.chainAt;
+          const l = plan.chainLen * 3;
+          plan.chain[l] = theirAt;
+          plan.chain[l + 1] = ordinal;
+          plan.chain[l + 2] = plan.argw;
+          plan.chainLen++;
+          plan.chainAt = -1;
+          TableFixedPush(plan, TableFixedOpDeadUnion, theirAt + theirTag, 0, taken, widest, theirAt, ordinal, 0);
+          plan.chainLen--;
+          plan.chainAt = savedAt;
+        };
+        pushDeadArm(0, 0);
+        let deadArm = ti + 1;
+        for (let j = 0; j < theirArms; j++) {
+          pushDeadArm(j + 1, TableFixedSize(theirs, deadArm));
+          deadArm += TableFixedSubtree(theirs, deadArm);
+          if (plan.overflow) { return; }
+        }
+      }
       const myArms = TableFixedChildren(mine, mi);
       let myArm = mi + 1;
       for (let k = 0; k < myArms; k++) {
@@ -1298,6 +1386,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // two facts are independent, so they get independent lanes.
       const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
       TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);
+      // THE BYTES PAST THE USED LENGTH, OUT TO THE WRITER'S CAPACITY, ARE DEAD (§4.5).
+      if (theirSize > 4) {
+        TableFixedPush(plan, TableFixedOpDeadText, theirAt, 0, theirSize - 4, 0, guard, arg, 0);
+      }
       break;
     }
     default: {
@@ -2634,11 +2726,11 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   }
   for (let i = 0; i < 16; i++) { value.payload[i] = view.getUint8(at + 1149 + i); }
   value.aimX = view.getFloat32(at + 1165, true);
-  if (value.aimX < -1 || value.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  if (value.aimX < -1 || value.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (value.aimX === 0) { value.aimX = 0; }
   value.aimY = view.getFloat32(at + 1169, true);
-  if (value.aimY < -1 || value.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  if (value.aimY < -1 || value.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (value.aimY === 0) { value.aimY = 0; }
   value.aimZ = view.getFloat32(at + 1173, true);
-  if (value.aimZ < -1 || value.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  if (value.aimZ < -1 || value.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (value.aimZ === 0) { value.aimZ = 0; }
   value.recoil = view.getFloat32(at + 1177, true);
   value.drift = view.getFloat64(at + 1181, true);
   value.wideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
@@ -2660,6 +2752,67 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   if (value.extra < 0 || value.extra > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.idleTicks = view.getInt32(at + 1232, true);
   if (value.idleTicks < 0 || value.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
+}
+
+export function BenchMixedFixedCheckDead(view, at, report) {
+  {
+    const d0 = view.getInt32(at + 52, true);
+    if (d0 >= 0 && d0 <= 8) {
+      for (let d1 = d0 * 51; d1 < 408; d1++) {
+        if (view.getUint8(at + 56 + d1) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+      }
+    }
+  }
+  {
+    const d2 = view.getInt32(at + 464, true);
+    if (d2 >= 0 && d2 <= 80) {
+      for (let d3 = d2 * 8; d3 < 640; d3++) {
+        if (view.getUint8(at + 468 + d3) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+      }
+    }
+  }
+  {
+    let d4 = 0;
+    d4 = view.getUint8(at + 1108);
+    if (d4 === 0) {
+      for (let d5 = 0; d5 < 13; d5++) {
+        if (view.getUint8(at + 1109 + d5) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+      }
+    } else {
+      switch (d4) {
+        case 1: {
+          break;
+        }
+        case 2: {
+          for (let d6 = 0; d6 < 5; d6++) {
+            if (view.getUint8(at + 1117 + d6) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+          break;
+        }
+        case 3: {
+          for (let d7 = 0; d7 < 5; d7++) {
+            if (view.getUint8(at + 1117 + d7) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+          break;
+        }
+        default: break;
+      }
+    }
+  }
+  {
+    const d8 = view.getInt32(at + 1126, true);
+    if (d8 < 0 || d8 > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+    for (let d9 = d8; d9 < 15; d9++) {
+      if (view.getUint8(at + 1130 + d9) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+    }
+  }
+  {
+    const d10 = view.getInt32(at + 1145, true);
+    if (d10 < 0 || d10 > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+    for (let d11 = d10; d11 < 16; d11++) {
+      if (view.getUint8(at + 1149 + d11) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+    }
+  }
 }
 
 // FixedTable's stores. Every offset is a constant of the type and nothing is
@@ -2844,11 +2997,11 @@ export function FixedTableFixedDecode(value, view, at, report) {
     }
     for (let i = 0; i < 16; i++) { e1.payload[i] = view.getUint8(at + 1149 + i); }
     e1.aimX = view.getFloat32(at + 1165, true);
-    if (e1.aimX < -1 || e1.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    if (e1.aimX < -1 || e1.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (e1.aimX === 0) { e1.aimX = 0; }
     e1.aimY = view.getFloat32(at + 1169, true);
-    if (e1.aimY < -1 || e1.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    if (e1.aimY < -1 || e1.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (e1.aimY === 0) { e1.aimY = 0; }
     e1.aimZ = view.getFloat32(at + 1173, true);
-    if (e1.aimZ < -1 || e1.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    if (e1.aimZ < -1 || e1.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (e1.aimZ === 0) { e1.aimZ = 0; }
     e1.recoil = view.getFloat32(at + 1177, true);
     e1.drift = view.getFloat64(at + 1181, true);
     e1.wideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
@@ -2870,6 +3023,67 @@ export function FixedTableFixedDecode(value, view, at, report) {
     if (e1.extra < 0 || e1.extra > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.idleTicks = view.getInt32(at + 1232, true);
     if (e1.idleTicks < 0 || e1.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+}
+
+export function FixedTableFixedCheckDead(view, at, report) {
+  {
+    const d0 = view.getInt32(at + 52, true);
+    if (d0 >= 0 && d0 <= 8) {
+      for (let d1 = d0 * 51; d1 < 408; d1++) {
+        if (view.getUint8(at + 56 + d1) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+      }
+    }
+  }
+  {
+    const d2 = view.getInt32(at + 464, true);
+    if (d2 >= 0 && d2 <= 80) {
+      for (let d3 = d2 * 8; d3 < 640; d3++) {
+        if (view.getUint8(at + 468 + d3) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+      }
+    }
+  }
+  {
+    let d4 = 0;
+    d4 = view.getUint8(at + 1108);
+    if (d4 === 0) {
+      for (let d5 = 0; d5 < 13; d5++) {
+        if (view.getUint8(at + 1109 + d5) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+      }
+    } else {
+      switch (d4) {
+        case 1: {
+          break;
+        }
+        case 2: {
+          for (let d6 = 0; d6 < 5; d6++) {
+            if (view.getUint8(at + 1117 + d6) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+          break;
+        }
+        case 3: {
+          for (let d7 = 0; d7 < 5; d7++) {
+            if (view.getUint8(at + 1117 + d7) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+          break;
+        }
+        default: break;
+      }
+    }
+  }
+  {
+    const d8 = view.getInt32(at + 1126, true);
+    if (d8 < 0 || d8 > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+    for (let d9 = d8; d9 < 15; d9++) {
+      if (view.getUint8(at + 1130 + d9) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+    }
+  }
+  {
+    const d10 = view.getInt32(at + 1145, true);
+    if (d10 < 0 || d10 > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+    for (let d11 = d10; d11 < 16; d11++) {
+      if (view.getUint8(at + 1149 + d11) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+    }
   }
 }
 

@@ -4593,6 +4593,10 @@ var tableGeneratedVerbs = []string{
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure", "ToJsonMeasureReason",
+	// The variable-form JavaScript module also carries the bytes entry beside
+	// the string entry (docs/SPEC-TABLES.md §16.2), so its suffix is claimed
+	// on this list's own rule.
+	"FromJsonBytes",
 	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
 	// calls beside the plain three, so their suffixes are claimed on the same rule
 	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
@@ -4633,6 +4637,10 @@ var tableGeneratedVerbs = []string{
 	// and the batch save's refusal path, which the JavaScript backend emits as
 	// a module-scope function for every fixed table, claimed on the same rule.
 	"FixedRefuseBatch",
+	// and the read's dead-byte check (docs/FIXED-FORM-ALGORITHM.md §4.1), which
+	// the JavaScript backend emits as a module-scope function for every fixed
+	// table, claimed on the same rule.
+	"FixedCheckDead",
 	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
 	// bounds pass: emitted for every fixed type that holds a float, and a
 	// field gains a float as an ordinary edit, so it is claimed on the same rule.

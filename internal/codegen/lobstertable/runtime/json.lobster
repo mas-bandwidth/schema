@@ -180,6 +180,14 @@ def j_kind(f:FieldDescriptor) -> int:
         return if f.signed: 18 else: 19
     return if f.signed: 2 + w else: 6 + w
 
+// j_wide_integer_kind is an integer-shaped kind whose storage is wider than
+// 32 bits — int64 (5), uint64 (9), int128 (18), uint128 (19), and the 64- and
+// 128-bit fixed-point kinds (23, 24, 28, 29). The JSON form writes one as a
+// STRING of decimal digits (docs/SPEC-TABLES.md §16.2, §16.14;
+// docs/rulings.json json-wide-integers-are-strings).
+def j_wide_integer_kind(kind:int) -> bool:
+    return kind == 5 or kind == 9 or kind == 18 or kind == 19 or kind == 23 or kind == 24 or kind == 28 or kind == 29
+
 // j_storage_bytes is the field's own storage width (Go's StorageBytes).
 def j_storage_bytes(f:FieldDescriptor) -> int:
     if f.s == "enum":
@@ -230,9 +238,19 @@ def j_element_shape(f:FieldDescriptor) -> int:
         return 'a'
     if s == "int" and f.timestamp:
         return 's'
+    if s == "int" and j_wide_integer_kind(j_kind(f)):
+        return 'N'
     if s == "bool":
         return 'b'
     return 'n'
+
+// j_shape_matches reports whether a value of the given shape satisfies the
+// shape a declaration takes. A wide integer declares 'N' and reads a string
+// OR a number; every other shape is exact (docs/SPEC-TABLES.md §16.2).
+def j_shape_matches(want:int, got:int) -> bool:
+    if want == got:
+        return true
+    return want == 'N' and (got == 's' or got == 'n')
 
 def j_enum_value(vs:[EnumVariant], name:string) -> int:
     if name == "None":
@@ -929,6 +947,49 @@ class JsonReader:
     labels:[JsonLabel] = []
     zero:bool = false
     utf8:bool = false
+    def key_order(a:string, b:string) -> int:
+        let n = min(length(a), length(b))
+        var i = 0
+        while i < n:
+            if a[i] != b[i]:
+                return if a[i] < b[i]: -1 else: 1
+            i++
+        if length(a) == length(b):
+            return 0
+        return if length(a) < length(b): -1 else: 1
+    def sorted_keys(keys:[string]) -> [string]:
+        let n = length(keys)
+        if n < 2:
+            return keys
+        let mid = n / 2
+        var left:[string] = []
+        var right:[string] = []
+        var i = 0
+        while i < n:
+            if i < mid:
+                push(left, keys[i])
+            else:
+                push(right, keys[i])
+            i++
+        left = this.sorted_keys(left)
+        right = this.sorted_keys(right)
+        let out:[string] = []
+        var a = 0
+        var b = 0
+        while a < length(left) and b < length(right):
+            if this.key_order(left[a], right[b]) <= 0:
+                push(out, left[a])
+                a++
+            else:
+                push(out, right[b])
+                b++
+        while a < length(left):
+            push(out, left[a])
+            a++
+        while b < length(right):
+            push(out, right[b])
+            b++
+        return out
 
 def j_refuse(r:JsonReader, reason:string) -> bool:
     r.bad = true
@@ -937,17 +998,45 @@ def j_refuse(r:JsonReader, reason:string) -> bool:
         r.report.reason = reason
     return false
 
-def j_key_once(r:JsonReader, keys:[string], key:string) -> bool:
-    for(keys) prior:
-        if prior == key:
+// j_key_once refuses a repeated object key by comparing sorted neighbours,
+// one pass over the keys rather than one scan per key.
+def j_key_once(r:JsonReader, keys:[string]) -> bool:
+    let sorted = r.sorted_keys(keys)
+    var i = 1
+    while i < length(sorted):
+        if r.key_order(sorted[i - 1], sorted[i]) == 0:
             return j_refuse(r, "duplicate_key")
-    push(keys, key)
+        i++
     return true
 
 def j_required(r:JsonReader, rec:Record, seen:[bool]) -> bool:
     for(rec.fields) sl, i:
         if sl.fd.required and not seen[i]:
             return j_refuse(r, "missing_required: " + rec.d.name + "." + sl.fd.name)
+    return true
+
+// j_comment_text holds a comment's bytes t[start, stop) to the text rule
+// (docs/SPEC-TABLES.md §16.2): well-formed UTF-8, as at a string site
+// (§16.3), and no NUL. One pass, linear in the comment's length.
+def j_comment_text(r:JsonReader, start:int, stop:int) -> bool:
+    let t = r.text
+    var i = start
+    while i < stop:
+        let c = t[i]
+        if c == 0:
+            r.bad = true
+            return false
+        if c < 0x80:
+            i++
+            continue
+        let width = j_utf8_sequence(t, i)
+        if width <= 0 or i + width > stop:
+            r.utf8 = true
+            if r.report.reason == "":
+                r.report.reason = "string_not_utf8: <root>"
+            r.bad = true
+            return false
+        i += width
     return true
 
 def j_space(r:JsonReader):
@@ -960,13 +1049,20 @@ def j_space(r:JsonReader):
             continue
         if c == '/' and r.pos + 1 < n and t[r.pos + 1] == '/':
             r.pos += 2
+            let start = r.pos
             while r.pos < n and t[r.pos] != '\n':
                 r.pos++
+            if not j_comment_text(r, start, r.pos):
+                r.pos = n
+                return
             continue
         if c == '/' and r.pos + 1 < n and t[r.pos + 1] == '*':
             let end = find_string(t, "*/", r.pos + 2)
             if end < 0:
                 r.bad = true
+                r.pos = n
+                return
+            if not j_comment_text(r, r.pos + 2, end):
                 r.pos = n
                 return
             r.pos = end + 2
@@ -1109,9 +1205,13 @@ def j_scan_unit(r:JsonReader) -> string, bool, bool:
     return substring(t, at, got), false, true
 
 // Read a whole decoded string or refuse at its bound. Capacity < 0 is
-// unbounded; stored strings also forbid zero. The middle result is retained
-// for scanner call compatibility and is always false: no prefix is published.
-def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
+// unbounded. zero is the U+0000 rule (§16.3): 0 compares only and holds none,
+// 1 is a stored string (text_holds_zero), 2 is an object key or a string the
+// walk only SKIPS, held to the rule a placed string is held to (§4, §16.3);
+// no field holds it, so its refusal is plain malformed. The middle result is
+// retained for scanner call compatibility and is always false: no prefix is
+// published.
+def j_scan_text(r:JsonReader, capacity:int, zero:int) -> string, bool, bool:
     if j_peek(r) != '\"':
         j_refuse(r, "kind_mismatch")
         return "", false, false
@@ -1140,9 +1240,12 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
             return "", false, false
         if done:
             return concat_string(parts, ""), false, true
-        if store and length(unit) == 1 and unit[0] == 0:
-            r.zero = true
-            j_refuse(r, "text_holds_zero")
+        if zero != 0 and length(unit) == 1 and unit[0] == 0:
+            if zero == 1:
+                r.zero = true
+                j_refuse(r, "text_holds_zero")
+            else:
+                j_refuse(r, "malformed")
             return "", false, false
         if capacity >= 0 and length(unit) > capacity - size:
             j_refuse(r, "length_over_bound")
@@ -1153,10 +1256,10 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
 
 
 def j_scan_string(r:JsonReader, capacity:int) -> string, bool, bool:
-    return j_scan_text(r, capacity, false)
+    return j_scan_text(r, capacity, 0)
 
 def j_scan_stored(r:JsonReader, capacity:int) -> string, bool, bool:
-    return j_scan_text(r, capacity, true)
+    return j_scan_text(r, capacity, 1)
 
 // j_decode_utf8 is the code point of one well-formed UTF-8 unit.
 def j_decode_utf8(u:string) -> int:
@@ -1171,6 +1274,29 @@ def j_decode_utf8(u:string) -> int:
 
 def j_is_digit(c:int) -> bool:
     return c >= '0' and c <= '9'
+
+// j_integer_token reports whether text is the digits-and-optional-minus
+// spelling of an integer — an optional `-`, then digits with no leading zero,
+// and not `-0` — the one spelling an integer field takes (docs/SPEC-TABLES.md
+// §16.2): no fraction, no exponent, no plus, no negative zero.
+def j_integer_token(text:string) -> bool:
+    var i = 0
+    let n = length(text)
+    var negative = false
+    if i < n and text[i] == '-':
+        negative = true
+        i++
+    if i >= n:
+        return false
+    if text[i] == '0':
+        return (not negative) and i + 1 == n
+    if text[i] < '1' or text[i] > '9':
+        return false
+    while i < n:
+        if text[i] < '0' or text[i] > '9':
+            return false
+        i++
+    return true
 
 // j_walk_number steps over ONE RFC 8259 number (Go's walkNumber): whether
 // it was integral in form, and whether it is one.
@@ -1217,18 +1343,13 @@ def j_scan_number(r:JsonReader) -> string, bool, bool:
         return "", false, false
     return substring(r.text, start, r.pos - start), integral, true
 
-// j_skip_string steps over one string the walk does not keep.
+// j_skip_string steps over one string the walk does not keep, held to the
+// text rules of a placed string (§4, §16.3: skipped is not unread).
 def j_skip_string(r:JsonReader) -> bool:
     if j_peek(r) != '\"':
         return j_refuse(r, "malformed")
-    r.pos++
-    while true:
-        let _, done, ok = j_scan_unit(r)
-        if not ok:
-            return false
-        if done:
-            return true
-    return false
+    let _, clamped, ok = j_scan_text(r, -1, 2)
+    return ok and not clamped
 
 
 def j_skip_value(r:JsonReader, depth:int) -> bool:
@@ -1265,6 +1386,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
         var c = j_peek(r)
         if c == close:
             r.pos++
+            if not j_key_once(r, keys):
+                return false
             if definition:
                 definition.open = false
             return true
@@ -1273,11 +1396,10 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             return false
         var keyed = false
         if close == '}':
-            let key, _, ok = j_scan_string(r, json_max_key)
+            let key, _, ok = j_scan_text(r, json_max_key, 2)
             if not ok:
                 return false
-            if not j_key_once(r, keys, key):
-                return false
+            push(keys, key)
             if j_peek(r) != ':':
                 r.bad = true
                 return false
@@ -1295,6 +1417,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                     continue
                 if c == close:
                     r.pos++
+                    if not j_key_once(r, keys):
+                        return false
                     return true
                 r.bad = true
                 return false
@@ -1308,6 +1432,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 continue
             if c == close:
                 r.pos++
+                if not j_key_once(r, keys):
+                    return false
                 if definition:
                     definition.open = false
                 return true
@@ -1411,18 +1537,19 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             let c = j_peek(r)
             if c == '}':
                 r.pos++
+                if not j_key_once(r, keys):
+                    return false
                 return j_required(r, rec, seen)
             if c == 0:
                 return j_refuse(r, "malformed")
-            let k, _, ok = j_scan_string(r, json_max_key)
+            let k, _, ok = j_scan_text(r, json_max_key, 2)
             if not ok:
                 return false
             if j_peek(r) != ':':
                 return j_refuse(r, "malformed")
             r.pos++
             key = k
-        if not j_key_once(r, keys, key):
-            return false
+        push(keys, key)
         if length(key) > 0 and key[0] == '&':
             return j_refuse(r, "malformed")
         let index = j_field_index(rec, key)
@@ -1439,7 +1566,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                     return false
                 reset_slot(sl)
             else:
-                if shape != j_shape(sl.fd):
+                if not j_shape_matches(j_shape(sl.fd), shape):
                     return j_refuse(r, "kind_mismatch")
                 if not j_read_field(r, sl, depth):
                     j_name_zero(r, rec.d.name, sl)
@@ -1452,6 +1579,8 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             continue
         if c == '}':
             r.pos++
+            if not j_key_once(r, keys):
+                return false
             return j_required(r, rec, seen)
         return j_refuse(r, "malformed")
     return false
@@ -1534,6 +1663,10 @@ def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
             malformed = true
     if malformed:
         return j_refuse(r, "kind_mismatch")
+    // §16.8: only the canonical spelling reads; unpadded text decodes but
+    // is not it
+    if pad == 0 and symbols % 4 != 0:
+        return j_refuse(r, "base64_not_canonical")
     let total = symbols * 6 / 8
     let keep = total
     if bound >= 0 and keep > bound:
@@ -1551,6 +1684,10 @@ def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
             out = write_int8_le(out, at, (acc >> held) & 0xFF)
             at++
         i++
+    // §16.8: the pad bits of the last symbol are zero in the canonical
+    // spelling
+    if (acc & ((1 << held) - 1)) != 0:
+        return j_refuse(r, "base64_not_canonical")
     sl.cell.s = out
     sl.count = keep
     return true
@@ -1589,7 +1726,7 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
                 return false
             sl.elems[placed] = Value {}
             placed++
-        elif j_value_shape(r) != shape:
+        elif not j_shape_matches(shape, j_value_shape(r)):
             return j_refuse(r, "kind_mismatch")
         else:
             if not j_read_scalar(r, sl.elems[placed], e, depth + 1, true):
@@ -1690,11 +1827,10 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, _, ok = j_scan_string(r, json_max_key)
+        let key, _, ok = j_scan_text(r, json_max_key, 2)
         if not ok:
             return false
-        if not j_key_once(r, seen, key):
-            return false
+        push(seen, key)
         if j_peek(r) != ':':
             r.bad = true
             return false
@@ -1705,7 +1841,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.report.unknown++
             if not j_skip_value(r, depth + 1):
                 return false
-        elif j_value_shape(r) != shape:
+        elif not j_shape_matches(shape, j_value_shape(r)):
             return j_refuse(r, "kind_mismatch")
         elif not j_read_scalar(r, sl.elems[slot], e, depth + 1, true):
             return false
@@ -1717,6 +1853,8 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.pos++
             break
         r.bad = true
+        return false
+    if not j_key_once(r, seen):
         return false
     return true
 
@@ -1748,7 +1886,7 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
         cell.tab = rec
         return j_read_table(r, rec, depth + 1)
     if s == "enum":
-        let name, _, ok = j_scan_string(r, -1)
+        let name, _, ok = j_scan_string(r, json_max_key)
         if not ok:
             return false
         let v = j_enum_value(f.vs, name)
@@ -1774,18 +1912,46 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
             return false
         cell.b = false
         return true
-    let token, integral, ok = j_scan_number(r)
-    if not ok:
-        r.bad = true
-        return false
     let kind = j_kind(f)
     if kind == 10 or kind == 11:
+        let token, _, ok = j_scan_number(r)
+        if not ok:
+            r.bad = true
+            return false
         j_place_float(r, cell, f, token, kind == 10)
         return not r.bad
+    if j_wide_integer_kind(kind):
+        // a wide integer reads as a STRING of digits OR a number, the same
+        // digits (docs/SPEC-TABLES.md §16.2)
+        var token = ""
+        if j_value_shape(r) == 's':
+            let text, _, ok = j_scan_string(r, -1)
+            if not ok:
+                return false
+            token = text
+        else:
+            let scanned, _, ok = j_scan_number(r)
+            if not ok:
+                r.bad = true
+                return false
+            token = scanned
+        if kind == 5 or kind == 9:
+            j_place_integer(r, cell, f, token, true, kind)
+        else:
+            j_place_wide(r, cell, f, token, kind)
+        return not r.bad
     if kind_wide(kind):
+        let token, _, ok = j_scan_number(r)
+        if not ok:
+            r.bad = true
+            return false
         j_place_wide(r, cell, f, token, kind)
         return not r.bad
     if kind >= 2 and kind <= 9:
+        let token, integral, ok = j_scan_number(r)
+        if not ok:
+            r.bad = true
+            return false
         j_place_integer(r, cell, f, token, integral, kind)
         return not r.bad
     r.bad = true
@@ -1952,8 +2118,14 @@ def j_in_domain(n:JsonInt, signed:bool, bytes:int) -> int, bool:
     return mag, moved
 
 def j_place_integer(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, integral:bool, kind:int):
+    // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md
+    // §16.2): digits with an optional minus, no fraction, no exponent, no
+    // negative zero — and the value never passes through a double.
+    if not integral or not j_integer_token(token):
+        j_refuse(r, "kind_mismatch")
+        return
     let signed = kind >= 2 and kind <= 5
-    let number = j_interpret_integer(token, integral)
+    let number = j_interpret_integer(token, true)
     if not number.finite or number.fractional:
         j_refuse(r, "kind_mismatch")
         return
@@ -1976,6 +2148,11 @@ def j_place_integer(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, i
 
 
 def j_place_wide(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, kind:int):
+    // a 128-bit integer takes the integer token rule; the fixed-point kinds
+    // keep their exact decimal (docs/SPEC-TABLES.md §16.2)
+    if (kind == 18 or kind == 19) and not j_integer_token(token):
+        j_refuse(r, "kind_mismatch")
+        return
     let raw, exact, saturated = j_parse_wide(token, kind, f.fbits)
     if not exact:
         j_refuse(r, "kind_mismatch")
@@ -2004,7 +2181,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     if j_peek(r) == '}':
         r.pos++
         return true
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_text(r, json_max_key, 2)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2046,7 +2223,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
                     return false
                 cell.i = tag
                 cell.arm = fv
-            elif shape != j_shape(a):
+            elif not j_shape_matches(j_shape(a), shape):
                 return j_refuse(r, "kind_mismatch")
             else:
                 if not j_read_field(r, fv, depth + 1):
@@ -2080,12 +2257,14 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
         if c != '\"':
             return j_refuse(r, "kind_mismatch")
         else:
-            let name, _, ok = j_scan_string(r, -1)
+            let name, _, ok = j_scan_string(r, json_max_key)
             if not ok:
                 return false
             var found = false
             for(names) v, bit:
                 if not found and v == name:
+                    if (bits & shl(1, bit)) != 0:
+                        return j_refuse(r, "duplicate_key")
                     bits = bits | shl(1, bit)
                     found = true
             if not found:
@@ -2129,7 +2308,7 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     if c == 0:
         r.bad = true
         return false
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_text(r, json_max_key, 2)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2188,7 +2367,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     let ed = table_of(sl.fd.t)
     let kf = ed.fields[0]
     let string_key = key_is_string(kf)
-    let keys:[string] = []
     while true:
         var c = j_peek(r)
         if c == '}':
@@ -2200,8 +2378,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         let key, _, ok = j_scan_stored(r, key_limit)
         if not ok:
             return false
-        if not j_key_once(r, keys, key):
-            return false
         if j_peek(r) != ':':
             return j_refuse(r, "malformed")
         r.pos++
@@ -2209,10 +2385,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         let placed = j_place_map_key(entry, kf, key)
         if placed != 0:
             return j_refuse(r, "kind_mismatch")
-        for(sl.entries) v:
-            let prior = v.tab
-            if prior and map_key_order(kf, prior.fields[0].cell, entry.fields[0].cell) == 0:
-                return j_refuse(r, "duplicate_key")
         push(sl.entries, Value { tab: entry })
         if not j_read_map_value(r, entry.fields[1], depth):
             return false
@@ -2225,16 +2397,44 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             break
         return j_refuse(r, "malformed")
     sl.entries = j_sorted_entries(kf, sl.entries)
+    for(sl.entries) v, i:
+        if i > 0 and j_entry_order(kf, sl.entries[i - 1], v) == 0:
+            return j_refuse(r, "duplicate_key")
     return true
 
 
 def j_sorted_entries(kf:FieldDescriptor, entries:[Value]) -> [Value]:
+    let n = length(entries)
+    if n < 2:
+        return entries
+    let mid = n / 2
+    var left:[Value] = []
+    var right:[Value] = []
+    var i = 0
+    while i < n:
+        if i < mid:
+            push(left, entries[i])
+        else:
+            push(right, entries[i])
+        i++
+    left = j_sorted_entries(kf, left)
+    right = j_sorted_entries(kf, right)
     let out:[Value] = []
-    for(entries) v:
-        var i = length(out)
-        while i > 0 and j_entry_order(kf, out[i - 1], v) > 0:
-            i--
-        insert(out, i, v)
+    var a = 0
+    var b = 0
+    while a < length(left) and b < length(right):
+        if j_entry_order(kf, left[a], right[b]) <= 0:
+            push(out, left[a])
+            a++
+        else:
+            push(out, right[b])
+            b++
+    while a < length(left):
+        push(out, left[a])
+        a++
+    while b < length(right):
+        push(out, right[b])
+        b++
     return out
 
 def j_entry_order(kf:FieldDescriptor, a:Value, b:Value) -> int:
@@ -2250,7 +2450,7 @@ def j_read_map_value(r:JsonReader, sl:Slot, depth:int) -> bool:
             return false
         reset_slot(sl)
         return true
-    if j_value_shape(r) != j_shape(sl.fd):
+    if not j_shape_matches(j_shape(sl.fd), j_value_shape(r)):
         return j_refuse(r, "kind_mismatch")
     if not j_read_field(r, sl, depth):
         return false
@@ -2273,6 +2473,8 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
     let _, ok = j_walk_number(key_reader)
     if not ok or key_reader.pos != length(key):
         return 2
+    if not j_integer_token(key):
+        return 1
     let number = j_interpret_exact(key)
     if number.fractional or number.saturated:
         return 1
@@ -2337,6 +2539,8 @@ class JsonWriter:
     blobs:[JsonBlobCount] = []
     next:int = 0
     err:string = ""
+    // found is the nodes the record the first pass is walking names
+    found:[Record] = []
 
 def j_indents() -> [string]:
     let out:[string] = []
@@ -2365,16 +2569,51 @@ def j_fail(w:JsonWriter, why:string) -> bool:
         w.err = why
     return false
 
+// A record's entry is found through its own mark (Record.at), never by a
+// scan of the entries collected so far; json_write clears every mark.
 def j_node_entry(w:JsonWriter, rec:Record) -> JsonNodeCount:
-    for(w.nodes) x:
-        if x.rec == rec:
-            return x
+    if rec.at > 0:
+        return w.nodes[rec.at - 1]
     let x = JsonNodeCount { rec: rec }
     push(w.nodes, x)
+    rec.at = length(w.nodes)
     return x
 
 // THE FIRST PASS (§16.7): every slot that names a node counted, a node whose
-// descent is still open refused as the cycle it is.
+// descent is still open refused as the cycle it is. A CHAIN IS NOT A DEPTH
+// (§3.1; docs/SECURITY.md): j_count_record collects the nodes one record's
+// by-value closure names into w.found, and j_count_graph follows them with
+// its own stack, so a pointer chain of any length costs no call stack.
+def j_count_graph(w:JsonWriter, root:Record) -> bool:
+    w.found = []
+    j_count_record(w, root)
+    let frames:[[Record]] = [w.found]
+    let next:[int] = [0]
+    let entries:[JsonNodeCount] = [j_node_entry(w, root)]
+    while length(frames) > 0:
+        let top = length(frames) - 1
+        let es = frames[top]
+        if next[top] >= length(es):
+            entries[top].open = false
+            pop(frames)
+            pop(next)
+            pop(entries)
+        else:
+            let node = es[next[top]]
+            next[top] = next[top] + 1
+            let x = j_node_entry(w, node)
+            x.count++
+            if x.open:
+                return j_fail(w, "data cycle: a " + node.d.name + " reaches a node whose descent is still open (docs/SPEC-TABLES.md §3.1, §16.7)")
+            if x.count == 1:
+                x.open = true
+                w.found = []
+                j_count_record(w, node)
+                push(frames, w.found)
+                push(next, 0)
+                push(entries, x)
+    return true
+
 def j_count_record(w:JsonWriter, rec:Record) -> bool:
     for(rec.fields) sl:
         if json_guard_holds(rec, sl) and (sl.fd.present == "" or sl.present):
@@ -2388,13 +2627,11 @@ def j_count_field(w:JsonWriter, sl:Slot) -> bool:
     if s == "sblob" or s == "bblob":
         let n = sl.cell.blob_node
         if sl.cell.blob and n:
-            var found = false
-            for(w.blobs) b:
-                if b.node == n:
-                    b.count++
-                    found = true
-            if not found:
+            if n.at > 0:
+                w.blobs[n.at - 1].count++
+            else:
                 push(w.blobs, JsonBlobCount { node: n, count: 1 })
+                n.at = length(w.blobs)
         return true
     if s == "ptr":
         return j_count_node(w, sl.cell.node)
@@ -2439,18 +2676,8 @@ def j_count_cell(w:JsonWriter, cell:Value, f:FieldDescriptor) -> bool:
     return true
 
 def j_count_node(w:JsonWriter, node:Record?) -> bool:
-    if not node:
-        return true
-    let x = j_node_entry(w, node)
-    x.count++
-    if x.open:
-        return j_fail(w, "data cycle: a " + node.d.name + " reaches a node whose descent is still open (docs/SPEC-TABLES.md §3.1, §16.7)")
-    if x.count > 1:
-        return true
-    x.open = true
-    if not j_count_record(w, node):
-        return false
-    x.open = false
+    if node:
+        push(w.found, node)
     return true
 
 def j_write_value(w:JsonWriter, rec:Record, depth:int) -> bool:
@@ -2530,9 +2757,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
             return true
         let n = sl.cell.blob_node
         if n:
-            for(w.blobs) b:
-                if b.node == n and b.count > 1:
-                    return j_fail(w, "field " + f.name + " names a byte buffer another slot names: a shared blob has no spelling this form can carry (docs/SPEC-TABLES.md §16.7)")
+            if n.at > 0 and w.blobs[n.at - 1].count > 1:
+                return j_fail(w, "field " + f.name + " names a byte buffer another slot names: a shared blob has no spelling this form can carry (docs/SPEC-TABLES.md §16.7)")
         if s == "sblob":
             j_write_string(w, blob)
         else:
@@ -2595,6 +2821,8 @@ def j_write_map(w:JsonWriter, sl:Slot, depth:int) -> bool:
                 j_write_string(w, k.cell.s)
             elif kf.s == "int" and kf.signed and not j_is_fixed(kf):
                 j_write_string(w, string(k.cell.i))
+            elif kf.s == "int" and not j_is_fixed(kf):
+                j_write_string(w, j_bn_to_dec(j_bn_u64(k.cell.i)))
             else:
                 j_write_string(w, number_to_string(k.cell.i, 10, 1))
             j_raw(w, ": ")
@@ -2702,8 +2930,20 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         j_raw(w, "]")
         return true
     let kind = j_kind(f)
+    if kind == 5:
+        // int64 is wider than 32 bits: written as a string of digits (§16.2)
+        j_write_string(w, string(cell.i))
+        return true
+    if kind == 9:
+        // uint64 above int64's range is its two's-complement bit pattern
+        j_write_string(w, j_bn_to_dec(j_bn_u64(cell.i)))
+        return true
     if kind_wide(kind):
-        j_raw(w, j_format_wide(cell.w, kind, f.fbits))
+        let text = j_format_wide(cell.w, kind, f.fbits)
+        if j_wide_integer_kind(kind):
+            j_write_string(w, text)
+        else:
+            j_raw(w, text)
         return true
     if kind == 1:
         j_raw(w, if cell.b: "true" else: "false")
@@ -2780,8 +3020,11 @@ def j_escape(w:JsonWriter, c:int) -> bool:
         return false
     return true
 
-// j_write_string emits one JSON string. Storage holding a byte outside a
-// well-formed UTF-8 sequence has no text spelling: the writer refuses it as
+// j_write_string emits one JSON string. A zero byte is storage that is not
+// text (docs/SPEC.md §5.1 row 8, docs/SPEC-TABLES.md §16.14 W0, W8): the
+// writer refuses the whole value as invalid_value rather than spelling the
+// \u0000 its own reader refuses. Storage holding a byte outside a well-formed
+// UTF-8 sequence has no text spelling either: the writer refuses it as
 // text_ill_formed (W0, docs/SPEC-TABLES.md §16.14), never a U+FFFD.
 def j_write_string(w:JsonWriter, s:string):
     j_raw(w, "\"")
@@ -2799,6 +3042,9 @@ def j_write_string(w:JsonWriter, s:string):
         if i >= n:
             break
         let c = s[i]
+        if c == 0:
+            j_fail(w, "invalid_value")
+            return
         if j_escape(w, c):
             i++
         else:
@@ -2847,9 +3093,18 @@ def json_write(rec:Record) -> string, string:
     if not rec.d.json_form:
         return "", "json_form_not_carried"
     let w = JsonWriter {}
+    let text, why = j_write_root(w, rec)
+    for(w.nodes) x:
+        x.rec.at = 0
+    for(w.blobs) b:
+        b.node.at = 0
+    return text, why
+
+// j_write_root is the two passes, while each node's mark names its entry.
+def j_write_root(w:JsonWriter, rec:Record) -> string, string:
     let root = j_node_entry(w, rec)
     root.open = true
-    if not j_count_record(w, rec):
+    if not j_count_graph(w, rec):
         return "", w.err
     if not j_write_value(w, rec, 0) or w.err != "":
         return "", w.err

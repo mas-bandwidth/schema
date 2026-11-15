@@ -134,7 +134,9 @@ func TestLobsterStrictJSONRead(t *testing.T) {
 		{"defaults", `{"need":1}`, `{"need":1}`},
 		{"bounds", `{"need":1,"n":10,"s":"αβ","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`, `{"need":1,"n":10,"s":"αβ","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`},
 		{"unknown", `{"need":1,"future":{"x":[1,true,null,"ok"]}}`, `{"need":1}`},
-		{"base64", `{"need":1,"blob":"YQ"}`, `{"need":1,"blob":"YQ=="}`},
+		{"base64", `{"need":1,"blob":"YQ=="}`, `{"need":1,"blob":"YQ=="}`},
+		{"unpadded base64", `{"need":1,"blob":"YQ"}`, ""},
+		{"base64 pad bits", `{"need":1,"blob":"YR=="}`, ""},
 		{"optional", `{"need":1,"optional":null}`, `{"need":1}`},
 		{"sharing", `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`, `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`},
 		{"duplicate", `{"need":1,"need":2}`, ""},
@@ -241,7 +243,7 @@ print(if value: "read" else: "refused")
 	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "refused\n" {
 		t.Fatalf("duplicate read: %q", out)
 	}
-	patchJson(t, g, "        if prior == key:\n            return j_refuse(r, \"duplicate_key\")", "        if prior == key and length(keys) < 0:\n            return j_refuse(r, \"duplicate_key\")")
+	patchJson(t, g, "        if r.key_order(sorted[i - 1], sorted[i]) == 0:\n            return j_refuse(r, \"duplicate_key\")", "        if r.key_order(sorted[i - 1], sorted[i]) == 0 and length(sorted) < 0:\n            return j_refuse(r, \"duplicate_key\")")
 	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "read\n" {
 		t.Fatalf("negative control did not expose dropped duplicate detection: %q", out)
 	}

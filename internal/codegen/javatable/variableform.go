@@ -822,12 +822,26 @@ public final class TableVariable {
         }
     }
 
+    // THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body
+    // (kind 14) opens with 1–13, 15, 17, 18–30, and an enum-keyed body (kind
+    // 16) with 1–11, 13, 18–30. Any other element kind is damage under ANY
+    // count, a count of 0 included, in a declared field and in an unknown one
+    // alike, so it is judged before any comparison with a declaration.
+    static boolean arrayElemKindClosed(int kind) {
+        return (kind >= 1 && kind <= 13) || kind == 15 || kind == 17 || (kind >= 18 && kind <= 30);
+    }
+
+    static boolean keyedElemKindClosed(int kind) {
+        return (kind >= 1 && kind <= 11) || kind == 13 || (kind >= 18 && kind <= 30);
+    }
+
     // THE CONDITIONS DECIDABLE FROM THE WIRE ALONE (docs/SPEC-TABLES.md §6.5,
     // "TWO KINDS OF CONDITION"), the oracle's own walk
     // (internal/tablewire/wirecheck.go) over a form-1 file. It takes no
     // declaration. It checks the framing (lengths, counts, terminators, an
     // array's, keyed array's or map's header inside its own L and no byte
-    // left inside that L after its elements, the id table's references,
+    // left inside that L after its elements, an array or keyed body's element
+    // kind on §3's closed list, the id table's references,
     // canonical LEB128, a kind no reader can skip, kind 32 with a nonzero L),
     // a bool byte other than 0 or 1, ill-formed text, a repeated field id or
     // keyed slot in one body, bytes left inside an arm after its payload, the
@@ -1388,6 +1402,11 @@ public final class TableVariable {
                 return false;
             }
             int kind = buf[off] & 0xff;
+            // THE ELEMENT KIND IS CLOSED, judged under any count and before
+            // any element is walked (docs/SPEC-TABLES.md §3, §4).
+            if (!arrayElemKindClosed(kind)) {
+                return damage();
+            }
             int p = at;
             for (long i = 0; i < count; i++) {
                 p = payload(p, end, kind);
@@ -1404,6 +1423,11 @@ public final class TableVariable {
                 return false;
             }
             int kind = buf[off] & 0xff;
+            // THE KEYED ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+            // count (docs/SPEC-TABLES.md §3, §4).
+            if (!keyedElemKindClosed(kind)) {
+                return damage();
+            }
             int first = at;
             int g = ++gen;
             int p = first;
@@ -2811,11 +2835,16 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanString();
+                String name = in.scanName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
                     if (names[i].equals(name)) {
+                        // A KNOWN VARIANT NAMED TWICE refuses the read, as a repeated
+                        // key does (docs/SPEC-TABLES.md §16.2).
+                        if ((bits & (1L << i)) != 0) {
+                            in.rep.refuse("text_damaged");
+                        }
                         bits |= 1L << i;
                         found = true;
                         break;
@@ -3032,6 +3061,7 @@ public final class TableJson {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
+            assert c != 0 : "zero byte is not text";
             switch (c) {
                 case '"':
                     b.append("\\\"");
@@ -3237,17 +3267,31 @@ public final class TableJson {
                 if (c == '/' && p + 1 < t.length) {
                     if (t[p + 1] == '/') {
                         p += 2;
+                        int start = p;
                         while (p < t.length && t[p] != '\n') {
                             p++;
+                        }
+                        // §16.2: the bytes inside a comment are well-formed UTF-8
+                        // and hold no NUL, the same rule a string site keeps.
+                        if (!TableVariable.textValid(t, start, p - start)) {
+                            bad = true;
+                            return;
                         }
                         continue;
                     }
                     if (t[p + 1] == '*') {
                         p += 2;
+                        int start = p;
                         while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) {
                             p++;
                         }
                         if (p + 1 >= t.length) {
+                            bad = true;
+                            return;
+                        }
+                        // §16.2: the same UTF-8 and no-NUL rule inside a block
+                        // comment as inside a line comment.
+                        if (!TableVariable.textValid(t, start, p - start)) {
                             bad = true;
                             return;
                         }
@@ -3486,6 +3530,26 @@ public final class TableJson {
                     b.appendCodePoint(cp);
                 }
             }
+        }
+
+        // scanName reads one string that NAMES a schema name — an object key
+        // naming a field, an enum variant, a flags element, a union arm, an
+        // &node name — and holds it to §16.2's 255-byte cap after decoding.
+        // A longer one refuses the read; a map key and a string value are data
+        // and go through scanString/scanStored, never this.
+        public String scanName() {
+            String s = scanString();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
         }
 
         // loneSurrogate refuses a string whose u-escape is a surrogate half
@@ -3784,7 +3848,7 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    String key = scanString();
+                    String key = scanName();
                     if (bad) {
                         return;
                     }
@@ -4927,7 +4991,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
-		fmt.Fprintf(b, "        if (in.bad) { report.damaged = true; }\n")
+		fmt.Fprintf(b, "        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and\n")
+		fmt.Fprintf(b, "        // comments, then refuse unless the cursor is at the end of the text.\n")
+		fmt.Fprintf(b, "        in.space();\n")
+		fmt.Fprintf(b, "        if (in.bad || in.p != text.length) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
 		fmt.Fprintf(b, "        if (report.damaged) { return null; }\n")
@@ -5002,7 +5069,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
 	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
-	b.WriteString("        String key = in.scanString();\n")
+	b.WriteString("        String key = in.scanName();\n")
 	b.WriteString("        if (in.bad || key == null) return null;\n")
 	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
 	b.WriteString("        if (in.peek() != ':') { in.bad = true; return null; }\n")
@@ -5058,7 +5125,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
 	b.WriteString("            if (c == '}') { in.p++; break; }\n")
-	b.WriteString("            String key = in.scanString();\n")
+	b.WriteString("            String key = in.scanName();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
 	b.WriteString("            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,\n")
 	b.WriteString("            // compared by decoded text (§16.2, §16.12).\n")
@@ -5097,7 +5164,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("            } else ")
 	}
 	b.WriteString("{\n")
-	b.WriteString("                in.skipValue(); in.rep.unknown++;\n")
+	// A key this reader cannot name is skipped one level deeper than the
+	// object that holds it, the same count as a placed value (§16.2):
+	// 128 containers are read and 129 refuse.
+	b.WriteString("                in.skipValue(depth + 1); in.rep.unknown++;\n")
 	b.WriteString("            }\n")
 	b.WriteString("            c = in.peek();\n")
 	b.WriteString("            if (c == ',') { in.p++; continue; }\n")
@@ -5312,7 +5382,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				b.WriteString("                        if (ec == '\"') {\n")
-				b.WriteString("                            String s = in.scanString();\n")
+				b.WriteString("                            String s = in.scanName();\n")
 				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
@@ -5666,7 +5736,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		// §16.2: a string that is not base64 is the wrong shape for *bytes —
 		// counted kind_mismatch and left null, never a broken read.
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { byte[] decoded = java.util.Base64.getDecoder().decode(s); if (!java.util.Base64.getEncoder().encodeToString(decoded).equals(s)) { in.rep.refuse(\"base64_not_canonical\"); v.%s = null; } else { v.%s = decoded; } } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m, m)
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -5681,7 +5751,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s, %s);\n", target.Name, m, depth+" + 1")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);if(!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)){in.rep.refuse(\"base64_not_canonical\");}else{int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
@@ -5716,7 +5786,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			b.WriteString("                if (in.peek() == '\"') {\n")
-			b.WriteString("                    String s = in.scanString();\n")
+			b.WriteString("                    String s = in.scanName();\n")
 			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
@@ -5786,7 +5856,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != 17) { report.refuse(\"kind_mismatch\"); } else {\n")
+		fmt.Fprintf(b, "                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) { report.damaged = true; ar.fail = true; } else if (!ar.fail && ek != 17) { report.refuse(\"kind_mismatch\"); } else {\n")
 		// EVERY DECODED POINTER SLOT KEEPS ITS ROW (docs/SPEC-TABLES.md §2.1,
 		// §3.1, §3.3): a bad node table makes every index resolve to null, but
 		// the array still decoded its slots, so the value list stays as long
@@ -5843,7 +5913,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != %d) { report.refuse(\"kind_mismatch\"); } else {\n", expectedEk)
+		fmt.Fprintf(b, "                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) { report.damaged = true; ar.fail = true; } else if (!ar.fail && ek != %d) { report.refuse(\"kind_mismatch\"); } else {\n", expectedEk)
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else {\n")
 		} else {
@@ -5959,7 +6029,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { v.%s = new String(r.buf, r.off, n, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), m)
@@ -6014,7 +6084,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// judged (the engine's arrayBody, §3, §4): a damaged count is framing
 	// damage whatever the kind byte says, and only a whole header of another
 	// element kind is a kind mismatch.
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!(%s)) { report.refuse(\"kind_mismatch\"); } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!TableVariable.arrayElemKindClosed(ek)) { report.damaged = true; } else if (!(%s)) { report.refuse(\"kind_mismatch\"); } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
 	if f.Array != ir.ArrayFixed {
 		fmt.Fprintf(b, "v.%s.clear(); ", m)
 	}

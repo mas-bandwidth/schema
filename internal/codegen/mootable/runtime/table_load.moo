@@ -96,6 +96,47 @@ end
 -- CHECK; docs/LAYERS/1-framing.md F6)
 local ID_TABLE_BOUND = 4096
 
+-- THE FIELD A COUNTER FIRST MOVED IN (§11, a refusal names the field): the
+-- one decode records it as each counter moves, so naming a refusal or an
+-- unknown field costs no second read. _ctx is the field the walk is reading;
+-- _deep says whether a nested body names its own fields (an inline table) or
+-- belongs to the field around it (an array, a map, a keyed array, a union
+-- arm). An id the reader cannot name is spelled #<hex>; a counter no field
+-- holds names none.
+local _report: any = nil
+local _ctx: string? = nil
+local _deep: boolean = true
+local _moved: { [string]: string? } = {}
+local _seen: { [string]: boolean } = {}
+
+local function mark(report: any, k: string)
+	if report ~= _report or _seen[k] then
+		return
+	end
+	_seen[k] = true
+	_moved[k] = _ctx
+end
+
+local function damage(report: any)
+	report.bodyDamaged = true
+	mark(report, "bodyDamaged")
+end
+
+local function over(report: any)
+	report.outOfRange += 1
+	mark(report, "outOfRange")
+end
+
+local function kind_mismatch(report: any)
+	report.kindChanged += 1
+	mark(report, "kindChanged")
+end
+
+local function unknown(report: any)
+	report.unknown += 1
+	mark(report, "unknown")
+end
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES, naming it; damage is malformed and
 -- the verdict's damage (report.damaged). The count is the unsigned u64 at the
@@ -103,7 +144,7 @@ local ID_TABLE_BOUND = 4096
 local function open(bytes: buffer, report: any): any
 	local len = buffer.len(bytes)
 	if len < 1 then
-		report.bodyDamaged = true
+		damage(report)
 		report.damaged = true
 		return nil
 	end
@@ -116,14 +157,14 @@ local function open(bytes: buffer, report: any): any
 		return nil
 	end
 	if len < 9 then
-		report.bodyDamaged = true
+		damage(report)
 		report.damaged = true
 		return nil
 	end
 	local lo = buffer.readu32(bytes, len - 8)
 	local hi = buffer.readu32(bytes, len - 4)
 	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
-		report.bodyDamaged = true
+		damage(report)
 		report.damaged = true
 		return nil
 	end
@@ -134,7 +175,7 @@ local function open(bytes: buffer, report: any): any
 	for i = 0, count - 1 do
 		local id = buffer.readstring(bytes, endpos + i * 8, 8)
 		if seen[id] then
-			report.bodyDamaged = true
+			damage(report)
 			report.damaged = true
 			return nil
 		end
@@ -178,7 +219,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 		end
 	end
 	if present and bad then
-		report.bodyDamaged = true
+		damage(report)
 		return nil
 	end
 	if not present or payload == nil then
@@ -188,19 +229,19 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 	local rec = new_reader(pb, 0, buffer.len(pb))
 	local count = r_leb(rec)
 	if rec.bad then
-		report.bodyDamaged = true
+		damage(report)
 		return nil
 	end
 	local raw = {}
 	while rec.at < rec.e do
 		local tref = r_leb(rec)
 		if rec.bad or tref == 0 or tref > #ids then
-			report.bodyDamaged = true
+			damage(report)
 			return nil
 		end
 		local tlen = r_leb(rec)
 		if rec.bad or rec.at + tlen > rec.e then
-			report.bodyDamaged = true
+			damage(report)
 			return nil
 		end
 		local body = buffer.create(tlen)
@@ -209,7 +250,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 		rec.at += tlen
 	end
 	if count ~= #raw then
-		report.bodyDamaged = true
+		damage(report)
 		return nil
 	end
 	return raw
@@ -218,6 +259,7 @@ end
 -- THE LINK: each descriptor learns its fields by id, once (§3, §8.1).
 local byIdCache: { [any]: { [string]: any } } = {}
 local typeCache: { [any]: { [string]: any } } = {}
+local declaredCache: { [any]: { [string]: boolean } } = {}
 
 local function fields_by_id(desc: any): { [string]: any }
 	local m = byIdCache[desc]
@@ -248,12 +290,28 @@ local function place_types(desc: any): { [string]: any }
 	return m
 end
 
+-- THE TYPES THIS READER DECLARES (§3.1): every table of the unit, reachable
+-- from this root or not, so a record it placed no storage for is still told
+-- apart from a newer writer's type. A record of one that a pointer names at
+-- the wrong type is damage; only a type outside this set reads null.
+local function declared_types(desc: any): { [string]: boolean }
+	local m = declaredCache[desc]
+	if m == nil then
+		local built: { [string]: boolean } = {}
+		for _, id in desc.declared do
+			built[id] = true
+		end
+		declaredCache[desc] = built
+		return built
+	end
+	return m
+end
+
 local _table: { string } = {}
 local _pending: { any } = {}
 local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
-local _report: any = nil
 -- RETAIN-UNKNOWN's hook (docs/SPEC-TABLES.md §6.6; table_retain.moo): nil on
 -- every plain read, so nothing below reads a byte or moves a counter
 -- differently because retention is on. A retaining read sets it for the one
@@ -306,7 +364,7 @@ end
 local function scalar_at(r: any, fd: any, kind: number, report: any, named: any): any
 	local width = V.width(kind)
 	if width == 0 or r.at + width > r.e then
-		report.bodyDamaged = true
+		damage(report)
 		return nil
 	end
 	local b, at = r.b, r.at
@@ -315,14 +373,14 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		-- a bool byte past 1 is malformed, and non-zero is still true (§3)
 		local x = buffer.readu8(b, at)
 		if x > 1 then
-			report.bodyDamaged = true
+			damage(report)
 		end
 		return x ~= 0
 	elseif kind == 10 then
 		local bits = buffer.readu32(b, at)
 		if not V.finite32(bits) then
 			non_finite(report, named)
-			return fd.def or 0
+			return nil
 		end
 		if fd.k == 11 then
 			-- f32 WIDENED into f64 (§4): every finite float32 is exact, and a
@@ -332,12 +390,9 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		end
 		if fd.flo ~= nil then
 			local lo, hi = V.f32to64(bits)
-			if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 then
-				report.outOfRange += 1
-				return fd.flo32
-			elseif V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
-				report.outOfRange += 1
-				return fd.fhi32
+			if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 or V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
+				over(report)
+				return nil
 			elseif bits == 0x80000000 then
 				return 0 -- a -0 lands as +0, uncounted (§3.3)
 			end
@@ -348,7 +403,7 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		local hi = buffer.readu32(b, at + 4)
 		if not V.finite64(lo, hi) then
 			non_finite(report, named)
-			return fd.def or V.Uint64.new(0, 0)
+			return nil
 		end
 		return V.Uint64.new(lo, hi)
 	end
@@ -359,20 +414,15 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		x = V.widen(x, kw, signed)
 	end
 	local lo, hi = fd.lo, fd.hi
-	if lo ~= nil then
-		if V.rawCmp(x, lo, kw, signed) < 0 then
-			x = lo
-			report.outOfRange += 1
-		elseif V.rawCmp(x, hi, kw, signed) > 0 then
-			x = hi
-			report.outOfRange += 1
-		end
+	if lo ~= nil and (V.rawCmp(x, lo, kw, signed) < 0 or V.rawCmp(x, hi, kw, signed) > 0) then
+		over(report)
+		return nil
 	end
 	if fd.bits ~= nil and fd.bits < kw * 8 then
 		local cap = V.bitsCap(fd.bits, kw)
 		if V.rawCmp(x, cap, kw, false) > 0 then
-			x = cap
-			report.outOfRange += 1
+			over(report)
+			return nil
 		end
 	end
 	if fd.cls == nil then
@@ -393,14 +443,14 @@ local read_union: any
 local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	local ref = r_leb(r)
 	if r.bad then
-		report.bodyDamaged = true
+		damage(report)
 		return nil, false
 	end
 	if ref == 0 then
 		return 0, true
 	end
 	if ref > #_table then
-		report.bodyDamaged = true
+		damage(report)
 		return nil, false
 	end
 	local id = _table[ref]
@@ -412,7 +462,7 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 			return i, true
 		end
 	end
-	report.unknown += 1
+	unknown(report)
 	if _retain ~= nil then
 		_retain.lost(report) -- an enum variant this build cannot name (§6.6)
 	end
@@ -540,10 +590,10 @@ local function scan_key(keyfd: any, body: any, entry: any): (any, boolean, boole
 	end
 end
 
-local function read_map(fd: any, r: any, report: any, v: any): boolean
+local function read_map_inner(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then
-		report.bodyDamaged = true
+		damage(report)
 		return false
 	end
 	local endpos = r.at + n
@@ -551,7 +601,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 	-- A MAP HEADER LIES INSIDE ITS OWN L (docs/plans/strict-only.md decision
 	-- 7): an L too short for it, or a count that crosses it, is damage
 	if n < 2 then
-		report.bodyDamaged = true
+		damage(report)
 		r.at = endpos
 		return true
 	end
@@ -561,12 +611,12 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 		local count = r_leb(head)
 		local sub = new_reader(r.b, head.at, endpos)
 		if head.bad then
-			report.bodyDamaged = true
+			damage(report)
 			r.at = endpos
 			return true
 		end
 		if ek ~= 13 then
-			report.kindChanged += 1
+			kind_mismatch(report)
 			r.at = endpos
 			return true
 		end
@@ -592,7 +642,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then
-				report.bodyDamaged = true
+				damage(report)
 				break
 			end
 			local body = new_reader(sub.b, sub.at, sub.at + elemLen)
@@ -605,23 +655,23 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 				report.widened += 1
 			end
 			if kindBad then
-				report.kindChanged += 1
+				kind_mismatch(report)
 				landed = {}
 				break
 			end
 			if not keyOk then
-				report.bodyDamaged = true
+				damage(report)
 				break
 			end
 			if not key_fits(keyfd, keyVal) then
-				report.outOfRange += 1
+				over(report)
 			else
 				local order = -1
 				if hasLast then
 					order = key_compare(keyfd, lastKey, keyVal)
 				end
 				if order > 0 then
-					report.bodyDamaged = true
+					damage(report)
 					break
 				end
 				-- the entry's body is read WHOLE now the key has chosen its
@@ -631,14 +681,14 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 				while true do
 					local ref = r_leb(body)
 					if body.bad then
-						report.bodyDamaged = true
+						damage(report)
 						break
 					end
 					if ref == 0 then
 						break
 					end
 					if ref > #_table then
-						report.bodyDamaged = true
+						damage(report)
 						break
 					end
 					local id = _table[ref]
@@ -646,16 +696,16 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 					-- THE RESERVED IDS IN A NESTED BODY ARE MALFORMED (§3.1), and
 					-- a field id twice in one entry is damage (decision 5)
 					if id == BuildVersionId or id == MessageVocabularyId or id == NodeTableId or met[id] then
-						report.bodyDamaged = true
+						damage(report)
 						break
 					end
 					met[id] = true
 					local efd = entryFields[id]
 					if efd == nil then
-						report.unknown += 1
+						unknown(report)
 						local from = body.at
 						if not skip(body, kind) then
-							report.bodyDamaged = true
+							damage(report)
 							break
 						end
 						if _retain ~= nil then
@@ -670,9 +720,9 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 								end
 								vals[keyfd.slot] = x
 							else
-								report.kindChanged += 1
+								kind_mismatch(report)
 								if not skip(body, kind) then
-									report.bodyDamaged = true
+									damage(report)
 									break
 								end
 							end
@@ -690,9 +740,9 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 							end
 							report.widened += 1
 						else
-							report.kindChanged += 1
+							kind_mismatch(report)
 							if not skip(body, kind) then
-								report.bodyDamaged = true
+								damage(report)
 								break
 							end
 						end
@@ -710,6 +760,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 				end
 				if order == 0 then
 					report.repeatedKey += 1
+					mark(report, "repeatedKey")
 					if _retain ~= nil then
 						_retain.forgetBody(entry, landed[#landed]) -- last wins WHOLE (§2.8, §6.6)
 					end
@@ -723,7 +774,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 		end
 		-- BYTES LEFT INSIDE A MAP'S L AFTER ITS ENTRIES ARE DAMAGE (§3)
 		if sub.at ~= sub.e then
-			report.bodyDamaged = true
+			damage(report)
 		end
 	end
 	if v ~= nil and fd.slot ~= nil then
@@ -733,12 +784,22 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 	return true
 end
 
+-- a map's entry bodies belong to the map field: a counter they move names
+-- the field, not an entry field (§11)
+local function read_map(fd: any, r: any, report: any, v: any): boolean
+	local prior = _deep
+	_deep = false
+	local ok = read_map_inner(fd, r, report, v)
+	_deep = prior
+	return ok
+end
+
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. Key variant k lands at index k.
-local function read_keyed(fd: any, r: any, report: any, v: any): boolean
+local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then
-		report.bodyDamaged = true
+		damage(report)
 		return false
 	end
 	local endpos = r.at + n
@@ -748,7 +809,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	end
 	-- A KEYED HEADER LIES INSIDE ITS OWN L (decision 7)
 	if n < 2 then
-		report.bodyDamaged = true
+		damage(report)
 		r.at = endpos
 		return true
 	end
@@ -758,13 +819,13 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		local count = r_leb(head)
 		local sub = new_reader(r.b, head.at, endpos)
 		if head.bad then
-			report.bodyDamaged = true
+			damage(report)
 			r.at = endpos
 			return true
 		end
 		if ek ~= fd.ek then
 			if not V.widens(ek, fd.ek) then
-				report.kindChanged += 1
+				kind_mismatch(report)
 				r.at = endpos
 				return true
 			end
@@ -774,11 +835,11 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		for _ = 1, count do
 			local key = r_leb(sub)
 			if sub.bad then
-				report.bodyDamaged = true
+				damage(report)
 				break
 			end
 			if key == 0 or key > #_table then
-				report.bodyDamaged = true
+				damage(report)
 				break
 			end
 			local at = 0
@@ -793,11 +854,11 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			end
 			local elemLen = r_leb(sub)
 			if sub.bad or sub.at + elemLen > sub.e then
-				report.bodyDamaged = true
+				damage(report)
 				break
 			end
 			if at == 0 then
-				report.unknown += 1
+				unknown(report)
 				if _retain ~= nil then
 					_retain.lost(report) -- a keyed slot this build cannot name (§6.6)
 				end
@@ -815,14 +876,9 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 				end
 				read_body(d, payload, inst, true)
 				if payload.at ~= payload.e then
-					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
-					-- DEFAULTS (§3.2, §5)
-					report.bodyDamaged = true
-					if _retain ~= nil then
-						_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
-					else
-						inst = d.new()
-					end
+					-- A SLOT WHOSE BODY DID NOT SPEND ITS L IS DAMAGE (§3.2, §5)
+					damage(report)
+					break
 				end
 				x = inst
 			elseif e.s == "enum" then
@@ -832,7 +888,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			end
 			-- BYTES LEFT INSIDE A KEYED SLOT AFTER ITS ELEMENT ARE DAMAGE (§3.2)
 			if payload.at ~= payload.e then
-				report.bodyDamaged = true
+				damage(report)
 				break
 			end
 			if dst ~= nil and x ~= nil then
@@ -845,11 +901,21 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		end
 		-- BYTES LEFT INSIDE A KEYED ARRAY'S L AFTER ITS SLOTS ARE DAMAGE (§3.2)
 		if sub.at ~= sub.e then
-			report.bodyDamaged = true
+			damage(report)
 		end
 	end
 	r.at = endpos
 	return true
+end
+
+-- a keyed array's slots belong to the keyed field: a counter they move names
+-- the field, not a slot's table (§11)
+local function read_keyed(fd: any, r: any, report: any, v: any): boolean
+	local prior = _deep
+	_deep = false
+	local ok = read_keyed_inner(fd, r, report, v)
+	_deep = prior
+	return ok
 end
 
 -- the bytes one text-list element contributes to its total (§2.13): a plain
@@ -892,7 +958,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	local count = r_leb(head)
 	sub.at = head.at
 	if head.bad then
-		report.bodyDamaged = true
+		damage(report)
 		if fd.present ~= nil and v ~= nil then
 			v[fd.present] = true
 		end
@@ -900,7 +966,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	end
 	if ek ~= fd.ek then
 		if not V.widens(ek, fd.ek) then
-			report.kindChanged += 1
+			kind_mismatch(report)
 			return false
 		end
 		report.widened += 1
@@ -919,7 +985,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 		end
 	elseif fd.bound ~= nil and count > fd.bound then
 		-- a count past the reader's bound refuses the load (count_over_bound)
-		report.outOfRange += 1
+		over(report)
 		return false
 	end
 	local slot = fd.slot
@@ -928,18 +994,18 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 		holder = v
 	end
 	if fd.s == "bytes" then
-		-- bytes(N) rides as an array of u8 (§2.5)
-		local have = keep
-		if sub.at + have > sub.e then
-			have = sub.e - sub.at
-			report.bodyDamaged = true
+		-- bytes(N) rides as an array of u8 (§2.5); a body shorter than its
+		-- count is damage, never a payload cut to what the body holds
+		if sub.at + keep > sub.e then
+			damage(report)
+			return false
 		end
 		if holder ~= nil then
-			store_buffer(holder, slot, sub.b, sub.at, have, have)
+			store_buffer(holder, slot, sub.b, sub.at, keep, keep)
 		end
-		sub.at += have
+		sub.at += keep
 		if sub.at ~= sub.e then
-			report.bodyDamaged = true
+			damage(report)
 		end
 		return true
 	end
@@ -968,7 +1034,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	local spent = 0
 	for i = 1, keep do
 		if sub.at >= sub.e then
-			report.bodyDamaged = true
+			damage(report)
 			break
 		end
 		if not read_element(fd, sub, e, dst, i, report, ek, lens) then
@@ -980,7 +1046,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 		if fd.total ~= nil then
 			spent += text_elem_bytes(e, dst[i])
 			if spent > fd.total then
-				report.outOfRange += 1
+				over(report)
 				if fd.array == "list" then
 					dst[i] = nil
 				end
@@ -992,7 +1058,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	end
 	-- BYTES LEFT INSIDE AN ARRAY'S L AFTER ITS ELEMENTS ARE DAMAGE (§3)
 	if got == keep and sub.at ~= sub.e then
-		report.bodyDamaged = true
+		damage(report)
 	end
 	if fd.array == "counted" and holder ~= nil then
 		holder[slot .. "Count"] = got
@@ -1005,17 +1071,20 @@ end
 local function read_array(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then
-		report.bodyDamaged = true
+		damage(report)
 		return false, false
 	end
 	local endpos = r.at + n
 	if n < 2 then
 		-- an L too short for the array's header is damage (§3)
-		report.bodyDamaged = true
+		damage(report)
 		r.at = endpos
 		return true, true
 	end
+	local prior = _deep
+	_deep = false
 	local selected = array_body(fd, new_reader(r.b, r.at, endpos), report, v)
+	_deep = prior
 	r.at = endpos
 	return true, selected
 end
@@ -1025,7 +1094,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	if s == "ptr" or s == "sblob" or s == "bblob" then
 		local index = r_leb(r)
 		if r.bad then
-			report.bodyDamaged = true
+			damage(report)
 			return false
 		end
 		-- a null in a list is false, so the list is never cut short; a fixed
@@ -1035,7 +1104,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			null = false
 		end
 		dst[i] = null
-		_pending[#_pending + 1] = { holder = dst, key = i, index = index, d = e, null = null }
+		_pending[#_pending + 1] = { holder = dst, key = i, index = index, d = e, null = null, name = _ctx }
 		return true
 	elseif s == "enum" then
 		local x, ok = enum_read(e, r, report)
@@ -1047,7 +1116,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	elseif s == "tab" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
-			report.bodyDamaged = true
+			damage(report)
 			return false
 		end
 		local sub = new_reader(r.b, r.at, r.at + n)
@@ -1055,12 +1124,9 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		local inst = d.new()
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
-			report.bodyDamaged = true
-			if _retain ~= nil then
-				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
-			else
-				inst = d.new()
-			end
+			-- AN ELEMENT BODY THAT DID NOT SPEND ITS L IS DAMAGE
+			damage(report)
+			return false
 		end
 		r.at += n
 		dst[i] = inst
@@ -1081,21 +1147,20 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
-			report.bodyDamaged = true
+			damage(report)
 			return false
 		end
 		if not V.utf8(r.b, r.at, n) then
 			-- the element does not land: the list keeps the prefix (§2.13, §3)
-			report.bodyDamaged = true
+			damage(report)
 			r.at += n
 			return false
 		end
-		local keep = n
-		if s == "str" and e.bound ~= nil and e.bound > 0 and keep > e.bound then
-			keep = e.bound
-			report.outOfRange += 1
+		if s == "str" and e.bound ~= nil and e.bound > 0 and n > e.bound then
+			over(report)
+			return false
 		end
-		dst[i] = buffer.readstring(r.b, r.at, keep)
+		dst[i] = buffer.readstring(r.b, r.at, n)
 		r.at += n
 		return true
 	end
@@ -1141,7 +1206,7 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any, holder
 	if s == "bool" or s == "int" or s == "float" then
 		local w = V.width(arm.k)
 		if w > 0 and sub.e - sub.at ~= w then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		return (read_field(arm, sub, u))
@@ -1156,13 +1221,13 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any, holder
 			local framing = new_reader(sub.b, sub.at, sub.e)
 			r_leb(framing)
 			if framing.bad or framing.at ~= framing.e then
-				_report.bodyDamaged = true
+				damage(_report)
 				return false
 			end
 		end
 		local ok = read_field(arm, sub, u)
 		if ok and sub.at ~= sub.e then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		return ok
@@ -1183,27 +1248,32 @@ end
 -- arm's kind byte, L, then L bytes of payload. An arm this reader cannot name
 -- is unknown and the union reads None; a retyped arm is a kind mismatch.
 read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any, boolean)
+	local priorCtx, priorDeep = _ctx, _deep
+	local function done(result: any, ok: boolean): (any, boolean)
+		_ctx, _deep = priorCtx, priorDeep
+		return result, ok
+	end
 	local un = S.lookup(fd.t)
 	local u = un.new()
 	local ref = r_leb(r)
 	if r.bad then
-		report.bodyDamaged = true
-		return u, false
+		damage(report)
+		return done(u, false)
 	end
 	if ref == 0 then
-		return u, true
+		return done(u, true)
 	end
 	if ref > #_table then
-		report.bodyDamaged = true
-		return u, false
+		damage(report)
+		return done(u, false)
 	end
 	local armID = _table[ref]
 	local kind = r_u8(r)
 	local lpos = r.at
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then
-		report.bodyDamaged = true
-		return u, false
+		damage(report)
+		return done(u, false)
 	end
 	local sub = new_reader(r.b, r.at, r.at + n)
 	local arm: any = nil
@@ -1215,11 +1285,18 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 	end
 	local want = if arm == nil then 0 elseif arm.s == "void" then 32 else arm.k
 	if arm == nil then
-		report.unknown += 1
+		if _deep then
+			_ctx = V.idHex(armID)
+		end
+		unknown(report)
 		if _retain ~= nil then
 			_retain.lost(report) -- a union arm this build cannot name (§6.6)
 		end
 	elseif kind ~= want then
+		if _deep then
+			_ctx = arm.name
+		end
+		_deep = false
 		if V.widens(kind, want) then
 			if n == V.width(kind) then
 				local x = scalar_at(sub, arm, kind, report, arm)
@@ -1229,27 +1306,37 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 					u.Type = arm.tag
 				end
 			else
-				report.bodyDamaged = true
+				damage(report)
 			end
 		else
-			report.kindChanged += 1
+			kind_mismatch(report)
 		end
 	elseif arm.s == "void" then
+		if _deep then
+			_ctx = arm.name
+		end
+		_deep = false
 		if n ~= 0 then
-			report.bodyDamaged = true
+			damage(report)
 		else
 			u.Type = arm.tag
 		end
-	elseif read_arm(arm, r, lpos, sub, u, holder, key) then
-		u.Type = arm.tag
+	else
+		if _deep then
+			_ctx = arm.name
+		end
+		_deep = false
+		if read_arm(arm, r, lpos, sub, u, holder, key) then
+			u.Type = arm.tag
+		end
 	end
 	r.at += n
-	return u, true
+	return done(u, true)
 end
 
 -- ONE FIELD (§3): every value read is stored in its slot in the shape
--- docs/PORT-MOO.md names; a string is bounded at a whole code point and a wide
--- string at a whole code unit.
+-- docs/PORT-MOO.md names; a string past its declared bound refuses the load,
+-- never a cut inside its text.
 -- It answers (ok, selected, intact): ok false stops the body; selected false
 -- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
 -- damaged inside its own L, which a field answers with its declared default
@@ -1268,32 +1355,31 @@ read_field = function(fd: any, r: any, v: any): ...any
 	elseif s == "str" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		if not V.utf8(r.b, r.at, n) then
-			_report.bodyDamaged = true
+			damage(_report)
 			r.at += n
 			return true, nil, false
 		end
-		local keep = n
 		if fd.bound ~= nil and n > fd.bound then
-			keep = fd.bound
-			_report.outOfRange += 1
+			over(_report)
+			return false
 		end
 		if fd.slot ~= nil and v ~= nil then
-			v[fd.slot] = buffer.readstring(r.b, r.at, keep)
+			v[fd.slot] = buffer.readstring(r.b, r.at, n)
 		end
 		r.at += n
 		return true
 	elseif s == "text" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		if not V.utf8(r.b, r.at, n) then
-			_report.bodyDamaged = true
+			damage(_report)
 			r.at += n
 			return true, nil, false
 		end
@@ -1314,20 +1400,21 @@ read_field = function(fd: any, r: any, v: any): ...any
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		local index = r_leb(r)
 		if r.bad then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
-		_pending[#_pending + 1] = { holder = v, key = fd.slot, index = index, d = fd }
+		_pending[#_pending + 1] = { holder = v, key = fd.slot, index = index, d = fd, name = _ctx }
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		local sub = new_reader(r.b, r.at, r.at + n)
 		local d = S.lookup(fd.t)
 		local inst = d.new()
+		local prior = _ctx
 		if fd.slot ~= nil and v ~= nil then
 			if _retain ~= nil then
 				-- a second occurrence replaces the body whole: what the first
@@ -1338,20 +1425,14 @@ read_field = function(fd: any, r: any, v: any): ...any
 		end
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
-			-- A NESTED BODY THAT DID NOT SPEND ITS L FALLS BACK ON ITS DECLARED
-			-- DEFAULTS (§3, §5)
-			_report.bodyDamaged = true
-			if _retain ~= nil then
-				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
-			else
-				inst = d.new()
-			end
-			if fd.slot ~= nil and v ~= nil then
-				v[fd.slot] = inst
-			end
-			r.at += n
-			return true, nil, false
+			-- A NESTED BODY THAT DID NOT SPEND ITS L IS DAMAGE (§3, §5): the
+			-- load refuses, it does not refill the body with its defaults; the
+			-- damage names the field around the body
+			_ctx = prior
+			damage(_report)
+			return false
 		end
+		_ctx = prior
 		r.at += n
 		return true
 	elseif s == "union" then
@@ -1375,7 +1456,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 	elseif s == "map" then
 		return read_map(fd, r, _report, v)
 	end
-	_report.bodyDamaged = true
+	damage(_report)
 	return false
 end
 
@@ -1388,18 +1469,21 @@ local function resolve(report: any)
 	if not _numberingGood then
 		return
 	end
+	local declared = declared_types(_rootDesc)
 	local landed: { [any]: boolean } = {}
+	local prior = _ctx
 	for _, p in _pending do
+		_ctx = p.name
 		local value: any = nil
 		if p.index ~= 0 then
 			if p.index == 1 then
 				if p.d.s == "ptr" and p.d.t == _rootDesc.name then
 					value = _rootValue
 				else
-					report.kindChanged += 1
+					kind_mismatch(report)
 				end
 			elseif p.index - 2 >= #_nodes then
-				report.bodyDamaged = true
+				damage(report)
 			else
 				local n = _nodes[p.index - 1]
 				if n ~= nil and n.kind ~= "x" then
@@ -1407,26 +1491,45 @@ local function resolve(report: any)
 						if n.kind == "s" then
 							if landed[n] then
 								report.blobShared = (report.blobShared or 0) + 1
+								mark(report, "blobShared")
 							end
 							landed[n] = true
 							value = n.blob
 						else
-							report.kindChanged += 1
+							kind_mismatch(report)
 						end
 					elseif p.d.s == "bblob" then
 						if n.kind == "b" then
 							if landed[n] then
 								report.blobShared = (report.blobShared or 0) + 1
+								mark(report, "blobShared")
 							end
 							landed[n] = true
 							value = n.blob
 						else
-							report.kindChanged += 1
+							kind_mismatch(report)
 						end
 					elseif n.kind == "t" and n.desc.name == p.d.t then
 						value = n.v
 					else
-						report.kindChanged += 1
+						kind_mismatch(report)
+					end
+				elseif n ~= nil then
+					-- A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the
+					-- reader cannot name at all it reads null, counted unknown
+					-- once; of a type the reader DECLARES, or a blob, that is
+					-- not the slot's target it is a wrong-type pointer target,
+					-- damage (§6.5).
+					local want: string = ""
+					if p.d.s == "sblob" then
+						want = StringBlobId
+					elseif p.d.s == "bblob" then
+						want = BytesBlobId
+					else
+						want = S.lookup(p.d.t).id
+					end
+					if n.tid ~= want and (declared[n.tid] or n.tid == StringBlobId or n.tid == BytesBlobId) then
+						damage(report)
 					end
 				end
 			end
@@ -1438,6 +1541,7 @@ local function resolve(report: any)
 			p.holder[p.key] = value
 		end
 	end
+	_ctx = prior
 end
 
 -- ---- THE CYCLE CHECK (§3.1, §4; internal/tablewire decodenodes.go cyclic) --
@@ -1616,7 +1720,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	while true do
 		local ref = r_leb(r)
 		if r.bad then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		if ref == 0 then
@@ -1638,37 +1742,40 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			return true
 		end
 		if ref > #_table or r.at >= r.e then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		local kind = r_u8(r)
 		local id = _table[ref]
+		local fd = byId[id]
+		if _deep then
+			_ctx = if fd ~= nil then fd.name else V.idHex(id)
+		end
 		if id == BuildVersionId or id == MessageVocabularyId or met[id] then
-			_report.bodyDamaged = true
+			damage(_report)
 			return false
 		end
 		met[id] = true
 		local handled = false
 		if id == NodeTableId then
 			if nested then
-				_report.bodyDamaged = true
+				damage(_report)
 				return false
 			end
 			if desc.variable then
 				if not skip(r, kind) then
-					_report.bodyDamaged = true
+					damage(_report)
 					return false
 				end
 				handled = true
 			end
 		end
 		if not handled then
-			local fd = byId[id]
 			if fd == nil then
-				_report.unknown += 1
+				unknown(_report)
 				local from = r.at
 				if not skip(r, kind) then
-					_report.bodyDamaged = true
+					damage(_report)
 					return false
 				end
 				if _retain ~= nil then
@@ -1689,9 +1796,9 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 					seen[id] = true
 					_report.widened += 1
 				else
-					_report.kindChanged += 1
+					kind_mismatch(_report)
 					if not skip(r, kind) then
-						_report.bodyDamaged = true
+						damage(_report)
 						return false
 					end
 				end
@@ -1752,12 +1859,12 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 	local prior = report.nonFiniteField
 	report.nonFiniteField = nil
 	report.nonFinite = 0
+	_report = report
 	local o = open(bytes, report)
 	if o == nil then
 		return nil
 	end
 	_table = o.table
-	_report = report
 	_countRefused = false
 	_countNonFinite = 0
 	_countNonFiniteField = nil
@@ -1777,7 +1884,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 		end
 		if ref == 0 then
 			if walk.at ~= o.e then
-				report.bodyDamaged = true
+				damage(report)
 				report.damaged = true
 				return nil
 			end
@@ -1804,8 +1911,8 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 			if tid == StringBlobId and desc.place.str then
 				if not V.utf8(rec.body, 0, buffer.len(rec.body)) then
 					-- §3.1: a refused record KEEPS ITS INDEX as a placeholder
-					report.bodyDamaged = true
-					_nodes[#_nodes + 1] = { kind = "x" }
+					damage(report)
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "s", blob = rec.body }
 				end
@@ -1814,11 +1921,12 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 			else
 				local nc = place[tid]
 				if nc == nil then
-					report.unknown += 1
+					_ctx = V.idHex(tid)
+					unknown(report)
 					if _retain ~= nil then
 						_retain.lost(report) -- a node record of a type this build cannot place (§6.6)
 					end
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = nc.new(), body = rec.body }
 				end
@@ -1859,7 +1967,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 	-- A CYCLIC WIRE IS DAMAGE (§3.1, §4): the stored graph is checked once
 	-- every index has resolved
 	if _numberingGood and not report.bodyDamaged and cyclic() then
-		report.bodyDamaged = true
+		damage(report)
 	end
 	if report.nonFiniteField ~= nil then
 		report.reason = "non_finite_float: " .. report.nonFiniteField
@@ -1966,241 +2074,10 @@ local function frame(b: buffer): any
 	return { ids = ids, e = endpos, tail = buffer.readstring(b, endpos, len - endpos) }
 end
 
-local function bytesOf(b: buffer, s: number, e: number): string
-	return buffer.readstring(b, s, e - s)
-end
-
-local function fieldById(fields: { any }, id: string): any
-	for _, f in fields do
-		if f.id == id then
-			return f
-		end
-	end
-	return nil
-end
-
--- THE WITNESS: the first field the walk saw move a counter (§11, a refusal
--- names the field). The file is rebuilt with only a PREFIX of a body's fields
--- (the id table unchanged) and loaded again into a fresh report; the first
--- prefix whose last field moves the counter names that field, descending
--- into an inline table and into a union's selected arm. An id the reader
--- cannot name is spelled #<hex>; a counter no field holds names none.
+-- THE FIELD A COUNTER MOVED IN (§11): recorded during the one decode, so a
+-- refused load names its field without reading the file a second time.
 local function witness(root: string, b: buffer, k: string): string?
-	local fr = frame(b)
-	if fr == nil then
-		return nil
-	end
-	local ids = fr.ids
-	local desc = S.lookup(root)
-	local top = walkBody(b, 1, fr.e, ids)
-	if top == nil then
-		return nil
-	end
-
-	local function probe(wire: string): boolean
-		local rep = fresh()
-		readOpened(root, buffer.fromstring(wire), rep)
-		return moved(rep, k)
-	end
-
-	local refine: (fd: any, seg: any, rebuild: (string) -> string) -> string?
-	local function isolate(fields: { any }, f: any, rebuild: (string) -> string): string?
-		for i = 1, #f.fields do
-			local parts = {}
-			for j = 1, i do
-				local s = f.fields[j]
-				parts[j] = bytesOf(b, s.s, s.e)
-			end
-			if probe(rebuild(table.concat(parts) .. "\0")) then
-				local seg = f.fields[i]
-				local fd = fieldById(fields, seg.id)
-				if fd == nil then
-					return V.idHex(seg.id)
-				end
-				local before = table.concat(parts, "", 1, i - 1)
-				return refine(fd, seg, function(one: string): string
-					return rebuild(before .. one .. "\0")
-				end) or fd.name
-			end
-		end
-		return nil
-	end
-	refine = function(fd: any, seg: any, rebuild: (string) -> string): string?
-		if fd.s == "tab" and seg.kind == 13 and fd.t ~= nil then
-			local n, bs = V.leb(b, seg.ps, seg.e)
-			if n == nil then
-				return fd.name
-			end
-			local inner = walkBody(b, bs, bs + n, ids)
-			if inner == nil then
-				return fd.name
-			end
-			local head = bytesOf(b, seg.s, seg.ps)
-			return isolate(S.lookup(fd.t).fields, inner, function(body: string): string
-				return rebuild(head .. V.lebString(#body) .. body)
-			end) or fd.name
-		elseif fd.s == "union" and seg.kind == 15 and fd.t ~= nil then
-			local ref = V.leb(b, seg.ps, seg.e)
-			if ref == nil or ref == 0 or ref > #ids then
-				return fd.name
-			end
-			local arm = fieldById(S.lookup(fd.t).arms, ids[ref])
-			if arm == nil then
-				return V.idHex(ids[ref])
-			end
-			return arm.name
-		end
-		return fd.name
-	end
-
-	local function wireOf(body: string): string
-		return "\1" .. body .. fr.tail
-	end
-
-	-- the node records (§3.1), read before the root body: the node table
-	-- field is kept and every other root field dropped, and records past the
-	-- one under test are emptied in place, so every pointer still resolves
-	local nodeSeg: any = nil
-	for _, s in top.fields do
-		if s.id == NodeTableId then
-			nodeSeg = s
-		end
-	end
-	if desc.variable and nodeSeg ~= nil and nodeSeg.kind == 12 then
-		local n, ps = V.leb(b, nodeSeg.ps, nodeSeg.e)
-		local recs: { any } = {}
-		local ok = n ~= nil
-		local count = 0
-		if n ~= nil then
-			local stop = ps + n
-			local c, p = V.leb(b, ps, stop)
-			ok = c ~= nil
-			count = c or 0
-			while ok and p < stop do
-				local tref, q = V.leb(b, p, stop)
-				if tref == nil or tref == 0 or tref > #ids then
-					ok = false
-					break
-				end
-				local tlen, r = V.leb(b, q, stop)
-				if tlen == nil or r + tlen > stop then
-					ok = false
-					break
-				end
-				recs[#recs + 1] = { tref = tref, tid = ids[tref], s = r, e = r + tlen }
-				p = r + tlen
-			end
-			ok = ok and count == #recs
-		end
-		if ok then
-			local head = bytesOf(b, nodeSeg.s, nodeSeg.ps)
-			local function empty(rec: any): string
-				if rec.tid == StringBlobId or rec.tid == BytesBlobId then
-					return ""
-				end
-				return "\0"
-			end
-			local function nodeWire(bodyOf: (number, any) -> string): string
-				local parts = { V.lebString(#recs) }
-				for i, rec in recs do
-					local body = bodyOf(i, rec)
-					parts[#parts + 1] = V.lebString(rec.tref) .. V.lebString(#body) .. body
-				end
-				local payload = table.concat(parts)
-				return wireOf(head .. V.lebString(#payload) .. payload .. "\0")
-			end
-			local placed: { [string]: any } = {}
-			for _, name in desc.place.tables do
-				local d = S.lookup(name)
-				placed[d.id] = d
-			end
-			for upto = 1, #recs + 1 do
-				local j = upto - 1
-				local wire = nodeWire(function(i: number, rec: any): string
-					if i <= j then
-						return bytesOf(b, rec.s, rec.e)
-					end
-					return empty(rec)
-				end)
-				if probe(wire) then
-					if j == 0 then
-						if k == "unknown" then
-							for _, rec in recs do
-								local blob = (rec.tid == StringBlobId and desc.place.str) or (rec.tid == BytesBlobId and desc.place.bytes)
-								if not blob and placed[rec.tid] == nil then
-									return V.idHex(rec.tid)
-								end
-							end
-						end
-						return nil
-					end
-					local rec = recs[j]
-					local rd = placed[rec.tid]
-					if rd == nil then
-						return nil
-					end
-					local body = walkBody(b, rec.s, rec.e, ids)
-					if body == nil then
-						return nil
-					end
-					return isolate(rd.fields, body, function(one: string): string
-						return nodeWire(function(i: number, r: any): string
-							if i < j then
-								return bytesOf(b, r.s, r.e)
-							end
-							if i == j then
-								return one
-							end
-							return empty(r)
-						end)
-					end)
-				end
-			end
-		end
-	end
-
-	if desc.variable and nodeSeg ~= nil and probe(wireOf(bytesOf(b, nodeSeg.s, nodeSeg.e) .. "\0")) then
-		return nil
-	end
-	local others = {}
-	for _, s in top.fields do
-		if not (desc.variable and s == nodeSeg) then
-			others[#others + 1] = s
-		end
-	end
-	for i = 1, #others do
-		local parts = {}
-		local taken = 0
-		for _, s in top.fields do
-			if desc.variable and s == nodeSeg then
-				parts[#parts + 1] = bytesOf(b, s.s, s.e)
-			elseif taken < i then
-				taken += 1
-				parts[#parts + 1] = bytesOf(b, s.s, s.e)
-			end
-		end
-		if probe(wireOf(table.concat(parts) .. "\0")) then
-			local seg = others[i]
-			local fd = fieldById(desc.fields, seg.id)
-			if fd == nil then
-				return V.idHex(seg.id)
-			end
-			return refine(fd, seg, function(one: string): string
-				local out = {}
-				local t = 0
-				for _, s in top.fields do
-					if desc.variable and s == nodeSeg then
-						out[#out + 1] = bytesOf(b, s.s, s.e)
-					elseif t < i then
-						t += 1
-						out[#out + 1] = if t == i then one else bytesOf(b, s.s, s.e)
-					end
-				end
-				return wireOf(table.concat(out) .. "\0")
-			end) or fd.name
-		end
-	end
-	return nil
+	return _moved[k]
 end
 
 -- ---- THE WIRE-ALONE WALK (§6.5, "TWO KINDS OF CONDITION") ----------------
@@ -2489,7 +2366,7 @@ wcBody = function(s: number, e: number, root: boolean): boolean
 		end
 		local kind = buffer.readu8(wc.b, p)
 		p += 1
-		if id == BuildVersionId or id == MessageVocabularyId then
+		if (id == BuildVersionId or id == MessageVocabularyId) and (not root or not wc.announcement) then
 			return wcFail("wire_damaged") -- an announcement id in a file body
 		elseif id == NodeTableId then
 			if not root or kind ~= 12 then
@@ -2591,11 +2468,12 @@ local function wcGraph(children: { { number } }, blobs: { boolean }): boolean
 	return true
 end
 
--- wireCheck(b, s, e, ids): every wire-alone condition over the root body
--- [s, e). The first refusal's name or nil, and whether a non-finite float
--- rides anywhere in the file.
-local function wireCheck(b: buffer, s: number, e: number, ids: { string }): (string?, boolean)
-	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil }
+-- wireCheck(b, s, e, ids, announcement): every wire-alone condition over the
+-- root body [s, e). The first refusal's name or nil, and whether a non-finite
+-- float rides anywhere in the file. An announcement's body is the one root
+-- body whose transport carries the two reserved announcement ids (§3.3).
+local function wireCheck(b: buffer, s: number, e: number, ids: { string }, announcement: boolean?): (string?, boolean)
+	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil, announcement = announcement == true }
 	local function finish(): (string?, boolean)
 		local fail, nonFinite = wc.fail, wc.nonFinite
 		wc = nil
@@ -2638,6 +2516,13 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }): (str
 	return finish()
 end
 
+-- wireCheckAnnouncement is wireCheck over an announcement's root body
+-- (docs/SPEC-TABLES.md §3.3): the two reserved announcement ids are its
+-- transport, so they are admitted in that body and nowhere else.
+function L.wireCheckAnnouncement(b: buffer, s: number, e: number, ids: any): (string?, boolean)
+	return wireCheck(b, s, e, ids, true)
+end
+
 -- THE VARIABLE FORM'S STRICT READ (§6.5): the one answer for form 1, over
 -- the strict walk. It resets the caller's report, applies the file's own
 -- framing (integrity, the id table and the root body's terminator), then the
@@ -2646,6 +2531,10 @@ end
 function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 	local rep: any = report or {}
 	reset(rep)
+	_moved = {}
+	_seen = {}
+	_ctx = nil
+	_deep = true
 	if bytes == nil or buffer.len(bytes) < 1 then
 		rep.damaged = true
 		rep.reason = "wire_damaged"

@@ -118,7 +118,7 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control packet-end-lua packet-end-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -461,3 +461,93 @@ tables-lua-damage-discard-negative-control: toolchain-lua
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/luatable -run '^TestLua(Message)?DamageDiscardNegativeControl$$'
 
 test-lua: tables-lua-damage-discard-negative-control
+
+# ---------------------------------------------------------------- packet end
+# SPEC §5: the generated public Read<T> is the one-packet read and ends with
+# the runtime's end check; a nested type reads through Read<T>Body, which does
+# not end. The shared End.schema vectors are read with ReadEnd: the exact
+# three-bit packet accepted, one whole trailing byte refused, and the final
+# byte's unused bits set refused.
+build/packet-end/lua/.stamp: bin/schema test/packet-end/End.schema
+	@rm -rf build/packet-end/lua && mkdir -p build/packet-end/lua
+	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/End.schema
+	@touch $@
+
+.PHONY: packet-end-lua packet-end-lua-negative-control
+packet-end-lua: toolchain-lua build/packet-end/lua/.stamp
+	$(LUA) test/packet-end/lua/main.lua build/packet-end/lua/generated testdata/wire/packet-end
+
+packet-end-lua-negative-control: packet-end-lua
+	@rm -rf build/packet-end/lua-negative && mkdir -p build/packet-end/lua-negative
+	go run ./tools/sabotage -name packet-end-lua-end-check -out build/packet-end/lua-negative/read.gotext internal/codegen/lua/read.go
+	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-end/lua-negative/read.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/lua-negative/overlay.json
+	go build -overlay=build/packet-end/lua-negative/overlay.json -o build/packet-end/lua-negative/schema ./cmd/schema
+	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/End.schema
+	@if $(LUA) test/packet-end/lua/main.lua build/packet-end/lua-negative/generated testdata/wire/packet-end > build/packet-end/lua-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the Lua packet end check was removed and the end gate stayed green'; exit 1; fi
+	@grep -Fq 'FAILED: trailing: accepted as 3' build/packet-end/lua-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
+	@grep -Fq 'FAILED: padding: accepted as 3' build/packet-end/lua-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the set padding was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
+	@if grep -F 'FAILED: ' build/packet-end/lua-negative/log | grep -Fvq -e 'FAILED: trailing: ' -e 'FAILED: padding: '; then \
+		cat build/packet-end/lua-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the end check went red'; exit 1; fi
+	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'
+
+# Compressed-float packet writes must refuse values outside their range.
+build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema
+	@rm -rf build/packet-write-cfloat/lua && mkdir -p build/packet-write-cfloat/lua
+	./bin/schema generate --lang lua --out build/packet-write-cfloat/lua/generated test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
+.PHONY: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
+packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp
+	$(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
+
+packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
+	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated
+	@cp -R build/packet-write-cfloat/lua/generated/. build/packet-write-cfloat/lua-negative/generated/
+	go run ./tools/sabotage -name packet-write-cfloat-lua-range -out build/packet-write-cfloat/lua-negative/generated/CFloat.lua build/packet-write-cfloat/lua/generated/CFloat.lua
+	@if $(MAKE) packet-write-cfloat-lua PACKET_WRITE_CFLOAT_LUA_DIR=build/packet-write-cfloat/lua-negative/generated > build/packet-write-cfloat/lua-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-write-cfloat-lua stayed green'; exit 1; fi
+	@sed -n 's/^FAILED: \([^:]*\):.*/\1/p' build/packet-write-cfloat/lua-negative/log | sort > build/packet-write-cfloat/lua-negative/actual
+	@diff -u test/packet-write-cfloat/lua/write.expected build/packet-write-cfloat/lua-negative/actual
+	@echo 'packet-write-cfloat-lua negative control: range check removal refused by packet-write-cfloat-lua'
+
+test-lua: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
+
+# ---------------------------------------------------------------- bare integers
+# The shared bare-integer write cases (test/packet-write-bareint, SPEC §5.1
+# row 11): a value outside a bare intN/uintN field's width, or not an
+# integer, is refused by the generated writer (false, never a raise); each
+# width's min and max is written and read back exactly.
+build/packet-write-bareint/lua/.stamp: bin/schema test/packet-write-bareint/BareInt.schema
+	@rm -rf build/packet-write-bareint/lua && mkdir -p build/packet-write-bareint/lua
+	./bin/schema generate --lang lua --out build/packet-write-bareint/lua/generated test/packet-write-bareint/BareInt.schema
+	@touch $@
+
+.PHONY: packet-write-bareint-lua packet-write-bareint-lua-negative-control
+packet-write-bareint-lua: toolchain-lua build/packet-write-bareint/lua/.stamp
+	$(LUA) test/packet-write-bareint/lua/main.lua build/packet-write-bareint/lua/generated test/packet-write-bareint
+
+# The control removes the width test of a bare field below 64 bits: an
+# out-of-width value must then write its low bits, and the gate must name
+# that refusal.
+packet-write-bareint-lua-negative-control: packet-write-bareint-lua
+	@rm -rf build/packet-write-bareint/lua-negative && mkdir -p build/packet-write-bareint/lua-negative
+	go run ./tools/sabotage -name packet-write-bareint-lua-width -out build/packet-write-bareint/lua-negative/write.gotext internal/codegen/lua/write.go
+	@printf '{"Replace":{"%s/internal/codegen/lua/write.go":"%s/build/packet-write-bareint/lua-negative/write.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-bareint/lua-negative/overlay.json
+	go build -overlay=build/packet-write-bareint/lua-negative/overlay.json -o build/packet-write-bareint/lua-negative/schema ./cmd/schema
+	./build/packet-write-bareint/lua-negative/schema generate --lang lua --out build/packet-write-bareint/lua-negative/generated test/packet-write-bareint/BareInt.schema
+	@if $(LUA) test/packet-write-bareint/lua/main.lua build/packet-write-bareint/lua-negative/generated test/packet-write-bareint \
+		> build/packet-write-bareint/lua-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a removed bare-integer width test passed in Lua'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-bareint int8-above-max refused' build/packet-write-bareint/lua-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Lua failed for another reason'; cat build/packet-write-bareint/lua-negative/log; exit 1; }
+	@if grep -F -e ' written: ' -e ' reads back exactly: ' -e ' cases: ' build/packet-write-bareint/lua-negative/log; then \
+		echo 'NEGATIVE CONTROL FAILED: a lawful value went red, not only a width refusal'; exit 1; fi
+	@echo 'packet-write-bareint Lua negative control: a removed width test fails the out-of-width refusal'
+
+test-lua: packet-write-bareint-lua packet-write-bareint-lua-negative-control

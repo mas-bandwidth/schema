@@ -93,7 +93,7 @@
         "Cut the tolerant wire. It's too much work. It was a mistake to try to do it.",
         "That's my mistake. It's best to consistently refuse. Too much undefined behavior per-language by trying to be tolerant."
       ],
-      "source": "the maintainer, live in session, relayed verbatim in the spec brief. Scope confirmed with him: one read only, the strict read; any damage, out-of-range value, kind mismatch, broken framing or non-finite float refuses the whole load (the brief's 'with exactly one reason name' is SUPERSEDED by refusal-verdict-only: the verdict is the contract and the reason is per-language diagnostic detail); no partial value, no repair, no clamp-and-count, no reading past damage. Kept, because it is not damage: version evolution across a lawful lineage (widening, absent fields at their defaults, unknown fields from a newer writer skipped or retained, form and lineage selection). A value outside the WRITER's range is damage and refuses; it never clamps. The same for the JSON and text readers and the fixed form. Specified in docs/SPEC-TABLES.md §4, §6.5 and §13.10 and docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6 and §5.4.",
+      "source": "the maintainer, live in session, relayed verbatim in the spec brief. Scope confirmed with him: one read only, the strict read; any damage, out-of-range value, kind mismatch, broken framing or non-finite float refuses the whole load (the brief's 'with exactly one reason name' is SUPERSEDED by refusal-verdict-only: the verdict is the contract and the reason is per-language diagnostic detail); no partial value, no repair, no clamp-and-count, no reading past damage. Kept, because it is not damage: version evolution across a lawful lineage (widening, absent fields at their defaults, unknown fields from a newer writer skipped or retained, form and lineage selection). A value outside the WRITER's range is damage and refuses; it never clamps. The same for the JSON and text readers and the fixed form. Specified in docs/SPEC-TABLES.md §4, §6.5 and §13.10 and docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6 and §5.4. The ruling covers the schema CLI: its commands read strictly and have no tolerant mode.",
       "supersedes": [
         "the tolerant read and its named twins: SPEC-TABLES §6.5 'THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS OWN' (61105d0b1, 2026-10-17)",
         "the owner read policy of 2026-10-17, 'writers always strict, reads forgiving only where that costs nearly nothing' (SPEC-TABLES §11, 1f53ff49d): reads now forgive evolution alone",
@@ -227,7 +227,7 @@
       "quotes": [
         "It is our intent to refuse the write of out of range values. In low level languages like C/C++ our intent is to do this at debug time for speed. Keep that behavior. In languages that do not have asserts it is OK to refuse in release build. Some mechanism for refusal of invalid values or write must exist."
       ],
-      "source": "relayed by Rowan from the live session. Every leg refuses a value its declaration does not admit: a debug-only assert where the language's own idiom is one (C, C++, C#, Rust, Java, Dart), and a refusal in every build where it is not (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose). Under strict-only there is no clamp to fall back on: a value outside its declaration refuses on both sides, and a compressed or ranged float off its range is refused by the writer (docs/plans/strict-only.md, decision 8). docs/SPEC.md §5.1 carries the per-leg table and the four conformance surfaces write-refusal, write-refusal-fixed, write-refusal-message and write-refusal-json hold it. This ruling makes nothing not-applicable."
+      "source": "relayed by Rowan from the live session. Every leg refuses a value its declaration does not admit: a debug-only assert where the language's own idiom is one (C, C++, C#, Rust, Java, Dart, Lobster), and a refusal in every build where it is not (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose). For Lobster, the assert placement applies to packet writes only: the pinned default JIT traps on the packet assert, and the release configuration --runtime-no-asserts removes it. Its table writers SaveChecked and save_reasoned refuse invalid values in every build. Under strict-only there is no clamp to fall back on: a value outside its declaration refuses on both sides, and a compressed or ranged float off its range is refused by the writer (docs/plans/strict-only.md, decision 8). docs/SPEC.md §5.1 carries the per-leg table and the four conformance surfaces write-refusal, write-refusal-fixed, write-refusal-message and write-refusal-json hold it. This ruling makes nothing not-applicable."
     },
     {
       "id": "reads-refuse-non-canonical",
@@ -373,6 +373,33 @@
       "source": "the owner's standing rule of 2026-11-10 that strict wins, applied by the coordinator",
       "supersedes": [
         "the §16.3 reading that a string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — passes the read when it decodes to U+0000 because it \"stores nothing and is not this event\""
+      ]
+    },
+    {
+      "id": "json-wide-integers-are-strings",
+      "date": "2026-11-10",
+      "quotes": [
+        "strings, because numbers can be wrong"
+      ],
+      "source": "relayed by the coordinator from the live session; ruled 2026-11-10: in the JSON form, integers wider than 32 bits are written as strings of decimal digits"
+    },
+    {
+      "id": "json-integer-token-only",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON integer field takes an integer token only: no fraction, no exponent, no negative zero"
+      ],
+      "source": "the owner's standing rule that strict wins, applied by the coordinator"
+    },
+    {
+      "id": "json-wide-integers-refuse-number-token",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON integer field whose kind is wider than 32 bits takes the STRING form only; a bare number token there refuses kind_mismatch"
+      ],
+      "source": "the owner's standing rule that strict wins, applied by the coordinator",
+      "supersedes": [
+        "the 2026-10-22 read half of the wide-integer ruling: a wide integer reads \"as a string or a number, the same digits\" (SPEC-TABLES §16.2)"
       ]
     }
   ]

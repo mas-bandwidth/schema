@@ -128,6 +128,16 @@ func TestFixedCorpusRoundTripsByteIdenticalDart(t *testing.T) {
 func fixedCorpusRoundTrip(t *testing.T, corpus, file string, records int) {
 	t.Helper()
 	path := filepath.Join(corpus, file)
+	// THE DEAD-BYTE ROWS ARE NOT ROUND-TRIP ROWS FOR A CHANGED FILE: one dead
+	// region is non-zero, so the read refuses whole and there is nothing to
+	// write back. A control is the same record with every dead byte zero and
+	// does read and save back byte for byte. TestFixedDeadBytesAreZero is the
+	// list; this keeps every manifest row held to the rule that governs it
+	// (docs/rulings.json fixed-dead-bytes-are-zero).
+	if vec, ok := deadVectorByFile(file); ok {
+		runDeadVectorAt(t, dartBinary(t), corpus, vec)
+		return
+	}
 	if leaf := fixedManifestNonFinite(t, corpus)[file]; leaf != "" {
 		// THE REFERENCE STILL WRITES A NaN OR AN INFINITY HERE, and under the
 		// finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3) the file is a

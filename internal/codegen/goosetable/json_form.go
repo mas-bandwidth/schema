@@ -310,7 +310,9 @@ type jsonEmit struct {
 }
 
 // shapeOf is the JSON type a value of f's element kind is written as
-// (docs/SPEC-TABLES.md §16.2): o object, a array, s string, b bool, n number.
+// (docs/SPEC-TABLES.md §16.2): o object, a array, s string, b bool, n number,
+// N a wide integer, which is written as a string and read as a string or a
+// number.
 func shapeOf(f *ir.Field) byte {
 	t := f.Type
 	switch t.Kind {
@@ -318,6 +320,12 @@ func shapeOf(f *ir.Field) byte {
 		return 'b'
 	case ir.TString, ir.TBytes:
 		return 's'
+	case ir.TInt, ir.TBits, ir.TFixed:
+		// a kind wider than 32 bits is a string of digits (§16.2)
+		if t.Width > 32 {
+			return 'N'
+		}
+		return 'n'
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:

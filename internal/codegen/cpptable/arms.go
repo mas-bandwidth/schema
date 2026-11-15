@@ -124,8 +124,8 @@ func armWireKind(v ir.UnionVariant) int {
 
 // emitArmMeasure adds ONE ARM'S PAYLOAD length to `into` — the bytes under
 // the arm's `L`, never the framing — and returns through `onBad` where the
-// storage invariant or the wire identity refuses the value, exactly as the
-// field paths do.
+// wire identity refuses the value, exactly as the field paths do; the storage
+// invariant is a debug assert (storageAssert).
 func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx string) {
 	if v.Void() {
 		g.pf("%s// a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)\n", ind)
@@ -154,15 +154,15 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, pointee, pointee, index, onBad)
 		g.pf("%s    %s += TableLebBytes( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, into, index, ind)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.storageAssert(ind, count, f.Type.Size)
 		g.pf("%s%s += %s; // the string's bytes under the arm's L\n", ind, into, count)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.storageAssert(ind, count, f.Type.Size)
 		g.pf("%s%s += 1 + TableLebBytes( (uint64_t) %s ) + %s; // element kind 6, N, then the bytes\n", ind, into, count, count)
 	case f.Array != ir.ArrayNone:
 		n := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.ArrayBound, onBad)
+			g.storageAssert(ind, count, f.ArrayBound)
 			n = count
 		}
 		elemKind := kind
@@ -179,7 +179,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("%sif ( %s.type == %sType::None ) { %s += 1; } // the inner union's None: L = 1 and that one zero byte (§3)\n", ind, value, un.Name, into)
 		g.pf("%selse\n%s{\n", ind, ind)
-		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", sfx+"a")
+		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", onBad, sfx+"a")
 		g.pf("%s}\n", ind)
 	default:
 		g.emitFloatCheck(kind, value, ind, onBad)
@@ -214,16 +214,16 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 		g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, pointee, pointee, index, onBad)
 		g.pf("%s    w.putleb( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, index, ind)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.storageAssert(ind, count, f.Type.Size)
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.storageAssert(ind, count, f.Type.Size)
 		g.pf("%[1]sw.put8( %[2]d );\n%[1]sw.putleb( (uint64_t) %[3]s ); // bytes ride as an array of u8 (§2.5)\n", ind, tkU8, count)
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
 	case f.Array != ir.ArrayNone:
 		n := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.ArrayBound, onBad)
+			g.storageAssert(ind, count, f.ArrayBound)
 			n = count
 		}
 		elemKind := kind
@@ -309,6 +309,8 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		// declared defaults
 		g.pf("%sif ( !%s.has( 2 ) ) { break; }\n", ind, rdr)
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
+		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableArrayElementKind( %[2]s ) )\n%[1]s    {\n%[1]s        %[3]s = %[4]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, ek, tag, none)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
 		g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, n, tag, none)
 		if widenableElement(f) {

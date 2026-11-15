@@ -614,8 +614,13 @@ fn jw_view(c: JvOut&, s: i64, d: FieldDesc) -> const u8[:] {
 }
 
 // ---- PASS ONE (§16.7): every written slot that names a node, counted ----
+//
+// The count walk is an explicit work list, so a long pointer chain costs no
+// stack per node. Only by-value nesting recurses while the slots are
+// collected, and its depth is the declaration's.
 
-recursive fn jw_count_rec(c: JvOut&, tab: i64, rec: i64) {
+// jw_count_edges appends one record's pointer edges, in field order.
+recursive fn jw_count_edges(c: JvOut&, tab: i64, rec: i64, out: i64[>..<]&) {
     let n = c.unit.tables[tab].fields.len;
     var i: i64 = 0;
     while i < n {
@@ -623,46 +628,31 @@ recursive fn jw_count_rec(c: JvOut&, tab: i64, rec: i64) {
         let d = c.unit.tables[tab].fields[i];
         let s = jv_slot(c.vals, rec, i);
         if jv_guard(c.unit, c.vals, tab, rec, i) && !(d.optional && jv_state(c.vals, s) == ValAbsent) {
-            jw_count_value(c, s, d);
+            jw_count_value(c, s, d, out);
         }
         i += 1;
     }
 }
 
-fn jw_count_node(c: JvOut&, wire: i64) {
-    if wire <= 0 { return; }
-    c.count[wire] += 1;
-    if c.open[wire] {
-        c.bad = true; // a data cycle (§3.1)
-        return;
-    }
-    if c.count[wire] > 1 || wire < 2 { return; }
-    let n = wire - 2;
-    if c.nodes[n].blob != 0 || c.nodes[n].tab < 0 || c.nodes[n].val < 0 { return; }
-    c.open[wire] = true;
-    jw_count_rec(c, c.nodes[n].tab, c.nodes[n].val);
-    c.open[wire] = false;
-}
-
-recursive fn jw_count_value(c: JvOut&, s: i64, d: FieldDesc) {
+recursive fn jw_count_value(c: JvOut&, s: i64, d: FieldDesc, out: i64[>..<]&) {
     if s < 0 { return; }
     if d.shape == ShapePtr || d.shape == ShapeSBlob || d.shape == ShapeBBlob {
-        jw_count_node(c, jw_edge(c, s));
+        out.push(jw_edge(c, s));
         return;
     }
     if d.shape == ShapeTab {
-        if c.vals[s].made { jw_count_rec(c, c.vals[s].tab, s); }
+        if c.vals[s].made { jw_count_edges(c, c.vals[s].tab, s, out); }
         return;
     }
     if d.shape == ShapeUnion {
-        jw_count_arm(c, s, d.ref);
+        jw_count_arm(c, s, d.ref, out);
         return;
     }
     if d.shape == ShapeMap {
         if !c.vals[s].made { return; }
         for k in c.vals[s].len {
             let e = c.vals[s].first + k;
-            if c.vals[e].made { jw_count_rec(c, c.vals[e].tab, e); }
+            if c.vals[e].made { jw_count_edges(c, c.vals[e].tab, e, out); }
         }
         return;
     }
@@ -673,17 +663,63 @@ recursive fn jw_count_value(c: JvOut&, s: i64, d: FieldDesc) {
         let live = if d.array == ArrayCounted || d.array == ArrayList { c.vals[s].len } else { c.vals[s].count };
         for k in live {
             let es = c.vals[s].first + k;
-            jw_count_value(c, es, e);
+            jw_count_value(c, es, e, out);
         }
     }
 }
 
-fn jw_count_arm(c: JvOut&, s: i64, name: const u8[:]) {
+recursive fn jw_count_arm(c: JvOut&, s: i64, name: const u8[:], out: i64[>..<]&) {
     let tag = c.vals[s].bits.lo as! i64;
     if c.vals[s].state != ValPresent || tag == 0 || !c.vals[s].made { return; }
     let u = jv_union(c.unit, name);
     if u < 0 || tag > c.unit.unions[u].arms.len { return; }
-    jw_count_value(c, c.vals[s].first, c.unit.unions[u].arms[tag - 1]);
+    jw_count_value(c, c.vals[s].first, c.unit.unions[u].arms[tag - 1], out);
+}
+
+// jw_count_graph counts every written slot that names a node. Each work entry
+// enters a wire node or closes one still open; a node still open when it is
+// entered again is a data cycle (§3.1).
+fn jw_count_graph(c: JvOut&, tab: i64, rec: i64) {
+    var pending: i64[>..<] = [];
+    var stack: i64[>..<] = [];
+    var closing: bool[>..<] = [];
+    jw_count_edges(c, tab, rec, pending);
+    var at = pending.len;
+    while at > 0 {
+        at -= 1;
+        stack.push(pending[at]);
+        closing.push(false);
+    }
+    while stack.len > 0 {
+        let wire = stack[stack.len - 1];
+        let close = closing[closing.len - 1];
+        stack.resize(stack.len - 1);
+        closing.resize(closing.len - 1);
+        if close {
+            c.open[wire] = false;
+            continue;
+        }
+        if wire <= 0 || c.bad { continue; }
+        c.count[wire] += 1;
+        if c.open[wire] {
+            c.bad = true; // a data cycle (§3.1)
+            continue;
+        }
+        if c.count[wire] > 1 || wire < 2 { continue; }
+        let n = wire - 2;
+        if c.nodes[n].blob != 0 || c.nodes[n].tab < 0 || c.nodes[n].val < 0 { continue; }
+        c.open[wire] = true;
+        pending.resize(0);
+        jw_count_edges(c, c.nodes[n].tab, c.nodes[n].val, pending);
+        stack.push(wire);
+        closing.push(true);
+        var next = pending.len;
+        while next > 0 {
+            next -= 1;
+            stack.push(pending[next]);
+            closing.push(false);
+        }
+    }
 }
 
 // ---- PASS TWO: the text ----
@@ -1020,7 +1056,20 @@ recursive fn jw_value(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
         return true;
     }
     if jv_wide(d) {
+        // a fixed-point kind or a 128-bit integer: a kind wider than 32 bits
+        // is written as a STRING of digits (docs/SPEC-TABLES.md §16.2, §16.14
+        // W10/W11), one of 32 bits or under as a bare number.
+        let wide = d.kw > 4;
+        if wide { out.push('"'); }
         jv_put_wide(out, v, d.signed, d.ibits != 0 || d.fbits != 0, d.fbits);
+        if wide { out.push('"'); }
+        return true;
+    }
+    if d.kw > 4 {
+        // int64, uint64 and bits(33..64): a string of decimal digits
+        out.push('"');
+        if d.signed { json_put_int(out, v.lo as! i64); } else { json_put_uint(out, v.lo); }
+        out.push('"');
         return true;
     }
     if d.signed { json_put_int(out, v.lo as! i64); } else { json_put_uint(out, v.lo); }
@@ -1078,7 +1127,7 @@ fn json_save_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], data:
     // the root is open for the whole first pass: a reference back at it is a
     // cycle, and it takes no label (§16.7)
     c.open[1] = true;
-    jw_count_rec(c, t, at);
+    jw_count_graph(c, t, at);
     if c.bad { return -1; }
     var text: u8[>..] = [];
     if !jw_rec(c, text, t, at, 0) { return -1; }
@@ -1103,6 +1152,8 @@ struct JvIn {
     labels: JsonLabel[>..]&,
     scratch: i64[>..<]&,
     graph: bool, // the root is variable: `&node` is the form's own construct
+    kset_entries: JsonKeyEntry[>..]&,
+    kset_slots: i64[>..]&,
 }
 
 fn jr_reserve(c: JvIn&, n: i64) -> i64 {
@@ -1233,7 +1284,9 @@ fn jr_collection(c: JvIn&, s: i64, d: FieldDesc, mark: i64, placed: i64) {
     c.vals[s].len = if d.shape == ShapeArr && d.array == ArrayFixed { n } else { placed };
 }
 
-// jr_shape is the JSON type a value takes (Shape, ElementShape): o a s b n.
+// jr_shape is the JSON type a value takes (Shape, ElementShape): o a s b n,
+// and N a wide integer, which is written as a string and read as a string or
+// a number (docs/SPEC-TABLES.md §16.2).
 fn jr_shape(c: JvIn&, d: FieldDesc, owner: const u8[:], ord: i32, element: bool) -> u8 {
     if !element {
         if d.shape == ShapeStr || d.shape == ShapeText || d.shape == ShapeBytes || d.shape == ShapeSBlob || d.shape == ShapeBBlob { return 's'; }
@@ -1250,7 +1303,16 @@ fn jr_shape(c: JvIn&, d: FieldDesc, owner: const u8[:], ord: i32, element: bool)
     if d.shape == ShapeBool { return 'b'; }
     if jv_flags(c.text, owner, ord) { return 'a'; }
     if jv_stamp(c.text, d, owner, ord) { return 's'; }
+    if d.shape == ShapeInt && d.kw > 4 { return 'N'; }
     return 'n';
+}
+
+// jr_shape_takes reports whether a value of the given JSON shape satisfies the
+// shape a declaration takes: a wide integer declares 'N' and takes a string
+// or a number, every other shape is exact.
+fn jr_shape_takes(want: u8, got: u8) -> bool {
+    if want == got { return true; }
+    return want == 'N' && (got == 's' || got == 'n');
 }
 
 // jr_takes_null: a `?T` reads `null` as ABSENT and a pointer as null (§16.2).
@@ -1313,6 +1375,7 @@ fn jr_scan_label(c: JvIn&) -> u64, bool {
 // definitions still take their labels in a variable root (§16.7) ----
 
 recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
+    var kset = json_keyset_start(c.kset_slots);
     let ch = json_peek(c.jr);
     if ch != '{' && ch != '[' { return json_skip_value(c.jr, depth); }
     if depth > JsonMaxDepth { return json_fail(c.jr); }
@@ -1331,6 +1394,10 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
             var key: u8[256] = [0; 256];
             let n, ok = jr_key(c, key);
             if !ok { return false; }
+            if json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]) {
+                c.jr.rep.repeated += 1;
+                return json_fail(c.jr);
+            }
             if n > 0 && key[0] == '&' && c.graph {
                 // a definition in a dropped value keeps its label, with no node
                 if !first || key[..n] != "&node" { return json_fail(c.jr); }
@@ -1389,6 +1456,7 @@ fn jr_required(c: JvIn&, tab: i64, rec: i64, seen: const u64[8]&) -> bool {
 // (`first`, when has_first), its colon consumed.
 recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:], has_first: bool) -> bool {
     var seen: u64[8] = [0; 8];
+    var kset = json_keyset_start(c.kset_slots);
     var pending = has_first;
     loop {
         var key: u8[256] = [0; 256];
@@ -1408,6 +1476,8 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
             if !ok { return false; }
             n = kn;
         }
+        let dup = json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]);
+        if dup { c.jr.rep.repeated += 1; }
         if n > 0 && key[0] == '&' {
             // the reserved prefix where it cannot stand: malformed, never
             // unknown (§16.7)
@@ -1428,7 +1498,7 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
         } else {
             if index < 512 {
                 let bit = (1 as u64) << ((index & 63) as! u64);
-                if (seen[index >> 6] & bit) != 0 { c.jr.rep.repeated += 1; }
+                if (seen[index >> 6] & bit) != 0 && !dup { c.jr.rep.repeated += 1; }
                 seen[index >> 6] |= bit;
             }
             let d = fields[index];
@@ -1439,7 +1509,7 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
                 if !json_literal(c.jr, "null") { return false; }
                 jr_reset(c, s, d);
             } else {
-                if got != jr_shape(c, d, name, index as! i32, false) {
+                if !jr_shape_takes(jr_shape(c, d, name, index as! i32, false), got) {
                     c.jr.rep.mismatch += 1;
                     if !jr_skip(c, depth + 1) { return false; }
                 } else if !jr_field(c, s, d, name, index as! i32, depth) {
@@ -1499,12 +1569,15 @@ fn jr_text(c: JvIn&, bound: i64) -> bool {
     return true;
 }
 
-// jr_base64 decodes one base64 string onto data (the bytes(N) row, §16.2):
-// placed false for a body outside the grammar, which is kind_mismatch and
-// appends nothing; past bound (when bound >= 0) clamps and counts.
+// jr_base64 decodes one CANONICAL base64 string onto data (the bytes(N) row,
+// §16.2, §16.8): placed false for a body outside the grammar — the standard
+// alphabet, padded, zero pad bits, exactly the writer's text — which is
+// kind_mismatch and appends nothing; past bound (when bound >= 0) clamps and
+// counts.
 fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
     var symbols: i64 = 0;
     var pads: i64 = 0;
+    var last: i64 = -1;
     var bad = false;
     let start = c.jr.pos;
     let ok = json_scan(c.jr, false) { unit, n =>
@@ -1516,6 +1589,7 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
                 } else if pads > 0 || json_b64_sextet(ch) < 0 {
                     bad = true;
                 } else {
+                    last = json_b64_sextet(ch);
                     symbols += 1;
                 }
             }
@@ -1524,8 +1598,14 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
     if !ok { return false, false; }
     if !bad {
         if pads > 0 {
-            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 { bad = true; }
-        } else if symbols % 4 == 1 {
+            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 {
+                bad = true;
+            } else if pads == 1 && (last & 3) != 0 {
+                bad = true;
+            } else if pads == 2 && (last & 15) != 0 {
+                bad = true;
+            }
+        } else if symbols % 4 != 0 {
             bad = true;
         }
     }
@@ -1679,7 +1759,7 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
-        } else if got != shape {
+        } else if !jr_shape_takes(shape, got) {
             c.jr.rep.mismatch += 1;
             if !jr_skip(c, depth + 1) { ok = false; break; }
             c.scratch.push(-1);
@@ -1788,20 +1868,19 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
-    var dup_unk = false;
+    var kset = json_keyset_start(c.kset_slots);
     loop {
         let ch = json_peek(c.jr);
         if ch == '}' {
             c.jr.pos += 1;
-            if dup_unk && c.jr.rep.repeated == 0 { return json_fail(c.jr); }
             return true;
         }
         if ch == 0 { return json_fail(c.jr); }
         var key: u8[256] = [0; 256];
         let n, ok = jr_key(c, key);
         if !ok { return false; }
+        let dup = json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]);
+        if dup { c.jr.rep.repeated += 1; }
         var slot: i64 = -1;
         for k, i in keys {
             if i < d.bound && k.name == key[..n] {
@@ -1811,28 +1890,13 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         if slot >= 0 && slot < 512 {
             let bit = (1 as u64) << ((slot & 63) as! u64);
-            if (seen[slot >> 6] & bit) != 0 { c.jr.rep.repeated += 1; }
+            if (seen[slot >> 6] & bit) != 0 && !dup { c.jr.rep.repeated += 1; }
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
-            var kh: u64 = 0xcbf29ce484222325;
-            var ki: i64 = 0;
-            while ki < n {
-                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
-                ki += 1;
-            }
-            var ui: i64 = 0;
-            while ui < seen_unk_n {
-                if seen_unk[ui] == kh { dup_unk = true; }
-                ui += 1;
-            }
-            if seen_unk_n < 64 {
-                seen_unk[seen_unk_n] = kh;
-                seen_unk_n += 1;
-            }
             c.jr.rep.unknown += 1;
             if !jr_skip(c, depth + 1) { return false; }
-        } else if json_shape(c.jr) != shape {
+        } else if !jr_shape_takes(shape, json_shape(c.jr)) {
             c.jr.rep.mismatch += 1;
             if !jr_skip(c, depth + 1) { return false; }
         } else if !jr_value(c, c.vals[s].first + slot, e, owner, ord, true, depth + 1) {
@@ -1840,10 +1904,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         let r = jr_after(c, '}');
         if r < 0 { return false; }
-        if r == 0 {
-            if dup_unk && c.jr.rep.repeated == 0 { return json_fail(c.jr); }
-            return true;
-        }
+        if r == 0 { return true; }
     }
 }
 
@@ -1859,11 +1920,16 @@ fn jr_map_key(c: JvIn&, ks: i64, kd: FieldDesc, off: i64) -> i64 {
         return 0;
     }
     let tok = c.data[off..];
-    var probe = json_in(tok);
+    var probe_entries: JsonKeyEntry[>..] = [];
+    var probe_slots: i64[>..] = [];
+    var probe = json_in(tok, probe_entries, probe_slots);
     json_space(probe);
     if probe.pos != 0 { return 2; }
     let whole, ok = json_walk_number(probe);
     if !ok || probe.pos != tok.len { return 2; }
+    // an integer key takes an integer token only: no fraction, no exponent,
+    // not -0 (docs/SPEC-TABLES.md §16.2)
+    if !json_integer_token(tok) { return 1; }
     let v, exact, sat = jv_parse_wide(tok, kd.signed, 0);
     if !exact || sat { return 1; }
     // the key kind's own domain: a value outside it drops, never clamps
@@ -1931,11 +1997,11 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
         let entry = jr_new_record(c, et);
         let ks = c.vals[entry].first;
         var drop = false;
-        if kd.shape == ShapeStr && (klen > JsonMaxKey || klen > kd.bound) {
+        // a map key is DATA, never a schema name: a bounded string key is
+        // held to its own bound and an unbounded one to no length at all,
+        // so the 255-byte name cap never reaches here (§16.2, §2.13.1).
+        if kd.shape == ShapeStr && klen > kd.bound {
             c.jr.rep.oor += 1;
-            drop = true;
-        } else if kd.shape != ShapeStr && kd.shape != ShapeText && klen > JsonMaxKey {
-            c.jr.rep.mismatch += 1;
             drop = true;
         } else {
             let placed_key = jr_map_key(c, ks, kd, off);
@@ -1958,7 +2024,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
             if got == 'z' && jr_takes_null(vd) {
                 if !json_literal(c.jr, "null") { ok = false; break; }
                 jr_reset(c, vs, vd);
-            } else if got != jr_shape(c, vd, ename, 1, false) {
+            } else if !jr_shape_takes(jr_shape(c, vd, ename, 1, false), got) {
                 c.jr.rep.mismatch += 1;
                 if !jr_skip(c, depth + 1) { ok = false; break; }
                 if vd.optional { jr_present(c, vs, vd); }
@@ -2065,27 +2131,22 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         return true;
     }
     if jv_wide(d) {
+        // a 128-bit integer or a fixed-point kind: it reads as a string or a
+        // number, the same digits, when its storage is wider than 32 bits
+        // (docs/SPEC-TABLES.md §16.2)
+        let pure = d.ibits == 0 && d.fbits == 0;
+        if d.kw > 4 && json_peek(c.jr) == '"' {
+            let buf, ok = json_scan_all(c.jr);
+            if !ok { return false; }
+            return jr_place_wide(c, s, d, pure, buf);
+        }
         let start, end, whole, ok = json_number(c.jr);
         if !ok { return false; }
-        let v, exact, sat = jv_parse_wide(c.jr.text[start..end], d.signed, d.fbits);
-        if !exact {
+        if pure && !whole {
             c.jr.rep.mismatch += 1;
             return true;
         }
-        if sat { c.jr.rep.oor += 1; }
-        var x = v;
-        if d.ranged {
-            let lo, hi = jv_raw_range(d);
-            if cmp128(x, d.signed, lo, d.signed) < 0 {
-                x = lo;
-                c.jr.rep.oor += 1;
-            } else if cmp128(x, d.signed, hi, d.signed) > 0 {
-                x = hi;
-                c.jr.rep.oor += 1;
-            }
-        }
-        jr_place(c, s, x);
-        return true;
+        return jr_place_wide(c, s, d, pure, c.jr.text[start..end]);
     }
     if d.signed {
         var v: i64 = 0;
@@ -2096,6 +2157,35 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     var u: u64 = 0;
     if !json_read_int(c.jr, u, d) { return false; }
     if c.jr.rep.mismatch == mismatch { jr_place(c, s, Int128 { lo: u, hi: 0 }); }
+    return true;
+}
+
+// jr_place_wide places a 128-bit integer or a fixed-point kind from one
+// token: a pure integer takes an integer token only, and a fixed kind the
+// exact decimal (§16.2). The value never passes through a float.
+fn jr_place_wide(c: JvIn&, s: i64, d: FieldDesc, pure: bool, tok: const u8[:]) -> bool {
+    if pure && !json_integer_token(tok) {
+        c.jr.rep.mismatch += 1;
+        return true;
+    }
+    let v, exact, sat = jv_parse_wide(tok, d.signed, d.fbits);
+    if !exact {
+        c.jr.rep.mismatch += 1;
+        return true;
+    }
+    if sat {
+        c.jr.rep.oor += 1;
+        return true;
+    }
+    var x = v;
+    if d.ranged {
+        let lo, hi = jv_raw_range(d);
+        if cmp128(x, d.signed, lo, d.signed) < 0 || cmp128(x, d.signed, hi, d.signed) > 0 {
+            c.jr.rep.oor += 1;
+            return true;
+        }
+    }
+    jr_place(c, s, x);
     return true;
 }
 
@@ -2155,7 +2245,7 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
             if got == 'z' && jr_takes_null(arm) {
                 if !json_literal(c.jr, "null") { return false; }
                 jr_arm(c, s, tag, p);
-            } else if got != jr_shape(c, arm, uname, tag as! i32, false) {
+            } else if !jr_shape_takes(jr_shape(c, arm, uname, tag as! i32, false), got) {
                 c.jr.rep.mismatch += 1;
                 if !jr_skip(c, depth + 1) { return false; }
             } else {
@@ -2195,10 +2285,12 @@ fn json_load_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], text:
         report.damaged = true;
         return -1;
     }
-    var jr = json_in(text);
+    var kset_entries: JsonKeyEntry[>..] = [];
+    var kset_slots: i64[>..] = [];
+    var jr = json_in(text, kset_entries, kset_slots);
     var labels: JsonLabel[>..] = [];
     var scratch: i64[>..<] = [];
-    var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable };
+    var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable, kset_entries: kset_entries, kset_slots: kset_slots };
     let rec = jr_new_record(c, t);
     let ok = jr_table(c, t, rec, 0);
     if !json_finish(jr, ok, report) { return -1; }
