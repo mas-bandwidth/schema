@@ -93,11 +93,26 @@ func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
 	}
 }
 
+// TestPythonTableDriverCarriesUnboundedArrays: the driver registers python as
+// a `[]T` carrier, so a plain table unit with an unbounded array generates the
+// array codec rather than being refused by refuseLists.
+func TestPythonTableDriverCarriesUnboundedArrays(t *testing.T) {
+	t.Parallel()
+	u := unitFromSource(t, "package probe\ntable Save {\n scores []int32\n}\n")
+	files, err := New().Generate(u, "python", Options{})
+	if err != nil {
+		t.Fatalf("the driver refused a []T table unit: %v", err)
+	}
+	if _, ok := files["probe/_schema/kind_array.py"]; !ok {
+		t.Error("the []T unit emitted no probe/_schema/kind_array.py")
+	}
+}
+
 // The compiler keeps the common carry checks before the table frame. Direct
 // descriptor generation remains available for later field-codec layers.
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]int32", "?[3]int16"} {
+	for _, field := range []string{"?[3]int16"} {
 		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
 		_, err := New().Generate(u, "python", Options{})
 		if err == nil {
@@ -106,10 +121,20 @@ func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 			t.Errorf("the refusal does not name the target and field: %v", err)
 		}
 	}
+	// The unbounded array is a list carrier registry construct, not a §2 carry
+	// key: compiler/carries_python_unbounded.go registers it.
+	u := unitFromSource(t, "package probe\ntable Root {\n values []int32\n}\n")
+	files, err := New().Generate(u, "python", Options{})
+	if err != nil {
+		t.Fatalf("the table frame refused its []int32 field: %v", err)
+	}
+	if _, ok := files["probe/_schema/kind_array.py"]; !ok {
+		t.Error("the []int32 unit emitted no probe/_schema/kind_array.py")
+	}
 	// A plain map spends no §2 carry construct; the map carrier registry is
 	// what admits it (compiler/carries_python_maps.go).
-	u := unitFromSource(t, "package probe\ntable Root {\n values map[uint32]int32\n}\n")
-	files, err := New().Generate(u, "python", Options{})
+	u = unitFromSource(t, "package probe\ntable Root {\n values map[uint32]int32\n}\n")
+	files, err = New().Generate(u, "python", Options{})
 	if err != nil {
 		t.Fatalf("the table frame refused its map field: %v", err)
 	}

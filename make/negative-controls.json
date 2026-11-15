@@ -1044,9 +1044,10 @@
     {
       "name": "python-table-core",
       "when": "pull-request",
-      "why": "the table core's form-byte control (make/python.mk): the generated runtime's form byte is moved in a copy, and the pinned-interpreter probe must go red naming message_form_as_file. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "why": "the table core's form-byte control (make/python.mk): the generated runtime's form byte is moved in a copy, and the pinned-interpreter probe must go red naming message_form_as_file. Beside it the unbounded array's driver control removes the list-carrier registration from a copy of the compiler and requires the driver-level []T gate to go red on the refusal. Both are prerequisites of test-python, so the leg runs them beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
       "targets": [
-        "python-table-core-negative-control"
+        "python-table-core-negative-control",
+        "python-vt-unbounded-driver-negative-control"
       ],
       "python": "pin"
     },
