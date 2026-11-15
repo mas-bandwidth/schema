@@ -651,7 +651,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.IsMap() {
+		if f.Type.Optional {
+			return "unsupported"
+		}
+		return "map"
+	}
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.Type.Optional {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -799,6 +805,8 @@ func descriptorDefault(f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "map":
+		return "{}"
 	}
 	return "None"
 }

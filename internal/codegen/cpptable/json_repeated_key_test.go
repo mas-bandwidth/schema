@@ -23,7 +23,7 @@ func TestCPPJsonRepeatedKeyEveryObject(t *testing.T) {
 	// repeat past many distinct keys still refuses.
 	var many strings.Builder
 	many.WriteByte('{')
-	for i := 0; i < 513; i++ {
+	for i := range 513 {
 		fmt.Fprintf(&many, `"zz%d":1,`, i)
 	}
 	many.WriteString(`"zz512":2}`)
