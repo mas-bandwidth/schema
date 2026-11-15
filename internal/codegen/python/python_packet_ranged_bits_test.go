@@ -88,7 +88,7 @@ func rangedBitsProbe(u *ir.Unit, root, base string, fields []rangedBitsField) st
 	fmt.Fprintf(&b, "if again != data:\n")
 	fmt.Fprintf(&b, "    print(\"FAILED: write-back differs\")\n    sys.exit(1)\n")
 	for _, f := range fields {
-		bad := []string{f.min.String(), f.max.String()}
+		var bad []string
 		if f.kind == "int" {
 			bad = []string{new(big.Int).Sub(f.min, big.NewInt(1)).String(), new(big.Int).Add(f.max, big.NewInt(1)).String()}
 		} else {
@@ -294,7 +294,7 @@ func TestPythonPacketRangedBits(t *testing.T) {
 			}
 			base := pruned.DeclFile[pin.root]
 			probe := rangedBitsProbe(pruned, pin.root, base, rangedBitsFields(pruned, pin.root))
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}
