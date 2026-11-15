@@ -405,7 +405,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 		fmt.Fprintf(b, "            array_fixed=%s,\n", pyBool(f.Array == ir.ArrayFixed))
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
-		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(st.Name, f))
+		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
 		fmt.Fprintf(b, "        ),\n")
 	}
 	if len(st.Fields) == 1 {
@@ -904,7 +904,11 @@ func valueDefault(f *ir.Field) string {
 	return "None"
 }
 
-func descriptorDefault(owner string, f *ir.Field) string {
+// descriptorDefault is the default a field descriptor carries for the elision
+// compare. A union or an array of unions carries None: its elision is decided
+// by the selected arm (descriptor.is_default), and a built union would name
+// table classes the module may not have defined yet at import.
+func descriptorDefault(f *ir.Field) string {
 	switch codecOf(f) {
 	case "bool":
 		return pyBool(f.HasDefault && f.DefBool)
@@ -913,8 +917,6 @@ func descriptorDefault(owner string, f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
-	case "union", "union_array":
-		return defaultExpr(owner, f)
 	case "map":
 		return "{}"
 	}

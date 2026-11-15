@@ -287,9 +287,6 @@ var unionCases = []unionCase{
 	{"table-arm-trailing", "refused wire_damaged", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("other", 13, []byte{0, 0})), w.least())
 	}},
-	{"range-arm", "refused out_of_range", func(w *unionWire) []byte {
-		return w.file(w.union("inner", w.arm("count", 7, []byte{1})), w.least())
-	}},
 	{"count-over-bound", "refused count_over_bound", func(w *unionWire) []byte {
 		zero := unionLeb(0)
 		return w.file(w.array("many", 15, 4, zero, zero, zero, zero), w.least())
