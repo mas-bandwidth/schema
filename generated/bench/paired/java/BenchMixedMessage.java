@@ -383,7 +383,7 @@ public final class BenchMixedMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xaa38aca4 && idLo == 0x81f528a8) {
-                if (0 <= lastField) {
+                if (0 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -402,6 +402,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v9 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 16);
                     if (r.err) {
@@ -410,7 +411,10 @@ public final class BenchMixedMessage {
                     }
                     v.sequence = (int) (v9);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.sequence != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.sequence != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -418,7 +422,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x0dbe005c && idLo == 0x56697c3e) {
-                if (1 <= lastField) {
+                if (1 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -437,6 +441,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v10 = TableMessage.readSigned(r, entry.shape, 0L, 65535L, true);
                     if (r.err) {
@@ -445,7 +450,10 @@ public final class BenchMixedMessage {
                     }
                     v.ackSequence = (int) (v10);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.ackSequence != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.ackSequence != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -453,7 +461,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x9bae0da8 && idLo == 0xb829ee03) {
-                if (2 <= lastField) {
+                if (2 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -472,6 +480,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v11 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 32);
                     if (r.err) {
@@ -480,7 +489,10 @@ public final class BenchMixedMessage {
                     }
                     v.ackBits = (int) (v11);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.ackBits != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.ackBits != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -488,7 +500,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xb7d7b565 && idLo == 0x0a590b05) {
-                if (3 <= lastField) {
+                if (3 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -507,6 +519,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v12 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
                     if (r.err) {
@@ -515,7 +528,10 @@ public final class BenchMixedMessage {
                     }
                     v.sessionId = v12;
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.sessionId != 0L))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.sessionId != 0L)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -523,7 +539,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x6d7b98e2 && idLo == 0xd095967e) {
-                if (4 <= lastField) {
+                if (4 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -542,6 +558,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xffffffffL, true, 0);
                     if (r.err) {
@@ -550,7 +567,10 @@ public final class BenchMixedMessage {
                     }
                     v.clientId = (int) (v13);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.clientId != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.clientId != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -558,7 +578,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x73a94c71 && idLo == 0xd60dc0d8) {
-                if (5 <= lastField) {
+                if (5 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -577,6 +597,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v14 =
                             TableMessage.readUnsigned(
@@ -587,7 +608,10 @@ public final class BenchMixedMessage {
                     }
                     v.nonce = v14;
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.nonce != 0L))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.nonce != 0L)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -595,7 +619,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x3eee6b51 && idLo == 0xbe54fc85) {
-                if (6 <= lastField) {
+                if (6 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -614,6 +638,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v15 =
                             TableMessage.readSigned(
@@ -624,7 +649,10 @@ public final class BenchMixedMessage {
                     }
                     v.worldTime = v15;
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.worldTime != 0L))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.worldTime != 0L)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -632,7 +660,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7bbc035f && idLo == 0x7b6d0112) {
-                if (7 <= lastField) {
+                if (7 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -651,6 +679,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v16 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 48);
                     if (r.err) {
@@ -659,7 +688,10 @@ public final class BenchMixedMessage {
                     }
                     v.frameTick = v16;
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.frameTick != 0L))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.frameTick != 0L)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -667,7 +699,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x3c460475 && idLo == 0xf9be69c6) {
-                if (8 <= lastField) {
+                if (8 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -686,6 +718,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v17 = TableMessage.readSigned(r, entry.shape, 0L, 16776960L, true);
                     if (r.err) {
@@ -694,7 +727,10 @@ public final class BenchMixedMessage {
                     }
                     v.serverTime = (int) (v17);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.serverTime != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.serverTime != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -702,7 +738,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x935d0fb0 && idLo == 0x7bb3822a) {
-                if (9 <= lastField) {
+                if (9 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -721,6 +757,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 long n18 = TableMessage.readCount(r, entry.shape);
                 if (r.err) {
                     r.report.damaged = true;
@@ -756,11 +793,18 @@ public final class BenchMixedMessage {
                     }
                 }
                 v.entitiesCount = (int) keep19;
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.entitiesCount > 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xee639cad && idLo == 0x45b1994c) {
-                if (10 <= lastField) {
+                if (10 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -779,6 +823,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 long n25 = TableMessage.readCount(r, entry.shape);
                 if (r.err) {
                     r.report.damaged = true;
@@ -814,11 +859,18 @@ public final class BenchMixedMessage {
                     }
                 }
                 v.statsCount = (int) keep26;
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.statsCount > 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x2e35dc53 && idLo == 0x21aa5790) {
-                if (11 <= lastField) {
+                if (11 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -837,6 +889,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 v.gameEvent.type = 0;
                 MixedHitEventMessage.reset(v.gameEvent.hit);
                 MixedChatEventMessage.reset(v.gameEvent.chat);
@@ -929,10 +982,10 @@ public final class BenchMixedMessage {
                             }
                             if (arm33.kind == 13 && armElemKind41 == 0 || armWidened40) {
                                 v.gameEvent.type = 3;
-                                boolean ok74 =
+                                boolean ok76 =
                                         MixedPickupEventMessage.loadMessageBody(
                                                 r, v.gameEvent.pickup);
-                                if (!ok74) {
+                                if (!ok76) {
                                     return false;
                                 }
                                 if (armWidened40) {
@@ -949,7 +1002,10 @@ public final class BenchMixedMessage {
                         }
                     }
                 }
-                if (!r.report.refused && !r.report.damaged && (v.gameEvent.type == 0)) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.gameEvent.type != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -957,7 +1013,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x5759ce75 && idLo == 0x86bbb5a3) {
-                if (12 <= lastField) {
+                if (12 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -976,6 +1032,7 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 long n42 = TableMessage.readCount(r, entry.shape);
                 if (r.err) {
                     r.report.damaged = true;
@@ -1021,11 +1078,25 @@ public final class BenchMixedMessage {
                         return false;
                     }
                 }
+                boolean allDef50 = true;
+                for (int i51 = 0; i51 < 4; i51++) {
+                    if (v.loadout[i51] != (byte) 0) {
+                        allDef50 = false;
+                        break;
+                    }
+                }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(!allDef50)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x13a62f54 && idLo == 0x2cf8e86e) {
-                if (13 <= lastField) {
+                if (13 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1044,29 +1115,33 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
-                long n50 = TableMessage.readCount(r, entry.shape);
+                int canonUnk = r.report.unknown;
+                long n52 = TableMessage.readCount(r, entry.shape);
                 if (r.err || !r.align()) {
                     r.report.damaged = true;
                     return false;
                 }
-                int start51 = r.atByte();
-                if (!r.skipBits(n50 * 8L)) {
+                int start53 = r.atByte();
+                if (!r.skipBits(n52 * 8L)) {
                     r.report.damaged = true;
                     return false;
                 }
-                if (!TableMessage.utf8Valid(r.buf, start51, (int) n50)) {
+                if (!TableMessage.utf8Valid(r.buf, start53, (int) n52)) {
                     r.report.damaged = true;
                     return false;
                 }
-                int kept52 = (int) Math.min(n50, 15L);
-                if ((long) kept52 < n50) {
-                    kept52 = TableMessage.utf8Clamp(r.buf, start51, kept52);
+                int kept54 = (int) Math.min(n52, 15L);
+                if ((long) kept54 < n52) {
+                    kept54 = TableMessage.utf8Clamp(r.buf, start53, kept54);
                     r.report.refuse("length_over_bound");
                 }
                 java.util.Arrays.fill(v.playerName, (byte) 0);
-                System.arraycopy(r.buf, start51, v.playerName, 0, kept52);
-                v.playerNameLength = kept52;
-                if (!r.report.refused && !r.report.damaged && (v.playerNameLength == 0)) {
+                System.arraycopy(r.buf, start53, v.playerName, 0, kept54);
+                v.playerNameLength = kept54;
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.playerNameLength > 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1074,7 +1149,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xcfb8a9d0 && idLo == 0x63b5e9e5) {
-                if (14 <= lastField) {
+                if (14 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1093,28 +1168,36 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
-                long n53 = TableMessage.readCount(r, entry.shape);
+                int canonUnk = r.report.unknown;
+                long n55 = TableMessage.readCount(r, entry.shape);
                 if (r.err || !r.align()) {
                     r.report.damaged = true;
                     return false;
                 }
-                int start54 = r.atByte();
-                if (!r.skipBits(n53 * 8L)) {
+                int start56 = r.atByte();
+                if (!r.skipBits(n55 * 8L)) {
                     r.report.damaged = true;
                     return false;
                 }
-                int kept55 = (int) Math.min(n53, 16L);
-                if ((long) kept55 < n53) {
+                int kept57 = (int) Math.min(n55, 16L);
+                if ((long) kept57 < n55) {
                     r.report.refuse("length_over_bound");
                 }
                 java.util.Arrays.fill(v.payload, (byte) 0);
-                System.arraycopy(r.buf, start54, v.payload, 0, kept55);
-                v.payloadLength = kept55;
+                System.arraycopy(r.buf, start56, v.payload, 0, kept57);
+                v.payloadLength = kept57;
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.payloadLength > 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf7be5 && idLo == 0xe24296c9) {
-                if (15 <= lastField) {
+                if (15 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1133,8 +1216,9 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    float v56 =
+                    float v58 =
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
@@ -1146,11 +1230,12 @@ public final class BenchMixedMessage {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.aimX = v56;
+                    v.aimX = v58;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
-                        && (!(Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)))) {
+                        && r.report.unknown == canonUnk
+                        && !(Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1158,7 +1243,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf7ae5 && idLo == 0xe2429516) {
-                if (16 <= lastField) {
+                if (16 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1177,8 +1262,9 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    float v57 =
+                    float v59 =
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
@@ -1190,11 +1276,12 @@ public final class BenchMixedMessage {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.aimY = v57;
+                    v.aimY = v59;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
-                        && (!(Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)))) {
+                        && r.report.unknown == canonUnk
+                        && !(Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1202,7 +1289,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf79e5 && idLo == 0xe2429363) {
-                if (17 <= lastField) {
+                if (17 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1221,8 +1308,9 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    float v58 =
+                    float v60 =
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
@@ -1234,11 +1322,12 @@ public final class BenchMixedMessage {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.aimZ = v58;
+                    v.aimZ = v60;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
-                        && (!(Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)))) {
+                        && r.report.unknown == canonUnk
+                        && !(Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1246,7 +1335,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x9cef31ff && idLo == 0xf7e2e457) {
-                if (18 <= lastField) {
+                if (18 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1265,17 +1354,21 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    float v59 =
+                    float v61 =
                             TableMessage.readFloat32(
                                     r, entry.shape, 0.0f, 0.0f, false, "BenchMixed.recoil");
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.recoil = v59;
+                    v.recoil = v61;
                 }
-                if (!r.report.refused && !r.report.damaged && (!(Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1283,7 +1376,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x5ab3f9c9 && idLo == 0x341f6c04) {
-                if (19 <= lastField) {
+                if (19 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1302,17 +1395,18 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    double v60 =
+                    double v62 =
                             TableMessage.readFloat64(
                                     r, entry.shape, 0.0, 0.0, false, "BenchMixed.drift");
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.drift = v60;
+                    v.drift = v62;
                 }
-                if (!r.report.refused && !r.report.damaged && (!(Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0)))) {
+                if (!r.report.refused && !r.report.damaged && r.report.unknown == canonUnk && !(Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1320,7 +1414,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xa3348580 && idLo == 0x461faf16) {
-                if (20 <= lastField) {
+                if (20 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1339,18 +1433,20 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long[] raw61 = TableMessage.read128Raw(r, entry.shape, false);
+                    long[] raw63 = TableMessage.read128Raw(r, entry.shape, false);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    long lo62 = raw61[0], hi63 = raw61[1];
-                    v.wideKey = new UInt128(hi63, lo62);
+                    long lo64 = raw63[0], hi65 = raw63[1];
+                    v.wideKey = new UInt128(hi65, lo64);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
-                        && (!((v.wideKey.lo != 0L || v.wideKey.hi != 0L)))) {
+                        && r.report.unknown == canonUnk
+                        && !((v.wideKey.lo != 0L || v.wideKey.hi != 0L))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1358,7 +1454,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xd61bdd79 && idLo == 0x08af2642) {
-                if (21 <= lastField) {
+                if (21 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1377,30 +1473,32 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long[] raw64 = TableMessage.read128Raw(r, entry.shape, true);
+                    long[] raw66 = TableMessage.read128Raw(r, entry.shape, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    long lo65 = raw64[0], hi66 = raw64[1];
-                    int below67 =
-                            TableMessage.compareSigned128(lo65, hi66, 0L, 0xfffffff000000000L);
-                    int above68 = TableMessage.compareSigned128(lo65, hi66, 0L, 0x1000000000L);
-                    if (below67 < 0) {
-                        lo65 = 0L;
-                        hi66 = 0xfffffff000000000L;
+                    long lo67 = raw66[0], hi68 = raw66[1];
+                    int below69 =
+                            TableMessage.compareSigned128(lo67, hi68, 0L, 0xfffffff000000000L);
+                    int above70 = TableMessage.compareSigned128(lo67, hi68, 0L, 0x1000000000L);
+                    if (below69 < 0) {
+                        lo67 = 0L;
+                        hi68 = 0xfffffff000000000L;
                         r.report.refuse("out_of_range");
-                    } else if (above68 > 0) {
-                        lo65 = 0L;
-                        hi66 = 0x1000000000L;
+                    } else if (above70 > 0) {
+                        lo67 = 0L;
+                        hi68 = 0x1000000000L;
                         r.report.refuse("out_of_range");
                     }
-                    v.flux = new Int128(hi66, lo65);
+                    v.flux = new Int128(hi68, lo67);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
-                        && (!((v.flux.lo != 0L || v.flux.hi != 0L)))) {
+                        && r.report.unknown == canonUnk
+                        && !((v.flux.lo != 0L || v.flux.hi != 0L))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1408,7 +1506,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xbf30e00d && idLo == 0xc53307a9) {
-                if (22 <= lastField) {
+                if (22 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1427,15 +1525,19 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long v69 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xfa00L, true, 0);
+                    long v71 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xfa00L, true, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.ping = (short) (v69);
+                    v.ping = (short) (v71);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.ping != (short) 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.ping != (short) 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1443,7 +1545,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x560d6527 && idLo == 0xccd8515f) {
-                if (23 <= lastField) {
+                if (23 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1462,15 +1564,19 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long v70 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 24);
+                    long v72 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 24);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.crcHint = (int) (v70);
+                    v.crcHint = (int) (v72);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.crcHint != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.crcHint != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1478,7 +1584,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xc0829217 && idLo == 0x6cfd8672) {
-                if (24 <= lastField) {
+                if (24 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1497,15 +1603,19 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long v71 = r.get(1);
+                    long v73 = r.get(1);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.hasExtra = (v71 != 0L);
+                    v.hasExtra = (v73 != 0L);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.hasExtra != true))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.hasExtra != true)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1513,7 +1623,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xfd29ee12 && idLo == 0xa979cb69) {
-                if (25 <= lastField) {
+                if (25 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1532,15 +1642,19 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long v72 = TableMessage.readSigned(r, entry.shape, 0L, 255L, true);
+                    long v74 = TableMessage.readSigned(r, entry.shape, 0L, 255L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.extra = (int) (v72);
+                    v.extra = (int) (v74);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.extra != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.extra != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1548,7 +1662,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x78101ac0 && idLo == 0xaa8cbcfe) {
-                if (26 <= lastField) {
+                if (26 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1567,15 +1681,19 @@ public final class BenchMixedMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
-                    long v73 = TableMessage.readSigned(r, entry.shape, 0L, 15L, true);
+                    long v75 = TableMessage.readSigned(r, entry.shape, 0L, 15L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.idleTicks = (int) (v73);
+                    v.idleTicks = (int) (v75);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.idleTicks != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.idleTicks != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }

@@ -71,7 +71,7 @@ public final class FixedTableMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x7ce4fd94 && idLo == 0x30e80cea) {
-                if (0 <= lastField) {
+                if (0 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -90,7 +90,14 @@ public final class FixedTableMessage {
                         continue;
                     }
                 }
+                long canonAt = r.at;
                 if (!BenchMixedMessage.loadMessageBody(r, v.value)) {
+                    return false;
+                }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.at - canonAt == (long) r.vocab.refBits) {
+                    r.report.refuse("non_canonical");
                     return false;
                 }
                 if (widened) {

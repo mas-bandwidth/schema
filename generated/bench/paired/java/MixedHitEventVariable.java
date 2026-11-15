@@ -361,11 +361,12 @@ public final class MixedHitEventVariable {
             }
             int kind = r.get8();
             if (id == F_targetId) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return false;
                 }
                 lastOrder = 0;
+                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -391,16 +392,20 @@ public final class MixedHitEventVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.targetId == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.targetId == 0)) {
                     report.refuse("non_canonical");
                     return false;
                 }
             } else if (id == F_damage) {
-                if (lastOrder >= 1) {
+                if (lastOrder > 1) {
                     report.refuse("non_canonical");
                     return false;
                 }
                 lastOrder = 1;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -438,16 +443,20 @@ public final class MixedHitEventVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.damage == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.damage == 0)) {
                     report.refuse("non_canonical");
                     return false;
                 }
             } else if (id == F_hitKind) {
-                if (lastOrder >= 2) {
+                if (lastOrder > 2) {
                     report.refuse("non_canonical");
                     return false;
                 }
                 lastOrder = 2;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -485,16 +494,20 @@ public final class MixedHitEventVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.hitKind == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.hitKind == 0)) {
                     report.refuse("non_canonical");
                     return false;
                 }
             } else if (id == F_crit) {
-                if (lastOrder >= 3) {
+                if (lastOrder > 3) {
                     report.refuse("non_canonical");
                     return false;
                 }
                 lastOrder = 3;
+                int canonUnk = report.unknown;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -510,7 +523,10 @@ public final class MixedHitEventVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.crit == false)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.crit == false)) {
                     report.refuse("non_canonical");
                     return false;
                 }
@@ -800,7 +816,6 @@ public final class MixedHitEventVariable {
     // and answers the extent counter advanced by the maps and lists it carries.
     static long measureAt(TableVariable.Reader r, TableVariable.Report report, long at) {
         r.fail = false;
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
@@ -811,56 +826,6 @@ public final class MixedHitEventVariable {
                 return at;
             }
             int kind = r.get8();
-            int fOrd = -1;
-            if (id == F_targetId) {
-                fOrd = 0;
-                if (kind == 7
-                        && r.off + 2 <= r.limit
-                        && ((r.buf[r.off] & 0xff) | (r.buf[r.off + 1] & 0xff) << 8) == 0) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-            }
-            if (id == F_damage) {
-                fOrd = 1;
-                if (kind == 4
-                        && r.off + 4 <= r.limit
-                        && ((r.buf[r.off] & 0xff)
-                                | (r.buf[r.off + 1] & 0xff) << 8
-                                | (r.buf[r.off + 2] & 0xff) << 16
-                                | (r.buf[r.off + 3] & 0xff) << 24)
-                                == 0) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-            }
-            if (id == F_hitKind) {
-                fOrd = 2;
-                if (kind == 4
-                        && r.off + 4 <= r.limit
-                        && ((r.buf[r.off] & 0xff)
-                                | (r.buf[r.off + 1] & 0xff) << 8
-                                | (r.buf[r.off + 2] & 0xff) << 16
-                                | (r.buf[r.off + 3] & 0xff) << 24)
-                                == 0) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-            }
-            if (id == F_crit) {
-                fOrd = 3;
-                if (kind == 1 && r.off < r.limit && (r.buf[r.off] & 0xff) == 0) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-            }
-            if (fOrd >= 0) {
-                if (fOrd <= lastOrder) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-                lastOrder = fOrd;
-            }
             r.skip(kind);
             if (r.fail) {
                 return at;

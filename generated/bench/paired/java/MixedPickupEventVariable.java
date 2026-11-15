@@ -347,11 +347,12 @@ public final class MixedPickupEventVariable {
             }
             int kind = r.get8();
             if (id == F_itemId) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return false;
                 }
                 lastOrder = 0;
+                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -377,16 +378,20 @@ public final class MixedPickupEventVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.itemId == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.itemId == 0)) {
                     report.refuse("non_canonical");
                     return false;
                 }
             } else if (id == F_amount) {
-                if (lastOrder >= 1) {
+                if (lastOrder > 1) {
                     report.refuse("non_canonical");
                     return false;
                 }
                 lastOrder = 1;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -424,7 +429,10 @@ public final class MixedPickupEventVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.amount == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.amount == 0)) {
                     report.refuse("non_canonical");
                     return false;
                 }
@@ -704,7 +712,6 @@ public final class MixedPickupEventVariable {
     // and answers the extent counter advanced by the maps and lists it carries.
     static long measureAt(TableVariable.Reader r, TableVariable.Report report, long at) {
         r.fail = false;
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
@@ -715,36 +722,6 @@ public final class MixedPickupEventVariable {
                 return at;
             }
             int kind = r.get8();
-            int fOrd = -1;
-            if (id == F_itemId) {
-                fOrd = 0;
-                if (kind == 7
-                        && r.off + 2 <= r.limit
-                        && ((r.buf[r.off] & 0xff) | (r.buf[r.off + 1] & 0xff) << 8) == 0) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-            }
-            if (id == F_amount) {
-                fOrd = 1;
-                if (kind == 4
-                        && r.off + 4 <= r.limit
-                        && ((r.buf[r.off] & 0xff)
-                                | (r.buf[r.off + 1] & 0xff) << 8
-                                | (r.buf[r.off + 2] & 0xff) << 16
-                                | (r.buf[r.off + 3] & 0xff) << 24)
-                                == 0) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-            }
-            if (fOrd >= 0) {
-                if (fOrd <= lastOrder) {
-                    report.refuse("non_canonical");
-                    return at;
-                }
-                lastOrder = fOrd;
-            }
             r.skip(kind);
             if (r.fail) {
                 return at;

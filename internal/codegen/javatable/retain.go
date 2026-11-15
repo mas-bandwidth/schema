@@ -203,7 +203,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == %sVariable.F_%s) {\n", st.Name, varMember(f))
-		fmt.Fprintf(&b, "                if (lastOrder >= %d) { report.refuse(\"non_canonical\"); return; }\n", i)
+		fmt.Fprintf(&b, "                if (lastOrder > %d) { report.refuse(\"non_canonical\"); return; }\n", i)
 		fmt.Fprintf(&b, "                lastOrder = %d;\n", i)
 		if f.Required {
 			fmt.Fprintf(&b, "                boolean reqMatch = (%s);\n", variableCompatibleKinds(variableWireKind(f), "kind"))
@@ -215,8 +215,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 				fmt.Fprintf(&b, "                if (reqMatch) { TableVariable.Reader probe = new TableVariable.Reader(r.buf, r.ids, new TableVariable.Report()); probe.off = r.off; probe.limit = r.limit; TableVariable.Reader ar = probe.body(); reqMatch = ar != null; if (ar != null && ar.has(2)) { int pk = ar.get8(); %s; reqMatch = ar.fail || (%s); } }\n", countRead(f, "ar"), variableCompatibleKinds(elemKind, "pk"))
 			}
 		}
-		writeFieldRead(&b, u, st, f, true, i, false)
-		writeVariableCanonicalFieldCheck(&b, f, false)
+		writeVariableFieldReadCanonical(&b, u, st, f, true, i)
 		if f.Required {
 			fmt.Fprintf(&b, "                if (!r.fail && reqMatch) { reqSeen_%d = true; }\n", i)
 		}

@@ -260,11 +260,12 @@ public final class BenchBitsRetain {
             }
             int kind = r.get8();
             if (id == BenchBitsVariable.F_b7) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 0;
+                int canonUnk = report.unknown;
                 if (kind == 6) {
                     if (kind == 6) {
                         if (r.has(1)) {
@@ -282,15 +283,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b7 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b7 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b13) {
-                if (lastOrder >= 1) {
+                if (lastOrder > 1) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 1;
+                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -316,15 +322,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b13 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b13 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b23) {
-                if (lastOrder >= 2) {
+                if (lastOrder > 2) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 2;
+                int canonUnk = report.unknown;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -358,15 +369,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b23 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b23 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b3) {
-                if (lastOrder >= 3) {
+                if (lastOrder > 3) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 3;
+                int canonUnk = report.unknown;
                 if (kind == 6) {
                     if (kind == 6) {
                         if (r.has(1)) {
@@ -384,15 +400,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b3 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b3 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b32) {
-                if (lastOrder >= 4) {
+                if (lastOrder > 4) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 4;
+                int canonUnk = report.unknown;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -426,15 +447,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b32 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b32 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b11) {
-                if (lastOrder >= 5) {
+                if (lastOrder > 5) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 5;
+                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -460,15 +486,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b11 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b11 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b19) {
-                if (lastOrder >= 6) {
+                if (lastOrder > 6) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 6;
+                int canonUnk = report.unknown;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -502,15 +533,20 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b19 == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b19 == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchBitsVariable.F_b48) {
-                if (lastOrder >= 7) {
+                if (lastOrder > 7) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 7;
+                int canonUnk = report.unknown;
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
                     if (kind == 9) {
                         if (r.has(8)) {
@@ -552,8 +588,12 @@ public final class BenchBitsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.b48 == 0L)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.b48 == 0L)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

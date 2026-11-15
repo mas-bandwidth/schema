@@ -1391,6 +1391,10 @@ type messageGen struct {
 	// owner is the declaration whose body a load is being emitted for, the
 	// <Owner> of a non_finite_float refusal's <Owner>.<field> (§3.3)
 	owner string
+	// canonicalField asks the next emitLoadPayload for a keyed field's
+	// one-encoding test (emitLoadFieldCase); the payload takes it and clears it,
+	// so a union arm's payload inside never inherits it.
+	canonicalField bool
 }
 
 func (g *messageGen) pf(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -2225,7 +2229,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 				prefix = "} else if"
 			}
 			g.pf("            %s (idHi == 0x%08x && idLo == 0x%08x) {\n", prefix, uint32(hi), uint32(lo))
-			g.pf("                if (%d <= lastField) { r.report.refuse(\"non_canonical\"); return false; }\n", idx)
+			g.pf("                if (%d < lastField) { r.report.refuse(\"non_canonical\"); return false; }\n", idx)
 			g.pf("                lastField = %d;\n", idx)
 			g.emitLoadFieldCase(f, mine, "v", "entry", 16)
 		}
@@ -2236,33 +2240,6 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	}
 	g.pf("        }\n")
 	g.pf("    }\n\n")
-}
-
-// messageAtDefaultTest is the reader-side test for a field stored at the value
-// its writer elides (§3.3): a union field's None arm, or the scalar and string
-// default the announcement names. A nested table, array, keyed array, map or
-// byte buffer rides only when its content or presence does, so it is not a
-// fact of one scalar value here.
-func (g *messageGen) messageAtDefaultTest(f *ir.Field, expr string) string {
-	if f.Required || f.Type.Optional || f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
-		return ""
-	}
-	if isStructType(f.Type) {
-		return ""
-	}
-	if isUnionType(f.Type) {
-		return expr + ".type == 0"
-	}
-	if f.Type.Kind == ir.TString {
-		if len(f.DefBytes) == 0 {
-			return expr + "Length == 0"
-		}
-		return "TableMessage.bytesEqual(" + expr + ", " + expr + "Length, " + javaByteArrayLiteral(f.DefBytes) + ")"
-	}
-	if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TNamed {
-		return ""
-	}
-	return "!(" + g.scalarOrUnionRidesExpr(f, expr) + ")"
 }
 
 func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry, owner, entryVar string, indent int) {
@@ -2282,10 +2259,7 @@ func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
 
-	g.emitLoadPayload(f, owner, entryVar, indent)
-	if test := g.messageAtDefaultTest(f, expr); test != "" {
-		g.pf("%sif (!r.report.refused && !r.report.damaged && (%s)) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, test)
-	}
+	g.emitLoadPayloadCanonical(f, owner, entryVar, indent)
 	if f.Type.Optional {
 		g.pf("%s%sPresent = true;\n", ind, expr)
 	}
@@ -2296,6 +2270,8 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 	ind := strings.Repeat(" ", indent)
 	name := javaName(f.Name)
 	expr := owner + "." + name
+	canonical := g.canonicalField
+	g.canonicalField = false
 
 	switch {
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone && f.KeyEnum == "":
@@ -2365,7 +2341,13 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 			g.pf("%s    }\n", ind)
 		}
 		g.pf("%s    if (%s >= 0) {\n", ind, slotVar)
+		if canonical {
+			g.pf("%s        %s\n", ind, g.messageSlotPre(f))
+		}
 		g.emitLoadElement(f, expr+"["+slotVar+"]", entryVar+".element", indent+8)
+		if canonical {
+			g.pf("%s        if (%s) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, g.messageSlotAtDefault(f, expr+"["+slotVar+"]"))
+		}
 		g.pf("%s    } else {\n", ind)
 		g.pf("%s        r.report.unknown++;\n", ind)
 		g.pf("%s        %s %s = %s;\n", ind, typ, scratchVar, g.scratchInitExpr(f))
@@ -2373,6 +2355,9 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%sr.seenRollback(seenSlotMark);\n", ind)
+		if canonical {
+			g.pf("%sif (%s == 0L) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, nVar)
+		}
 
 	case f.Array != ir.ArrayNone:
 		nVar := g.nextTemp("n")

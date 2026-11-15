@@ -75,7 +75,7 @@ public final class MixedChatEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xa5013e9a && idLo == 0xd5caeda4) {
-                if (0 <= lastField) {
+                if (0 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -94,6 +94,7 @@ public final class MixedChatEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v1 = TableMessage.readSigned(r, entry.shape, 0L, 3L, true);
                     if (r.err) {
@@ -102,7 +103,10 @@ public final class MixedChatEventMessage {
                     }
                     v.channel = (int) (v1);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.channel != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.channel != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -110,7 +114,7 @@ public final class MixedChatEventMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xfbf1ac4d && idLo == 0x96ebd022) {
-                if (1 <= lastField) {
+                if (1 < lastField) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -129,6 +133,7 @@ public final class MixedChatEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v2 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 12);
                     if (r.err) {
@@ -137,7 +142,10 @@ public final class MixedChatEventMessage {
                     }
                     v.speaker = (int) (v2);
                 }
-                if (!r.report.refused && !r.report.damaged && (!(v.speaker != 0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.report.unknown == canonUnk
+                        && !(v.speaker != 0)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }

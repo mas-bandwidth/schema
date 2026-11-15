@@ -260,11 +260,12 @@ public final class MixedPickupEventRetain {
             }
             int kind = r.get8();
             if (id == MixedPickupEventVariable.F_itemId) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 0;
+                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -290,15 +291,20 @@ public final class MixedPickupEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.itemId == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.itemId == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == MixedPickupEventVariable.F_amount) {
-                if (lastOrder >= 1) {
+                if (lastOrder > 1) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 1;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -336,8 +342,12 @@ public final class MixedPickupEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.amount == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.amount == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

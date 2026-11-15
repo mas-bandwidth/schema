@@ -260,11 +260,12 @@ public final class MixedStatRetain {
             }
             int kind = r.get8();
             if (id == MixedStatVariable.F_statId) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 0;
+                int canonUnk = report.unknown;
                 if (kind == 6) {
                     if (kind == 6) {
                         if (r.has(1)) {
@@ -282,15 +283,20 @@ public final class MixedStatRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.statId == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.statId == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == MixedStatVariable.F_delta) {
-                if (lastOrder >= 1) {
+                if (lastOrder > 1) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 1;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -328,8 +334,12 @@ public final class MixedStatRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.delta == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.delta == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

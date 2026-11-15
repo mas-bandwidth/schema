@@ -2112,35 +2112,6 @@ public final class TableVariable {
             if (base < 0) {
                 return null;
             }
-            if (distinct) {
-                // A STANDALONE MEASURE ANSWERS THE SAME VERDICT AS A LOAD: the
-                // wire-alone walk runs here, because the caller's open has not
-                // run it (§3, §4).
-                int count = (data.length - 8 - base) / 8;
-                long[] ids = new long[count];
-                for (int i = 0; i < count; i++) {
-                    ids[i] = u64(data, base + i * 8);
-                }
-                WireCheck wc = WIRE_CHECK.get();
-                wc.reset(data, ids);
-                wc.announcement = false;
-                switch (wc.file(base)) {
-                    case WireCheck.DAMAGED:
-                        report.damaged = true;
-                        return null;
-                    case WireCheck.BLOB_SHARED:
-                        report.refuse("blob_shared");
-                        return null;
-                    case WireCheck.COUNT_CAP:
-                        report.refuse("count_over_extent_cap");
-                        return null;
-                    case WireCheck.NON_FINITE:
-                        report.wireNonFinite = true;
-                        break;
-                    default:
-                        break;
-                }
-            }
             Reader r = reader;
             r.buf = data;
             r.ids = null;

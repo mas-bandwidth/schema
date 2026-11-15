@@ -262,11 +262,12 @@ public final class BenchMixedRetain {
             }
             int kind = r.get8();
             if (id == BenchMixedVariable.F_sequence) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 0;
+                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -292,15 +293,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.sequence == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.sequence == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_ackSequence) {
-                if (lastOrder >= 1) {
+                if (lastOrder > 1) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 1;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -338,15 +344,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.ackSequence == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.ackSequence == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_ackBits) {
-                if (lastOrder >= 2) {
+                if (lastOrder > 2) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 2;
+                int canonUnk = report.unknown;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -380,15 +391,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.ackBits == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.ackBits == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_sessionId) {
-                if (lastOrder >= 3) {
+                if (lastOrder > 3) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 3;
+                int canonUnk = report.unknown;
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
                     if (kind == 9) {
                         if (r.has(8)) {
@@ -426,15 +442,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.sessionId == 0L)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.sessionId == 0L)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_clientId) {
-                if (lastOrder >= 4) {
+                if (lastOrder > 4) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 4;
+                int canonUnk = report.unknown;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -464,15 +485,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.clientId == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.clientId == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_nonce) {
-                if (lastOrder >= 5) {
+                if (lastOrder > 5) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 5;
+                int canonUnk = report.unknown;
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
                     if (kind == 9) {
                         if (r.has(8)) {
@@ -520,15 +546,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.nonce == 0L)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.nonce == 0L)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_worldTime) {
-                if (lastOrder >= 6) {
+                if (lastOrder > 6) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 6;
+                int canonUnk = report.unknown;
                 if (kind == 5 || kind == 2 || kind == 3 || kind == 4) {
                     if (kind == 5) {
                         if (r.has(8)) {
@@ -575,15 +606,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.worldTime == 0L)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.worldTime == 0L)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_frameTick) {
-                if (lastOrder >= 7) {
+                if (lastOrder > 7) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 7;
+                int canonUnk = report.unknown;
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
                     if (kind == 9) {
                         if (r.has(8)) {
@@ -625,15 +661,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.frameTick == 0L)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.frameTick == 0L)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_serverTime) {
-                if (lastOrder >= 8) {
+                if (lastOrder > 8) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 8;
+                int canonUnk = report.unknown;
                 if (kind == 22) {
                     java.math.BigInteger raw = TableVariable.readInteger(r, kind);
                     if (raw != null) {
@@ -650,15 +691,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.serverTime == 0x00000000)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.serverTime == 0x00000000)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_entities) {
-                if (lastOrder >= 9) {
+                if (lastOrder > 9) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 9;
+                int canonUnk = report.unknown;
                 if (kind == 14) {
                     TableVariable.Reader ar = r.body();
                     if (ar != null && ar.has(2)) {
@@ -701,15 +747,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.entities.isEmpty())) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.entities.isEmpty())) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_stats) {
-                if (lastOrder >= 10) {
+                if (lastOrder > 10) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 10;
+                int canonUnk = report.unknown;
                 if (kind == 14) {
                     TableVariable.Reader ar = r.body();
                     if (ar != null && ar.has(2)) {
@@ -751,15 +802,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.stats.isEmpty())) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.stats.isEmpty())) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_gameEvent) {
-                if (lastOrder >= 11) {
+                if (lastOrder > 11) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 11;
+                int canonUnk = report.unknown;
                 if (kind == 15) {
                     retain.discardField(path, depth, 11);
                     path[2 * depth] = 11;
@@ -772,15 +828,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.gameEvent.tag == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.gameEvent.tag == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_loadout) {
-                if (lastOrder >= 12) {
+                if (lastOrder > 12) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 12;
+                int canonUnk = report.unknown;
                 if (kind == 14) {
                     TableVariable.Reader ar = r.body();
                     if (ar != null) {
@@ -815,15 +876,29 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.loadout.isEmpty())) {
-                    report.refuse("non_canonical");
+                {
+                    boolean canonRides = false;
+                    for (int i = 0; i < v.loadout.size(); i++) {
+                        if (!(v.loadout.get(i) == 0)) {
+                            canonRides = true;
+                            break;
+                        }
+                    }
+                    if (!r.fail
+                            && !report.refused
+                            && !report.damaged
+                            && (report.unknown == canonUnk && !canonRides)) {
+                        report.refuse("non_canonical");
+                        return;
+                    }
                 }
             } else if (id == BenchMixedVariable.F_playerName) {
-                if (lastOrder >= 13) {
+                if (lastOrder > 13) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 13;
+                int canonUnk = report.unknown;
                 if (kind == 12) {
                     long L = r.leb();
                     int n = (int) L;
@@ -851,15 +926,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.playerName.equals(""))) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.playerName.equals(""))) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_payload) {
-                if (lastOrder >= 14) {
+                if (lastOrder > 14) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 14;
+                int canonUnk = report.unknown;
                 if (kind == 14) {
                     long L = r.leb();
                     if (r.fail || L < 0 || L > r.limit - r.off) {
@@ -899,15 +979,18 @@ public final class BenchMixedRetain {
                 if (!r.fail
                         && !report.refused
                         && !report.damaged
-                        && (java.util.Arrays.equals(v.payload, new byte[] {}))) {
+                        && (report.unknown == canonUnk
+                                && java.util.Arrays.equals(v.payload, new byte[] {}))) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_aimX) {
-                if (lastOrder >= 15) {
+                if (lastOrder > 15) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 15;
+                int canonUnk = report.unknown;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -927,15 +1010,18 @@ public final class BenchMixedRetain {
                 if (!r.fail
                         && !report.refused
                         && !report.damaged
-                        && (Float.floatToRawIntBits(v.aimX) == 0x00000000)) {
+                        && (report.unknown == canonUnk
+                                && Float.floatToRawIntBits(v.aimX) == 0x00000000)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_aimY) {
-                if (lastOrder >= 16) {
+                if (lastOrder > 16) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 16;
+                int canonUnk = report.unknown;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -955,15 +1041,18 @@ public final class BenchMixedRetain {
                 if (!r.fail
                         && !report.refused
                         && !report.damaged
-                        && (Float.floatToRawIntBits(v.aimY) == 0x00000000)) {
+                        && (report.unknown == canonUnk
+                                && Float.floatToRawIntBits(v.aimY) == 0x00000000)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_aimZ) {
-                if (lastOrder >= 17) {
+                if (lastOrder > 17) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 17;
+                int canonUnk = report.unknown;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -983,15 +1072,18 @@ public final class BenchMixedRetain {
                 if (!r.fail
                         && !report.refused
                         && !report.damaged
-                        && (Float.floatToRawIntBits(v.aimZ) == 0x00000000)) {
+                        && (report.unknown == canonUnk
+                                && Float.floatToRawIntBits(v.aimZ) == 0x00000000)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_recoil) {
-                if (lastOrder >= 18) {
+                if (lastOrder > 18) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 18;
+                int canonUnk = report.unknown;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -1011,15 +1103,18 @@ public final class BenchMixedRetain {
                 if (!r.fail
                         && !report.refused
                         && !report.damaged
-                        && (Float.floatToRawIntBits(v.recoil) == 0x00000000)) {
+                        && (report.unknown == canonUnk
+                                && Float.floatToRawIntBits(v.recoil) == 0x00000000)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_drift) {
-                if (lastOrder >= 19) {
+                if (lastOrder > 19) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 19;
+                int canonUnk = report.unknown;
                 if (kind == 11) {
                     if (r.has(8)) {
                         long fbits = r.get64();
@@ -1052,15 +1147,18 @@ public final class BenchMixedRetain {
                 if (!r.fail
                         && !report.refused
                         && !report.damaged
-                        && (Double.doubleToRawLongBits(v.drift) == 0x0000000000000000L)) {
+                        && (report.unknown == canonUnk
+                                && Double.doubleToRawLongBits(v.drift) == 0x0000000000000000L)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_wideKey) {
-                if (lastOrder >= 20) {
+                if (lastOrder > 20) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 20;
+                int canonUnk = report.unknown;
                 if (kind == 19 || kind == 6 || kind == 7 || kind == 8 || kind == 9) {
                     java.math.BigInteger raw = TableVariable.readInteger(r, kind);
                     if (raw != null) {
@@ -1078,15 +1176,17 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.wideKey.equals(new UInt128(0x0000000000000000L, 0x0000000000000000L)))) {
+                if (!r.fail && !report.refused && !report.damaged && (report.unknown == canonUnk && v.wideKey.equals(new UInt128(0x0000000000000000L, 0x0000000000000000L)))) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_flux) {
-                if (lastOrder >= 21) {
+                if (lastOrder > 21) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 21;
+                int canonUnk = report.unknown;
                 if (kind == 18 || kind == 2 || kind == 3 || kind == 4 || kind == 5) {
                     java.math.BigInteger raw = TableVariable.readInteger(r, kind);
                     if (raw != null) {
@@ -1104,18 +1204,17 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (v.flux.equals(new Int128(0x0000000000000000L, 0x0000000000000000L)))) {
+                if (!r.fail && !report.refused && !report.damaged && (report.unknown == canonUnk && v.flux.equals(new Int128(0x0000000000000000L, 0x0000000000000000L)))) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_ping) {
-                if (lastOrder >= 22) {
+                if (lastOrder > 22) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 22;
+                int canonUnk = report.unknown;
                 if (kind == 26) {
                     java.math.BigInteger raw = TableVariable.readInteger(r, kind);
                     if (raw != null) {
@@ -1132,15 +1231,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.ping == 0x00000000)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.ping == 0x00000000)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_crcHint) {
-                if (lastOrder >= 23) {
+                if (lastOrder > 23) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 23;
+                int canonUnk = report.unknown;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -1174,15 +1278,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.crcHint == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.crcHint == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_hasExtra) {
-                if (lastOrder >= 24) {
+                if (lastOrder > 24) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 24;
+                int canonUnk = report.unknown;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -1198,15 +1307,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.hasExtra == true)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.hasExtra == true)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_extra) {
-                if (lastOrder >= 25) {
+                if (lastOrder > 25) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 25;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -1244,15 +1358,20 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.extra == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.extra == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == BenchMixedVariable.F_idleTicks) {
-                if (lastOrder >= 26) {
+                if (lastOrder > 26) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 26;
+                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -1290,8 +1409,12 @@ public final class BenchMixedRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail && !report.refused && !report.damaged && (v.idleTicks == 0)) {
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (report.unknown == canonUnk && v.idleTicks == 0)) {
                     report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

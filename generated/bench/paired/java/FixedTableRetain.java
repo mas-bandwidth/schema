@@ -205,11 +205,12 @@ public final class FixedTableRetain {
             }
             int kind = r.get8();
             if (id == FixedTableVariable.F_value) {
-                if (lastOrder >= 0) {
+                if (lastOrder > 0) {
                     report.refuse("non_canonical");
                     return;
                 }
                 lastOrder = 0;
+                int canonAt = r.off;
                 if (kind == 13) {
                     TableVariable.Reader br = r.body();
                     if (br != null) {
@@ -227,6 +228,13 @@ public final class FixedTableRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
+                }
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (kind == 13 && r.off - canonAt == 2)) {
+                    report.refuse("non_canonical");
+                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (r.rootBody) {

@@ -6,10 +6,12 @@ package javatable
 // testdata/wire/non-canonical name one canonical file and one file per
 // non-canonical spelling, and the message-one-encoding fixture beside it names
 // the three message-form spellings it owns. Every variable row is read through
-// the plain load, the retaining load and the measure; every message row through
-// the batch load. The canonical rows read and their values re-save to the same
-// bytes; every other row is refused. The verdict alone is the contract, so no
-// refusal reason is compared.
+// the plain load and the retaining load; every message row through the batch
+// load. The region measure is the extent scan (§6.5): it sizes what a load would
+// allocate and answers no body verdict, so it is not a read entry here. The
+// canonical rows read and their values re-save to the same bytes; every other
+// row is refused. The verdict alone is the contract, so no refusal reason is
+// compared.
 
 import (
 	"encoding/hex"
@@ -193,18 +195,15 @@ public final class NonCanonicalDriver {
             TableRetain retain = new TableRetain(1 << 16, 1 << 10);
             TableVariable.Report retainReport = new TableVariable.Report();
             RootVariable.Value retained = RootRetain.loadRetain(wire, retain, retainReport);
-            long measure = RootVariable.loadMeasure(wire);
 
             if (wantRead) {
                 if (value == null || report.damaged || report.refused) { fail(name + " plain load"); }
                 if (retained == null || retainReport.damaged || retainReport.refused) { fail(name + " retaining load"); }
-                if (measure < 0) { fail(name + " measure"); }
                 if (!java.util.Arrays.equals(RootVariable.save(value), wire)) { fail(name + " plain re-save"); }
                 if (!java.util.Arrays.equals(RootVariable.save(retained), wire)) { fail(name + " retaining re-save"); }
             } else {
                 if (value != null || !(report.damaged || report.refused)) { fail(name + " plain load accepted"); }
                 if (retained != null || !(retainReport.damaged || retainReport.refused)) { fail(name + " retaining load accepted"); }
-                if (measure >= 0) { fail(name + " measure accepted"); }
             }
         }
 

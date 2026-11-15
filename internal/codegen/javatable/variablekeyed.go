@@ -144,11 +144,31 @@ func variablePayloadStart(f *ir.Field, w, start string) string {
 // count is read against the enclosing body, as the engine reads every array
 // header, and only the elements are bounded by the field's L. A foreign element
 // kind whose count is spelled past L is the ordinary kind mismatch, not damage.
-func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
+func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, canonical bool) {
 	m := varMember(f)
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
-	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!TableVariable.keyedElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.damaged=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
+	// A KEYED FIELD WITH NO SLOT, OR A SLOT AT ITS DEFAULT, IS NOT THE ONE
+	// ENCODING (docs/SPEC-TABLES.md §3.2, §4): the writer writes only the slots
+	// that ride and elides the field when none does (writeKeyedField_). A field
+	// read asks for the test; an optional's present value and a union arm's
+	// payload ride whatever they hold, so their reads pass canonical false.
+	emptyKeyed, slotSize, slotUnk, slotTest := "", "", "", ""
+	if canonical {
+		emptyKeyed = "if(count==0){report.refuse(\"non_canonical\");}"
+		slotSize = "int slotSize=body.limit-body.off;"
+		switch {
+		case isStruct(one) && !one.Type.Pointer:
+			// an empty slot body is its one terminator byte
+			slotTest = "slotSize==1"
+		case one.Type.Pointer:
+			slotTest = "value." + m + "Idx==0"
+		default:
+			slotUnk = "int slotUnk=report.unknown;"
+			slotTest = "report.unknown==slotUnk&&(" + variableDefaultTest(one, "value."+m) + ")"
+		}
+	}
+	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!TableVariable.keyedElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;%sfor(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.damaged=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;%sint slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind, emptyKeyed, slotSize)
 	for i := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}
@@ -175,10 +195,13 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if !one.Type.Pointer {
 		slack = fmt.Sprintf("if(payload.off!=payload.limit){report.damaged=true;value=new %sVariable.Slot_%s();}", st.Name, m)
 	}
-	fmt.Fprintf(b, "%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);int beforeWidened=report.widened;%sVariable.%s%s(payload,value,ek,nt,report%s);if(ek!=%d)report.widened=beforeWidened;%sv.%s.set(slot,value.%s);\n", st.Name, m, st.Name, m, st.Name, method, m, args, kind, slack, m, m)
+	fmt.Fprintf(b, "%s%sVariable.Slot_%s value=new %sVariable.Slot_%s();TableVariable.Reader payload=TableVariable.fieldPayload(body,ek);int beforeWidened=report.widened;%sVariable.%s%s(payload,value,ek,nt,report%s);if(ek!=%d)report.widened=beforeWidened;%sv.%s.set(slot,value.%s);\n", slotUnk, st.Name, m, st.Name, m, st.Name, method, m, args, kind, slack, m, m)
 
 	if one.Type.Pointer {
 		fmt.Fprintf(b, "                    v.%sIdx.set(slot,value.%sIdx);\n", m, m)
+	}
+	if slotTest != "" {
+		fmt.Fprintf(b, "                    if(!report.refused&&!report.damaged&&%s){report.refuse(\"non_canonical\");}\n", slotTest)
 	}
 	b.WriteString("                    }}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n")
 }
