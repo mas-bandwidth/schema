@@ -478,7 +478,7 @@ func TestZeroCostForValueOnlyTables(t *testing.T) {
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
 		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",
-		"Builder", "PackMeasure", "LoadMeasure", "<atomic>", "template",
+		"Builder", "PackMeasure", "PackBytes", "PackCopy", "PackSlots", "LoadMeasure", "<atomic>", "template",
 	} {
 		if strings.Contains(header, leak) {
 			t.Errorf("pointer machinery leaked into a value-only unit: %q", leak)
@@ -517,7 +517,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	for _, want := range []string{
 		"struct TableArena", "struct TableRef", "struct TableSlot",
 		"struct RootBuilder", "struct NodeBuilder",
-		"RootLoadMeasure", "RootPackMeasure", "RootPack(",
+		"RootLoadMeasure", "RootPackBytes(", "RootPackCopy(", "RootPackSlots(",
 		"NodeAt(", "NodeEmplace(", "TableRef next;", "TableRef head;",
 		"#include <atomic>",
 	} {
@@ -534,7 +534,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	// arena runtime and the two extra descriptor columns, which are emitted
 	// once per header and belong to the unit, not to any table in it.
 	for _, absent := range []string{
-		"struct PlainBuilder", "PlainPackMeasure", "PlainPack(",
+		"struct PlainBuilder", "PlainPackMeasure", "PlainPack(", "PlainPackBytes", "PlainPackCopy", "PlainPackSlots",
 		"PlainLoadMeasureBody", "PlainEmplace", "PlainLoadBuilder",
 	} {
 		if strings.Contains(header, absent) {

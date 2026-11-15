@@ -436,8 +436,7 @@ end
 -- D.refuse_write is every writer's refusal before its first byte: a retired
 -- variant (§2.15), then the write contract (docs/SPEC.md §5.1).
 function D.refuse_write(T, name, v, zero_ok)
-  return D.refuse_deprecated(T, name, v) or D.refuse_invalid(T, name, v, zero_ok)
-    or D.refuse_non_finite(T, name, v)
+  return D.refuse_deprecated(T, name, v) or D.refuse_invalid(T, name, v, zero_ok) or D.refuse_non_finite(T, name, v)
 end
 
 -- THE FINITE RULE ON WRITE (docs/SPEC-TABLES.md §3.3):

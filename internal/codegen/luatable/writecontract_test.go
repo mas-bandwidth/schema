@@ -47,7 +47,7 @@ func TestLuaWritersRefuseOffContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := string(luarun.Run(t, dir, "main.lua", nil))
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if strings.HasPrefix(line, "FAIL ") {
 			t.Error(line)
 		} else {
