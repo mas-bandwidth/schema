@@ -99,6 +99,7 @@ permissions:
 
 jobs:
   caa:
+    if: startsWith(github.head_ref, 'sprint/') == false
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:

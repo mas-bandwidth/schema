@@ -2299,6 +2299,7 @@ a caller can hold that the declaration does not admit:
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
+| 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one |
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
@@ -2318,7 +2319,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first |
 | C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++ |
 | C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it) |
-| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums |
+| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums. A bare integer outside its declared width cannot be built either: the storage is `iN`/`uN` |
 | Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError` |
 | Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError` |
 | Go | none | every build | `-1` and `TableRefuseInvalidValue` (`invalid_value`) from the `...Reason` twin; packets return `serialize.ErrValueOutOfRange` |
@@ -2385,7 +2386,7 @@ active, a writer never produces bytes its own reader refuses.
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
 | C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 and 10 debug; 8 not yet held |
-| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 and 10 debug; 8 not yet held |
 | C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1, 3–7 and 10 debug; 2 unchecked; 8 not yet held |
 | Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
 | Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |

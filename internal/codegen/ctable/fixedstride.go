@@ -374,7 +374,11 @@ func (c *fixedStrideCompiler) compileEntry(ti int32, theirAt uint32, mi int32, m
 			myN = (uint32(me.Size) - head) / uint32(mel.Size)
 		}
 		n := min(myN, theirN)
-		if n > 1<<20 {
+		// THE ARRAY IS HELD TO THE RECORD CEILING THE READER ALREADY HOLDS A
+		// LAYOUT TO (§3.4): an element is at least one byte, so no lawful array
+		// field can carry more elements than the 65536-byte record bound, and a
+		// larger walk is a layout this reader refuses before it compiles one.
+		if n > ir.TableFixedRecordMaxBytes {
 			c.hostile = true
 			return
 		}
