@@ -84,19 +84,19 @@ listed case that passes fails the leg until its line is removed.
   skipped value; its text writer refuses a zero byte (a debug assert in C,
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
   leg's lines go. WIP: none.
-  - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64.
-  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64.
-  - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64.
-  - `relax/hostile-rows-dart`: both hostile rows.
-  - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-dart`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-goose`: both hostile rows.
-  - `relax/hostile-rows-java`: both hostile rows.
-  - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte.
-  - `relax/hostile-rows-lobster`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-java`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-lobster`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-lua`: both hostile rows, jref_zero_byte.
-  - `relax/hostile-rows-luau`: both hostile rows.
+  - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
-  - `relax/hostile-rows-rust`: both hostile rows.
+  - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-squirrel`: both hostile rows.
 - `relax/rust-json-fixed-rows`: five json-hostile cases of the Rust leg
   (fixed-at-bound, fixed-exact-fraction and fixed-integral-token write 8

@@ -1,2 +1,4 @@
 # carried findings: name	slug	input	one line
 # every line is a FIX-CARD the cpp port owes; the runner fails if one goes green (tools/hostilecorpusexec, test/cpp-hostile)
+conformance-base64-unpadded	hostile-rows-cpp	inputs/conformance-base64-unpadded.json	RELAXED 2026-11-14 (maintainer: get main green): the cpp JSON read accepts unpadded base64 the ruling json-base64-canonical refuses; re-enable: relax/hostile-rows-cpp
+conformance-str-zero-escape-unknown-key	hostile-rows-cpp	inputs/conformance-str-zero-escape-unknown-key.json	RELAXED 2026-11-14 (maintainer: get main green): the cpp JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-cpp
