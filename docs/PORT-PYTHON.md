@@ -506,6 +506,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bool`: carried
 
   - `int8` to `uint64` (bare or ranged): carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
   - enums: carried
 
@@ -513,7 +514,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - types by value: carried
 
-  - unions: carried
+  - unions: carried ([the packet unions](port-python/packet-unions.md))
 
   - `if`/`else` branches: carried
 
@@ -523,13 +524,18 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - `float64`: carried ([the packet floats](port-python/packet-floats.md))
 
-  - `bits`: refused
+  - `bits`: carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
-  - `string`: refused
+  - `string`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - `bytes`: refused
+  - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - an array: refused
+  - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
+    carried ([the packet arrays](port-python/packet-arrays.md)); an array of
+    an uncarried element is refused by its element's kind
+
+  - a keyed `[E]T` array and a list `[]T`: refused
 
   - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
