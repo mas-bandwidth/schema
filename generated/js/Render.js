@@ -48,16 +48,28 @@ export function ZeroRenderSprite(value) {
 }
 
 export function WriteRenderSprite(stream, value) {
+  if (value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.sortKey;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (!Number.isInteger(value.meshId) || value.meshId < 0 || value.meshId > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.meshId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
+  if (!Number.isInteger(value.materialId) || value.materialId < 0 || value.materialId > 4294967295) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.materialId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  if (!Number.isInteger(value.layer) || value.layer < 0 || value.layer > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.layer;
@@ -135,8 +147,14 @@ export function ZeroRenderBlock(value) {
 }
 
 export function WriteRenderBlock(stream, value) {
+  if (!Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.workerIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  if (!Number.isInteger(value.spriteCountHint) || value.spriteCountHint < 0 || value.spriteCountHint > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.spriteCountHint;

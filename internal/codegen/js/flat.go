@@ -1208,6 +1208,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 			return
 		}
 		// uint128 raw: full 128 bits, 32-bit groups least significant first
+		g.guardBareInt(f, name, ind)
 		g.emitWriteWideOffset(name, 128, ind)
 		return
 	}
@@ -1254,6 +1255,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 		return
 	}
 	// bare integer at storage width
+	g.guardBareInt(f, name, ind)
 	if w == 64 {
 		g.emitWriteWideOffset(name, 64, ind)
 		return
@@ -1274,6 +1276,29 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 	} else {
 		g.chunkAdd(fmt.Sprintf("((%s) & %s)", cast, maskHex(w)), w, ind)
 	}
+}
+
+// guardBareInt refuses a bare integer its declared width cannot carry, and
+// a Number that is not an integer (SPEC §5.1): JavaScript storage holds any
+// value, so the width is checked before the mask could wrap it.
+func (g *fgen) guardBareInt(f *ir.Field, name, ind string) {
+	lo, hi := bareIntBounds(f)
+	if f.Type.Width > 32 {
+		g.guard(fmt.Sprintf("%s < %s || %s > %s", name, bigLit(lo), name, bigLit(hi)), " // a bare integer must fit its width", ind)
+		return
+	}
+	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, lo.String(), name, hi.String()),
+		" // a bare integer must fit its width", ind)
+}
+
+// bareIntBounds is the value range of a bare intN or uintN.
+func bareIntBounds(f *ir.Field) (*big.Int, *big.Int) {
+	w := uint(f.Type.Width)
+	if f.Type.Signed {
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+		return new(big.Int).Neg(new(big.Int).Add(hi, big.NewInt(1))), hi
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
 }
 
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and

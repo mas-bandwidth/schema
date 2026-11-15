@@ -1667,6 +1667,7 @@
         "packet-defaults-js-negative-control",
         "packet-end-js-negative-control",
         "packet-utf8-js-negative-control",
+        "packet-write-bareint-js-negative-control",
         "packet-write-cfloat-js-negative-control"
       ],
       "node": "26"

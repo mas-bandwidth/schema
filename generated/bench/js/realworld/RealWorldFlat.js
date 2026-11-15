@@ -89,6 +89,9 @@ export function WriteRealPacketFlat(view, value) {
   v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 18)) >>> 0, true);
   lo = v >>> 14;
+  if (value.f008U64 < 0n || value.f008U64 > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.f008U64, true);
   v = SC.getUint32(0, true);
   view.setUint32(20, (lo | (v << 18)) >>> 0, true);
@@ -306,6 +309,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   if (!Number.isInteger(value.f028Bits) || value.f028Bits < 0 || value.f028Bits > 15) {
+    return -1;
+  }
+  if (value.f029I64 < -9223372036854775808n || value.f029I64 > 9223372036854775807n) { // a bare integer must fit its width
     return -1;
   }
   v = ((value.f028Bits & 0xf)) >>> 0;
@@ -627,6 +633,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isInteger(value.f062Uint) || value.f062Uint < 0 || value.f062Uint > 503) {
     return -1;
   }
+  if (value.f063I64 < -9223372036854775808n || value.f063I64 > 9223372036854775807n) { // a bare integer must fit its width
+    return -1;
+  }
   v = (((value.f062Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
@@ -802,6 +811,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   if (value.f074Bool) {
+    if (value.f075U64 < 0n || value.f075U64 > 18446744073709551615n) { // a bare integer must fit its width
+      return -1;
+    }
     SC.setBigUint64(0, value.f075U64, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
