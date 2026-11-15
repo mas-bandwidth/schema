@@ -1704,6 +1704,22 @@ local function scanStored(r: Reader, capacity: number): (string, boolean, boolea
 	return scanText(r, capacity, true)
 end
 
+-- scanName: ONE schema-name string — a field key, an enum variant name, a
+-- flags element, a union arm key, an `&node` key, or a key inside a skipped
+-- object. §16.2 caps it at 255 bytes after decoding, and a longer one refuses
+-- the whole read. Map keys and string values are data and stay on scan.
+local function scanName(r: Reader): (string, boolean)
+	local s, over, ok = scanText(r, MAX_KEY, false)
+	if not ok then
+		return "", false
+	end
+	if over then
+		r.bad = true
+		return "", false
+	end
+	return s, true
+end
+
 -- walkNumber: the cursor over ONE RFC 8259 number, and whether it was
 -- integral in FORM — no fraction and no exponent
 local function walkNumber(r: Reader): (boolean, boolean)
@@ -1821,7 +1837,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 		end
 		local resumed = false
 		if close == 125 then
-			local key, _, ok = scanString(r, MAX_KEY)
+			local key, ok = scanName(r)
 			if not ok then
 				return false
 			end
@@ -2134,7 +2150,7 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 		r.bad = true
 		return false
 	end
-	local name, _, ok = scanString(r, MAX_KEY)
+	local name, ok = scanName(r)
 	if not ok then
 		return false
 	end
@@ -2397,7 +2413,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		r.pos += 1
 		return true
 	end
-	local name, _, ok = scanString(r, MAX_KEY)
+	local name, ok = scanName(r)
 	if not ok then
 		return false
 	end
@@ -2502,7 +2518,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 				return false
 			end
 		else
-			local name, _, ok = scanString(r, MAX_KEY)
+			local name, ok = scanName(r)
 			if not ok then
 				return false
 			end
@@ -2578,7 +2594,7 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 		return readTable(r, d, v, depth + 1)
 	end
 	if s == "enum" then
-		local text, _, ok = scanString(r, MAX_KEY)
+		local text, ok = scanName(r)
 		if not ok then
 			return false
 		end
@@ -2918,7 +2934,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			r.bad = true
 			return false
 		end
-		local name, _, ok = scanString(r, MAX_KEY)
+		local name, ok = scanName(r)
 		if not ok then
 			return false
 		end
@@ -3025,7 +3041,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			r.bad = true
 			return false
 		end
-		local name, over, ok = scanStored(r, MAX_KEY)
+		local name, over, ok = scanStored(r, -1)
 		if not ok then
 			return false
 		end
@@ -3221,7 +3237,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 				r.bad = true
 				return false
 			end
-			local k, _, ok = scanString(r, MAX_KEY)
+			local k, ok = scanName(r)
 			if not ok then
 				return false
 			end
