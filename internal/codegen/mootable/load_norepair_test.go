@@ -131,10 +131,19 @@ func (w *noRepairWire) finish() []byte {
 // a bits(N) value above its ceiling, a string past its bound, a bytes body
 // shorter than its count, a non-finite float, and a nested body that leaves
 // bytes after its terminator.
-func noRepairWires() []struct{ name string; wire []byte } {
-	var out []struct{ name string; wire []byte }
+func noRepairWires() []struct {
+	name string
+	wire []byte
+} {
+	var out []struct {
+		name string
+		wire []byte
+	}
 	add := func(name string, w *noRepairWire) {
-		out = append(out, struct{ name string; wire []byte }{name, w.finish()})
+		out = append(out, struct {
+			name string
+			wire []byte
+		}{name, w.finish()})
 	}
 
 	rangeBelow := &noRepairWire{}
