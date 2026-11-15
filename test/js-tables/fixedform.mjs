@@ -1891,16 +1891,33 @@ function liveCountSlack(check, fx1, fx1home) {
   view.setInt32(recBody + marksAt + 12, 888, true);
   view.setInt32(recBody + marksAt + 16, 777, true);
 
+  // EVERY DEAD BYTE IS ZERO ON WRITE AND REFUSED IF NON-ZERO ON READ
+  // (docs/rulings.json fixed-dead-bytes-are-zero, 2026-11-10): the slots past
+  // the live count are dead, so the poisoned record refuses whole, before any
+  // value lands, and the destination is left untouched. The verdict is the
+  // contract, never the refusal's name.
   const back = [new fx1home.FxRoot()];
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(back, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r);
-  check(n === 1 && !r.damaged && r.refused === 0, `live-count: load of the poisoned-slack record, got ${n}`);
-  check(back[0].marksCount === 1 && back[0].marks[0] === 42,
-    `live-count: live prefix lands — got count ${back[0].marksCount} [${back[0].marks[0]}]`);
-  check(back[0].marks[1] === 0 && back[0].marks[2] === 0 && back[0].marks[3] === 0,
-    `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].marks[1]}, ${back[0].marks[2]}, ${back[0].marks[3]}]`);
+  check(n === -1 && r.refused !== 0, `live-count: load of the poisoned-slack record refuses, got ${n}`);
+  check(deepDiff(back[0], new fx1home.FxRoot()) === null,
+    `live-count: the refused load leaves the destination untouched (differs at ${deepDiff(back[0], new fx1home.FxRoot())})`);
   check(r.oor === 0,
     `live-count: oor counts 0 not 3 (got ${r.oor})`);
+
+  // THE CONTROL: the same record with its slack back at zero reads, and only
+  // the live prefix lands.
+  view.setInt32(recBody + marksAt + 8, 0, true);
+  view.setInt32(recBody + marksAt + 12, 0, true);
+  view.setInt32(recBody + marksAt + 16, 0, true);
+  const clean = [new fx1home.FxRoot()];
+  const rc = new fx1home.TableFixedReport();
+  const nc = fx1.FxRootFixedLoad(clean, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), rc);
+  check(nc === 1 && !rc.damaged && rc.refused === 0, `live-count: the zero-slack control reads, got ${nc}`);
+  check(clean[0].marksCount === 1 && clean[0].marks[0] === 42,
+    `live-count: live prefix lands — got count ${clean[0].marksCount} [${clean[0].marks[0]}]`);
+  check(clean[0].marks[1] === 0 && clean[0].marks[2] === 0 && clean[0].marks[3] === 0,
+    `live-count: object slack is template zeros — got [${clean[0].marks[1]}, ${clean[0].marks[2]}, ${clean[0].marks[3]}]`);
 }
 
 // ---------------------------------------------------------------------------
@@ -2549,9 +2566,9 @@ function optionalVersioning(check, o, dir) {
 // out-of-range value REFUSES out_of_range: n = -1, the record goes back to its
 // Init defaults, and no counter moves. `plain` is `int32 = 5 | min = 0, max = 1000`.
 //
-// THE POISON GOES THROUGH THE WRITER, the way the reference forges it: the
-// write side's checks are debug-only by rule and a range is not one of them, so
-// a caller can put 5000 on the wire and the reader is what answers for it.
+// THE POISON IS PLANTED ON THE WIRE: the reference forges it through its
+// writer because C++ checks writes in debug only, but JavaScript refuses an
+// off-contract write in every build, so here a hostile writer is the bytes.
 //
 // The COMPILED half — a plan carrying an OLD writer's bound — is a stranger's
 // layout and is owed on the lineage harness; only the identity half runs here.
@@ -2562,13 +2579,26 @@ export function rangedScalarClamp(check, o) {
   // then read back through the identity plan into a POISONED destination, so
   // a reset to Init defaults is visible. `tail` rides behind the ranged field
   // so a value that ran off the end of its own field is visible on a read.
-  const read = (planted) => {
+  // JavaScript is a REFUSE leg: its writer refuses an off-contract value in
+  // every build, so the poison cannot go through the writer here. The record
+  // is saved in range and the out-of-range value is planted on the wire, at
+  // the offset found by saving two in-range values that differ only in `plain`.
+  const save = (value) => {
     const one = new fo1home.OptRoot();
-    one.plain = planted;
+    one.plain = value;
     one.tail = 203;
     const w = new Uint8Array(fo1.OptRootFixedMeasure(1));
     check(fo1.OptRootFixedSave([one], 1, w) === w.length,
       "C7 RANGED: the record saves");
+    return w;
+  };
+  const a = save(5), b = save(6);
+  let plainAt = -1;
+  for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { plainAt = i; break; } }
+  check(plainAt >= 0, "C7 RANGED: the writer places `plain` on the wire");
+  const read = (planted) => {
+    const w = save(5);
+    new DataView(w.buffer, w.byteOffset, w.length).setInt32(plainAt, planted, true);
     const back = [new fo1home.OptRoot()];
     poisonDeep(back[0]);
     const r = new fo1home.TableFixedReport();
