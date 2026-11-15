@@ -73,8 +73,8 @@ update-goldens-lobster: ;
 # test-lobster-packages runs, exactly once: the type surface, the four
 # corpus-reading fixed-form tests, the forgery fuzz oracle, each of its three
 # reversed witnesses, the cook-write suite, the remaining table tests under
-# TestLobster[A-I] and TestLobster[J-T], and those outside those ranges
-# (TestLobster[U-Z] plus any test not named TestLobster*). Only the
+# TestLobster[A-I], TestLobster[J-R], and those outside those ranges
+# (TestLobster[S-Z] plus any test not named TestLobster*). Only the
 # corpus-reading shards (fixed-form and rest-a, whose
 # TestLobsterFixedProofEvolution reads it) build the oracle; the others read
 # committed inputs. test-lobster-packages itself is unchanged and still runs
@@ -97,9 +97,9 @@ test-lobster-packages-cook: toolchain-lobster
 test-lobster-packages-rest-a: toolchain-lobster build/fixedform-corpus/.stamp
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[A-I]' -skip '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$|^TestLobsterCook|^TestLobsterFixedProofSuite(Values|NegativeControl)$$'
 test-lobster-packages-rest-b: toolchain-lobster
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[J-T]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[J-R]'
 test-lobster-packages-rest-c: toolchain-lobster
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -skip '^TestLobster[A-T]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -skip '^TestLobster[A-R]'
 
 # The fixed-proof value and control suites, one subtest per row case and each
 # a live C++ oracle build, leave rest-a and go to three rows each by the

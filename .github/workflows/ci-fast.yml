@@ -857,8 +857,8 @@ jobs:
   #                       — the fixed-proof value and control suites, a
   #                         third of the row cases each
   #   packages-rest-a     — the remaining table tests named TestLobster[A-I]
-  #   packages-rest-b     — the table tests named TestLobster[J-T]
-  #   packages-rest-c     — every remaining table test (TestLobster[U-Z] and
+  #   packages-rest-b     — the table tests named TestLobster[J-R]
+  #   packages-rest-c     — every remaining table test (TestLobster[S-Z] and
   #                         any test not named TestLobster*)
   #                         The package parts together run every test
   #                         test-lobster-packages runs, exactly once, under
