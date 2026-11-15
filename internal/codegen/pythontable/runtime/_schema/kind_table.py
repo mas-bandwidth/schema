@@ -39,32 +39,11 @@ class _Table:
         return obj
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        # AN ALL-DEFAULT NESTED TABLE ELIDES BY ITS BODY, as the engine
-        # elides it (internal/tablewire/encode.go, kind 13; SPEC-TABLES §3):
-        # the field is written into a scratch buffer, and when its body is its
-        # terminator alone the field is dropped and every id it interned is
-        # undone, so an elided field costs nothing in the id table either.
-        # Each field inside decided its own elision against its DECLARED
-        # default (floats by bit pattern, compressed floats by value), so the
-        # body, not an equality, is the answer.
-        outer = w
-        mark = len(ctx.ids)
-        field = bytearray()
-        w = _body_writer(field)
         # The field's id is numbered before its body's, so the id table is in
         # the pre-order the Go engine writes.
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
         self.write_element(w, fd, value, ctx)
-        # the field less its header (the id reference and the kind) and its
-        # one-byte L is the body
-        body_len = len(field) - _varint_size(ctx.refs[fd.field_id]) - 2
-        if body_len <= 1:
-            for interned in ctx.ids[mark:]:
-                del ctx.refs[interned]
-            del ctx.ids[mark:]
-            return
-        outer.raw(field)
 
     def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
@@ -74,11 +53,6 @@ class _Table:
         write_body(bw, value, ctx, False)
         w.varint(len(body))
         w.raw(body)
-
-
-def _varint_size(value: int) -> int:
-    """The bytes a LEB128 varint of value takes."""
-    return max(1, (value.bit_length() + 6) // 7)
 
 
 def _body_writer(buf: bytearray) -> Any:

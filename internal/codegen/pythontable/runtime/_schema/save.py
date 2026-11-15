@@ -224,8 +224,8 @@ def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
             _collect(current, ctx, inner)
             ctx.onstack.discard(key)
         elif field.codec == "table":
-            # Always walked: whether a nested table elides is decided by its
-            # body when it is written (kind_table.py), never by a compare.
+            if field.is_default(current):
+                continue
             _collect(current, ctx, blobs)
         elif field.codec == "array":
             # a table element is a by-value edge, so its blob slots are the
@@ -238,9 +238,16 @@ def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
         elif field.codec == "map":
             _collect_map(field, current, ctx, blobs)
         else:
+            kind = kinds._REGISTRY[field.codec]
+            # a kind whose value can hold pointers numbers them itself, in
+            # the order its bytes ride (a union's arm, kind_union.py)
+            collect = getattr(kind, "collect", None)
+            if collect is not None:
+                collect(field, current, ctx, blobs)
+                continue
             # the tables a container holds by value are walked in place, in
             # the order their bodies ride
-            for table, _ in _held_tables(kinds._REGISTRY[field.codec], field, current, ""):
+            for table, _ in _held_tables(kind, field, current, ""):
                 _collect(table, ctx, blobs)
 
 
@@ -283,7 +290,8 @@ def _collect_map(field: FieldDesc, value: dict[Any, Any], ctx: Ctx, blobs: list[
             _collect(current, ctx, inner)
             ctx.onstack.discard(node)
         elif value_field.codec == "table":
-            # Always walked, as a by-value field is (kind_table.py).
+            if value_field.is_default(current):
+                continue
             _collect(current, ctx, blobs)
         elif value_field.codec == "map":
             _collect_map(value_field, current, ctx, blobs)

@@ -380,6 +380,12 @@ func TestPythonVtFixedClassElision(t *testing.T) {
 	}
 }
 
+// tableElision is the runtime's one by-value table elision test
+// (descriptor.py, FieldDesc.is_default): every field of the table elided,
+// judged field by field, as the engine elides a body that is its terminator
+// alone.
+const tableElision = "return all(field.is_default(getattr(value, field.name)) for field in fields)"
+
 // TestPythonVtFixedClassElisionNegativeControl plants one fault per case in a
 // copy of the runtime or the generated module, and requires the probe red
 // naming that case.
@@ -395,16 +401,17 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		name, path, anchor, replacement, red string
 	}{
 		// the nested table never elides: every all-default case is red
-		{"never_elides", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if body_len < 1:", "vt_elide_all_default"},
-		{"declared_defaults", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if body_len < 1:", "vt_elide_declared_defaults"},
-		// a small body elides: a table one field off its default is lost
-		{"one_off", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if body_len <= 8:", "vt_elide_one_off"},
+		{"never_elides", "vtel/_schema/descriptor.py", tableElision, "return False", "vt_elide_all_default"},
+		{"declared_defaults", "vtel/_schema/descriptor.py", tableElision, "return False", "vt_elide_declared_defaults"},
+		// a table one field off its default elides: that field is lost
+		{"one_off", "vtel/_schema/descriptor.py", tableElision, "return sum(not field.is_default(getattr(value, field.name)) for field in fields) <= 1", "vt_elide_one_off"},
 		// the old equality elision: a table holding a fixed array of tables elides
-		{"equality_elision", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if value == descriptor.new_by_name(fd.target):", "vt_elide_fixed_array_rides"},
+		{"equality_elision", "vtel/_schema/descriptor.py", tableElision, "return bool(value == new_by_name(self.target))", "vt_elide_fixed_array_rides"},
 		// a plain float judged by == elides -0.0 under a 0.0 default
 		{"neg_zero", "vtel/_schema/descriptor.py", "return struct.pack(\"<f\", value) == struct.pack(\"<f\", fd.default)", "return bool(value == fd.default)", "vt_elide_neg_zero"},
-		// the ids an elided body interned are kept: two levels deep is red
-		{"two_deep", "vtel/_schema/kind_table.py", "for interned in ctx.ids[mark:]:\n                del ctx.refs[interned]\n            del ctx.ids[mark:]", "pass", "vt_elide_two_deep_inner_default"},
+		// a nested table's own nested table is not judged: a table whose one
+		// change is two levels deep elides, and that change is lost
+		{"two_deep", "vtel/_schema/descriptor.py", tableElision, "return all(field.codec == \"table\" or field.is_default(getattr(value, field.name)) for field in fields)", "vt_elide_two_deep"},
 		// a NaN is let through on write
 		{"nan", "vtel/_schema/kind_float.py", "if not math.isfinite(value):\n            raise InvalidValue", "if False:\n            raise InvalidValue", "vt_elide_nan_write"},
 		// the range is held on the unrounded value

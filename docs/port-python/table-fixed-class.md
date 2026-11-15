@@ -21,11 +21,12 @@
 - **A fixed array** of a scalar kind elides when every element is at its
   zero, parity with the reader's prefill; a fixed array of tables always
   rides, because position is identity there.
-- **A by-value table elides by its body.** The writer interns the field's id,
-  builds the nested body with every field inside judged against its declared
-  default, and drops the field and every id it interned when the body is its
-  terminator alone, as the engine does (internal/tablewire/encode.go, kind
-  13). No value compare decides it, so a user `__eq__` cannot; a by-value
+- **A by-value table elides when every field in it elides**, judged field by
+  field through the descriptors (`FieldDesc.is_default`, shared with the
+  table-side unions), each against its declared default; that is the engine's
+  body of its terminator alone (internal/tablewire/encode.go, kind 13), and an
+  elided table interns no id. No value compare decides it, so a user `__eq__`
+  cannot; a by-value
   table, a table array element, a pointer target and the root must be exactly
   the generated class, so a subclass is refused with `InvalidValue`. The
   generated `__eq__` compares a float by its bits, as the packet surface does.

@@ -356,7 +356,10 @@ var pyKeyedDamages = []pyKeyedDamage{
 		b := &pyKeyedBuild{}
 		b.keyedField(f, 14, 3, 1, []pyKeyedSlot{{key: k[0], payload: i16(5)}}, nil)
 		return b.file()
-	}, "refused kind_mismatch", "refused"},
+		// As an array body the keyed slots leave bytes inside L, which the
+		// engine's wire check refuses before its decode compares the kind
+		// (tablewire.RefusalReason answers wire_damaged for this wire).
+	}, "refused wire_damaged", "refused"},
 	{"keyed_body_too_short", func(f uint64, k []uint64) []byte {
 		b := &pyKeyedBuild{}
 		fref := b.ref(f)
