@@ -1292,8 +1292,37 @@ public final class ArmProbe {
         final int layoutBytes = tblfu2.TableFixed.get32(data, 16);
         final int body = 20 + layoutBytes + 8;
         if (trueBytes) {
-            data[body] = 2;
-            data[body + 1] = 7;
+            // STRICT (FIXED-FORM-ALGORITHM §4.5): a live bool byte of 2 or a
+            // live present byte of 7 refuses the whole load on both builds, the
+            // verdict TestFixedBoolBytesStrict pins for this leg; the clean
+            // bytes then read below exactly as in the plain mode.
+            final int[][] forgeries = { { body, 2 }, { body + 1, 7 } };
+            for (int[] forgery : forgeries) {
+                final byte[] bad = data.clone();
+                bad[forgery[0]] = (byte) forgery[1];
+                final tblfu1.FuRootFixed.Value[] b1 = {
+                    new tblfu1.FuRootFixed.Value(),
+                    new tblfu1.FuRootFixed.Value(),
+                    new tblfu1.FuRootFixed.Value(),
+                };
+                final tblfu1.TableFixed.Report br1 = new tblfu1.TableFixed.Report();
+                final int bn1 = tblfu1.FuRootFixed.load(b1, b1.length, bad,
+                        tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), br1);
+                if (bn1 != -1 || !br1.refused || b1[0].flag || b1[0].notePresent) {
+                    fail("FU1 forged byte " + forgery[1] + " at " + forgery[0] + ": n=" + bn1 + " refused=" + br1.refused);
+                }
+                final tblfu2.FuRootFixed.Value[] b2 = {
+                    new tblfu2.FuRootFixed.Value(),
+                    new tblfu2.FuRootFixed.Value(),
+                    new tblfu2.FuRootFixed.Value(),
+                };
+                final tblfu2.TableFixed.Report br2 = new tblfu2.TableFixed.Report();
+                final int bn2 = tblfu2.FuRootFixed.load(b2, b2.length, bad,
+                        tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), br2);
+                if (bn2 != -1 || !br2.refused || b2[0].flag || b2[0].notePresent) {
+                    fail("FU2 forged byte " + forgery[1] + " at " + forgery[0] + ": n=" + bn2 + " refused=" + br2.refused);
+                }
+            }
         }
 
         // 1. Identity read on FU1
