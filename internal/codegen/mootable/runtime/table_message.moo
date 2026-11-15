@@ -1795,10 +1795,12 @@ end
 
 local function decodeEnum(t: any, e: any, element: boolean): (any, boolean)
 	local ref, ok = reference(t)
+	t.enumWire = -1
 	if not ok then
 		return nil, dmal(t)
 	end
 	if ref == 0 then
+		t.enumWire = 0
 		return 0, true
 	end
 	local en = nameAt(t, ref)
@@ -1810,6 +1812,7 @@ local function decodeEnum(t: any, e: any, element: boolean): (any, boolean)
 			if pair[3] == true then
 				return if element then 0 else (e.def or 0), true
 			end
+			t.enumWire = i
 			return i, true
 		end
 	end
@@ -1935,6 +1938,9 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 	if not ok then
 		return dmal(t)
 	end
+	-- A KEYED ARRAY WITH NO SLOT, OR WITH A SLOT AT ITS DEFAULT, IS NOT WRITTEN
+	-- (§3.2, §3.3 (a)): the field-at-default rule reads this after the field
+	t.keyedAtDefault = n == 0
 	local dst = holder[fd.slot]
 	-- A KEYED SLOT TWICE IS DAMAGE (§3.3; docs/plans/strict-only.md decision 5)
 	local seen: { [string]: boolean } = {}
@@ -1965,8 +1971,28 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		elseif at > fd.bound then
 			return refuseRead(t, "out_of_range")
 		end
+		local from = t.r.off
 		if not decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep) then
 			return false
+		end
+		if keep then
+			local e = fd.e
+			local atDef: boolean
+			if shape.elem == 13 then
+				-- an element body that is its terminator alone
+				local stop = t.r.off
+				t.r.off = from
+				local first = get(t.r, t.v.refBits)
+				t.r.off = stop
+				atDef = first == 0
+			elseif e.s == "enum" then
+				atDef = t.enumWire == 0
+			else
+				atDef = elemDefault(e, elemAt(dst, at))
+			end
+			if atDef then
+				t.keyedAtDefault = true
+			end
 		end
 	end
 	return true
@@ -2056,9 +2082,58 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	return u, decodeField(t, arm, entry, u)
 end
 
+-- A FIELD ITS WRITER ELIDES (§3.3 (a), (c)): the batch's writer writes no
+-- reference for a value its declaration stores by absence (encodeField), so
+-- a body that carries one is not the one encoding of its value. A changed
+-- default is the lineage check's refusal, so the writer's default is this
+-- reader's. A present optional always rides. A union at None and a nested
+-- body that is its terminator alone are read off the payload at `off`, the
+-- first reference after the field's own; the rest off the value it landed.
+local function messageElides(t: any, fd: any, v: any, off: number): boolean
+	if fd.present ~= nil then
+		return false
+	end
+	local s = fd.s
+	local val = v[fd.slot]
+	if s == "union" or s == "tab" then
+		local stop = t.r.off
+		t.r.off = off
+		local first = get(t.r, t.v.refBits)
+		t.r.off = stop
+		return first == 0
+	elseif s == "enum" then
+		return t.enumWire == (fd.def or 0)
+	elseif s == "str" then
+		return val == nil or val == ""
+	elseif s == "bytes" then
+		return (v[fd.slot .. "Length"] or 0) == 0
+	elseif s == "arr" then
+		if fd.array == "keyed" then
+			return t.keyedAtDefault == true
+		elseif fd.array == "counted" then
+			return liveCount(fd, v, val) == 0
+		elseif fd.e.s == "tab" then
+			return false
+		end
+		for i = 1, fd.bound do
+			if not elemDefault(fd.e, elemAt(val, i)) then
+				return false
+			end
+		end
+		return true
+	elseif s == "bool" or s == "int" or s == "float" then
+		return atDefault(fd, val)
+	end
+	return false
+end
+
 -- one body: fields until the zero reference (body)
 decodeBody = function(t: any, d: any, v: any): boolean
 	local byId = fieldsById(d)
+	-- A BODY'S FIELD REFERENCES FOLLOW THE WRITER'S DECLARATION ORDER (§3.3
+	-- (b)): a field this reader names, met after one declared later, is not
+	-- the one encoding a conforming writer emits
+	local lastK = 0
 	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
 	-- name it or not (docs/plans/strict-only.md decision 5)
 	local seen: { [string]: boolean } = {}
@@ -2083,6 +2158,10 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			end
 			continue
 		end
+		if hit.k <= lastK then
+			return dmal(t)
+		end
+		lastK = hit.k
 		local fd = hit.fd
 		local mine = mineEntry(slotOf(d, hit.k))
 		if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
@@ -2099,8 +2178,15 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			-- THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT and refuses
 			return refuseRead(t, "kind_mismatch")
 		end
+		local off = t.r.off
+		local unknownBefore = t.report.unknown
 		if not decodeField(t, fd, entry, v) then
 			return false
+		end
+		-- a value this build cannot wholly name (an unknown variant, arm or
+		-- slot) is a newer writer's, and no default rule judges it
+		if t.report.unknown == unknownBefore and messageElides(t, fd, v, off) then
+			return dmal(t)
 		end
 		if fd.present ~= nil and fd.s ~= "arr" then
 			v[fd.present] = true

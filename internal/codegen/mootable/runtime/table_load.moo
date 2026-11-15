@@ -291,6 +291,13 @@ end
 
 local _table: { string } = {}
 local _pending: { any } = {}
+-- what the last enum read named on the wire, for the field-at-default rule
+-- (§3, §4): the variant's index, 0 for the None reference, -1 for a variant
+-- this build cannot name or has deprecated, which no default rule judges
+local _enumWire = -1
+-- whether the last keyed array read carried no slot, or a slot at the
+-- default its writer elides (§3.2)
+local _keyedAtDefault = false
 local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
@@ -424,11 +431,13 @@ local read_union: any
 -- number.
 local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	local ref = r_leb(r)
+	_enumWire = -1
 	if r.bad then
 		damage(report)
 		return nil, false
 	end
 	if ref == 0 then
+		_enumWire = 0
 		return 0, true
 	end
 	if ref > #_table then
@@ -441,6 +450,7 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 			if v[3] == true then
 				return fd.def or 0, true
 			end
+			_enumWire = i
 			return i, true
 		end
 	end
@@ -778,7 +788,33 @@ end
 
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. Key variant k lands at index k.
+-- AN ELEMENT AT ITS DEFAULT (§3, §5): the value a reader prefills and a
+-- writer elides a keyed slot at (table_save.moo elem_is_default)
+local function elem_default(e: any, val: any): boolean
+	local s = e.s
+	if s == "bool" then
+		return val == false or val == nil
+	end
+	if s == "int" or s == "float" then
+		return V.sameStorage(e, val, e.def)
+	end
+	if s == "enum" then
+		return val == 0 or val == nil
+	end
+	if s == "ptr" or s == "sblob" or s == "bblob" then
+		return not val
+	end
+	if s == "union" then
+		return type(val) ~= "table" or val.Type == 0
+	end
+	if s == "str" or s == "text" then
+		return val == nil or val == ""
+	end
+	return false
+end
+
 local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
+	_keyedAtDefault = false
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then
 		damage(report)
@@ -814,6 +850,8 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 			report.widened += 1
 		end
 		local e = fd.e
+		-- A KEYED ARRAY WITH NO SLOT IS NOT WRITTEN (§3.2)
+		_keyedAtDefault = count == 0
 		for _ = 1, count do
 			local key = r_leb(sub)
 			if sub.bad then
@@ -872,6 +910,13 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 			if payload.at ~= payload.e then
 				damage(report)
 				break
+			end
+			-- A SLOT AT ITS DEFAULT IS NOT WRITTEN (§3.2): a table slot whose body
+			-- is its terminator alone, an enum slot naming None, or a value the
+			-- reader prefills; a variant this build cannot name is judged by none
+			local atDef = if e.s == "tab" then elemLen == 1 elseif e.s == "enum" then _enumWire == 0 else elem_default(e, x)
+			if atDef then
+				_keyedAtDefault = true
 			end
 			if dst ~= nil and x ~= nil then
 				if type(dst) == "buffer" then
@@ -1675,8 +1720,92 @@ local function guard_holds(fd: any, v: any): boolean
 	return true
 end
 
+-- a field's place in its declaration order, which is the order a conforming
+-- writer emits a body's fields in (§3)
+local posCache: { [any]: { [string]: number } } = {}
+
+local function field_positions(desc: any): { [string]: number }
+	local m = posCache[desc]
+	if m == nil then
+		local built: { [string]: number } = {}
+		for i, f in desc.fields do
+			built[f.id] = i
+		end
+		posCache[desc] = built
+		return built
+	end
+	return m
+end
+
+-- A FIELD ITS WRITER ELIDES (§3, §3.1, §3.2, §4): the save writes no header
+-- for a value its declaration stores by absence (table_save.moo write_field),
+-- so a body that carries one is a spelling no conforming writer of a lawful
+-- lineage produces, and a changed default is the lineage check's refusal, so
+-- the writer's default is this reader's. A `| required` field and a present
+-- optional always ride; a field under a false guard is the guard's rule. The
+-- framing spellings are read off the payload at `at`: a null pointer (index
+-- 0), the None arm (reference 0) and an empty nested body (L 1, its
+-- terminator alone). The rest are read off the value the field landed.
+local function writer_elides(fd: any, kind: number, b: buffer, at: number, e: number, v: any): boolean
+	if fd.required == true or fd.present ~= nil or v == nil or not guard_holds(fd, v) then
+		return false
+	end
+	if kind == 17 or kind == 15 or kind == 13 then
+		local x = V.leb(b, at, e)
+		return x == (if kind == 13 then 1 else 0)
+	end
+	local s = fd.s
+	local val = v[fd.slot]
+	if s == "bool" then
+		return (val == true) == (fd.def == true)
+	elseif s == "int" or s == "float" then
+		return V.sameStorage(fd, val, fd.def)
+	elseif s == "enum" then
+		return _enumWire == fd.def
+	elseif s == "str" or s == "text" then
+		return (if val == nil then "" else val) == (fd.def or "")
+	elseif s == "bytes" then
+		local n = v[fd.slot .. "Length"]
+		local d = fd.def or ""
+		if type(val) ~= "buffer" then
+			return #d == 0
+		end
+		if type(n) ~= "number" then
+			n = buffer.len(val)
+		end
+		return n == #d and buffer.readstring(val, 0, n) == d
+	elseif s == "map" then
+		return type(val) ~= "table" or #val == 0
+	elseif s == "arr" then
+		if fd.array == "keyed" then
+			return _keyedAtDefault
+		elseif fd.array == "list" then
+			if type(val) == "buffer" then
+				return buffer.len(val) == 0
+			end
+			return type(val) ~= "table" or #val == 0
+		elseif fd.array == "counted" then
+			return (v[fd.slot .. "Count"] or 0) == 0
+		end
+		-- a fixed array of tables always rides: position is identity there
+		if fd.e.s == "tab" then
+			return false
+		end
+		for i = 1, fd.bound do
+			local x = if type(val) == "buffer" then buffer.readu8(val, i - 1) elseif type(val) == "table" then val[i] else nil
+			if not elem_default(fd.e, x) then
+				return false
+			end
+		end
+		return true
+	end
+	return false
+end
+
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
+	local pos = field_positions(desc)
+	local lastPos = 0
 	local seen: { [string]: boolean } = {}
 	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE, whether this reader can name it
 	-- or not (§3; docs/plans/strict-only.md decision 5)
@@ -1720,6 +1849,17 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			return false
 		end
 		met[id] = true
+		-- A BODY'S FIELDS FOLLOW THE WRITER'S DECLARATION ORDER (§3): a field
+		-- this reader names, met after one declared later, is a spelling no
+		-- conforming writer emits
+		local p = pos[id]
+		if p ~= nil then
+			if p <= lastPos then
+				damage(_report)
+				return false
+			end
+			lastPos = p
+		end
 		local handled = false
 		if id == NodeTableId then
 			if nested then
@@ -1767,8 +1907,16 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 					end
 				end
 			else
+				local at = r.at
+				local unknownBefore = _report.unknown
 				local ok, selected = read_field(fd, r, v)
 				if not ok then
+					return false
+				end
+				-- a value this build cannot wholly name (an unknown variant, arm
+				-- or slot) is a newer writer's, and no default rule judges it
+				if selected ~= false and _report.unknown == unknownBefore and writer_elides(fd, kind, r.b, at, r.e, v) then
+					damage(_report)
 					return false
 				end
 				seen[id] = true
@@ -2079,6 +2227,25 @@ local function wcFail(name: string): boolean
 	return false
 end
 
+-- THE ID TABLE IS IN FIRST-USE ORDER (§3): the walk meets every reference
+-- that names an entry (a field, a union arm, an enum variant, a keyed slot's
+-- key, a node record's type) in the order a writer interns them, so the first
+-- reference to each entry must name the next entry not yet used. An entry
+-- named out of that order is wire_damaged here, and one no reference names is
+-- wire_damaged when the walk ends. An announcement's body is the transport of
+-- its own two reserved ids and keeps its own rules (§3.3).
+local function wcUse(ref: number): boolean
+	if wc.announcement or wc.used[ref] then
+		return true
+	end
+	if ref ~= wc.nextRef then
+		return wcFail("wire_damaged")
+	end
+	wc.used[ref] = true
+	wc.nextRef += 1
+	return true
+end
+
 local wcPayload: any
 local wcContent: any
 local wcBody: any
@@ -2152,6 +2319,9 @@ local function wcKeyed(s: number, e: number): boolean
 			return wcFail("wire_damaged")
 		end
 		seen[key] = true
+		if not wcUse(key) then
+			return false
+		end
 		local n, after = V.leb(wc.b, nxt, e)
 		if n == nil or n > e - after then
 			return wcFail("wire_damaged")
@@ -2180,6 +2350,9 @@ local function wcUnion(at: number, e: number): number?
 	end
 	if ref > #wc.ids or nxt >= e then
 		wcFail("wire_damaged")
+		return nil
+	end
+	if not wcUse(ref) then
 		return nil
 	end
 	local kind = buffer.readu8(wc.b, nxt)
@@ -2229,6 +2402,9 @@ wcPayload = function(at: number, e: number, kind: number): number?
 		local ref, nxt = V.leb(wc.b, at, e)
 		if ref == nil or ref > #wc.ids then
 			wcFail("wire_damaged")
+			return nil
+		end
+		if ref ~= 0 and not wcUse(ref) then
 			return nil
 		end
 		return nxt
@@ -2325,6 +2501,14 @@ wcBody = function(s: number, e: number, root: boolean): boolean
 			return wcFail("wire_damaged")
 		end
 		seen[id] = true
+		-- THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1, §22.1): a field
+		-- after it is a spelling no conforming writer produces
+		if root and wc.table ~= nil and not wc.announcement then
+			return wcFail("wire_damaged")
+		end
+		if not wcUse(ref) then
+			return false
+		end
 		if p >= e then
 			return wcFail("wire_damaged")
 		end
@@ -2352,11 +2536,12 @@ wcBody = function(s: number, e: number, root: boolean): boolean
 	end
 end
 
--- the node table's records, each { tid, s, e }, or nil when it cannot be
--- read whole (internal/tablewire nodetable.go scanNodeRecords)
+-- the node table's records, each { ref, tid, s, e }, or nil when it cannot be
+-- read whole (internal/tablewire nodetable.go scanNodeRecords) or holds no
+-- record: a root that numbers no node writes no node table (§3.1)
 local function wcRecords(s: number, e: number): { any }?
 	local declared, at = V.leb(wc.b, s, e)
-	if declared == nil then
+	if declared == nil or declared == 0 then
 		return nil
 	end
 	local out: { any } = {}
@@ -2369,7 +2554,7 @@ local function wcRecords(s: number, e: number): { any }?
 		if n == nil or n > e - after then
 			return nil
 		end
-		out[#out + 1] = { tid = wc.ids[ref], s = after, e = after + n }
+		out[#out + 1] = { ref = ref, tid = wc.ids[ref], s = after, e = after + n }
 		at = after + n
 	end
 	if declared ~= #out then
@@ -2437,7 +2622,7 @@ end
 -- float rides anywhere in the file. An announcement's body is the one root
 -- body whose transport carries the two reserved announcement ids (§3.3).
 local function wireCheck(b: buffer, s: number, e: number, ids: { string }, announcement: boolean?): (string?, boolean)
-	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil, announcement = announcement == true }
+	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil, announcement = announcement == true, used = {}, nextRef = 1 }
 	local function finish(): (string?, boolean)
 		local fail, nonFinite = wc.fail, wc.nonFinite
 		wc = nil
@@ -2456,6 +2641,9 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }, annou
 		end
 		for _, rec in records do
 			wc.edges = {}
+			if not wcUse(rec.ref) then
+				return finish()
+			end
 			if rec.tid == BytesBlobId or rec.tid == StringBlobId then
 				-- A BLOB RECORD IS ITS BYTES (§2.5, §3.1)
 				if rec.e - rec.s > BLOB_SIZE_CAP then
@@ -2477,6 +2665,11 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }, annou
 		end
 	end
 	wcGraph(children, blobs)
+	-- AN ENTRY NO REFERENCE NAMES (§3): a writer never interns an id it
+	-- does not write
+	if not wc.announcement and wc.nextRef ~= #ids + 1 then
+		wcFail("wire_damaged")
+	end
 	return finish()
 end
 
