@@ -23,6 +23,7 @@ local HASH_AT = 8
 local ENTRY = 17
 local LAYOUT_HEADER = 4
 local RECORD_MAX = 65536
+local MAX_RECORDS = 4096
 local PLAN_MAX = 4096
 local COUNT = 4
 local PRESENT = 1
@@ -1063,10 +1064,11 @@ end
 -- REFUSE IS TOTAL: the values are built and returned only when every record
 -- read, so a refusal at record k lands nothing at all, and the counters move
 -- only on a read that returns — the compile census once, after the loop
--- (§5.3, §5.9 #6). `batch_too_large` has no Luau surface: read takes no
--- capacity, so no batch can outgrow it; `plan_too_large` is the lineage
--- entry's own lane (a layout past PLAN_MAX entries).
-function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+-- (§5.3, §5.9 #6). `batch_too_large` is the caller's capacity: a file holding
+-- more records than it refuses before any record is checked or lands, and an
+-- omitted capacity is MAX_RECORDS; `plan_too_large` is the lineage entry's own
+-- lane (a layout past PLAN_MAX entries).
+function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
 	rep.reason = nil
 	rep.unknown, rep.kindMismatch, rep.widened = 0, 0, 0
@@ -1126,6 +1128,9 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local stride = k.recordBytes
 	if stride <= 8 or rest % stride ~= 0 then return no("truncated") end
 	local count = rest // stride
+	-- 10: the caller's capacity, the default when none was given
+	local cap = capacity or MAX_RECORDS
+	if count > cap then return no("batch_too_large") end
 	-- 11: EVERY record's hash before the first one lands (§5.3, TOTAL OVER
 	-- THE BATCH)
 	for r = 0, count - 1 do
@@ -1158,9 +1163,9 @@ end
 -- (kind_mismatch), with report.reason that name and nothing handed back.
 -- unknown and widened alone never refuse. The verdict is the contract; the
 -- name is this leg's diagnostic (docs/rulings.json refusal-verdict-only).
-function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+function F.read(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
-	local out = F.loadWalk(d, fixed, file, rep)
+	local out = F.loadWalk(d, fixed, file, rep, capacity)
 	if out == nil then return nil end
 	if rep.kindMismatch > 0 then rep.reason = "kind_mismatch"; return nil end
 	return out
@@ -1169,9 +1174,9 @@ end
 -- load is the plain strict read for a caller that wants the refusal raised:
 -- the values, or an error { name, layoutHash, field } carrying the name
 -- read reports.
-function F.load(d: any, fixed: Fixed, file: buffer, report: any?): { any }
+function F.load(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }
 	local rep: any = report or {}
-	local out = F.read(d, fixed, file, rep)
+	local out = F.read(d, fixed, file, rep, capacity)
 	if out == nil then
 		error({ name = rep.reason, layoutHash = rep.layoutHash, field = rep.field }, 0)
 	end
