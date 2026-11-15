@@ -1384,10 +1384,6 @@ func fieldSize(f *ir.Field) int64 {
 	return 0
 }
 
-func descriptorDefault(f *ir.Field) string {
-	return defaultFor(f, codecOf(f))
-}
-
 // defaultFor is the descriptor default of a field, or of a container's
 // element, carried under codec.
 func defaultFor(f *ir.Field, codec string) string {
