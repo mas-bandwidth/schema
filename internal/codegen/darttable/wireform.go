@@ -2522,7 +2522,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case isFixedArray(f): // [N]T rides as kind 14, every element (§3)
 		g.emitSaveFixed(f, expr, ind, id)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != null"))
+		g.pf("%s", rideOpen(ind, f, expr+" != null"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
 		if f.Type.Kind == ir.TString {
@@ -2532,7 +2532,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != null"))
+		g.pf("%s", rideOpen(ind, f, expr+" != null"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
 		g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.indexOf(%s!));\n", ind, expr, expr)
@@ -2551,7 +2551,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			g.emitSaveScalarList(f, expr, ind, id)
 		}
 	case f.Type.Kind == ir.TString:
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.stringDefault(f)))
+		g.pf("%s", rideOpen(ind, f, expr+" != "+g.stringDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindString)
 		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
@@ -2562,7 +2562,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		// §5: a declared bytes default is storage, not a field occurrence.
 		// Comparing with emptiness would write the default into an otherwise
 		// empty body and change the Go oracle's canonical wire.
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.stringDefault(f)))
+		g.pf("%s", rideOpen(ind, f, expr+" != "+g.stringDefault(f)))
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 		g.pf("%s\tfinal b = latin1.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -2577,7 +2577,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case isWide(f): // kinds 18-29, the raw integer at its width (§3, §15)
 		g.emitSaveWide(f, expr, ind, id)
 	case f.Type.Kind == ir.TBool:
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, fmt.Sprintf("%s != %v", expr, f.HasDefault && f.DefBool)))
+		g.pf("%s", rideOpen(ind, f, fmt.Sprintf("%s != %v", expr, f.HasDefault && f.DefBool)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
@@ -2596,7 +2596,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		case 4:
 			put = "putU32"
 		}
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.intDefault(f)))
+		g.pf("%s", rideOpen(ind, f, expr+" != "+g.intDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s);\n", ind, put, expr)
@@ -2613,14 +2613,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			bits = "_f32Write"
 			put = "putU32"
 		}
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, wireFloatRides(f, expr, g.floatDefault(f))))
+		g.pf("%s", rideOpen(ind, f, wireFloatRides(f, expr, g.floatDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
-		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.enumDefault(f)))
+		g.pf("%s", rideOpen(ind, f, expr+" != "+g.enumDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindEnum)
 		// The value is the variant's id reference; the zero variant (None) has
@@ -2667,7 +2667,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2687,7 +2687,7 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2713,7 +2713,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
