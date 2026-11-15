@@ -41,6 +41,9 @@ export function ReadVec3Flat(view, numBits, value) {
   if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
     return false;
   }
+  if (((192 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -78,6 +81,9 @@ export function ReadQuatFlat(view, numBits, value) {
   if ((view.getUint32(28, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
     return false;
   }
+  if (((256 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -111,6 +117,12 @@ export function ReadHandleFlat(view, numBits, value) {
   value.objectId = v | 0;
   v = (out >>> 14) & 0xff;
   value.objectSequence = v;
+  if (((22 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(2) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -166,6 +178,12 @@ export function ReadQuantizedPositionFlat(view, numBits, value) {
     return false;
   }
   value.z = (v + 4286578688) | 0;
+  if (((75 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(9) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -221,6 +239,12 @@ export function ReadQuantizedVelocityFlat(view, numBits, value) {
     return false;
   }
   value.z = (v + 4292870144) | 0;
+  if (((69 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(8) & 0xe0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -280,6 +304,9 @@ export function ReadQuantizedRotationFlat(view, numBits, value) {
     return false;
   }
   value.w = (v + 4294966272) | 0;
+  if (((48 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -592,6 +619,13 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     value.angularVelocity.y = 0;
     value.angularVelocity.z = 0;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -756,6 +790,9 @@ export function ReadInputFlat(view, numBits, value) {
   value.zoom = v !== 0;
   v = (out >>> 7) & 0x1;
   value.ping = v !== 0;
+  if (((168 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1056,6 +1093,13 @@ export function ReadInputPacketFlat(view, numBits, value) {
     e0.ping = v !== 0;
     br += 8;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1275,6 +1319,14 @@ export function ReadShipCreateFlat(view, numBits, value) {
   }
   value.thrust = v | 0;
   value.pending = 0;
+  br += 19;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1311,6 +1363,9 @@ export function ReadExpressionProbeFlat(view, numBits, value) {
     return false;
   }
   value.spinRate = (v + 1024) | 0;
+  if (((16 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1415,6 +1470,9 @@ export function ReadExtremeProbeFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.ceilingDefault = bg;
+  if (((320 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1500,6 +1558,9 @@ export function ReadExtremeRowFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.ceilingDef = bg;
+  if (((256 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 

@@ -60,7 +60,7 @@ packet-defaults-js-negative-control: packet-defaults-js
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-defaults/js-negative/log; exit 1; }
 	@echo 'packet defaults JavaScript negative control: missing constructor bytes fail the runtime check'
 
-test-js: packet-defaults-js packet-defaults-js-negative-control
+test-js: packet-defaults-js packet-defaults-js-negative-control packet-end-js packet-end-js-negative-control
 
 # the JavaScript target: generated ES modules only, no wiring file at all —
 # generated code never imports the runtime (every wire call is a method on
@@ -1797,3 +1797,31 @@ tables-js-wire-fuzz-plain-smoke: build/conformance-harness build/tables-generate
 
 tables-js-wire-fuzz-retain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	$(MAKE) tables-js-wire-fuzz-retain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)
+
+# THE PACKET END CHECK (docs/SPEC.md §5, "Read termination"; make/negative-controls.json).
+# Both generated read tiers must accept the exact packet and refuse a whole byte
+# left after the top-level object and non-zero unused bits in the final byte.
+build/packet-end/js/.stamp: bin/schema test/packet-end/End.schema make/js.mk
+	./bin/schema generate --lang js --out build/packet-end/js test/packet-end/End.schema
+	@touch $@
+
+.PHONY: packet-end-js packet-end-js-negative-control
+packet-end-js: build/packet-end/js/.stamp
+	$(NODE) test/packet-end/js/main.mjs testdata/wire/packet-end build/packet-end/js
+	NODE_ENV=production $(NODE) test/packet-end/js/main.mjs testdata/wire/packet-end build/packet-end/js
+
+packet-end-js-negative-control: packet-end-js
+	@mkdir -p build/packet-end/js-negative
+	go run ./tools/sabotage -name packet-end-js-read \
+		-out build/packet-end/js-negative/js.gotext internal/codegen/js/flat.go
+	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/packet-end/js-negative/js.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/js-negative/overlay.json
+	go build -overlay=build/packet-end/js-negative/overlay.json -o build/packet-end/js-negative/schema ./cmd/schema
+	./build/packet-end/js-negative/schema generate --lang js --out build/packet-end/js-negative/generated test/packet-end/End.schema
+	$(NODE) --check build/packet-end/js-negative/generated/End.js
+	$(NODE) --check build/packet-end/js-negative/generated/EndFlat.js
+	@if $(NODE) test/packet-end/js/main.mjs testdata/wire/packet-end "$(CURDIR)/build/packet-end/js-negative/generated" > build/packet-end/js-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing packet end check passed in JavaScript'; exit 1; fi
+	@grep -Fq 'FAILED: packet end flat trailing.bin' build/packet-end/js-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-end/js-negative/log; exit 1; }
+	@echo 'packet end JavaScript negative control: the flat end check removal reds the trailing-byte vector'

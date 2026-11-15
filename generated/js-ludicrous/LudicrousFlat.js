@@ -136,6 +136,13 @@ export function ReadFixedProbeFlat(view, numBits, value) {
     value.samples[i0] = -524288 + v;
     br += 21;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -272,6 +279,14 @@ export function ReadUnsignedProbeFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xff) >>> 0;
   value.tail = v;
+  br += 8;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -420,6 +435,12 @@ export function ReadWideProbeFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
   value.seed = bg;
+  if (((403 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(50) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1037,6 +1058,13 @@ export function ReadLudicrousStateFlat(view, numBits, value) {
   } else {
     value.targetId = 0n;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1074,6 +1102,9 @@ export function ReadDegenerateProbeFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0xff) >>> 0;
   value.tail = v;
+  if (((8 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1155,6 +1186,12 @@ export function ReadFixedVecFlat(view, numBits, value) {
     return false;
   }
   value.z = -6553600000n + bg;
+  if (((102 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(12) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1214,6 +1251,9 @@ export function ReadFixedQuatFlat(view, numBits, value) {
     return false;
   }
   value.w = -1073741824 + v;
+  if (((128 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 

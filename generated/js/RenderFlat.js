@@ -64,6 +64,12 @@ export function ReadRenderSpriteFlat(view, numBits, value) {
     return false;
   }
   value.team = v;
+  if (((138 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(17) & 0xfc) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -216,6 +222,13 @@ export function ReadRenderBlockFlat(view, numBits, value) {
     }
     e0.team = v;
     br += 10;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
