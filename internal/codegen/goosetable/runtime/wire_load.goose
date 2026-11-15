@@ -542,6 +542,26 @@ fn field_kind(d: FieldDesc) -> u8 {
     return d.kind;
 }
 
+// elem_kind_allowed is the closed list an array body's element kind may draw
+// from (docs/SPEC-TABLES.md §3, §4): 1–13, 15, 17, 18–30. Any other kind is
+// damage, not a mismatch, under any count, a count of 0 included.
+fn elem_kind_allowed(kind: u8) -> bool {
+    if kind >= 1 && kind <= 13 { return true; }
+    if kind == 15 || kind == 17 { return true; }
+    if kind >= 18 && kind <= 30 { return true; }
+    return false;
+}
+
+// keyed_elem_kind_allowed is the closed list an enum-keyed body's element kind
+// may draw from: the array list without 12, 15 and 17 (docs/SPEC-TABLES.md §3,
+// §4). Any other kind is damage under any count.
+fn keyed_elem_kind_allowed(kind: u8) -> bool {
+    if kind >= 1 && kind <= 11 { return true; }
+    if kind == 13 || kind == 30 { return true; }
+    if kind >= 18 && kind <= 29 { return true; }
+    return false;
+}
+
 // collection_cap is §2.9's int32 storage cap: a builder refuses its partial
 // value; a reader with no builder reports damage and resumes after L.
 fn collection_cap(c: LoadCtx&) -> bool {
@@ -945,6 +965,13 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             if d.optional { ride(c, slot); }
             return true, false;
         }
+        // THE ELEMENT KIND IS CLOSED, judged under any count before any
+        // comparison with the reader's declaration (§3, §4).
+        if !elem_kind_allowed(ek) {
+            c.report.body_damaged = true;
+            r.off = end;
+            return true, false;
+        }
         let want = if bytes { 6 } else { d.ek };
         if ek != want && !widens(ek, want) {
             c.report.mismatch += 1;
@@ -1140,6 +1167,9 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
     let ek = rd_u8(c, r);
     let count, good = leb(c, r);
     if !good { c.report.body_damaged = true; r.off = end; return true; }
+    // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+    // count before the reader's declaration (§3, §4).
+    if !keyed_elem_kind_allowed(ek) { c.report.body_damaged = true; r.off = end; return true; }
     if ek != d.ek {
         if !widens(ek, d.ek) { c.report.mismatch += 1; r.off = end; return true; }
         c.report.widened += 1;
@@ -1305,6 +1335,9 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
         let ek = rd_u8(c, r);
         let count, good = leb(c, r);
         if !good { c.report.body_damaged = true; r.off = end; return true; }
+        // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is
+        // held to the array list first, under any count (§3, §4).
+        if !elem_kind_allowed(ek) { c.report.body_damaged = true; r.off = end; return true; }
         if ek != KindTable { c.report.mismatch += 1; r.off = end; return true; }
         if count > 0x7FFFFFFF { r.off = end; return collection_cap(c); }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
@@ -1901,6 +1934,9 @@ fn wc_header(w: WireCheck&, at: i64, end: i64) -> u8, u64, i64, bool {
 recursive fn wc_array(w: WireCheck&, at: i64, end: i64) -> bool {
     let ek, count, first, ok = wc_header(w, at, end);
     if !ok { return false; }
+    // THE ELEMENT KIND IS CLOSED, and it is judged under ANY count, a count
+    // of 0 included (docs/SPEC-TABLES.md §3, §4).
+    if !elem_kind_allowed(ek) { return wc_damage(w); }
     var off = first;
     var i: u64 = 0;
     while i < count {
@@ -1915,6 +1951,9 @@ recursive fn wc_array(w: WireCheck&, at: i64, end: i64) -> bool {
 recursive fn wc_keyed(w: WireCheck&, at: i64, end: i64) -> bool {
     let ek, count, first, ok = wc_header(w, at, end);
     if !ok { return false; }
+    // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under ANY
+    // count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+    if !keyed_elem_kind_allowed(ek) { return wc_damage(w); }
     let scope, mark = wc_open(w);
     var off = first;
     var i: u64 = 0;

@@ -394,7 +394,7 @@ end
 
 -- ZeroW1 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW1(value: any)
-  for i = 1, 20 do value.Items[i] = 0 end
+  buffer.fill(value.Items, 0, 0)
   value.ItemsCount = 0
 end
 

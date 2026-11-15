@@ -156,6 +156,15 @@ namespace Example
 
         public static bool ReadDefaultArm(ReadStream stream, ref DefaultArm value)
         {
+            if (!ReadDefaultArmBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadDefaultArmBody(ReadStream stream, ref DefaultArm value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadDefaultArmBatch(ref batch, ref value);
             batch.End();
@@ -252,6 +261,15 @@ namespace Example
 
         public static bool ReadDefaultChoice(ReadStream stream, ref DefaultChoice value)
         {
+            if (!ReadDefaultChoiceBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadDefaultChoiceBody(ReadStream stream, ref DefaultChoice value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadDefaultChoiceBatch(ref batch, ref value);
             batch.End();
@@ -313,6 +331,15 @@ namespace Example
         }
 
         public static bool ReadDefaultChoicePacket(ReadStream stream, ref DefaultChoicePacket value)
+        {
+            if (!ReadDefaultChoicePacketBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadDefaultChoicePacketBody(ReadStream stream, ref DefaultChoicePacket value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadDefaultChoicePacketBatch(ref batch, ref value);
@@ -380,6 +407,15 @@ namespace Example
         }
 
         public static bool ReadDefaultBulkArm(ReadStream stream, ref DefaultBulkArm value)
+        {
+            if (!ReadDefaultBulkArmBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadDefaultBulkArmBody(ReadStream stream, ref DefaultBulkArm value)
         {
             {
                 // scoped batch: one capture and one restore for the whole site
@@ -454,6 +490,15 @@ namespace Example
 
         public static bool ReadDefaultBulkChoice(ReadStream stream, ref DefaultBulkChoice value)
         {
+            if (!ReadDefaultBulkChoiceBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadDefaultBulkChoiceBody(ReadStream stream, ref DefaultBulkChoice value)
+        {
             int tagValue = 0;
             if (!stream.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
             {
@@ -464,10 +509,10 @@ namespace Example
             {
                 case DefaultBulkChoiceType.First:
                     InitDefaultBulkArm(ref value.First); // every selection starts from construction defaults
-                    return ReadDefaultBulkArm(stream, ref value.First);
+                    return ReadDefaultBulkArmBody(stream, ref value.First);
                 case DefaultBulkChoiceType.Second:
                     InitDefaultBulkArm(ref value.Second); // every selection starts from construction defaults
-                    return ReadDefaultBulkArm(stream, ref value.Second);
+                    return ReadDefaultBulkArmBody(stream, ref value.Second);
             }
             return true; // None
         }

@@ -970,8 +970,9 @@ func TestMooFixedEvolutionArrayBounds(t *testing.T) {
 // TestMooFixedEvolutionText is text (C3, C4, C5, R24): a length past the
 // field's capacity refuses length_over_bound; ill-formed UTF-8 or a zero in
 // the USED bytes, and an unpaired surrogate in a wstring's used units, refuse
-// text_ill_formed by name; a hostile byte in the slack past the used length is
-// not read and not a refusal. The negative control drops the UTF-8 check.
+// text_ill_formed by name; the bytes past the used length are dead, so a
+// nonzero one refuses the whole load (R24). The negative control drops the
+// UTF-8 check.
 func TestMooFixedEvolutionText(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -989,7 +990,7 @@ func TestMooFixedEvolutionText(t *testing.T) {
 		{"C3 length 5 of 4", cut(func(b []byte) { b[body] = 5 }), refusedTotal("length_over_bound", false, "-")},
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), refusedTotal("text_ill_formed", false, "-")},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), refusedTotal("text_ill_formed", false, "-")},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 u0 k0 c0 w0 d0 -"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), refusedField("wire_damaged", true, "T.s")},
 	}
 	for _, c := range cases {
 		if got := evoLoad(t, g, "ProbeTable", "T", c.file, -1).head; got != c.want {
@@ -1144,7 +1145,8 @@ func TestMooFixedEvolutionOrdinals(t *testing.T) {
 // the one read (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), beside
 // TestMooFixedHostileBoolBytes: NOTHING NORMALIZES. A bool byte 0x7f, and a
 // present byte 0x5a, each refuse the whole load wire_damaged, nothing landed
-// and no counter moved; bytes of 0 and 1 land false, true, absent and present.
+// and no counter moved; bytes of 0 and 1 land false, true, absent and present
+// (an absent optional's payload is dead, so the control keeps it zero).
 // The negative control drops the bool check and requires 0x7f to land.
 func TestMooFixedEvolutionNormalization(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
@@ -1154,7 +1156,12 @@ func TestMooFixedEvolutionNormalization(t *testing.T) {
 	body := len(file) - 6
 	with := func(flag, present byte) []byte {
 		b := clone(file)
-		b[body], b[body+1], b[body+2] = flag, present, 42
+		payload := byte(42)
+		if present == 0 {
+			// an absent optional's payload is dead, so it stays zero
+			payload = 0
+		}
+		b[body], b[body+1], b[body+2] = flag, present, payload
 		return b
 	}
 	for _, c := range []struct {
@@ -1185,18 +1192,29 @@ func TestMooFixedEvolutionNormalization(t *testing.T) {
 }
 
 // TestMooFixedEvolutionLiveExtents is live-extents (C14, W4, W9): the bounds
-// pass walks the LIVE extent only — out-of-range ordinals in a counted array's
-// slack and in an absent optional's payload are not read, clamped or counted —
-// and a field the writer never wrote lands the reader's declared default.
+// pass walks the LIVE extent only — an out-of-range ordinal in a counted
+// array's live element refuses out_of_range — while the slots past the count
+// and an absent optional's payload are dead, so a nonzero byte there refuses
+// the whole load wire_damaged and a zero one reads — and a field the writer
+// never wrote lands the reader's declared default.
 func TestMooFixedEvolutionLiveExtents(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	g := fixedUnit(t, unitFromSource(t, "package probe\nenum Small { One, Two }\nfixed table T\n{\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n"), nil)
 	file := evoSave(t, g, "ProbeTable", "T", "local v = T.NewT()\nv.Arr[1] = 1\nv.ArrCount = 1\nvalues = { v }\n")
 	body := len(file) - 13
-	file[body+5], file[body+6], file[body+8] = 99, 99, 99
+	live := clone(file)
+	live[body+4] = 99
+	if got := evoLoad(t, g, "ProbeTable", "T", live, -1); got.head != refusedField("out_of_range", false, "T.arr") {
+		t.Errorf("C14 a live element past the enum's set: %s", got.head)
+	}
+	dead := clone(file)
+	dead[body+5], dead[body+6], dead[body+8] = 99, 99, 99
+	if got := evoLoad(t, g, "ProbeTable", "T", dead, -1); got.head != refusedField("wire_damaged", true, "T.arr") {
+		t.Errorf("C14/W4 a nonzero dead byte: %s", got.head)
+	}
 	if got := evoLoad(t, g, "ProbeTable", "T", file, -1); got.head != "ok 1 u0 k0 c0 w0 d0 -" || got.dump["r0.arr_count"] != "1" || got.dump["r0.arr[0]"] != "1" || got.dump["r0.opt_present"] != "0" || got.dump["r0.tail"] != "77" {
-		t.Errorf("C14/W4: %s %v", got.head, got.dump)
+		t.Errorf("C14/W4 the dead bytes zero: %s %v", got.head, got.dump)
 	}
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_field_append"), readTestSchema(t, "VNEW_field_append")
