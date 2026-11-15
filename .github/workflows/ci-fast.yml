@@ -31,8 +31,15 @@ name: CI fast
 # SO THE SPLIT IS BY WHEN, NOT BY WHETHER. Nothing is checked less than before.
 #   * THIS FILE runs on every pull-request push. Five jobs, selected BY PATH,
 #     targeting two minutes wall: the cheap lints, the block zero-cost gate,
-#     `go test` of the packages the diff touches, and the fixed-form and
-#     versioning gates of the LEGS the diff touches.
+#     `go test` of the packages the diff touches, the generated-code lints of
+#     the languages it touches (lang-lint), and the fixed-form and versioning
+#     gates of the LEGS the diff touches.
+#   * THE PER-LANGUAGE HEAVY WORKFLOWS (the hostile corpora, the fuzz replays,
+#     the resource bounds, the Squirrel and Lua differentials) do not start on
+#     a pull request at all (Glenn 2026-11-15: "Let us be efficient first, then
+#     scale up if we need only"). Each still runs, unchanged, on push to main,
+#     dev and fixed-table-form, on its schedule and on `gh workflow run <file>
+#     --ref <branch>`. Their PR rows were 40 of a tiny card's ~80 checks.
 #   * ci-full.yml runs everything — the whole go-test, pins, the nine
 #     conformance legs, the 47 negative controls, windows, msvc, big-endian,
 #     vuln — on merge to main, dev or fixed-table-form, nightly, on
@@ -166,6 +173,7 @@ jobs:
       packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       broad: ${{ steps.pick.outputs.broad }}
+      lints: ${{ steps.pick.outputs.lints }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -292,6 +300,14 @@ jobs:
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             done
+            # THE LUA UNIT TESTS. Lua is not a leg row, so a diff to its
+            # runtime, make files or conformance tree (no .go file) selected no
+            # package; its two packages are its fast unit tests.
+            if echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)' >/dev/null; then
+              for p in ./internal/codegen/lua ./internal/codegen/luatable; do
+                case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              done
+            fi
             # THE SOURCE GOLDENS. internal/goldens holds every emitter's output
             # to the files under testdata/golden, so a diff to an emitter, to a
             # golden, or to the examples and usage page it renders re-checks
@@ -304,6 +320,27 @@ jobs:
             packages=$(echo "$packages" | xargs || true)
           fi
 
+          # THE LANGUAGE LINTS (Glenn 2026-11-15: "run only the fastest unit
+          # tests as verification, on a per-language basis"). The generated-code
+          # lenses that answer in seconds, Dart's strict analyze, golangci-lint
+          # over the generated Go, and luacheck and StyLua over the generated
+          # Lua, were workflows of their own started by every pull request.
+          # They run here now, one `lang-lint` row per touched language; their
+          # own workflows keep the nightly halves and run on main, nightly and
+          # dispatch. The broad rule selects all three.
+          lints=""
+          if [ "$broad" = yes ] || case " $legs " in *" dart "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-dart-generated-strict-analyze' >/dev/null; then
+            lints="$lints dart"
+          fi
+          if [ "$broad" = yes ] || case " $legs " in *" go "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-go-generated-golangci-lint' >/dev/null; then
+            lints="$lints go"
+          fi
+          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)|schema-lua-generated-luacheck' >/dev/null; then
+            lints="$lints lua"
+          fi
+          lints_json=$(printf '%s' "$lints" | xargs -n1 2>/dev/null | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
+          [ -n "$lints_json" ] || lints_json='[]'
+
           # the legs as a JSON array, which is what a matrix reads
           json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
           [ -n "$json" ] || json='[]'
@@ -311,12 +348,14 @@ jobs:
           echo "broad=$broad"        >> "$GITHUB_OUTPUT"
           echo "packages=$packages"  >> "$GITHUB_OUTPUT"
           echo "legs=$json"          >> "$GITHUB_OUTPUT"
+          echo "lints=$lints_json"   >> "$GITHUB_OUTPUT"
           {
             echo "### what this push runs on the fast lane"
             echo
             echo "* broad selection: **$broad**"
             echo "* packages: \`${packages:-(none)}\`"
             echo "* legs: \`$json\`"
+            echo "* language lints: \`$lints_json\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # THE GO TEST ROWS (tools/gotestrows): the packages above, cut into
@@ -426,6 +465,82 @@ jobs:
         run: go test ./internal/ci/
       - name: bench scripts parse
         run: bash -n bench/run.sh
+
+  # THE TOUCHED LANGUAGE'S GENERATED-CODE LINT, one row per language `plan`
+  # selected (its `lints` output). These are the fast halves of three lens
+  # workflows that used to start on every pull request whatever it touched:
+  # schema-dart-generated-strict-analyze-gate.yml (~10-35 s),
+  # schema-go-generated-golangci-lint-gate.yml (~7 s) and
+  # schema-lua-generated-luacheck-gate.yml (~30 s). The steps are theirs, the
+  # make targets are theirs, and those files still run the same gates, nightly
+  # halves included, on main, nightly and dispatch. Only WHEN changed (Glenn
+  # 2026-11-15: "run only the fastest unit tests as verification, on a
+  # per-language basis (the languages we are changing in our commit)").
+  lang-lint:
+    needs: plan
+    if: needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: lang-lint (${{ matrix.lint }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        lint: ${{ fromJSON(needs.plan.outputs.lints) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # hosted, as above
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.lint == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+
+      - name: the Dart strict analyze gate (packet trees) and its negative control
+        if: matrix.lint == 'dart'
+        run: |
+          set -euo pipefail
+          make schema-dart-generated-strict-analyze-gate DART=dart
+          make schema-dart-generated-strict-analyze-gate-negative-control DART=dart
+
+      # the fleet golangci-lint, pinned; the gate links the fluent Go runtime
+      - name: the generated-Go golangci-lint gate (packet corpus, ratchet)
+        if: matrix.lint == 'go'
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/sdk/bin:$PATH"
+          command -v golangci-lint >/dev/null 2>&1 || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (not on PATH; the fleet install is ~/sdk/bin/golangci-lint)"
+            exit 1
+          }
+          golangci-lint version 2>/dev/null | grep '2.12.2' >/dev/null || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (found: $(golangci-lint version 2>&1 | head -1))"
+            exit 1
+          }
+          (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
+          make schema-go-generated-golangci-lint-gate
+
+      # luacheck is fleet software pinned by the make file at 1.2.0; StyLua is
+      # the make file's sha256-pinned dist-stylua
+      - name: the generated Lua under luacheck and StyLua, and both negative controls
+        if: matrix.lint == 'lua'
+        run: |
+          set -euo pipefail
+          if ! command -v luacheck >/dev/null 2>&1; then
+            echo "::error::tool missing: luacheck 1.2.0 — install it fleet-wide from its official source (rowan-tools/fleet)"
+            exit 1
+          fi
+          luacheck --version
+          make tables-lua-luacheck
+          make tables-lua-luacheck-negative-control
+          make tables-lua-format
+          make tables-lua-format-negative-control
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh

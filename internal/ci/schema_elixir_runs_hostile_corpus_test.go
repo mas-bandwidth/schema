@@ -100,11 +100,10 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 	workflowText := string(workflow)
 	for _, want := range []string{
 		"push:",
-		"pull_request:",
 		"schedule:",
 		"workflow_dispatch:",
 		"runs-on: [self-hosted, linux, x64, schema]",
-		"branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
+		"branches: [ main, dev, fixed-table-form ]",
 		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 	} {
 		if !strings.Contains(workflowText, want) {
@@ -131,8 +130,6 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		}
 	}
 	for _, ev := range []ciEvent{
-		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-elixir", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
-		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
@@ -146,13 +143,25 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 			t.Errorf("Elixir negative-control under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNeg)
 		}
 	}
-	// Mutation checks: dropping same-repo guard admits fork PR; dropping dev branch skips stream-to-dev PR.
-	noGuard := strings.Replace(workflowText, "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n", "", 1)
-	if ok, err := jobSelectsSelfHosted(noGuard, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}); err != nil || !ok {
-		t.Errorf("guard mutation control did not admit fork PR as expected: ok=%v err=%v", ok, err)
+	// THE PR GATE IS ci-fast.yml (Glenn 2026-11-15: "Let us be efficient
+	// first, then scale up if we need only"): no pull request and no
+	// card-branch push starts this workflow; it runs after the merge.
+	for _, ev := range []ciEvent{
+		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-elixir", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "sprint/schema-elixir", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || ok {
+			t.Errorf("Elixir corpus job ran on (%+v): ok=%v err=%v; the PR gate is ci-fast.yml", ev, ok, err)
+		}
 	}
-	noDev := strings.ReplaceAll(workflowText, "branches: [ main, dev, fixed-table-form, 'sprint/**' ]", "branches: [ main, 'sprint/**' ]")
-	if ok, err := jobSelectsSelfHosted(noDev, "corpus", ciEvent{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-elixir", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || ok {
-		t.Errorf("trigger mutation control still ran stream-to-dev PR after removing dev: ok=%v err=%v", ok, err)
+	// Mutation checks: a restored pull_request trigger is seen; dropping dev skips a dev push.
+	withPR := strings.Replace(workflowText, "\non:\n", "\non:\n  pull_request:\n", 1)
+	if ok, err := jobSelectsSelfHosted(withPR, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || !ok {
+		t.Errorf("trigger mutation control: a restored pull_request trigger was not seen: ok=%v err=%v", ok, err)
+	}
+	noDev := strings.ReplaceAll(workflowText, "branches: [ main, dev, fixed-table-form ]", "branches: [ main ]")
+	if ok, err := jobSelectsSelfHosted(noDev, "corpus", ciEvent{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"}); err != nil || ok {
+		t.Errorf("trigger mutation control still ran a dev push after removing dev: ok=%v err=%v", ok, err)
 	}
 }

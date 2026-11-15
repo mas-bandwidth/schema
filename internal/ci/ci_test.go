@@ -891,6 +891,34 @@ func jobSelectsSelfHosted(wfData, job string, ev ciEvent) (bool, error) {
 	return true, nil
 }
 
+// prOffHeavyWorkflows start on no pull request: the PR gate is ci-fast.yml
+// (Glenn 2026-11-15: "I'd rather that we got more efficient on tiny PRs").
+// Each runs on push to main, dev and fixed-table-form, nightly and on
+// dispatch, and checkWorkflowPolicy refuses a pull_request or a card-branch
+// push trigger on any of them.
+var prOffHeavyWorkflows = []string{
+	"schema-c-runs-hostile-corpus.yml",
+	"schema-cpp-runs-hostile-corpus.yml",
+	"schema-cs-runs-hostile-corpus.yml",
+	"schema-dart-runs-hostile-corpus.yml",
+	"schema-elixir-runs-hostile-corpus.yml",
+	"schema-java-runs-hostile-corpus.yml",
+	"schema-js-runs-hostile-corpus.yml",
+	"schema-luau-runs-hostile-corpus.yml",
+	"schema-rust-runs-hostile-corpus.yml",
+	"schema-shared-hostile-corpus.yml",
+	"schema-squirrel-runs-hostile-corpus.yml",
+	"schema-squirrel-all-port-differential.yml",
+	"schema-lua-version-differential.yml",
+	"schema-dart-generated-strict-analyze-gate.yml",
+	"schema-dart-nightly-fuzz.yml",
+	"schema-go-generated-golangci-lint-gate.yml",
+	"schema-lua-generated-luacheck-gate.yml",
+	"schema-luau-nightly-fuzz.yml",
+	"schema-luau-resource-bounds.yml",
+	"schema-moo-nightly-fuzz.yml",
+}
+
 // checkWorkflowPolicy validates that the workflow map satisfies all self-hosted
 // admission and stream-to-dev / dev-push / main-promotion trigger invariants.
 // Returning an error slice lets negative-control mutation tests prove that
@@ -944,21 +972,31 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-fast.yml:leg-gate",
+		"ci-fast.yml:lang-lint",
 		"ci-full.yml:pins",
-		"schema-cs-runs-hostile-corpus.yml:corpus",
-		"schema-dart-generated-strict-analyze-gate.yml:fast",
-		"schema-elixir-runs-hostile-corpus.yml:corpus",
-		"schema-go-generated-golangci-lint-gate.yml:gate",
-		"schema-java-runs-hostile-corpus.yml:corpus",
-		"schema-luau-nightly-fuzz.yml:replay",
-		"schema-luau-resource-bounds.yml:luau-resource-bounds",
-		"schema-luau-runs-hostile-corpus.yml:corpus",
-		"schema-rust-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
 		if err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("same-repo PR into main did not select self-hosted %s (err=%v)", wantKey, err))
+		}
+	}
+	// THE PR GATE IS ci-fast (Glenn 2026-11-15: "Let us be efficient first,
+	// then scale up if we need only"). The per-language heavy workflows start
+	// on no pull request; they run on push to main, dev and fixed-table-form,
+	// nightly and on dispatch (step 5 and 6 below hold that half).
+	for _, wfName := range prOffHeavyWorkflows {
+		for _, base := range []string{"main", "dev", "fixed-table-form", "sprint/schema-main"} {
+			pr := sameRepoMainUnlabeled
+			pr.Branch = base
+			if workflowTriggersOn(wfs[wfName], pr) {
+				errs = append(errs, fmt.Sprintf("%s triggers on a pull request into %s; the PR gate is ci-fast.yml, and this file runs after the merge", wfName, base))
+			}
+		}
+		for _, branch := range []string{"sprint/schema-main", "sprint/schema-luau"} {
+			if workflowTriggersOn(wfs[wfName], ciEvent{Name: "push", Branch: branch, Repo: repo}) {
+				errs = append(errs, fmt.Sprintf("%s triggers on a push to %s; a card branch's PR gate is ci-fast.yml", wfName, branch))
+			}
 		}
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", sameRepoMainUnlabeled); ok {
@@ -972,7 +1010,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 
 	// 4. Stream-to-dev PR (sprint/schema-* -> dev): automatically covered by
-	// ci-fast.yml, ci-full.yml, Dart strict-analyze and Elixir hostile-corpus.
+	// ci-fast.yml (lang-lint included) and ci-full.yml's per-PR jobs.
 	streamToDevPR := ciEvent{
 		Name:     "pull_request",
 		Branch:   "dev",
@@ -1053,14 +1091,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-full.yml:pins",
-		"schema-cs-runs-hostile-corpus.yml:corpus",
-		"schema-dart-generated-strict-analyze-gate.yml:fast",
-		"schema-elixir-runs-hostile-corpus.yml:corpus",
-		"schema-java-runs-hostile-corpus.yml:corpus",
-		"schema-luau-nightly-fuzz.yml:replay",
-		"schema-luau-resource-bounds.yml:luau-resource-bounds",
-		"schema-luau-runs-hostile-corpus.yml:corpus",
-		"schema-rust-runs-hostile-corpus.yml:corpus",
+		"ci-fast.yml:lang-lint",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -1257,6 +1288,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:go-test-touched",
+		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:leg-gate-cpp",
 		"ci-fast.yml:leg-gate-lobster",
