@@ -105,7 +105,7 @@ static void read_check( const char * name, const void * wire, int bytes, int bit
     serialize_read_stream_t stream;
     serialize_read_stream_init( &stream, wire, bytes );
     if ( !check( read( &stream, value ), name ) ) return;
-    check( serialize_read_bits_processed( &stream ) == bits, "packet-default read consumed bits" );
+    check( serialize_read_bits_processed( &stream ) == ( ( bits + 7 ) & ~7 ), "packet-default read consumed bits and final padding" );
     check( equal( value, want ), name );
 }
 
@@ -212,8 +212,8 @@ static void run( const char * directory )
         serialize_write_flush( &writer );
         check( memcmp( buffer, bytes, sizeof( bytes ) ) == 0, "33-bit flags literal wire" );
         serialize_read_stream_init( &reader, oracle, sizeof( bytes ) );
-        check( packetdefaults_read_split_mask( &reader, &decoded ) && serialize_read_bits_processed( &reader ) == 38 &&
-               decoded.lead == 5 && decoded.mask == split.mask && decoded.tail == 2, "33-bit flags literal read" );
+        check( packetdefaults_read_split_mask( &reader, &decoded ) && serialize_read_bits_processed( &reader ) == 40 &&
+               decoded.lead == 5 && decoded.mask == split.mask && decoded.tail == 2, "33-bit flags literal read ends at the byte padding" );
     }
     golden( directory, "sample-defaults", &sample, &initial, &expected, emit_sample, parse_sample, compare_sample );
     check( equal_sample( &batch.head, &expected ), "nested defaults" );

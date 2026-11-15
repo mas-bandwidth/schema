@@ -919,8 +919,16 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 		fmt.Sprintf("{:ok, %s} | :error", g.valueSpec(name)))
 	g.readHead(snake)
 	g.bpf("    case read_%s_bits(data, num_bits) do\n", snake)
-	g.bpf("      {:ok, value, _bits_read} -> {:ok, value}\n")
-	g.bpf("      :error -> :error\n")
+	g.bpf("      {:ok, value, bits_read} ->\n")
+	g.bpf("        if byte_size(data) == div(bits_read + 7, 8) and\n")
+	g.bpf("             (rem(bits_read, 8) == 0 or\n")
+	g.bpf("                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do\n")
+	g.bpf("          {:ok, value}\n")
+	g.bpf("        else\n")
+	g.bpf("          :error\n")
+	g.bpf("        end\n\n")
+	g.bpf("      :error ->\n")
+	g.bpf("        :error\n")
 	g.bpf("    end\n")
 	g.bpf("  end\n\n")
 }
@@ -1540,7 +1548,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
-		g.emitWriteWideRaw(name, int64(f.Type.Width), ind)
+		// [0, 2^N-1], checked at every N: a BEAM integer has no storage
+		// width to elide against, 32 and 64 included. The mask stays after
+		// the check. A bare signed integer is not this path.
+		w := int64(f.Type.Width)
+		top := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+		g.emitCheckRange(name, g.dsp(name), big.NewInt(0), top, ind)
+		g.emitWriteWideRaw(name, w, ind)
 	case ir.TBool:
 		g.pf("%sv = if %s, do: 1, else: 0\n", ind, name)
 		g.mergeW(1, ind)
