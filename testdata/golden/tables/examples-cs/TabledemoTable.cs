@@ -379,6 +379,11 @@ namespace Tabledemo
         internal int RootElemSlots;
         public Func<TableTypeInfo[]> PointerTypes;
         public Func<ulong, TableTypeInfo> PointerType;
+        // DeclaredType names every table this reader DECLARES, whether or not a
+        // pointer below this root can place it (docs/SPEC-TABLES.md §3.1): a node
+        // record of a declared type that is not the pointer slot's target is
+        // damage, while a type this reader does not declare stays unknown.
+        internal Func<ulong, TableTypeInfo> DeclaredType;
         public bool BytesEdge, StringEdge;
         public string Name;         // schema type name
         public ulong Id;            // full wire identity of the table name
@@ -718,7 +723,11 @@ namespace Tabledemo
         {
             public const int MaxDepth = 128;
 
-            // A key longer than this cannot name a field, so it is skipped as unknown.
+            // A schema-name string is capped at 255 bytes (§16.2): a longer one is a
+            // name this form refuses, in every object and inside a skipped value.
+            public const int MaxName = 255;
+
+            // A map key's spelling buffer. A map key is data, never a schema name.
             public const int MaxKey = 256;
 
             // The longest numeric token the walk will convert. Anything longer is a
@@ -1628,7 +1637,7 @@ namespace Tabledemo
                     object empty = f.Table.Create(); f.SetChild(owner, index, empty);
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
-                Span<byte> key = stackalloc byte[MaxKey];
+                Span<byte> key = stackalloc byte[MaxName];
                 if (!ScanString(text, ref input, key, true, out int used)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
@@ -2358,7 +2367,7 @@ namespace Tabledemo
                 if (depth > MaxDepth) { input.Bad = true; return false; }
                 input.Pos++; // the opening bracket
                 bool first = true;
-                Span<byte> key = stackalloc byte[MaxKey];
+                Span<byte> key = stackalloc byte[MaxName];
                 // a skipped object's keys are held to the layer's rule too: a repeated
                 // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
                 // §16.12), the objects this walk skips included
@@ -2470,7 +2479,7 @@ namespace Tabledemo
                     input.Pos++;
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-                    Span<byte> key = stackalloc byte[MaxKey];
+                    Span<byte> key = stackalloc byte[MaxName];
                     int keyLength;
                     if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -2528,7 +2537,7 @@ namespace Tabledemo
                 }
                 if (IsEnum(f))
                 {
-                    Span<byte> name = stackalloc byte[MaxKey];
+                    Span<byte> name = stackalloc byte[MaxName];
                     int nameLength;
                     if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
                     for (int v = 0; v <= f.EnumMax; v++)
@@ -2550,7 +2559,7 @@ namespace Tabledemo
                     if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
                     input.Pos++;
                     ulong bits = 0;
-                    Span<byte> name = stackalloc byte[MaxKey];
+                    Span<byte> name = stackalloc byte[MaxName];
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
@@ -2847,7 +2856,7 @@ namespace Tabledemo
                     int words = (f.ArrayBound + 63) / 64;
                     Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                     seen.Clear();
-                    Span<byte> key = stackalloc byte[MaxKey];
+                    Span<byte> key = stackalloc byte[MaxName];
                     System.Collections.Generic.HashSet<string> unplaced = null;
                     for (; ; )
                     {
@@ -2976,7 +2985,7 @@ namespace Tabledemo
                 int words = (info.NumFields + 63) / 64;
                 Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                 seen.Clear();
-                Span<byte> key = stackalloc byte[MaxKey];
+                Span<byte> key = stackalloc byte[MaxName];
                 System.Collections.Generic.HashSet<string> unknown = null;
                 for (; ; )
                 {
@@ -3737,6 +3746,7 @@ namespace Tabledemo
                 public TableTypeInfo Type;
                 public ulong TypeId;
                 public byte BlobKind;
+                public bool Declared;
                 public int Offset, Length;
                 public long NativeOffset;
                 public byte Mark; // the cycle check's mark: 0 unvisited, 1 open, 2 closed
@@ -3768,7 +3778,15 @@ namespace Tabledemo
                     }
                     if (index - 2 >= (ulong)Nodes.Count) { Damage(report); return null; }
                     Node node = Nodes[(int)(index - 2)];
-                    if (node.Value == null) { return null; }
+                    if (node.Value == null)
+                    {
+                        // A record whose type this reader DECLARES is not a type it
+                        // cannot place: naming it from a pointer slot is a wrong-type
+                        // target and damage (docs/SPEC-TABLES.md §3.1). A newer
+                        // writer's type stays lawful: the pointer reads null.
+                        if (node.Declared) { Fail(report, "kind_mismatch"); }
+                        return null;
+                    }
                     if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
                     if (f.BlobKind != 0)
                     {
@@ -3787,7 +3805,7 @@ namespace Tabledemo
                 {
                     if (f == null) { return true; }
                     int n = f.IsArray ? Count(value, f) : 1;
-                    if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                     if (f.Map && !MapOrdered(value, f)) { return false; }
                     for (int i = 0; i < n; i++)
                     {
@@ -3986,8 +4004,12 @@ namespace Tabledemo
                 TableTypeInfo[] placeable = type.PointerTypes();
                 foreach (Node node in graph.Nodes)
                 {
-                    if (type.BytesEdge && node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
-                    if (type.StringEdge && node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
+                    // The RESERVED blob ids are types this reader names whether or not
+                    // a *bytes/*string edge sits below this root (docs/SPEC-TABLES.md
+                    // §3.1): a blob under a *T slot, or a table under a blob slot, is
+                    // the wrong-type target the pointer resolution refuses.
+                    if (node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
+                    if (node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
                     if (node.BlobKind != 0)
                     {
                         ReadOnlySpan<byte> data = payload.Buffer.Slice(node.Offset, node.Length);
@@ -3996,7 +4018,11 @@ namespace Tabledemo
                     }
                     foreach (TableTypeInfo candidate in placeable)
                     { if (candidate.Id == node.TypeId) { node.Type = candidate; break; } }
-                    if (node.Type == null) { report.Unknown++; continue; }
+                    if (node.Type == null)
+                    {
+                        node.Declared = type.DeclaredType(node.TypeId) != null;
+                        report.Unknown++; continue;
+                    }
                     node.Value = node.Type.Create();
                 }
                 foreach (Node node in graph.Nodes)
@@ -4024,18 +4050,34 @@ namespace Tabledemo
             }
 
             static long Align(long value, int alignment) { return (value + alignment - 1) & -(long)alignment; }
+            // ExtentTargets is the node table's record types by index: 1 is the root,
+            // 2 and up the records. A zero entry is a type this reader cannot name, so
+            // a pointer naming it is lawful and reads null; any other must be the
+            // pointer slot's own target type (docs/SPEC-TABLES.md §3.1).
+            struct ExtentTargets
+            {
+                public ulong[] Ids;
+                public bool Wrong(ulong index, TableFieldInfo f)
+                {
+                    if (Ids == null || index == 0 || index >= (ulong)Ids.Length) { return false; }
+                    ulong id = Ids[(int)index];
+                    return id != 0 && id != f.PointerTypeId;
+                }
+            }
             static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason)
+            { return ExtentBody(r, type, ref at, ref reason, default); }
+            static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason, ExtentTargets targets)
             {
                 while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
                 {
                     byte kind = r.Byte(); TableFieldInfo field = FindField(type, id);
                     if (field != null && Kind(field) != kind) { field = null; }
                     if (field == null) { if (!r.Skip(kind)) { break; } continue; }
-                    if (!ExtentField(ref r, field, true, ref at, ref reason)) { return false; }
+                    if (!ExtentField(ref r, field, true, ref at, ref reason, targets)) { return false; }
                 }
                 return true;
             }
-            static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
+            static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason, ExtentTargets targets)
             {
                 if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
                 if (f.IsArray)
@@ -4062,12 +4104,19 @@ namespace Tabledemo
                         {
                             Reader element = source;
                             if (f.KeyId == null && !a.Slice(out element)) { break; }
-                            if (!ExtentBody(element, f.Table, ref at, ref reason)) { return false; }
+                            if (!ExtentBody(element, f.Table, ref at, ref reason, targets)) { return false; }
                         }
                         else if (f.Kind == 15)
                         {
-                            if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason)) { return false; } }
-                            else if (!ExtentUnion(ref a, f, ref at, ref reason)) { return false; }
+                            if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason, targets)) { return false; } }
+                            else if (!ExtentUnion(ref a, f, ref at, ref reason, targets)) { return false; }
+                        }
+                        else if (f.Kind == 17)
+                        {
+                            Reader p = f.KeyId != null ? source : a;
+                            if (!p.Var(out ulong index)) { break; }
+                            if (f.KeyId == null) { a = p; }
+                            if (targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
                         }
                         else { break; }
                     }
@@ -4078,15 +4127,20 @@ namespace Tabledemo
                 {
                     Reader body = r;
                     if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
-                    return ExtentBody(body, f.Table, ref at, ref reason);
+                    return ExtentBody(body, f.Table, ref at, ref reason, targets);
                 }
-                if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
+                if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason, targets); }
+                if (f.Kind == 17)
+                {
+                    Reader p = r;
+                    if (p.Var(out ulong index) && targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
+                }
                 // A value the skip cannot honour ENDS the record's scan, as the reference scan's
                 // does: the reader goes to its end rather than resuming at the bytes after it.
                 if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
                 return true;
             }
-            static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
+            static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason, ExtentTargets targets)
             {
                 // A frame that does not parse ENDS the record's scan, as the reference
                 // scan's does (internal/tablewire/extent.go): the reader goes to its
@@ -4102,7 +4156,7 @@ namespace Tabledemo
                 if (tag == 0) { return true; }
                 TableFieldInfo arm = f.Arms.Arms[tag].Field;
                 if (arm == null) { return true; }
-                return ExtentField(ref body, arm, false, ref at, ref reason);
+                return ExtentField(ref body, arm, false, ref at, ref reason, targets);
             }
             // Locate the winning node table and validate its framing with no objects or
             // node list. The returned reader starts at the first record, after count.
@@ -4158,22 +4212,41 @@ namespace Tabledemo
                 // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
                 if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
                 long extent = 0;
-                if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
-                long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-                if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
-                Reader scan = payload;
-                for (int i = 0; i < nodes; i++)
+                bool framed = NodeFrames(root, out Reader payload, out int nodes);
+                ulong[] targets = null;
+                try
                 {
-                    scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-                    if ((type.BytesEdge && id == BytesTypeId) || (type.StringEdge && id == StringTypeId))
-                    { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
-                    TableTypeInfo candidate = type.PointerType(id);
-                    if (candidate == null) { continue; }
-                    extent = 0;
-                    if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
-                    size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    ExtentTargets targetIds = default;
+                    if (framed)
+                    {
+                        targets = System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
+                        targets[0] = 0; targets[1] = type.Id;
+                        Reader map = payload;
+                        for (int i = 0; i < nodes; i++)
+                        {
+                            map.Ref(out _, out ulong id); map.Slice(out _);
+                            targets[i + 2] = id == BytesTypeId || id == StringTypeId || type.DeclaredType(id) != null ? id : 0;
+                        }
+                        targetIds.Ids = targets;
+                    }
+                    if (!ExtentBody(root, type, ref extent, ref reason, targetIds)) { return -1; }
+                    long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    if (!framed) { return size + 16; }
+                    Reader scan = payload;
+                    for (int i = 0; i < nodes; i++)
+                    {
+                        scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
+                        if (id == BytesTypeId || id == StringTypeId)
+                        { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
+                        TableTypeInfo candidate = type.PointerType(id);
+                        if (candidate == null) { continue; }
+                        extent = 0;
+                        if (!ExtentBody(body, candidate, ref extent, ref reason, targetIds)) { return -1; }
+                        size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    }
+                    return size + (nodes + 1L) * 16;
                 }
-                return size + (nodes + 1L) * 16;
+                finally { if (targets != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
             }
 
             struct MapKey
@@ -4898,7 +4971,7 @@ namespace Tabledemo
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-                if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
+                System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
                 if (f.Unbounded)
                 {
@@ -4997,14 +5070,14 @@ namespace Tabledemo
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
-                if (f.Unbounded) { int length = f.GetCount(value); if (length < 0 || length > f.GetBuffer(value).Length) { return false; } if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
+                if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {
-                    int count = f.GetCount(value); if (count < 0) { return false; }
+                    int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
                     at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
                 }
                 int n = f.IsArray ? Count(value, f) : 1;
-                if (n < 0 || n > f.ArrayBound && f.IsArray) { return false; }
+                System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
                 for (int i = 0; i < n; i++)
                 {
                     if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
@@ -5114,12 +5187,14 @@ namespace Tabledemo
                 {
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
                     int count = Count(child, text);
-                    return count >= 0 && count <= text.ArrayBound && TextValid(text.GetBuffer(child).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+                    return TextValid(text.GetBuffer(child).AsSpan(0, count));
                 }
                 if (!f.IsArray && f.Kind == 12)
                 {
                     int count = Count(value, f);
-                    return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+                    return TextValid(f.GetBuffer(value).AsSpan(0, count));
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
@@ -5148,7 +5223,7 @@ namespace Tabledemo
             {
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
-                if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
                 if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
@@ -5168,7 +5243,7 @@ namespace Tabledemo
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
                     if (f.Optional && !f.GetPresent(value)) { continue; }
-                    if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                     if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
                 }
                 return true;
@@ -5357,7 +5432,7 @@ namespace Tabledemo
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
                 if (f.Optional && !f.GetPresent(value)) { return true; }
-                if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                 return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
             }
             public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)

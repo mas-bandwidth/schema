@@ -424,6 +424,11 @@ func (c *wireCheck) array(b []byte) bool {
 	if !ok {
 		return false
 	}
+	// THE ELEMENT KIND IS CLOSED, and it is judged under ANY count, a count of
+	// 0 included (docs/SPEC-TABLES.md §3, §4).
+	if !arrayElementKindAllowed(ek) {
+		return c.damage("an array element kind outside the closed list")
+	}
 	for range count {
 		if off, ok = c.payload(b, off, ek); !ok {
 			return false
@@ -439,6 +444,11 @@ func (c *wireCheck) keyed(b []byte) bool {
 	ek, count, off, ok := c.arrayHeader(b)
 	if !ok {
 		return false
+	}
+	// THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+	// count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+	if !keyedElementKindAllowed(ek) {
+		return c.damage("a keyed element kind outside the closed list")
 	}
 	var seen map[uint64]bool
 	for range count {

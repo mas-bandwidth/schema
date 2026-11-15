@@ -2165,10 +2165,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         cond do
           not utf8_valid?(raw) ->
-            {:cont, "", throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           not Map.get(f, :unbounded, false) and len > f.size ->
-            {:cont, utf8_prefix(raw, f.size), throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           true ->
             {:cont, raw, report}
@@ -2844,10 +2844,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {value, report} =
           cond do
             not utf8_valid?(raw) ->
-              {"", throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             not Map.get(f, :text_unbounded, false) and len > f.text_size ->
-              {utf8_prefix(raw, f.text_size), throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             true ->
               {raw, report}
@@ -2961,8 +2961,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         value =
           cond do
-            not utf8_valid?(raw) -> ""
-            len > f.size -> utf8_prefix(raw, f.size)
+            not utf8_valid?(raw) -> throw(:wire_damaged)
+            len > f.size -> throw(:wire_damaged)
             true -> raw
           end
 
@@ -3054,8 +3054,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, report),
-    do: {Enum.reverse(acc), report}
+  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, _report),
+    do: {Enum.reverse(acc), throw(:wire_damaged)}
 
   # read_element decodes one L-framed nested body: a []T element, a by-value
   # table, a keyed slot, a map entry or a table arm (docs/SPEC-TABLES.md §2.9,
@@ -3405,7 +3405,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
-  defp int_of(_payload, _w, _signed), do: 0
+  defp int_of(_payload, _w, _signed), do: throw(:wire_damaged)
 
   defp clamp_int(v, %{min: lo, max: _hi}, _report) when v < lo,
     do: {lo, throw(:wire_damaged)}
@@ -3635,6 +3635,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         _ ->
           {:error, :malformed, empty_report()}
       end
+    rescue
+      # A read answers a value or a refusal (docs/SPEC-TABLES.md §6.5): an
+      # error raised inside the read is that refusal, never an escape from
+      # from_json.
+      _ ->
+        {:error, :malformed, empty_report()}
     catch
       {:missing_required, report} ->
         {:error, :missing_required, report}
@@ -3927,6 +3933,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
+    # A bit above the named variants has no text spelling (docs/SPEC-TABLES.md
+    # §16.2): the file read keeps it whole, and the text writer refuses it.
+    if v >>> length(names) != 0, do: throw(:invalid_value)
+
     set = for {n, i} <- Enum.with_index(names), (v >>> i &&& 1) == 1, do: n
 
     case set do
@@ -4474,12 +4484,26 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
-  # a name the flags do not have counts unknown.
+  # an element that is not a string is a kind mismatch that refuses the read,
+  # and a string naming a variant the flags do not have counts unknown.
   defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
+      if not is_binary(n) do
+        json_skip_value(n)
+        throw(:wire_damaged)
+      end
+
       case Enum.find_index(names, &(&1 == n)) do
-        nil -> {mask, %{report | unknown: report.unknown + 1}}
-        i -> {mask ||| 1 <<< i, report}
+        nil ->
+          {mask, %{report | unknown: report.unknown + 1}}
+
+        i ->
+          # A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a repeated
+          # known name is a repeated key and refuses the read. An unknown
+          # name keeps the skip-and-count treatment above.
+          bit = 1 <<< i
+          if (mask &&& bit) != 0, do: throw(:wire_damaged)
+          {mask ||| bit, report}
       end
     end)
   end
@@ -4638,6 +4662,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
+
+  # a big integer token is a decimal number for a float field: its text is
+  # parsed at the field's width, never folded into a bignum.
+  defp json_read_field(%{t: :float} = f, {:bigint, token}, report),
+    do: json_read_field(f, {:decimal, token}, report)
 
   defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
     case json_float_in_width(raw, f.width) do
@@ -5021,6 +5050,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # a big integer token is a decimal number for a float element.
+  defp json_read_list_elem(%{elem_kind: kind} = f, {:bigint, token}, report)
+       when kind in [10, 11],
+       do: json_read_list_elem(f, {:decimal, token}, report)
+
   defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
        when kind in [10, 11] and is_number(e) do
     case json_float_in_width(e, kind_width(kind)) do
@@ -5177,26 +5211,33 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
   # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
   # unclosed block comment leaves a byte behind, so the document is malformed.
+  # A comment's bytes are well-formed UTF-8 and hold no NUL, as at a string
+  # site; a comment that breaks that also leaves a byte behind.
   defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
   defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
 
   defp json_skip_line(<<"\n", rest::binary>>), do: json_skip(rest)
-  defp json_skip_line(<<_, rest::binary>>), do: json_skip_line(rest)
+  defp json_skip_line(<<0, _::binary>>), do: <<0>>
+  defp json_skip_line(<<_::utf8, rest::binary>>), do: json_skip_line(rest)
   defp json_skip_line(<<>>), do: <<>>
+  defp json_skip_line(_), do: <<0>>
 
   defp json_skip_block(<<"*/", rest::binary>>), do: json_skip(rest)
-  defp json_skip_block(<<_, rest::binary>>), do: json_skip_block(rest)
-  defp json_skip_block(<<>>), do: <<0>>
+  defp json_skip_block(<<0, _::binary>>), do: <<0>>
+  defp json_skip_block(<<_::utf8, rest::binary>>), do: json_skip_block(rest)
+  defp json_skip_block(_), do: <<0>>
 
   defp json_object_p(bin, depth) do
     case json_skip(bin) do
       <<"}", rest::binary>> -> {:ok, {:obj, []}, rest}
-      _ -> json_object_pairs(bin, [], depth)
+      _ -> json_object_pairs(bin, [], MapSet.new(), depth)
     end
   end
 
-  defp json_object_pairs(bin, acc, depth) do
+  # every object of the text carries one set of its decoded keys, placed or
+  # skipped (§16.2, §16.12): a repeated key refuses the read.
+  defp json_object_pairs(bin, acc, seen, depth) do
     case json_skip(bin) do
       <<"}", rest::binary>> ->
         {:ok, {:obj, Enum.reverse(acc)}, rest}
@@ -5204,9 +5245,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
              <<":", r2::binary>> <- json_skip(r1),
+             false <- MapSet.member?(seen, key),
              {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+          seen = MapSet.put(seen, key)
+
           case json_skip(r3) do
-            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], depth)
+            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], seen, depth)
             <<"}", r4::binary>> -> {:ok, {:obj, Enum.reverse([{key, val} | acc])}, r4}
             _ -> :error
           end
@@ -5376,63 +5420,75 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # no plus sign, digits after a point and an exponent); an integer stays an
   # integer and anything else stays its decimal text, {:decimal, token}, so a
   # fixed-point field reads it exactly and every other field reads the double
-  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2).
+  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2). An integer token past
+  # what any integer field holds rides as {:bigint, token}: a float field reads
+  # the same text, and an integer field refuses it without a bignum.
   defp json_number(bin) do
     with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
          {:ok, frac_digits, r3} <- json_num_frac(r1),
          {:ok, exp_str, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
-      sign_str = if neg, do: "-", else: ""
-
       cond do
-        neg and int_value == 0 and frac_digits == "" and exp_str == "" ->
+        frac_digits != "" or exp_str != "" ->
+          {:ok, {:decimal, json_token(bin, r4)}, r4}
+
+        int_value == :big ->
+          {:ok, {:bigint, json_token(bin, r4)}, r4}
+
+        neg and int_value == 0 ->
           # -0 KEEPS ITS SIGN (docs/SPEC-TABLES.md §3.3, §16.2): an integer
           # has no -0, so the token rides as its decimal text and a float
           # field reads -0.0 from it, where an integer field still reads 0
-          {:ok, {:decimal, "-0"}, r4}
-
-        frac_digits == "" and exp_str == "" ->
-          {:ok, if(neg, do: -int_value, else: int_value), r4}
+          {:ok, {:decimal, json_token(bin, r4)}, r4}
 
         true ->
-          token =
-            sign_str <>
-              Integer.to_string(int_value) <>
-              if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
-
-          {:ok, {:decimal, token}, r4}
+          {:ok, if(neg, do: -int_value, else: int_value), r4}
       end
     end
   end
+
+  # json_token is the token as the document spells it, a sub-binary of the
+  # document: its length costs no copy and no bignum.
+  defp json_token(bin, rest),
+    do: binary_part(bin, 0, byte_size(bin) - byte_size(rest))
 
   defp json_num_sign(<<"-", rest::binary>>), do: {:ok, true, rest}
   defp json_num_sign(<<"+", _::binary>>), do: :error
   defp json_num_sign(rest), do: {:ok, false, rest}
 
-  # the integer part is accumulated by value, not as a text binary: one binary
-  # per element for a 70000-element integer array is the allocation this audit
-  # refuses (docs/SPEC-TABLES.md §16.2 gates the shape, not the cost).
+  # the integer part is accumulated by value only while an integer field can
+  # hold it: 10^39 is past every 128-bit bound, so forty digits is the widest
+  # an integer field needs. Past that the digits are consumed but not folded,
+  # which keeps the scan linear in the token's length (docs/SPEC-TABLES.md
+  # §16.2 gates the shape, not the cost).
   defp json_num_int({:ok, neg, rest}) do
-    case json_int_value(rest, 0) do
+    case json_int_value(rest) do
       {:ok, value, rest2} -> {:ok, neg, value, rest2}
+      {:big, rest2} -> {:ok, neg, :big, rest2}
       :error -> :error
     end
   end
 
   defp json_num_int(:error), do: :error
 
-  defp json_int_value(<<"0", c, _::binary>>, _acc) when c in ?0..?9, do: :error
-  defp json_int_value(<<"0", rest::binary>>, _acc), do: {:ok, 0, rest}
+  defp json_int_value(<<"0", c, _::binary>>) when c in ?0..?9, do: :error
+  defp json_int_value(<<"0", rest::binary>>), do: {:ok, 0, rest}
 
-  defp json_int_value(<<c, rest::binary>>, _acc) when c in ?1..?9,
-    do: json_int_digits(rest, c - ?0)
+  defp json_int_value(<<c, rest::binary>>) when c in ?1..?9,
+    do: json_int_digits(rest, c - ?0, 1)
 
-  defp json_int_value(_, _acc), do: :error
+  defp json_int_value(_), do: :error
 
-  defp json_int_digits(<<c, rest::binary>>, acc) when c in ?0..?9,
-    do: json_int_digits(rest, acc * 10 + (c - ?0))
+  defp json_int_digits(<<c, rest::binary>>, acc, digits) when c in ?0..?9 do
+    if digits < 40,
+      do: json_int_digits(rest, acc * 10 + (c - ?0), digits + 1),
+      else: json_int_past(rest)
+  end
 
-  defp json_int_digits(rest, acc), do: {:ok, acc, rest}
+  defp json_int_digits(rest, acc, _digits), do: {:ok, acc, rest}
+
+  defp json_int_past(<<c, rest::binary>>) when c in ?0..?9, do: json_int_past(rest)
+  defp json_int_past(rest), do: {:big, rest}
 
   defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
   defp json_num_frac(<<".", _::binary>>), do: :error
@@ -5570,6 +5626,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
     end
   end
+
+  defp fixed_raw({:bigint, _token}, _frac), do: :error
 
   defp fixed_raw(_, _), do: :error
 
@@ -5950,6 +6008,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 // own; only the re-emitted bytes must match the reference legs byte for byte.
 const variableRetainSource = `
   # ---- retain-unknown (docs/SPEC-TABLES.md §6.6) ----
+
+  # THE RESOLVING WALK'S NESTING BOUND (docs/SPEC-TABLES.md §4, §6.6): 128
+  # framed levels, the binary bound every reader holds.
+  @retain_walk_depth 128
+
   #
   # TableRetain is the caller's two bounded stores, threaded through the three
   # verbs and never grown by the codec:
@@ -7490,7 +7553,7 @@ const variableRetainSource = `
     end
   end
 
-  defp retain_content(_ids, _kind, _sub, depth) when depth > 64, do: :error
+  defp retain_content(_ids, _kind, _sub, depth) when depth > @retain_walk_depth, do: :error
   defp retain_content(_ids, 17, _sub, _depth), do: :error
   defp retain_content(ids, 13, sub, depth), do: retain_body(ids, sub, depth)
 
