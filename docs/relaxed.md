@@ -285,7 +285,6 @@ PR 3290. WIP for every proof slug: none unless named here.
   answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
   on the Rust side).
 
-- `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
 - `relax/proof-i3-moo`: 1 cell(s): `porting I3 / moo` (❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two block...). Real fix: the porting register's I3 cell for moo is proven (docs/PORTING.md).
