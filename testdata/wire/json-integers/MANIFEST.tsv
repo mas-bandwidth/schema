@@ -1,5 +1,6 @@
 # The JSON wide-integer vectors (docs/SPEC-TABLES.md §16.2, docs/rulings.json
-# json-wide-integers-are-strings and json-integer-token-only). One small unit —
+# json-wide-integers-are-strings, json-integer-token-only and
+# json-wide-integers-refuse-number-token). One small unit —
 # `Integers`, holding an int32, an int64, a uint64, a ranged int128, a ranged
 # int64, a wide fixed-point field and a map keyed by uint64 — read by the engine
 # and every port card.
@@ -7,7 +8,10 @@
 # The two rules, one corpus:
 #   (1) an integer whose storage is wider than 32 bits — int64, uint64, int128,
 #       and a fixed-point kind of 64 or 128 bits — is written as a JSON STRING
-#       of decimal digits, and reads as a string OR a number, the same digits;
+#       of decimal digits, and reads as that STRING only; a bare number token
+#       there refuses kind_mismatch. The refused number-token rows are in
+#       NUMBER-TOKEN.tsv beside this file, a separate manifest because the
+#       readers are being moved to it one leg at a time;
 #   (2) every integer field takes an integer token only — digits with an
 #       optional minus, no fraction, no exponent, not -0 — and a wide integer's
 #       string holds the same rule inside the string. The value never passes
@@ -17,7 +21,6 @@
 
 canonical	Integers	canonical.read.json	read	the canonical text: every wide field a string of digits
 strings	Integers	strings.read.json	read	wide fields as strings, read back as themselves
-numbers	Integers	numbers.read.json	read	wide fields as numbers, read to the same values
 small-fraction	Integers	small-fraction.refused.json	refused	a fraction in an int32 field
 small-exponent	Integers	small-exponent.refused.json	refused	an exponent in an int32 field
 small-neg-zero	Integers	small-neg-zero.refused.json	refused	negative zero in an int32 field

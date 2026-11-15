@@ -91,3 +91,27 @@ cards-moo-conformance-hash-negative-control: cards-moo-test cards-moo-conformanc
 	sh tables/cards/moo/negative-control.sh taskhash
 
 test-moo: cards-moo-test cards-moo-conformance
+
+# The CHECKED moo build (CMake option MOO_OVERFLOW_ERRORS=ON): the same pin,
+# built to raise on arithmetic that leaves moo's number range instead of
+# saturating, into dist/moo-checked/ with its PIN. `make dist-moo-checked`
+# fetches and refuses a checkout that is not the pin, exactly as dist-moo does;
+# the moo CLI only, because the checked build loads and runs emitted modules
+# and does not analyze them. $MOO_CHECKED overrides; a checked-build test that
+# cannot resolve it FAILS, never skips (.github/actions/moo caches it beside
+# dist/moo under a key naming the mode).
+MOO_CHECKED_DIST := $(CURDIR)/dist/moo-checked
+MOO_CHECKED      ?= $(MOO_CHECKED_DIST)/moo
+export MOO_CHECKED
+
+.PHONY: dist-moo-checked
+dist-moo-checked:
+	@rm -rf build/moo-checked-src build/moo-checked-build && mkdir -p build/moo-checked-src $(MOO_CHECKED_DIST)
+	@cd build/moo-checked-src && git init -q && git fetch -q --depth 1 $(MOO_REPO) $(MOO_PIN) && git checkout -q FETCH_HEAD
+	@got=$$(git -C build/moo-checked-src rev-parse HEAD); if [ "$$got" != "$(MOO_PIN)" ]; then \
+		echo "dist-moo-checked REFUSES: the checkout is $$got, not the pin $(MOO_PIN)"; exit 1; fi
+	@cmake -S build/moo-checked-src -B build/moo-checked-build -DCMAKE_BUILD_TYPE=Release -DMOO_OVERFLOW_ERRORS=ON >/dev/null
+	@cmake --build build/moo-checked-build --target Luau.Repl.CLI -j $(MOO_BUILD_JOBS) >/dev/null
+	@cp build/moo-checked-build/moo $(MOO_CHECKED_DIST)/
+	@echo $(MOO_PIN) > $(MOO_CHECKED_DIST)/PIN
+	@echo "dist-moo-checked: checked moo $(MOO_PIN) at $(MOO_CHECKED_DIST)"
