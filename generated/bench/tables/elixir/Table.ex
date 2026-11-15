@@ -1793,6 +1793,7 @@ defmodule Benchtable.Table do
       :blob_shared -> {:error, :blob_shared}
       # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
       :non_finite_float -> {:error, :non_finite_float}
+      :data_cycle -> {:error, :data_cycle}
       :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
@@ -1806,7 +1807,7 @@ defmodule Benchtable.Table do
   # keyed by the SLOT that holds it (blob_site/1).
   defp collect_root(desc, value) do
     blob_site_begin(:root)
-    {nodes, _seen} = save_collect_nodes(desc, value, [], MapSet.new())
+    {nodes, _seen} = save_collect_nodes(desc, value, [], %{})
     nodes = Enum.reverse(nodes)
     {nodes, node_index(nodes)}
   end
@@ -1827,6 +1828,7 @@ defmodule Benchtable.Table do
 
   # a pointer field's number must name a table node in the directory
   defp save_node_lookup(nil, _n), do: throw(:invalid_value)
+  defp save_node_lookup(_directory, n) when not is_integer(n), do: throw(:invalid_value)
 
   defp save_node_lookup(directory, n) do
     at = n - 2
@@ -1959,17 +1961,32 @@ defmodule Benchtable.Table do
   # number, and walks its body the first time only: a node reached again is the
   # one record (§3.1). The directory gives the node's value in constant time,
   # so a shared node is never found by scanning collected nodes or by content.
+  # seen marks each number with the table it was first reached as and whether
+  # its body is still being walked: a pointer to a node still OPEN is a data
+  # cycle, refused by name (§3.1), and a number reached as a second table type
+  # is not one node, so it is an invalid value.
   defp save_push_node(acc, seen, {type_id, :table, elem, n}) do
-    if MapSet.member?(seen, n) do
-      {acc, seen}
-    else
-      value = save_node_lookup(Process.get(:elixir_save_directory), n)
-      node = {type_id, :table, elem, n, value}
-      seen = MapSet.put(seen, n)
+    case Map.get(seen, n) do
+      {^elem, :closed} ->
+        {acc, seen}
 
-      in_node_holder(node, fn ->
-        save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
-      end)
+      {^elem, :open} ->
+        throw(:data_cycle)
+
+      nil ->
+        value = save_node_lookup(Process.get(:elixir_save_directory), n)
+        node = {type_id, :table, elem, n, value}
+        seen = Map.put(seen, n, {elem, :open})
+
+        {acc, seen} =
+          in_node_holder(node, fn ->
+            save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
+          end)
+
+        {acc, Map.put(seen, n, {elem, :closed})}
+
+      _ ->
+        throw(:invalid_value)
     end
   end
 
@@ -5362,6 +5379,11 @@ defmodule Benchtable.Table do
           Process.delete(:elixir_json_refuse)
         end
       end
+    catch
+      # the tally walks every node before a byte is written: a data cycle or a
+      # node number reached as two table types refuses the text by name (§3.1)
+      :data_cycle -> {:error, :data_cycle}
+      :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_json_directory)
     end
@@ -5538,7 +5560,19 @@ defmodule Benchtable.Table do
 
   defp tally_field(_f, _v, acc), do: acc
 
+  # tally_node counts one pointer to node n. The first time, it walks the
+  # node's body with n marked OPEN: a pointer to a node still open is a data
+  # cycle, refused by name (§3.1), and a number reached as a second table type
+  # is not one node, so it is an invalid value.
   defp tally_node(name, n, acc) do
+    case Map.get(acc, {:node, n}) do
+      nil -> :ok
+      ^name -> :ok
+      _ -> throw(:invalid_value)
+    end
+
+    if Map.has_key?(acc, {:open, n}), do: throw(:data_cycle)
+
     key = {:table, name, n}
     prev = Map.get(acc, key, 0)
     acc = Map.put(acc, key, prev + 1)
@@ -5546,7 +5580,9 @@ defmodule Benchtable.Table do
     if prev == 0 do
       child = Map.fetch!(@tables, name)
       v = json_node_value(n)
-      tally_refs(child, Map.merge(defaults(child), v), acc)
+      acc = Map.merge(acc, %{{:node, n} => name, {:open, n} => true})
+      acc = tally_refs(child, Map.merge(defaults(child), v), acc)
+      Map.delete(acc, {:open, n})
     else
       acc
     end
@@ -8009,10 +8045,11 @@ defmodule Benchtable.Table do
 
       desc = Map.fetch!(@tables, table)
       Process.put(:elixir_cook_directory, directory)
-      Process.put(:elixir_cook_seen, MapSet.new())
+      Process.put(:elixir_cook_seen, %{})
 
       try do
-        {body, children} = cook_collect(desc, value, [])
+        {body, {count, collected, _blobs}} = cook_collect(desc, value, {0, %{}, %{}})
+        children = for i <- 0..(count - 1)//1, do: Map.fetch!(collected, i)
 
         root = %{
           id: desc.type_id,
@@ -8024,7 +8061,7 @@ defmodule Benchtable.Table do
           desc: desc
         }
 
-        {data, align, laid} = cook_lay([root | Enum.reverse(children)])
+        {data, align, laid} = cook_lay([root | children])
         total = 64 + data + length(laid) * 16
         {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
       after
@@ -8034,6 +8071,7 @@ defmodule Benchtable.Table do
     catch
       :invalid -> {:error, :invalid_value}
       :invalid_value -> {:error, :invalid_value}
+      :data_cycle -> {:error, :data_cycle}
     end
   end
 
@@ -8042,7 +8080,11 @@ defmodule Benchtable.Table do
   # the node it names, {:cook_blob, n}. A table node is its type and content,
   # walked once however often it is named; A BLOB IS A NODE OF ITS SLOT
   # (docs/SPEC-TABLES.md §2.5, §3.1), so two slots holding equal bytes are two
-  # nodes and the record writer finds each slot's own node by its mark.
+  # nodes and the record writer finds each slot's own node by its mark. The
+  # walk's state is {count, nodes, blobs}: the number of nodes found so far,
+  # each node by its position in that order, and the first position of each
+  # blob's bytes by type, so a node is placed or found in constant time and
+  # never by scanning the nodes already collected.
   defp cook_collect(desc, value, acc) when is_map(value) do
     validate_record(desc, value)
 
@@ -8068,17 +8110,23 @@ defmodule Benchtable.Table do
   # a cook packs the graph as it finds it (docs/SPEC-TABLES.md §2.5): a blob
   # the strict read found named from a second slot is the one node the
   # earlier slot holding those bytes already numbered
-  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, {:blob_shared, v}, acc) do
-    case Enum.find(Enum.reverse(acc), fn n -> n.kind == :blob and n.id == id and n.value == v end) do
-      nil -> cook_collect_field(f, v, acc)
-      n -> {elem(n.key, 1), acc}
+  defp cook_collect_field(
+         %{t: :blob, cook_type_id: id} = f,
+         {:blob_shared, v},
+         {_count, nodes, blobs} = acc
+       ) do
+    case Map.fetch(blobs, {id, v}) do
+      :error -> cook_collect_field(f, v, acc)
+      {:ok, at} -> {elem(Map.fetch!(nodes, at).key, 1), acc}
     end
   end
 
-  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, acc) when not is_nil(v) do
+  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, {count, nodes, blobs})
+       when not is_nil(v) do
     if not is_binary(v), do: throw(:invalid)
-    slot = {:cook_blob, length(acc)}
-    {slot, [%{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v} | acc]}
+    slot = {:cook_blob, count}
+    node = %{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v}
+    {slot, {count + 1, Map.put(nodes, count, node), Map.put_new(blobs, {id, v}, count)}}
   end
 
   defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc)
@@ -8161,19 +8209,32 @@ defmodule Benchtable.Table do
   # and all (§3.1). The directory gives the node's value in constant time, so a
   # shared node is never found by scanning collected nodes or by its whole
   # value. The node is placed before what its body reaches, then given the
-  # walked body.
-  defp cook_push(acc, id, elem, n) do
-    key = {id, n}
+  # walked body at its own position. Each number is marked with the table it
+  # was first reached as and whether its body is still being walked: a
+  # pointer to a node still OPEN is a data cycle, refused by name (§3.1), and a
+  # number reached as a second table type is not one node, an invalid value.
+  defp cook_push({count, nodes, blobs} = acc, id, elem, n) do
+    seen = Process.get(:elixir_cook_seen)
 
-    if MapSet.member?(Process.get(:elixir_cook_seen, MapSet.new()), key) do
-      acc
-    else
-      Process.put(:elixir_cook_seen, MapSet.put(Process.get(:elixir_cook_seen), key))
-      value = cook_node_lookup(n)
-      node = %{id: id, key: key, kind: :table, string: false, value: value, elem: elem}
-      before = length(acc)
-      {body, acc} = cook_collect(Map.fetch!(@tables, elem), value, [node | acc])
-      List.update_at(acc, length(acc) - before - 1, &%{&1 | value: body})
+    case Map.get(seen, n) do
+      {^elem, :closed} ->
+        acc
+
+      {^elem, :open} ->
+        throw(:data_cycle)
+
+      nil ->
+        Process.put(:elixir_cook_seen, Map.put(seen, n, {elem, :open}))
+        value = cook_node_lookup(n)
+        node = %{id: id, key: {id, n}, kind: :table, string: false, value: value, elem: elem}
+        acc = {count + 1, Map.put(nodes, count, node), blobs}
+        {body, {after_count, nodes, blobs}} = cook_collect(Map.fetch!(@tables, elem), value, acc)
+        closed = Map.put(Process.get(:elixir_cook_seen), n, {elem, :closed})
+        Process.put(:elixir_cook_seen, closed)
+        {after_count, Map.put(nodes, count, %{node | value: body}), blobs}
+
+      _ ->
+        throw(:invalid)
     end
   end
 
@@ -8230,29 +8291,39 @@ defmodule Benchtable.Table do
 
   defp cook_carve(_desc, _value, _node_off, _index, _order, buf), do: buf
 
+  # Each node is written into its own window, a buffer of the node's size
+  # that answers the region's offsets ({origin, bytes}), and the windows are
+  # joined in layout order with the alignment gaps between them zero: a write
+  # copies one node, never the whole region, so the writer's work is linear in
+  # the node count.
   defp cook_render(plan, order) do
     try do
-      data = :binary.copy(<<0>>, plan.data)
       index = Map.new(plan.nodes, fn n -> {n.key, n.offset} end)
 
-      data =
-        Enum.reduce(plan.nodes, data, fn n, data ->
-          case n.kind do
-            :blob ->
-              data = put_u32(data, n.offset, byte_size(n.value), order)
-              put_raw(data, n.offset + 8, n.value)
+      {parts, at} =
+        Enum.reduce(plan.nodes, {[], 0}, fn n, {parts, at} ->
+          window = {n.offset, :binary.copy(<<0>>, n.size)}
 
-            :table ->
-              data = cook_record(n.desc, n.value, n.offset, index, order, data)
+          {_origin, bytes} =
+            case n.kind do
+              :blob ->
+                window = put_u32(window, n.offset, byte_size(n.value), order)
+                put_raw(window, n.offset + 8, n.value)
 
-              if n.extent == 0 and not n.desc.has_extent do
-                data
-              else
-                cook_carve(n.desc, n.value, n.offset, index, order, data)
-              end
-          end
+              :table ->
+                window = cook_record(n.desc, n.value, n.offset, index, order, window)
+
+                if n.extent == 0 and not n.desc.has_extent do
+                  window
+                else
+                  cook_carve(n.desc, n.value, n.offset, index, order, window)
+                end
+            end
+
+          {[bytes, :binary.copy(<<0>>, n.offset - at) | parts], n.offset + n.size}
         end)
 
+      data = [Enum.reverse(parts), :binary.copy(<<0>>, plan.data - at)]
       header = cook_header(plan, order)
       dir = cook_directory(plan.nodes, order)
       {:ok, IO.iodata_to_binary([header, data, dir])}
@@ -8576,6 +8647,8 @@ defmodule Benchtable.Table do
   defp put_float(buf, at, v, 8, :little), do: put_raw(buf, at, <<v::little-float-64>>)
   defp put_float(buf, at, v, 8, :big), do: put_raw(buf, at, <<v::big-float-64>>)
   defp put_float(_buf, _at, _v, _w, _order), do: throw(:invalid)
+
+  defp put_raw({origin, buf}, at, bytes), do: {origin, put_raw(buf, at - origin, bytes)}
 
   defp put_raw(buf, at, bytes) do
     n = byte_size(bytes)

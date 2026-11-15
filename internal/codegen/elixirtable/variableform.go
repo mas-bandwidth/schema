@@ -707,6 +707,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       :blob_shared -> {:error, :blob_shared}
       # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
       :non_finite_float -> {:error, :non_finite_float}
+      :data_cycle -> {:error, :data_cycle}
       :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
@@ -720,7 +721,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # keyed by the SLOT that holds it (blob_site/1).
   defp collect_root(desc, value) do
     blob_site_begin(:root)
-    {nodes, _seen} = save_collect_nodes(desc, value, [], MapSet.new())
+    {nodes, _seen} = save_collect_nodes(desc, value, [], %{})
     nodes = Enum.reverse(nodes)
     {nodes, node_index(nodes)}
   end
@@ -741,6 +742,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # a pointer field's number must name a table node in the directory
   defp save_node_lookup(nil, _n), do: throw(:invalid_value)
+  defp save_node_lookup(_directory, n) when not is_integer(n), do: throw(:invalid_value)
 
   defp save_node_lookup(directory, n) do
     at = n - 2
@@ -874,17 +876,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # number, and walks its body the first time only: a node reached again is the
   # one record (§3.1). The directory gives the node's value in constant time,
   # so a shared node is never found by scanning collected nodes or by content.
+  # seen marks each number with the table it was first reached as and whether
+  # its body is still being walked: a pointer to a node still OPEN is a data
+  # cycle, refused by name (§3.1), and a number reached as a second table type
+  # is not one node, so it is an invalid value.
   defp save_push_node(acc, seen, {type_id, :table, elem, n}) do
-    if MapSet.member?(seen, n) do
-      {acc, seen}
-    else
-      value = save_node_lookup(Process.get(:elixir_save_directory), n)
-      node = {type_id, :table, elem, n, value}
-      seen = MapSet.put(seen, n)
+    case Map.get(seen, n) do
+      {^elem, :closed} ->
+        {acc, seen}
 
-      in_node_holder(node, fn ->
-        save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
-      end)
+      {^elem, :open} ->
+        throw(:data_cycle)
+
+      nil ->
+        value = save_node_lookup(Process.get(:elixir_save_directory), n)
+        node = {type_id, :table, elem, n, value}
+        seen = Map.put(seen, n, {elem, :open})
+
+        {acc, seen} =
+          in_node_holder(node, fn ->
+            save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
+          end)
+
+        {acc, Map.put(seen, n, {elem, :closed})}
+
+      _ ->
+        throw(:invalid_value)
     end
   end
 
@@ -3727,6 +3744,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           Process.delete(:elixir_json_refuse)
         end
       end
+    catch
+      # the tally walks every node before a byte is written: a data cycle or a
+      # node number reached as two table types refuses the text by name (§3.1)
+      :data_cycle -> {:error, :data_cycle}
+      :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_json_directory)
     end
@@ -3911,7 +3933,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp tally_field(_f, _v, acc), do: acc
 
+  # tally_node counts one pointer to node n. The first time, it walks the
+  # node's body with n marked OPEN: a pointer to a node still open is a data
+  # cycle, refused by name (§3.1), and a number reached as a second table type
+  # is not one node, so it is an invalid value.
   defp tally_node(name, n, acc) do
+    case Map.get(acc, {:node, n}) do
+      nil -> :ok
+      ^name -> :ok
+      _ -> throw(:invalid_value)
+    end
+
+    if Map.has_key?(acc, {:open, n}), do: throw(:data_cycle)
+
     key = {:table, name, n}
     prev = Map.get(acc, key, 0)
     acc = Map.put(acc, key, prev + 1)
@@ -3919,7 +3953,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if prev == 0 do
       child = Map.fetch!(@tables, name)
       v = json_node_value(n)
-      tally_refs(child, Map.merge(defaults(child), v), acc)
+      acc = Map.merge(acc, %{{:node, n} => name, {:open, n} => true})
+      acc = tally_refs(child, Map.merge(defaults(child), v), acc)
+      Map.delete(acc, {:open, n})
     else
       acc
     end
@@ -6465,6 +6501,7 @@ const variableRetainSource = `
   catch
     :non_finite_float -> -1
     :invalid_value -> -1
+    :data_cycle -> -1
   end
 
   def save_retain(table, value, retain, report) do
@@ -6476,6 +6513,7 @@ const variableRetainSource = `
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float, report, retain}
     :invalid_value -> {:error, :invalid_value, report, retain}
+    :data_cycle -> {:error, :data_cycle, report, retain}
   end
 
   defp save_retain_internal(table, value, retain, report) do

@@ -320,7 +320,7 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #   mapsort (M19) the writer sorts a map's entries DESCENDING: wire and report
 #          red; framing green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
-ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if MapSet.member?(seen, n) do|    if MapSet.size(seen) > 16 and MapSet.member?(seen, n) do|'
+ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    case Map.get(seen, n) do|    case if(map_size(seen) > 16, do: Map.get(seen, n)) do|'
 ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if m < 2 do$$|    if true or m < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
 ELIXIR_CONFORMANCE_ARM_SED    := -e 's|arm_framing_damaged?(a, inner) ->|false and arm_framing_damaged?(a, inner) ->|'
@@ -1618,7 +1618,7 @@ tables-elixir-keyed-max-negative-control:
 # The control keys the cook's blob mark by the bytes instead of the slot, which
 # makes the equal-bytes slots one node, and requires
 # TestCookNumbersABlobByItsSlotElixir to red on blob_equal_bytes alone.
-ELIXIR_COOK_BLOB_SED := -e 's|    slot = {:cook_blob, length(acc)}|    slot = {:cook_blob, v}|'
+ELIXIR_COOK_BLOB_SED := -e 's|    slot = {:cook_blob, count}|    slot = {:cook_blob, v}|'
 
 .PHONY: tables-elixir-cook-blob-negative-control
 tables-elixir-cook-blob-negative-control:
