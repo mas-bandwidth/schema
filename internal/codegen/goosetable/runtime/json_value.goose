@@ -1140,7 +1140,6 @@ struct JvIn {
     scratch: i64[>..<]&,
     graph: bool, // the root is variable: `&node` is the form's own construct
     kset_entries: JsonKeyEntry[>..]&,
-    kset_indices: i64[>..]&,
     kset_slots: i64[>..]&,
 }
 
@@ -1352,7 +1351,7 @@ fn jr_scan_label(c: JvIn&) -> u64, bool {
 // definitions still take their labels in a variable root (§16.7) ----
 
 recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
-    var kset = json_keyset_start(c.kset_indices, c.kset_slots);
+    var kset = json_keyset_start(c.kset_slots);
     let ch = json_peek(c.jr);
     if ch != '{' && ch != '[' { return json_skip_value(c.jr, depth); }
     if depth > JsonMaxDepth { return json_fail(c.jr); }
@@ -1371,7 +1370,7 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
             var key: u8[256] = [0; 256];
             let n, ok = jr_key(c, key);
             if !ok { return false; }
-            if json_keyset_seen(c.kset_entries, c.kset_indices, c.kset_slots, kset, key[..n]) {
+            if json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]) {
                 c.jr.rep.repeated += 1;
                 return json_fail(c.jr);
             }
@@ -1433,7 +1432,7 @@ fn jr_required(c: JvIn&, tab: i64, rec: i64, seen: const u64[8]&) -> bool {
 // (`first`, when has_first), its colon consumed.
 recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:], has_first: bool) -> bool {
     var seen: u64[8] = [0; 8];
-    var kset = json_keyset_start(c.kset_indices, c.kset_slots);
+    var kset = json_keyset_start(c.kset_slots);
     var pending = has_first;
     loop {
         var key: u8[256] = [0; 256];
@@ -1453,7 +1452,7 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
             if !ok { return false; }
             n = kn;
         }
-        let dup = json_keyset_seen(c.kset_entries, c.kset_indices, c.kset_slots, kset, key[..n]);
+        let dup = json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]);
         if dup { c.jr.rep.repeated += 1; }
         if n > 0 && key[0] == '&' {
             // the reserved prefix where it cannot stand: malformed, never
@@ -1845,7 +1844,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
     var seen: u64[8] = [0; 8];
-    var kset = json_keyset_start(c.kset_indices, c.kset_slots);
+    var kset = json_keyset_start(c.kset_slots);
     loop {
         let ch = json_peek(c.jr);
         if ch == '}' {
@@ -1856,7 +1855,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         var key: u8[256] = [0; 256];
         let n, ok = jr_key(c, key);
         if !ok { return false; }
-        let dup = json_keyset_seen(c.kset_entries, c.kset_indices, c.kset_slots, kset, key[..n]);
+        let dup = json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]);
         if dup { c.jr.rep.repeated += 1; }
         var slot: i64 = -1;
         for k, i in keys {
@@ -1898,9 +1897,8 @@ fn jr_map_key(c: JvIn&, ks: i64, kd: FieldDesc, off: i64) -> i64 {
     }
     let tok = c.data[off..];
     var probe_entries: JsonKeyEntry[>..] = [];
-    var probe_indices: i64[>..] = [];
     var probe_slots: i64[>..] = [];
-    var probe = json_in(tok, probe_entries, probe_indices, probe_slots);
+    var probe = json_in(tok, probe_entries, probe_slots);
     json_space(probe);
     if probe.pos != 0 { return 2; }
     let whole, ok = json_walk_number(probe);
@@ -2237,12 +2235,11 @@ fn json_load_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], text:
         return -1;
     }
     var kset_entries: JsonKeyEntry[>..] = [];
-    var kset_indices: i64[>..] = [];
     var kset_slots: i64[>..] = [];
-    var jr = json_in(text, kset_entries, kset_indices, kset_slots);
+    var jr = json_in(text, kset_entries, kset_slots);
     var labels: JsonLabel[>..] = [];
     var scratch: i64[>..<] = [];
-    var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable, kset_entries: kset_entries, kset_indices: kset_indices, kset_slots: kset_slots };
+    var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable, kset_entries: kset_entries, kset_slots: kset_slots };
     let rec = jr_new_record(c, t);
     let ok = jr_table(c, t, rec, 0);
     if !json_finish(jr, ok, report) { return -1; }

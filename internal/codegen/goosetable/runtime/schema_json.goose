@@ -535,12 +535,11 @@ struct JsonIn {
     zero: bool,
     rep: JsonReport,
     kset_entries: JsonKeyEntry[>..]&,
-    kset_indices: i64[>..]&,
     kset_slots: i64[>..]&,
 }
 
-fn json_in(text: const u8[:], kset_entries: JsonKeyEntry[>..]&, kset_indices: i64[>..]&, kset_slots: i64[>..]&) -> JsonIn {
-    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), kset_entries: kset_entries, kset_indices: kset_indices, kset_slots: kset_slots };
+fn json_in(text: const u8[:], kset_entries: JsonKeyEntry[>..]&, kset_slots: i64[>..]&) -> JsonIn {
+    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), kset_entries: kset_entries, kset_slots: kset_slots };
     // a leading UTF-8 byte-order mark is skipped, there and nowhere else
     // (docs/SPEC-TABLES.md §16.2, §16.12)
     if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF { jr.pos = 3; }
@@ -844,47 +843,47 @@ fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
 // ---- the decoded-key set of ONE object (§16.2) ----
 //
 // A repeated key refuses in every object, compared as DECODED bytes, so a key
-// and its \u-escaped spelling are one key. The key entries, this object's
-// entry indices and the open addressing slots live in arrays the top-level
-// read owns, so a recursive walk keeps only a fixed-size cursor: where this
-// object's indices start, how many it has, and the slot segment it probes. A
-// child object appends its own entries and slots after its parent's and leaves
-// them there; a probe compares the bytes on a hash match, so a collision is
-// never taken for a repeat, and the slots double at two-thirds load. Time and
-// space are the object's own.
+// and its \u-escaped spelling are one key. The key entries and the open
+// addressing slots live in arrays the top-level read owns, so a recursive walk
+// keeps only a fixed-size cursor: this object's entry chain and the slot
+// segment it probes. A child object appends its own entries and slots after
+// its parent's and leaves them there, and each object's entries are its own
+// chain, so a parent's growth never walks a child's keys. A probe compares the
+// bytes on a hash match, so a collision is never taken for a repeat, and the
+// slots double at two-thirds load. Time and space are the object's own.
 
 struct JsonKeyEntry {
     hash: u64,
     len: i64,
+    next: i64,
     key: u8[256],
 }
 
 struct JsonKeySet {
     used: i64,
-    idxbase: i64,
+    head: i64,
     base: i64,
     cap: i64,
 }
 
-fn json_keyset_start(indices: const i64[>..]&, slots: i64[>..]&) -> JsonKeySet {
+fn json_keyset_start(slots: i64[>..]&) -> JsonKeySet {
     let base = slots.len;
     for i in 16 { slots.push(-1); }
-    return JsonKeySet { used: 0, idxbase: indices.len, base: base, cap: 16 };
+    return JsonKeySet { used: 0, head: -1, base: base, cap: 16 };
 }
 
-fn json_keyset_grow(entries: const JsonKeyEntry[>..]&, indices: const i64[>..]&, slots: i64[>..]&, ks: JsonKeySet&) {
+fn json_keyset_grow(entries: const JsonKeyEntry[>..]&, slots: i64[>..]&, ks: JsonKeySet&) {
     let cap = ks.cap * 2;
     let base = slots.len;
     for i in cap { slots.push(-1); }
     let mask = cap - 1;
-    var j = ks.idxbase;
-    while j < ks.idxbase + ks.used {
-        let i = indices[j];
-        let h = entries[i].hash;
+    var j = ks.head;
+    while j >= 0 {
+        let h = entries[j].hash;
         var p = (h & (mask as u64)) as i64;
         while slots[base + p] >= 0 { p = (p + 1) & mask; }
-        slots[base + p] = i;
-        j += 1;
+        slots[base + p] = j;
+        j = entries[j].next;
     }
     ks.base = base;
     ks.cap = cap;
@@ -912,18 +911,18 @@ fn json_keyset_find(entries: const JsonKeyEntry[>..]&, slots: const i64[>..]&, k
 
 // json_keyset_seen answers whether key was already in the object's set, and
 // adds it when it was not.
-fn json_keyset_seen(entries: JsonKeyEntry[>..]&, indices: i64[>..]&, slots: i64[>..]&, ks: JsonKeySet&, key: const u8[:]) -> bool {
-    if (ks.used + 1) * 3 > ks.cap * 2 { json_keyset_grow(entries, indices, slots, ks); }
+fn json_keyset_seen(entries: JsonKeyEntry[>..]&, slots: i64[>..]&, ks: JsonKeySet&, key: const u8[:]) -> bool {
+    if (ks.used + 1) * 3 > ks.cap * 2 { json_keyset_grow(entries, slots, ks); }
     var h: u64 = 0xcbf29ce484222325;
     for b in key { h = (h ^ (b as u64)) * 0x100000001b3; }
     let found, at = json_keyset_find(entries, slots, ks, key, h);
     if found { return true; }
-    var e = JsonKeyEntry { hash: h, len: key.len, key: [0; 256] };
+    var e = JsonKeyEntry { hash: h, len: key.len, next: ks.head, key: [0; 256] };
     for b, i in key { e.key[i] = b; }
     let idx = entries.len;
     entries.push(e);
-    indices.push(idx);
     slots[at] = idx;
+    ks.head = idx;
     ks.used += 1;
     return false;
 }
@@ -974,7 +973,7 @@ fn json_number(jr: JsonIn&) -> i64, i64, bool, bool {
 
 // json_skip_value consumes one value of any shape, to the depth cap.
 recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
-    var kset = json_keyset_start(jr.kset_indices, jr.kset_slots);
+    var kset = json_keyset_start(jr.kset_slots);
     let c = json_peek(jr);
     if c == '{' || c == '[' {
         if depth > JsonMaxDepth { return json_fail(jr); }
@@ -994,7 +993,7 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
                 var key: u8[256] = [0; 256];
                 let n, ok = json_key(jr, key);
                 if !ok || n > JsonMaxKey { return false; }
-                if json_keyset_seen(jr.kset_entries, jr.kset_indices, jr.kset_slots, kset, key[..n]) {
+                if json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]) {
                     return json_fail(jr);
                 }
                 if !json_expect(jr, ':') { return false; }
@@ -1477,7 +1476,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    var kset = json_keyset_start(jr.kset_indices, jr.kset_slots);
+    var kset = json_keyset_start(jr.kset_slots);
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1488,7 +1487,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         var key: u8[256] = [0; 256];
         let n, ok = json_key(jr, key);
         if !ok { return false; }
-        let dup = json_keyset_seen(jr.kset_entries, jr.kset_indices, jr.kset_slots, kset, key[..n]);
+        let dup = json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]);
         if dup { jr.rep.repeated += 1; }
         if !json_expect(jr, ':') { return false; }
         var slot: i64 = -1;
@@ -1592,7 +1591,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
     }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    var kset = json_keyset_start(jr.kset_indices, jr.kset_slots);
+    var kset = json_keyset_start(jr.kset_slots);
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1603,7 +1602,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
         var key: u8[256] = [0; 256];
         let n, ok = json_key(jr, key);
         if !ok { return false; }
-        let dup = json_keyset_seen(jr.kset_entries, jr.kset_indices, jr.kset_slots, kset, key[..n]);
+        let dup = json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]);
         if dup { jr.rep.repeated += 1; }
         if !json_expect(jr, ':') { return false; }
         var index: i64 = -1;
@@ -1956,9 +1955,8 @@ fn json_write_table<T, F>(out: u8[>..]&, rec: const T&, d: const TableDesc&, dep
 // is refused by name; the caller then puts the record back at its defaults.
 fn json_from<T, F>(rec: T&, d: const TableDesc&, shapes: const u8[:], text: const u8[:], report: JsonReport&) -> bool {
     var kset_entries: JsonKeyEntry[>..] = [];
-    var kset_indices: i64[>..] = [];
     var kset_slots: i64[>..] = [];
-    var jr = json_in(text, kset_entries, kset_indices, kset_slots);
+    var jr = json_in(text, kset_entries, kset_slots);
     let ok = json_read_table(jr, rec, d, shapes, 0, F);
     return json_finish(jr, ok, report);
 }

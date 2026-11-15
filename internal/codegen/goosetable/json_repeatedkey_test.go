@@ -50,9 +50,24 @@ func repeatedKeyEnumText() string {
 	return b.String()
 }
 
+// repeatedKeyInterleavedText nests one distinct key under each of twelve
+// unknown root keys, then names an earlier root key again. The parent's set
+// grows past its first slot segment while child objects are adding their own
+// keys, so the parent's growth must walk only its own entries.
+func repeatedKeyInterleavedText() string {
+	var b strings.Builder
+	b.WriteString(`{`)
+	for i := 0; i < 12; i++ {
+		fmt.Fprintf(&b, `"u%d":{"c%d":%d},`, i, i, i)
+	}
+	b.WriteString(`"u9":0}`)
+	return b.String()
+}
+
 func repeatedKeyCases() []repeatedKeyCase {
 	return []repeatedKeyCase{
 		{"unknown-key-repeated", `{"bogus":1,"bogus":2}`},
+		{"unknown-key-interleaved-repeat", repeatedKeyInterleavedText()},
 		{"skipped-object-repeated", `{"bogus":{"k":1,"k":2}}`},
 		{"skipped-array-repeated", `{"bogus":[{"k":1,"k":2}]}`},
 		{"unknown-known-unknown", `{"bogus":1,"teams":{},"bogus":2}`},
@@ -67,13 +82,13 @@ func repeatedKeyCases() []repeatedKeyCase {
 	}
 }
 
-const repeatedKeyFlatSkipCheck = `            if json_keyset_seen(c.kset_entries, c.kset_indices, c.kset_slots, kset, key[..n]) {
+const repeatedKeyFlatSkipCheck = `            if json_keyset_seen(c.kset_entries, c.kset_slots, kset, key[..n]) {
                 c.jr.rep.repeated += 1;
                 return json_fail(c.jr);
             }
 `
 
-const repeatedKeyTypedSkipCheck = `                if json_keyset_seen(jr.kset_entries, jr.kset_indices, jr.kset_slots, kset, key[..n]) {
+const repeatedKeyTypedSkipCheck = `                if json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]) {
                     return json_fail(jr);
                 }
 `
