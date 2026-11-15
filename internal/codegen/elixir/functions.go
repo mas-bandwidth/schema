@@ -1540,7 +1540,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
-		g.emitWriteWideRaw(name, int64(f.Type.Width), ind)
+		// [0, 2^N-1], checked at every N: a BEAM integer has no storage
+		// width to elide against, 32 and 64 included. The mask stays after
+		// the check. A bare signed integer is not this path.
+		w := int64(f.Type.Width)
+		top := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+		g.emitCheckRange(name, g.dsp(name), big.NewInt(0), top, ind)
+		g.emitWriteWideRaw(name, w, ind)
 	case ir.TBool:
 		g.pf("%sv = if %s, do: 1, else: 0\n", ind, name)
 		g.mergeW(1, ind)
