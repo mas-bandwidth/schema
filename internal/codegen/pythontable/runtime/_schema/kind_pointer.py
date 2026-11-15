@@ -23,7 +23,7 @@ def _target(fd: FieldDesc) -> type[Any]:
 
 class _Pointer:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
-        if value is not None and not isinstance(value, _target(fd)):
+        if value is not None and type(value) is not _target(fd):
             raise InvalidValue(path, f"not a {fd.target} or None")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:

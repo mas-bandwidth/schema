@@ -178,7 +178,6 @@ type filePlan struct {
 	unions       []*ir.Union
 	packets      []*ir.Struct
 	packetUnions []*ir.Union
-	enums        []*ir.Enum
 }
 
 // filePlans groups everything one generated module holds by the schema file
@@ -205,6 +204,11 @@ func filePlans(u *ir.Unit) []*filePlan {
 		get(base).unions = unions
 	}
 	for _, f := range u.Files {
+		if len(valueDecls(f)) > 0 {
+			// a file's constants, enums and flags sets are hosted and
+			// re-exported even when it declares no table or packet type
+			get(f.Base)
+		}
 		for _, d := range f.Decls {
 			switch d := d.(type) {
 			case *ir.Struct:
@@ -215,10 +219,6 @@ func filePlans(u *ir.Unit) []*filePlan {
 			case *ir.Union:
 				plan := get(f.Base)
 				plan.packetUnions = append(plan.packetUnions, d)
-			case *ir.Enum:
-				// the packet core emits the enum's class; the package exports it
-				plan := get(f.Base)
-				plan.enums = append(plan.enums, d)
 			}
 		}
 	}
@@ -436,13 +436,14 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 		importsList = append(importsList, schema[name])
 	}
 	fmt.Fprintf(&b, "from ._schema import %s\n", strings.Join(importsList, ", "))
+	b.WriteString("from ._schema import _float32_bits_eq as _s_float32_bits_eq, _float64_bits_eq as _s_float64_bits_eq\n")
 	if len(imports.Serialize) > 0 {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
+	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, _check_root as _s_check_root, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
 		b.WriteString(body)
@@ -591,7 +592,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	} else {
 		parts := make([]string, 0, len(st.Fields))
 		for _, f := range st.Fields {
-			parts = append(parts, fmt.Sprintf("self.%s == other.%s", f.Name, f.Name))
+			parts = append(parts, equalExpr("self."+f.Name, "other."+f.Name, f))
 		}
 		fmt.Fprintf(b, "        return bool(%s)\n", strings.Join(parts, " and "))
 	}
@@ -646,11 +647,12 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
+		codec := descriptorCodec(f, valueClass)
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
-		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
+		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codec))
 		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
 		fmt.Fprintf(b, "            lo=%s,\n", lo)
 		fmt.Fprintf(b, "            hi=%s,\n", hi)
@@ -669,8 +671,8 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 		fmt.Fprintf(b, "            elem_kind=%d,\n", ir.TableWireElemKind(f))
 		elemCodec := ""
-		if codecOf(f) == "array" {
-			elemCodec = elementCodecOf(f)
+		if codec == "array" {
+			elemCodec = arrayElemCodec(f)
 		}
 		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
@@ -678,8 +680,14 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
-		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
-		if codecOf(f) == "keyed" {
+		fmt.Fprintf(b, "            default=%s,\n", defaultFor(f, codec))
+		if isFloat(f) {
+			fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
+			fmt.Fprintf(b, "            fmin=%s,\n", floatBound(f, f.FMin))
+			fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
+			fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
+		}
+		if codec == "keyed" {
 			emitKeyedDesc(b, f)
 		}
 		fmt.Fprintf(b, "        ),\n")
@@ -720,6 +728,7 @@ func scalarOnly(st *ir.Struct) bool {
 func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	name := st.Name
 	fmt.Fprintf(b, "def _s_save_%s(value: %s) -> bytes:\n", name, name)
+	b.WriteString("    _s_check_root(value)\n")
 	b.WriteString("    _validate_value(value, value.descriptor, \"\", set())\n")
 	b.WriteString("    ctx = _SaveCtx()\n")
 	b.WriteString("    ctx.indices[id(value)] = 1\n")
@@ -979,7 +988,7 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	names := []string{"InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, plan := range plans {
 		fmt.Fprintf(&b, "from . import %s\n", plan.base)
 		names = append(names, plan.base)
@@ -1012,18 +1021,21 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			sort.Strings(unions)
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(unions, ", "))
 		}
-		enums := make([]string, 0, len(plan.enums))
-		for _, e := range plan.enums {
-			enums = append(enums, e.Name)
-			names = append(names, e.Name)
-		}
-		if len(enums) > 0 {
-			sort.Strings(enums)
-			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(enums, ", "))
+		// the file's constants, enums and flags sets, which the packet host
+		// emits into the module, ride beside its classes
+		if decls := valueDecls(fileFor(u, plan.base)); len(decls) > 0 {
+			values := make([]string, 0, len(decls))
+			for _, d := range decls {
+				values = append(values, valueDeclName(d))
+				names = append(names, valueDeclName(d))
+			}
+			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(values, ", "))
 		}
 	}
-	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n\n", u.ProtocolId)
+	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
+	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))
 	sort.Strings(names)
+	names = slices.Compact(names)
 	b.WriteString("__all__ = [\n")
 	for _, n := range names {
 		fmt.Fprintf(&b, "    %q,\n", n)
@@ -1095,11 +1107,17 @@ func codecOf(f *ir.Field) string {
 		if _, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed && !f.Type.Pointer {
 			return "union_array"
 		}
-		element := elementCodecOf(f)
+		element := arrayElemCodec(f)
 		if element == "unsupported" {
 			return "unsupported"
 		}
 		if f.Array == ir.ArrayList || element == "table" {
+			return "array"
+		}
+		// a fixed or counted array of a fixed-class scalar: the same kind-14
+		// body, each element through its own kind module
+		switch element {
+		case "bool", "int", "float32", "float64", "string", "enum":
 			return "array"
 		}
 		return "unsupported"
@@ -1130,6 +1148,10 @@ func codecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
 	case ir.TString:
 		return "string"
 	case ir.TBytes:
@@ -1172,6 +1194,96 @@ func elementCodecOf(f *ir.Field) string {
 		}
 	}
 	return "unsupported"
+}
+
+// arrayElemCodec is the codec an array field's element rides through: an
+// unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
+// array also carries the fixed class's floats, strings, enums and flags masks.
+func arrayElemCodec(f *ir.Field) string {
+	element := elementCodecOf(f)
+	if f.Array == ir.ArrayList || element != "unsupported" || f.Type.Pointer {
+		return element
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
+		}
+	}
+	return "unsupported"
+}
+
+// descriptorCodec is the codec a field's descriptor names. A packet type by
+// value is the packet-types card's construct: its float fields stay refused by
+// name in the table runtime (kind_unsupported.py) until that card carries them,
+// so only a table's own fields ride the float kinds.
+func descriptorCodec(f *ir.Field, valueClass bool) string {
+	codec := codecOf(f)
+	if valueClass && isFloat(f) && codec != "unsupported" {
+		return "unsupported"
+	}
+	return codec
+}
+
+// isFloat reports a float32 or float64 field, or an array of them.
+func isFloat(f *ir.Field) bool {
+	return f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64
+}
+
+// compressedFloat reports a float32 with a declared min, max and resolution.
+func compressedFloat(f *ir.Field) bool {
+	return f.Type.Kind == ir.TFloat32 && f.HasFloatRange
+}
+
+// floatBound is a compressed float's range end, and 0.0 on every other field.
+func floatBound(f *ir.Field, v float64) string {
+	if !compressedFloat(f) {
+		return "0.0"
+	}
+	return pyFloatLiteral(v)
+}
+
+func pyFloatLiteral(v float64) string {
+	s := strconv.FormatFloat(v, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
+}
+
+// equalExpr compares one field by value, a float by its bits (so -0.0 and 0.0
+// differ, as their wire bytes do; docs/PORT-PYTHON.md, Classes) and a plain
+// array element by element so a float element is compared by bits too. It is
+// the packet surface's rule (internal/codegen/python, equalExpr).
+func equalExpr(a, b string, f *ir.Field) string {
+	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.KeyEnum != "" {
+		return a + " == " + b
+	}
+	if f.Array != ir.ArrayNone {
+		elem := *f
+		elem.Array = ir.ArrayNone
+		inner := equalExpr("_s_x", "_s_y", &elem)
+		if inner == "_s_x == _s_y" {
+			return a + " == " + b
+		}
+		return fmt.Sprintf("len(%s) == len(%s) and all(%s for _s_x, _s_y in zip(%s, %s))", a, b, inner, a, b)
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return fmt.Sprintf("_s_float32_bits_eq(%s, %s)", a, b)
+	case ir.TFloat64:
+		return fmt.Sprintf("_s_float64_bits_eq(%s, %s)", a, b)
+	}
+	return a + " == " + b
 }
 
 func targetName(f *ir.Field) string {
@@ -1285,10 +1397,7 @@ func valueDefault(f *ir.Field) string {
 		}
 		return "0"
 	case ir.TFloat32, ir.TFloat64:
-		if f.HasDefault {
-			return strconv.FormatFloat(f.DefFloat, 'g', -1, 64)
-		}
-		return "0.0"
+		return floatDefault(f)
 	case ir.TString:
 		return strconv.Quote(string(f.DefBytes))
 	case ir.TBytes:
@@ -1379,10 +1488,6 @@ func fieldSize(f *ir.Field) int64 {
 	return 0
 }
 
-func descriptorDefault(f *ir.Field) string {
-	return defaultFor(f, codecOf(f))
-}
-
 // defaultFor is the descriptor default of a field, or of a container's
 // element, carried under codec.
 func defaultFor(f *ir.Field, codec string) string {
@@ -1402,8 +1507,23 @@ func defaultFor(f *ir.Field, codec string) string {
 		return "{}"
 	case "enum":
 		return strconv.FormatInt(enumDefaultValue(f), 10)
+	case "float32", "float64":
+		return floatDefault(f)
 	}
 	return "None"
+}
+
+// floatDefault is a float field's declared default as a Python float literal:
+// a float32's is the float32 value the wire carries, so the elision compare
+// meets the bits a writer stores.
+func floatDefault(f *ir.Field) string {
+	if !f.HasDefault {
+		return "0.0"
+	}
+	if f.Type.Kind == ir.TFloat32 {
+		return pyFloatLiteral(float64(float32(f.DefFloat)))
+	}
+	return pyFloatLiteral(f.DefFloat)
 }
 
 func intRange(f *ir.Field) (lo, hi string) {

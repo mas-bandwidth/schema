@@ -319,6 +319,10 @@ generated class per table and per map entry, each with its descriptor
 
   - the full-width integers (8 to 128 bits): carried
 
+  - bits, ranged integers, floats, enums, flags, strings, byte buffers and
+    fixed `[N]T` and counted `[..N]T` arrays of them: carried
+    ([the fixed class](port-python/table-fixed-class.md))
+
   - by-value tables: carried
 
   - `*T` pointers to tables: carried
