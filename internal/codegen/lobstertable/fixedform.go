@@ -56,6 +56,14 @@ func emitFixedForm(g *lobster.Gen) error {
 
 func fixedName(st *ir.Struct) string { return st.Name + "Fixed" }
 
+// enumConversion spells the int-to-enum conversion for the enum name,
+// qualified by the unit's namespace so an enum named like a Lobster builtin
+// (hash, abs, min) converts rather than calling the builtin. It imports the
+// module that declares the enum.
+func enumConversion(g *lobster.Gen, name string) string {
+	return g.Unit.Package + "." + g.TypeRef(name, false)
+}
+
 func emitFixedTable(g *lobster.Gen, st *ir.Struct) {
 	name := fixedName(st)
 	entries := ir.TableFixedWalkRoot(st)
