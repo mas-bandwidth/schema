@@ -33,6 +33,54 @@ local function bits_range(lo, hi)
   return bits_max(hi - lo)
 end
 
+-- A COMPRESSED FLOAT QUANTIZES BY THE PACKET WIRE'S RULE (docs/SPEC-TABLES.md
+-- §3.3, SPEC.md §4.3): the step count and the width derive from the announced
+-- triple, and the quantization and dequantization are float32 at every step.
+-- f32 narrows a double to float32 (round to nearest, ties to even).
+local function f32(x)
+  return string.unpack("<f", string.pack("<f", x))
+end
+
+-- quant_facts returns the step count, delta and narrowed min; ok is false for
+-- a triple SPEC.md calls non-conforming.
+local function quant_facts(qmin, qmax, qres)
+  local mn, mx, rs = f32(qmin), f32(qmax), f32(qres)
+  if not (mn < mx) or not (rs > 0) then return 0, 0, false, mn end
+  local delta = f32(mx - mn)
+  local values = f32(delta / rs)
+  if delta - delta ~= 0 or values - values ~= 0 then return 0, 0, false, mn end
+  if not (values >= 1) then
+    values = 1
+  elseif values > 4294967040.0 then
+    values = 4294967040.0
+  end
+  return math.tointeger(math.ceil(values)), delta, true, mn
+end
+
+local function quantize(qmin, qmax, qres, value)
+  local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
+  if not ok then return 0 end
+  local normalized = f32(f32(f32(value) - mn) / delta)
+  if not (normalized >= 0) then
+    normalized = 0
+  elseif not (normalized <= 1) then
+    normalized = 1
+  end
+  local scaled = f32(normalized * f32(count))
+  local index = math.tointeger(math.floor(f32(scaled + 0.5)))
+  if index > count then index = count end
+  return index
+end
+
+local function dequantize(qmin, qmax, qres, index)
+  local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
+  if not ok then return mn end
+  if index > count then index = count end
+  local normalized = f32(f32(index) / f32(count))
+  local scaled = f32(normalized * delta)
+  return f32(scaled + mn)
+end
+
 -- UNSIGNED 64-BIT COMPARISON AND BIT WIDTH, for the halves of a 128-bit value.
 -- Lua's integer comparison is signed; a uint64's high bit is not a sign
 -- (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS).
@@ -349,7 +397,7 @@ rides_table = function(T, name, v)
 end
 
 -- ---- the read side ----
-local read_value, load_body, variant_index, skip_entry
+local read_value, load_body, variant_index, skip_entry, skip_body
 
 local function widens(kind, declared)
   if declared == 3 or declared == 4 or declared == 5 then return kind >= 2 and kind < declared end
@@ -441,6 +489,14 @@ local function read_scalar(R, d, e)
     end
     return { lo = lo, hi = hi }, true
   elseif s == "float" then
+    if e ~= nil and e.packing == 2 then
+      local index, ok = R:get(e.bits or 0)
+      if not ok then return 0.0, false end
+      if index > (e.count or 0) then return 0.0, false end
+      local v = dequantize(e.qmin, e.qmax, e.qres, index)
+      if v - v ~= 0 then return 0.0, false, true end
+      return v, true
+    end
     -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
     -- §3.3), before they become a number: the third answer says so, and the
     -- batch refuses as non_finite_float and lands nothing.
@@ -458,7 +514,28 @@ local function read_scalar(R, d, e)
   return 0, false
 end
 
-skip_entry = function(R, e, ctx)
+-- THE SKIP WALK IS BOUNDED AT DEPTH 128 (docs/SPEC-TABLES.md §3.3,
+-- message_skip_depth): the root body is depth 0, a nested body, an array or a
+-- keyed body, and a union arm are one level deeper, and past 128 levels the
+-- batch is refused as damage. A fixed-width scalar element rides at its
+-- array's level.
+skip_body = function(R, ctx, depth)
+  if depth > 128 then return false end
+  while true do
+    local ref, ok = R:get(ctx.refBits)
+    if not ok then return false end
+    if ref == 0 then return true end
+    local fe = ctx.vocab[ref]
+    if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
+      return false
+    end
+    if not skip_entry(R, fe, ctx, depth) then return false end
+  end
+end
+
+skip_entry = function(R, e, ctx, depth)
+  depth = depth or 0
+  if depth > 128 then return false end
   local k = e.kind
   if k == 0 or k == 32 then
     return true
@@ -491,8 +568,10 @@ skip_entry = function(R, e, ctx)
     return true
   elseif k == 10 then
     if e.packing == 2 then
-      local _, ok = R:get(e.bits or 0)
-      return ok
+      local index, ok = R:get(e.bits or 0)
+      if not ok or index > (e.count or 0) then return false end
+      local v = dequantize(e.qmin, e.qmax, e.qres, index)
+      return v - v == 0
     end
     local _, ok = R:get(32)
     return ok
@@ -521,18 +600,9 @@ skip_entry = function(R, e, ctx)
     if ae == nil or ae.kind == 0 or ae.id == NODE_ID or ae.id == 0xfffffffffffffffe or ae.id == 0xfffffffffffffffd then
       return false
     end
-    return skip_entry(R, ae, ctx)
+    return skip_entry(R, ae, ctx, depth + 1)
   elseif k == 13 then
-    while true do
-      local ref, ok = R:get(ctx.refBits)
-      if not ok then return false end
-      if ref == 0 then return true end
-      local fe = ctx.vocab[ref]
-      if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
-        return false
-      end
-      if not skip_entry(R, fe, ctx) then return false end
-    end
+    return skip_body(R, ctx, depth + 1)
   elseif k == 14 or k == 16 then
     local n = e.min or 0
     local w = bits_range(n, e.max or 0)
@@ -554,6 +624,14 @@ skip_entry = function(R, e, ctx)
     end
     if k == 14 and e.elem == 6 and not R:align() then return false end
     local inner = e.inner or { kind = e.elem }
+    -- A STRING, A TABLE, A NESTED ARRAY OR KEYED BODY, A UNION AND AN ENUM
+    -- ARE WALKED ONE LEVEL DEEPER; a fixed-width scalar element rides at the
+    -- array body's level (§3.3, message_skip_depth).
+    local walked = inner.kind == 12
+      or inner.kind == 13
+      or (inner.kind >= 14 and inner.kind <= 17)
+      or inner.kind == 30
+      or inner.kind == 31
     for _ = 1, n do
       if k == 16 then
         local kref, kok = R:get(ctx.refBits)
@@ -569,7 +647,7 @@ skip_entry = function(R, e, ctx)
           return false
         end
       end
-      if not skip_entry(R, inner, ctx) then return false end
+      if not skip_entry(R, inner, ctx, walked and depth + 1 or depth) then return false end
     end
     return true
   elseif k == 31 then
@@ -686,7 +764,7 @@ read_value = function(R, T, f, holder, key, ctx, e)
     if d.keyed then
       local n, ok = R:get(bits_range(0, (e and e.max) or d.bound))
       if not ok then return false end
-      local out = {}
+      local out, seen = {}, {}
       for _ = 1, n do
         local kref, kok = R:get(ctx.refBits)
         if not kok or kref == 0 then return false end
@@ -700,6 +778,10 @@ read_value = function(R, T, f, holder, key, ctx, e)
         then
           return false
         end
+        -- A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md
+        -- §3.2, §3.3), a key this reader cannot name included.
+        if seen[ke.id] then return false end
+        seen[ke.id] = true
         local kidx = variant_index(d.keyed, ke.id)
         local ev = {}
         if not read_value(R, T, d.elem, ev, "v", ctx, inner) then return false end
@@ -800,13 +882,12 @@ load_fields = function(R, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
   -- A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3): its fields follow
-  -- the writer's declaration order, and nothing is written at a default the
+  -- the writer declaration order, and nothing is written at a default the
   -- writer elides. A body that breaks either is damage, so the batch discards.
-  -- The announcement is in the writer's projection order (§3.3), so each
-  -- reference's index is its position in that order. Check every reference:
-  -- even a field this reader cannot name occupies a position in the sender's
-  -- body and must not let later fields move ahead of it.
+  -- Announcement references are in writer projection order (§3.3), so each
+  -- reference index is its position in that order, including unknown fields.
   local lastRef = 0
+  local seen = {}
   while true do
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
@@ -815,6 +896,8 @@ load_fields = function(R, T, name, value, ctx)
     lastRef = ref
     local e = ctx.vocab[ref]
     if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then return false end
+    if seen[e.id] then return false end
+    seen[e.id] = true
     local f = field_by_id(T, desc, e.id)
     if f == nil then
       if not skip_entry(R, e, ctx) then return false end
@@ -883,7 +966,13 @@ local function write_scalar(W, d, v)
     if d.f32 then
       local b = string.unpack("<I4", string.pack("<f", v))
       if b & D.F32_EXP == D.F32_EXP then return false end
-      W:put(b, 32)
+      if d.res ~= nil then
+        local count, _, ok = quant_facts(d.fmin, d.fmax, d.res)
+        if not ok then return false end
+        W:put(quantize(d.fmin, d.fmax, d.res, v), bits_max(count))
+      else
+        W:put(b, 32)
+      end
     else
       if v - v ~= 0 then return false end
       W:put(string.unpack("<I8", string.pack("<d", v)), 64)
@@ -1014,9 +1103,27 @@ local function known_kind(kind)
     or kind == 36
 end
 
+-- "What the kind can hold" is two ceilings (docs/SPEC-TABLES.md §3.3): a
+-- string's max by the int32 storage cap (SPEC.md §4.3, §6.1), and an array's
+-- and a keyed entry's min and max by the 32-bit count an unbounded array
+-- announces (§2.9). A LEB above 2^63 reads negative here, so both compare
+-- unsigned.
+local STRING_MAX = 0x7fffffff
+local LIST_MAX = 0xffffffff
+
+-- kind_bits is the width a packed kind holds: a bits above it is a hostile
+-- width, refused before it is used (§3.3).
+local function kind_bits(kind)
+  if kind >= 2 and kind <= 9 then return 8 << ((kind - 2) & 3) end
+  if kind == 18 or kind == 19 then return 128 end
+  return 8 << ((kind - 20) % 5)
+end
+
 -- read_shape steps over one announced shape and retains its width and range
 -- facts on e, which is what makes an unknown entry skippable and a moved field
--- readable on a body with no kind byte (docs/SPEC-TABLES.md §3.3).
+-- readable on a body with no kind byte (docs/SPEC-TABLES.md §3.3). A HOSTILE
+-- SHAPE IS A HOSTILE WIDTH: a bits above its kind, a min or max above its
+-- ceiling, and an array whose min exceeds its max are each refused here.
 local function read_shape(e, s, at)
   local kind = e.kind
   local function leb(from)
@@ -1043,7 +1150,7 @@ local function read_shape(e, s, at)
     if packing ~= 1 then return nil end
     local bits
     bits, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(kind_bits(kind), bits) then return nil end
     e.packing = 1
     e.bits = bits
     if kind == 18 or kind == 19 then
@@ -1063,7 +1170,15 @@ local function read_shape(e, s, at)
     at = at + 1
     if packing == 0 then return at end
     if packing ~= 2 or at + 11 > #s then return nil end
+    local qmin = string.unpack("<f", s, at)
+    local qmax = string.unpack("<f", s, at + 4)
+    local qres = string.unpack("<f", s, at + 8)
+    local count, _, ok = quant_facts(qmin, qmax, qres)
+    if not ok then return nil end
     e.packing = 2
+    e.qmin, e.qmax, e.qres = qmin, qmax, qres
+    e.count = count
+    e.bits = bits_max(count)
     return at + 12
   elseif kind >= 20 and kind <= 29 then
     if at > #s then return nil end
@@ -1073,7 +1188,7 @@ local function read_shape(e, s, at)
     if packing ~= 1 then return nil end
     local bits
     bits, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(kind_bits(kind), bits) then return nil end
     if at + 15 > #s then return nil end
     e.packing = 1
     e.bits = bits
@@ -1088,15 +1203,15 @@ local function read_shape(e, s, at)
   elseif kind == 12 then
     local max
     max, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(STRING_MAX, max) then return nil end
     e.max = max
     return at
   elseif kind == 14 then
     local min, max
     min, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(LIST_MAX, min) then return nil end
     max, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(LIST_MAX, max) or min > max then return nil end
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
@@ -1110,7 +1225,7 @@ local function read_shape(e, s, at)
   elseif kind == 16 then
     local max
     max, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(LIST_MAX, max) then return nil end
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
