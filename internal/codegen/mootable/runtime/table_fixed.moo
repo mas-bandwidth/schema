@@ -485,6 +485,19 @@ local function fieldName(f: any): string?
 	return nil
 end
 
+-- EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/FIXED-FORM-ALGORITHM.md
+-- §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4, §13.10): an absent optional's
+-- payload, a counted array's slots past its count, the units past a text's or
+-- bytes(N)'s used length, and an inactive union arm. A byte the writer did not
+-- write is dead, and a dead byte other than zero refuses the whole load.
+local function deadZero(rec: buffer, from: number, to: number, named: any)
+	for at = from, to - 1 do
+		if buffer.readu8(rec, at) ~= 0 then
+			refuse("wire_damaged", true, fieldName(named))
+		end
+	end
+end
+
 -- the ordinal at a node's width; an eight-byte ordinal with a high half names
 -- no variant
 local function ordinalAt(rec: buffer, off: number, size: number): number
@@ -588,7 +601,7 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 end
 
 -- text's used units, held to the WRITER's cap and the content rule (§4.5)
-local function readText(f: any, n: Node, dx: number, rec: buffer): (any, number)
+local function readText(f: any, n: Node, dx: number, rec: buffer, named: any): (any, number)
 	local off = n.off + dx
 	local length = u32(rec, off)
 	local unit = 1
@@ -604,6 +617,7 @@ local function readText(f: any, n: Node, dx: number, rec: buffer): (any, number)
 	if f.bound ~= nil and f.bound > 0 and keep > f.bound then
 		refuse("length_over_bound")
 	end
+	deadZero(rec, at + keep * unit, off + n.size, named)
 	return buffer.readstring(rec, at, keep), keep
 end
 
@@ -638,6 +652,8 @@ local function readStruct(d: any, n: Node, dx: number, rec: buffer, rep: any): a
 			end
 			v[f.present] = present
 			if not present then
+				-- an absent optional's whole payload is dead (§4.5)
+				deadZero(rec, p.v.off + dx, p.v.off + dx + p.v.size, f)
 				continue
 			end
 		end
@@ -678,7 +694,7 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 	local s = f.s
 	local off = n.off + dx
 	if s == "str" then
-		local got, units = readText(f, n, dx, rec)
+		local got, units = readText(f, n, dx, rec, named)
 		return got, units, nil
 	elseif s == "bytes" then
 		local length = u32(rec, off)
@@ -689,6 +705,8 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		if length > bound then
 			refuse("length_over_bound")
 		end
+		-- the bytes past the used length are dead (§3.1, §5.3)
+		deadZero(rec, off + COUNT + length, off + n.size, named)
 		local b = buffer.create(bound)
 		buffer.copy(b, 0, rec, off + COUNT, length)
 		return b, length, nil
@@ -719,7 +737,10 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		local un = S.lookup(f.t)
 		local u = un.new()
 		local tag = ordinalAt(rec, off, n.tagw :: number)
+		local live = off + (n.tagw :: number)
 		if tag == 0 then
+			-- tag 0 names no arm, so the whole arm span is dead (§4.5)
+			deadZero(rec, live, off + n.size, named)
 			return u, nil, nil
 		end
 		local hit = (n.arms :: { [number]: any })[tag]
@@ -735,7 +756,10 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		if a.s ~= "void" then
 			local got, extra, lens = readValue(a, hit.node, dx, rec, rep, a)
 			land(u, a, got, extra, lens)
+			live = hit.node.off + dx + hit.node.size
 		end
+		-- the bytes past a narrower taken arm are dead (§4.5)
+		deadZero(rec, live, off + n.size, named)
 		return u, nil, nil
 	elseif s == "arr" then
 		local e = f.e
@@ -774,6 +798,8 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 				refuse("count_over_bound")
 			end
 			first = COUNT
+			-- the slots past the count are dead (§3.1, §5.3)
+			deadZero(rec, off + first + count * c.size, off + n.size, named)
 		else
 			count = math.min(n.size // c.size, f.bound)
 		end
