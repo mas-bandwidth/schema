@@ -25,7 +25,8 @@ local FORM_FIXED = 3
 -- ReadStrict(T, root, bytes, report): the root value, or nil with
 -- report.reason the refusal's name and report.field the field it names. T is
 -- the <Base>Table module that declares root. A fixed root's file holds one
--- record; any other count is wire_damaged, as a strict read of one value.
+-- record; the strict read asks the fixed loader for one, so a file holding
+-- more is refused before any record is decoded.
 function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 	local rep: any = report or {}
 	local d = S.lookup(root)
@@ -57,7 +58,7 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 			rep.reason = "unknown_form"
 			return nil
 		end
-		local values = F.load(d, fixed, b, rep)
+		local values = F.load(d, fixed, b, rep, 1)
 		if values == nil then
 			return nil
 		end

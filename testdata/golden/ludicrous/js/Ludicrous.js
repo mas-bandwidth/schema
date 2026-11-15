@@ -114,7 +114,7 @@ export function WriteFixedProbe(stream, value) {
   return true;
 }
 
-export function ReadFixedProbe(stream, value) {
+export function ReadFixedProbe(stream, value, nested) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -180, 180)) {
     return false;
   }
@@ -137,7 +137,7 @@ export function ReadFixedProbe(stream, value) {
     }
     value.samples[i] = NUMBER_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type UnsignedProbe
@@ -213,7 +213,7 @@ export function WriteUnsignedProbe(stream, value) {
   return true;
 }
 
-export function ReadUnsignedProbe(stream, value) {
+export function ReadUnsignedProbe(stream, value, nested) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 360)) {
     return false;
   }
@@ -241,7 +241,7 @@ export function ReadUnsignedProbe(stream, value) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type WideProbe
@@ -302,7 +302,7 @@ export function WriteWideProbe(stream, value) {
   return true;
 }
 
-export function ReadWideProbe(stream, value) {
+export function ReadWideProbe(stream, value, nested) {
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
@@ -323,7 +323,7 @@ export function ReadWideProbe(stream, value) {
     return false;
   }
   value.seed = BIGINT_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type LudicrousState
@@ -409,15 +409,15 @@ export function WriteLudicrousState(stream, value) {
   return true;
 }
 
-export function ReadLudicrousState(stream, value) {
+export function ReadLudicrousState(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
   }
   value.mode = NUMBER_SCRATCH.value;
-  if (!ReadFixedProbe(stream, value.probe)) {
+  if (!ReadFixedProbe(stream, value.probe, true)) {
     return false;
   }
-  if (!ReadWideProbe(stream, value.wide)) {
+  if (!ReadWideProbe(stream, value.wide, true)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) { // the count guards the loop (§6.3)
@@ -442,7 +442,7 @@ export function ReadLudicrousState(stream, value) {
   } else {
     value.targetId = 0n;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type DegenerateProbe
@@ -493,7 +493,7 @@ export function WriteDegenerateProbe(stream, value) {
   return true;
 }
 
-export function ReadDegenerateProbe(stream, value) {
+export function ReadDegenerateProbe(stream, value, nested) {
   value.lockedFixed = -196608;
   value.lockedInt = 7;
   value.lockedWide = -12345678901234n;
@@ -501,7 +501,7 @@ export function ReadDegenerateProbe(stream, value) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type FixedVec
@@ -548,7 +548,7 @@ export function WriteFixedVec(stream, value) {
   return true;
 }
 
-export function ReadFixedVec(stream, value) {
+export function ReadFixedVec(stream, value, nested) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
@@ -561,7 +561,7 @@ export function ReadFixedVec(stream, value) {
     return false;
   }
   value.z = BIGINT_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type FixedQuat
@@ -615,7 +615,7 @@ export function WriteFixedQuat(stream, value) {
   return true;
 }
 
-export function ReadFixedQuat(stream, value) {
+export function ReadFixedQuat(stream, value, nested) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
@@ -632,6 +632,6 @@ export function ReadFixedQuat(stream, value) {
     return false;
   }
   value.w = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 

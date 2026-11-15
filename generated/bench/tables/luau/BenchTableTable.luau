@@ -504,4 +504,9 @@ _schema_tables.wireIds({
 	0xfd29ee12a979cb69i, 0xffffffffffffffffi,
 })
 
+-- the table type ids this reader declares, whatever a root places (§3.1)
+_schema_tables.tableIds({
+	2984383410656091285i, 3558250755087846312i, 4871457021464447630i,
+})
+
 return _T

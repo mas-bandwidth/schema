@@ -100,9 +100,12 @@ static const int32_t kTableJsonMaxDepth = 128;
 // A key longer than this cannot name a field, so it is skipped as unknown.
 static const int32_t kTableJsonMaxKey = 256;
 
-// The longest numeric token the walk will convert. Anything longer is a
-// value no field can hold and counts as a kind mismatch.
-static const int32_t kTableJsonMaxNumber = 512;
+// The conversion's working buffer. A number's value does not depend on how
+// many bytes spell its mantissa (§16.2), so a token of any length is read
+// from the document's own extent; a long mantissa keeps its significant
+// digits and folds the rest into the exponent. This bounds the KEPT digits,
+// never the token.
+static const int32_t kTableJsonMaxNumber = 1024;
 
 // The decimal point the C runtime is CURRENTLY using. Number conversion is
 // the one locale-sensitive corner of the grammar — JSON's point is always
@@ -1579,20 +1582,36 @@ inline void TableJsonSpace( TableJsonIn & in )
         // a block comment to its closing delimiter, which does not nest, and
         // an UNCLOSED block comment is malformed on the terms an unclosed
         // string is. Both are legal wherever whitespace is; a lone slash is not JSON.
+        // THE BYTES INSIDE A COMMENT, LINE OR BLOCK, ARE WELL-FORMED UTF-8 AND
+        // HOLD NO NUL (§16.2), held to §16.3's content rule as a string site
+        // is: TableUtf8Valid refuses both, and the comment's length does not
+        // change the cost beyond reading it once.
         if ( c == '/' && in.pos + 1 < in.size && in.text[in.pos + 1] == '/' )
         {
-            in.pos += 2;
+            const int64_t start = in.pos + 2;
+            in.pos = start;
             while ( in.pos < in.size && in.text[in.pos] != '\n' ) { in.pos++; }
+            if ( !TableUtf8Valid( (const uint8_t *) in.text + start, (uint64_t) ( in.pos - start ) ) )
+            {
+                in.bad = true;
+                return;
+            }
             continue;
         }
         if ( c == '/' && in.pos + 1 < in.size && in.text[in.pos + 1] == '*' )
         {
-            int64_t at = in.pos + 2;
+            const int64_t start = in.pos + 2;
+            int64_t at = start;
             while ( at + 1 < in.size && !( in.text[at] == '*' && in.text[at + 1] == '/' ) ) { at++; }
             if ( at + 1 >= in.size )
             {
                 in.bad = true;
                 in.pos = in.size;
+                return;
+            }
+            if ( !TableUtf8Valid( (const uint8_t *) in.text + start, (uint64_t) ( at - start ) ) )
+            {
+                in.bad = true;
                 return;
             }
             in.pos = at + 2;
@@ -2062,32 +2081,125 @@ inline bool TableJsonWalkNumber( TableJsonIn & in, bool * integral )
     return true;
 }
 
-// the same production, with the token kept for conversion
-inline bool TableJsonScanNumber( TableJsonIn & in, char * token, int32_t capacity, int32_t * length, bool * integral )
+// the same production, with the token kept for conversion. The token is a
+// VIEW of the document: its length is bounded by the input, never by a
+// conversion buffer (§16.2).
+inline bool TableJsonScanNumber( TableJsonIn & in, const char ** token, int32_t * length, bool * integral )
 {
     TableJsonSpace( in );
     int64_t start = in.pos;
     if ( !TableJsonWalkNumber( in, integral ) ) { return false; }
     int64_t count = in.pos - start;
-    if ( count <= 0 || count >= capacity ) { return false; }
-    memcpy( token, in.text + start, (size_t) count );
-    token[count] = 0;
+    if ( count <= 0 ) { return false; }
+    *token = in.text + start;
     *length = (int32_t) count;
     return true;
 }
 
 // the token's exact double, through the runtime's own converter — which
 // speaks the LOCALE's decimal point, so the token crosses back over that
-// character on its way in
+// character on its way in.
+//
+// A MANTISSA LONGER THAN THE WORKING BUFFER IS NORMALIZED, not refused: the
+// value does not depend on how many bytes spell it (§16.2), so the significant
+// digits are kept and the digits dropped (trailing zeros, and a sticky digit
+// past the limit) fold into the exponent. What reaches strtod is the same
+// value the whole token spells.
 inline double TableJsonTokenDouble( const char * token, int32_t length, bool single )
 {
     char work[kTableJsonMaxNumber];
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
+    int32_t n = 0;
+    if ( length < kTableJsonMaxNumber )
+    {
+        memcpy( work, token, (size_t) length );
+        n = length;
+    }
+    else
+    {
+        const int32_t limit = kTableJsonMaxNumber - 32;
+        char kept[kTableJsonMaxNumber - 32];
+        int32_t kept_len = 0;
+        int32_t i = 0;
+        bool negative = false;
+        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        int32_t fraction = 0;
+        bool after_point = false;
+        int32_t digits = 0;
+        int32_t trailing = 0;
+        bool nonzero = false;
+        for ( ; i < length; i++ )
+        {
+            char c = token[i];
+            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == 'e' || c == 'E' ) { break; }
+            if ( after_point ) { fraction++; }
+            if ( !nonzero )
+            {
+                if ( c == '0' ) { continue; }
+                nonzero = true;
+            }
+            digits++;
+            if ( c == '0' ) { trailing++; }
+            else { trailing = 0; }
+            if ( kept_len < limit ) { kept[kept_len++] = c; }
+        }
+        int64_t exponent = 0;
+        if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+        {
+            i++;
+            bool exp_negative = false;
+            if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+            {
+                exp_negative = token[i] == '-';
+                i++;
+            }
+            while ( i < length && token[i] >= '0' && token[i] <= '9' )
+            {
+                if ( exponent < 1000000 ) { exponent = exponent * 10 + ( token[i] - '0' ); }
+                i++;
+            }
+            if ( exp_negative ) { exponent = -exponent; }
+        }
+        if ( !nonzero )
+        {
+            work[n++] = '0';
+        }
+        else
+        {
+            const int32_t significant = digits - trailing;
+            int64_t scale = exponent - fraction + trailing;
+            int32_t sig = significant;
+            const bool sticky = significant > limit;
+            if ( sticky )
+            {
+                scale += significant - limit;
+                sig = limit;
+            }
+            if ( negative ) { work[n++] = '-'; }
+            for ( int32_t k = 0; k < sig; k++ ) { work[n++] = kept[k]; }
+            if ( sticky )
+            {
+                work[n++] = '1';
+                scale--;
+            }
+            work[n++] = 'e';
+            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            char reversed[24];
+            int32_t rn = 0;
+            if ( scale == 0 ) { reversed[rn++] = '0'; }
+            while ( scale > 0 )
+            {
+                reversed[rn++] = (char) ( '0' + (int32_t) ( scale % 10 ) );
+                scale /= 10;
+            }
+            while ( rn > 0 ) { work[n++] = reversed[--rn]; }
+        }
+    }
+    work[n] = 0;
     char point = TableJsonDecimalPoint();
     if ( point != '.' )
     {
-        for ( int32_t i = 0; i < length; i++ )
+        for ( int32_t i = 0; i < n; i++ )
         {
             if ( work[i] == '.' ) { work[i] = point; }
         }
@@ -2462,9 +2574,25 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         char fd[kTableJsonMaxNumber + 48];
         int32_t fn = 0;
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        // A digit below 10^-40 is finer than any F can spell, and cannot carry
+        // into a fraction bit however many doublings follow. Only the digits
+        // inside the band are kept; a nonzero digit past it is the same
+        // kind_mismatch the exact arithmetic would reach, without walking a
+        // token of any length into a fixed buffer.
+        const int64_t first = ( point > 0 ? point : 0 ) + start;
+        const int64_t last = (int64_t) start + point + 39;
+        for ( int64_t k = first; k < end && k <= last; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        }
+        for ( int64_t k = ( last + 1 > first ? last + 1 : first ); k < end; k++ )
+        {
+            if ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) != '0' )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = kind_mismatch;
+                return true;
+            }
         }
         TableJsonWide fraction = { 0, 0 };
         for ( int b = 0; b < frac; b++ )
@@ -2546,6 +2674,40 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
     return true;
 }
 
+// TableJsonSeenKeys is ONE object's key spellings, so a key named twice refuses
+// in every object of the text, the objects this walk skips included
+// (docs/SPEC-TABLES.md §16.2, §16.12). The storage is fixed, so the walk
+// allocates nothing; an object with more keys than this still reads, its
+// repeats simply stop being counted.
+static const int32_t kTableJsonSeenKeySlots = 512;
+static const int32_t kTableJsonSeenKeyBytes = 8192;
+
+struct TableJsonSeenKeys
+{
+    char text[kTableJsonSeenKeyBytes];
+    int32_t off[kTableJsonSeenKeySlots];
+    int32_t len[kTableJsonSeenKeySlots];
+    int32_t count = 0;
+    int32_t used = 0;
+};
+
+inline bool TableJsonKeyOnce( TableJsonSeenKeys & keys, const char * key, int32_t key_length )
+{
+    for ( int32_t i = 0; i < keys.count; i++ )
+    {
+        if ( keys.len[i] == key_length && memcmp( keys.text + keys.off[i], key, (size_t) key_length ) == 0 ) { return false; }
+    }
+    if ( keys.count < kTableJsonSeenKeySlots && keys.used + key_length <= kTableJsonSeenKeyBytes )
+    {
+        memcpy( keys.text + keys.used, key, (size_t) key_length );
+        keys.off[keys.count] = keys.used;
+        keys.len[keys.count] = key_length;
+        keys.count++;
+        keys.used += key_length;
+    }
+    return true;
+}
+
 inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth );
 
 inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth )
@@ -2557,6 +2719,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     }
     in.pos++; // the opening bracket
     bool first = true;
+    TableJsonSeenKeys keys;
     for ( ;; )
     {
         char c = TableJsonPeek( in );
@@ -2581,6 +2744,11 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             int32_t key_length = 0;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
+            if ( !TableJsonKeyOnce( keys, key, key_length ) )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = malformed;
+            }
             if ( TableJsonPeek( in ) != ':' )
             {
                 in.bad = true;
@@ -2637,7 +2805,7 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
     {
         case '{': return TableJsonSkipContainer( in, '}', depth );
         case '[': return TableJsonSkipContainer( in, ']', depth );
-        case '"': return TableJsonScanString( in, NULL, 0, NULL );
+        case '"': return TableJsonScanString( in, NULL, 0, NULL, NULL, true );
         case 't': return TableJsonLiteral( in, "true" );
         case 'f': return TableJsonLiteral( in, "false" );
         case 'n': return TableJsonLiteral( in, "null" );
@@ -3082,6 +3250,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     if ( TableJsonKeyEquals( f->enum_name( (uint64_t) bit ), name, name_length ) )
                     {
+                        // A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+                        // repeated name is a repeated key, and refuses malformed
+                        if ( ( bits & ( uint64_t( 1 ) << bit ) ) != 0 )
+                        {
+                            in.report->refused = true;
+                            in.report->refuse_reason = malformed;
+                        }
                         bits |= uint64_t( 1 ) << bit;
                         found = true;
                         break;
@@ -3134,10 +3309,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         TableJsonSetRaw( storage, f->elem_size, (uint64_t) nanos );
         return true;
     }
-    char token[kTableJsonMaxNumber];
+    const char * token = NULL;
     int32_t length = 0;
     bool integral = false;
-    if ( !TableJsonScanNumber( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !TableJsonScanNumber( in, &token, &length, &integral ) )
     {
         in.bad = true;
         return false;
@@ -3742,8 +3917,10 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length )
 {
     // repeated tracking, allocation-free: the bitmap is sized to the unit's
-    // widest table, so every field index this table declares is tracked
+    // widest table, so every field index this table declares is tracked. The
+    // keys this table does NOT name are tracked beside it (§16.2).
     uint64_t seen[kTableJsonFieldSeenWords] = {};
+    TableJsonSeenKeys unknown_keys;
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
@@ -3801,6 +3978,11 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         }
         if ( index < 0 )
         {
+            if ( !TableJsonKeyOnce( unknown_keys, key, key_length ) )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = malformed;
+            }
             in.report->unknown++;
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
