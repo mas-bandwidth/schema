@@ -1573,20 +1573,36 @@ inline void TableJsonSpace( TableJsonIn & in )
         // a block comment to its closing delimiter, which does not nest, and
         // an UNCLOSED block comment is malformed on the terms an unclosed
         // string is. Both are legal wherever whitespace is; a lone slash is not JSON.
+        // THE BYTES INSIDE A COMMENT, LINE OR BLOCK, ARE WELL-FORMED UTF-8 AND
+        // HOLD NO NUL (§16.2), held to §16.3's content rule as a string site
+        // is: TableUtf8Valid refuses both, and the comment's length does not
+        // change the cost beyond reading it once.
         if ( c == '/' && in.pos + 1 < in.size && in.text[in.pos + 1] == '/' )
         {
-            in.pos += 2;
+            const int64_t start = in.pos + 2;
+            in.pos = start;
             while ( in.pos < in.size && in.text[in.pos] != '\n' ) { in.pos++; }
+            if ( !TableUtf8Valid( (const uint8_t *) in.text + start, (uint64_t) ( in.pos - start ) ) )
+            {
+                in.bad = true;
+                return;
+            }
             continue;
         }
         if ( c == '/' && in.pos + 1 < in.size && in.text[in.pos + 1] == '*' )
         {
-            int64_t at = in.pos + 2;
+            const int64_t start = in.pos + 2;
+            int64_t at = start;
             while ( at + 1 < in.size && !( in.text[at] == '*' && in.text[at + 1] == '/' ) ) { at++; }
             if ( at + 1 >= in.size )
             {
                 in.bad = true;
                 in.pos = in.size;
+                return;
+            }
+            if ( !TableUtf8Valid( (const uint8_t *) in.text + start, (uint64_t) ( at - start ) ) )
+            {
+                in.bad = true;
                 return;
             }
             in.pos = at + 2;
