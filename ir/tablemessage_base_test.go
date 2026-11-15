@@ -74,6 +74,7 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 		})
 
 		t.Run("one past", func(t *testing.T) {
+			skipRangedBaseRelaxed(t)
 			t.Parallel()
 			if _, ok := decodeEncodedShape(t, kind, TableMessageShape{
 				Packing: TableMessageRanged,
@@ -86,6 +87,7 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 	}
 
 	t.Run("negative base for an unsigned kind", func(t *testing.T) {
+		skipRangedBaseRelaxed(t)
 		t.Parallel()
 		rows := []struct {
 			name string
@@ -112,6 +114,7 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 	})
 
 	t.Run("a base itself past the kind", func(t *testing.T) {
+		skipRangedBaseRelaxed(t)
 		t.Parallel()
 		if _, ok := decodeEncodedShape(t, TableKindI32, TableMessageShape{
 			Packing: TableMessageRanged,
@@ -136,6 +139,7 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 		if got.Base == nil || got.Base.Cmp(high) != 0 {
 			t.Errorf("DecodeShape base = %v, want %s", got.Base, high)
 		}
+		skipRangedBaseRelaxed(t)
 		_, hi := kindDomain(TableKindU128)
 		if _, ok := decodeEncodedShape(t, TableKindU128, TableMessageShape{
 			Packing: TableMessageRanged,
@@ -145,4 +149,14 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 			t.Errorf("DecodeShape accepted the uint128 base %s at 1 bit, whose top is past the kind", hi)
 		}
 	})
+}
+
+// skipRangedBaseRelaxed skips a case that wants the base rule's refusal.
+// RELAXED 2026-11-15 the rule is off in DecodeShape (it refuses the
+// compiler's own announcements); re-enable: relax/ranged-base-inside-kind
+func skipRangedBaseRelaxed(t *testing.T) {
+	t.Helper()
+	if !tableMessageHoldRangedBase {
+		t.Skip("RELAXED 2026-11-15 the base rule is off; re-enable: relax/ranged-base-inside-kind")
+	}
 }

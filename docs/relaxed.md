@@ -284,3 +284,25 @@ WIP for every proof slug: none unless named here.
 - `relax/proof-write-refusal-moo`: 5 cell(s): `surface write-refusal / moo` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / moo` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / moo` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / moo` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / moo` (39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 mo...). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
 - `relax/proof-write-refusal-rust`: 5 cell(s): `surface write-refusal / rust` (7 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 4 more); `surface write-refusal-fixed / rust` (7 case(s) fail: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_enum, write-refusal-fixed/fref_range_high and 4 more); `surface write-refusal-message / rust` (5 case(s) fail: write-refusal-message/mref_element, write-refusal-message/mref_range_high, write-refusal-message/mref_range_low and 2 more); `surface write-refusal-json / rust` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / rust` (14 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 11 more). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
 - `relax/proof-write-refusal-squirrel`: 5 cell(s): `surface write-refusal / squirrel` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / squirrel` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / squirrel` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / squirrel` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / squirrel` (39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 mo...). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
+
+## 2026-11-15
+
+- `relax/ranged-base-inside-kind`: the engine's §3.3 base rule (a RANGED
+  shape's `base + 2^bits - 1` inside the announced kind, added by 389a53e75)
+  is off in `ir.DecodeShape` (`tableMessageHoldRangedBase` in
+  `ir/tablemessage.go`), and the refusal subtests of
+  `TestDecodeShapeRangedBaseInsideKind` (`ir/tablemessage_base_test.go`) skip.
+  Why: the rule refuses the compiler's own announcements, so the engine refused
+  units' own vocabularies "wire_damaged: a vocabulary that cannot be read
+  whole": `uint8 | min = 200, max = 250` (test/tables/Bases.schema) announces
+  bits 6 at base 200, a top of 263, and `fixed(8, 8) | min = -100, max = 100`
+  announces bits 16 at base -25600, a top past int16. No other leg holds the
+  rule, so the engine (the fuzz oracle) was the only reader refusing. That
+  broke the tablewire message tests, the harness messagerules tests, the goose
+  announce tests and the C++ shape-bounds case `ranged_bits_kind_width`.
+  Re-enabling needs: the rule restated in docs/SPEC-TABLES.md §3.3 as one the
+  compiler's announcements keep (for an integer, `base + 2^(bits-1) <= hi`
+  when bits >= 1, since `BitsRequired` rounds the span up; the fixed kinds
+  decided on their own, as their bits are whole bits plus F), every leg
+  holding it in the same change, then the variable set true and the skips
+  dropped.

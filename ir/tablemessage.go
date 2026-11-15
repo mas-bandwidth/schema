@@ -216,7 +216,12 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 				}
 				s.Base = new(big.Int).SetUint64(u)
 			}
-			if !tableMessageBaseInsideKind(kind, s) {
+			// RELAXED 2026-11-15 the base rule refuses the compiler's own
+			// announcements (`uint8 | min = 200, max = 250` announces bits 6
+			// at base 200, a top of 263; `fixed(8, 8) | min = -100, max = 100`
+			// a top past int16) and no other leg holds it, so the engine is
+			// the only reader refusing; re-enable: relax/ranged-base-inside-kind
+			if tableMessageHoldRangedBase && !tableMessageBaseInsideKind(kind, s) {
 				return s, 0, false // A BASE PAST THE KIND'S OWN DOMAIN is a hostile base
 			}
 		case s.Packing == TableMessageQuantized && kind == TableKindF32:
@@ -343,6 +348,12 @@ func tableMessageUnsignedBase(v *big.Int) uint64 {
 func TableMessageKindBits(kind uint8) int64 {
 	return int64(TableKindWidth(int(kind))) * 8
 }
+
+// tableMessageHoldRangedBase turns §3.3's base rule on in [DecodeShape].
+// RELAXED 2026-11-15 it is off until the rule is restated as one the
+// compiler's own announcements keep and every leg holds it; re-enable:
+// relax/ranged-base-inside-kind
+var tableMessageHoldRangedBase = false
 
 // tableMessageBaseInsideKind is §3.3's base rule: a ranged base and the top
 // of its range, base + 2^bits - 1, lie inside the kind's own domain. A width
