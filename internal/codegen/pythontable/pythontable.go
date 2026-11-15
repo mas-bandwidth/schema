@@ -485,7 +485,8 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		emitUnion(&b, un)
 	}
 	for _, st := range tables {
-		emitTable(&b, u, st, blocks)
+		emitTable(&b, u, st)
+		emitBlockDescriptors(&b, u, st, blocks)
 	}
 	return b.String()
 }
@@ -518,7 +519,7 @@ func sortedSet(set map[string]bool) []string {
 	return out
 }
 
-func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUnit) {
+func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	name := st.Name
 	fmt.Fprintf(b, "class %s:\n", name)
 	fmt.Fprintf(b, "    \"\"\"The table %s.\"\"\"\n\n", name)
@@ -584,7 +585,6 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUn
 	b.WriteString("\n    def measure(self) -> int:\n")
 	b.WriteString("        return measure_table(self)\n\n\n")
 	emitTableDescriptor(b, u, st, false)
-	emitBlockDescriptors(b, u, st, blocks)
 	if scalarOnly(st) {
 		emitStraightLine(b, st)
 	}
