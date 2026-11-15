@@ -196,17 +196,32 @@ func TestArrayElementKindsClosed(t *testing.T) {
 		}
 
 		// A DECLARED array and keyed body answer the list first: an element
-		// kind off it is damage, never merely a kind mismatch.
-		if !arrayOn {
-			ok, err := read(elemArrayWire([]uint64{nums}, 1, kind, 0))
-			if ok || RefusalReason(err) != ReasonWireDamaged {
-				t.Errorf("declared array element kind %d count 0: accepted=%t reason=%q, want refusal %q", kind, ok, RefusalReason(err), ReasonWireDamaged)
+		// kind off it is damage under either count, never merely a kind
+		// mismatch, wherever a payload can follow.
+		for _, count := range []uint64{0, 1} {
+			var elems [][]byte
+			if count == 1 {
+				if p, ok := elemArrayPayload(kind); ok {
+					elems = append(elems, p)
+				}
 			}
-		}
-		if !keyedOn {
-			ok, err := read(elemKeyedWire([]uint64{by, slotA}, 1, kind, 0))
-			if ok || RefusalReason(err) != ReasonWireDamaged {
-				t.Errorf("declared keyed element kind %d count 0: accepted=%t reason=%q, want refusal %q", kind, ok, RefusalReason(err), ReasonWireDamaged)
+			if !arrayOn {
+				ok, err := read(elemArrayWire([]uint64{nums}, 1, kind, count, elems...))
+				if ok || RefusalReason(err) != ReasonWireDamaged {
+					t.Errorf("declared array element kind %d count %d: accepted=%t reason=%q, want refusal %q", kind, count, ok, RefusalReason(err), ReasonWireDamaged)
+				}
+			}
+			var triples [][]byte
+			if count == 1 {
+				if p, ok := elemKeyedPayload(kind); ok {
+					triples = append(triples, elemKeyedTriple(2, p))
+				}
+			}
+			if !keyedOn {
+				ok, err := read(elemKeyedWire([]uint64{by, slotA}, 1, kind, count, triples...))
+				if ok || RefusalReason(err) != ReasonWireDamaged {
+					t.Errorf("declared keyed element kind %d count %d: accepted=%t reason=%q, want refusal %q", kind, count, ok, RefusalReason(err), ReasonWireDamaged)
+				}
 			}
 		}
 	}
