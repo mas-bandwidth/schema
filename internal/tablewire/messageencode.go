@@ -10,6 +10,7 @@
 package tablewire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -169,8 +170,8 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return encodeBitKeyed(e, w, fv, entry)
 
 	case f.Type.Kind == ir.TString:
-		if fv.Count == 0 {
-			return nil
+		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+			return nil // at its declared default, length and bytes (§3.3, SPEC §4.2)
 		}
 		e.ref(w, entry)
 		overMax(w, len(fv.Cell.Str), shape)
@@ -180,8 +181,8 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if fv.Count == 0 {
-			return nil
+		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+			return nil // at its declared default, length and bytes (§3.3, SPEC §4.2)
 		}
 		e.ref(w, entry)
 		overMax(w, len(fv.Cell.Str), shape)
