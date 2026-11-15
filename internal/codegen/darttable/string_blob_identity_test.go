@@ -18,10 +18,15 @@ func TestDartDecodedStringBlobIdentity(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Child { caption *string }
+table Leaf { caption *string }
 union Choice { text *string }
 table Root { a *string
  b *string
+ c *bytes
+ d *bytes
  child *Child
+ left Leaf
+ right Leaf
  choice Choice
  tags map[string(8)]*string }
 `)
@@ -82,55 +87,66 @@ table Root { a *string
  }
 `)
 	}
-	// Both pointers name one incoming empty-string record, which the strict read
-	// refuses as blob_shared.
+	// Both pointers name one incoming empty-string record, which every read
+	// refuses as blob_shared: the strict read lands nothing.
 	shared := []byte{1, 1, 17, 2, 2, 17, 2, 3, 12, 3, 1, 4, 0, 0}
 	for _, id := range []uint64{ir.TableWireId("a"), ir.TableWireId("b"), ir.TableNodeWireId, ir.StringWireTypeId, 4} {
 		shared = binary.LittleEndian.AppendUint64(shared, id)
 	}
-	v := m.New(u.Tables["Root"])
-	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, v, shared, &r); ok || !tablewire.ReadRefusal(err) {
-		t.Fatalf("shared string oracle accepted %+v %v", r, err)
+	refused := m.New(u.Tables["Root"])
+	var refReport tabletext.Report
+	if ok, err := tablewire.Decode(m, refused, shared, &refReport); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("shared string oracle accepted %+v %v", refReport, err)
 	}
-	fmt.Fprintf(&b, `for(final retaining in [false,true]){
- final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final data=bytes(%q);
- final v=retaining?w.rootWireLoadRetain(data,store,r):w.rootWireLoad(data,r);
- check(!r.refused,'shared string read');
- var refused=false;try{if(retaining){w.rootWireSaveRetain(v,store,w.TableWireReport());}else{w.rootWireSave(v);}}on StateError catch(e){refused=e.message.toString().contains('blob_shared');}
- check(refused,'genuinely shared incoming string refuses');
- var textRefused=false;try{w.rootToJson(v);}on StateError catch(e){textRefused=e.message.toString().contains('blob_shared');}
- check(textRefused,'shared string JSON refuses');
-`, hex.EncodeToString(shared))
-	for _, big := range []bool{false, true} {
-		cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
-		if err != nil {
-			t.Fatal(err)
-		}
-		order := "Endian.little"
-		if big {
-			order = "Endian.big"
-		}
-		fmt.Fprintf(&b, "{final out=Uint8List(c.RootCook.cookMeasure(v));check(c.RootCook.cook(v,out,%s)&&hex(out)==%q,'shared string cook preserves one node');}\n", order, hex.EncodeToString(cooked))
+
+	// The writer refuses one blob object named from two slots, while two
+	// distinct blobs with equal bytes save by value (§2.5, §3.1).
+	one := &tabletext.Blob{Data: []byte("")}
+	sharedModel := m.New(u.Tables["Root"])
+	sharedModel.Fields[0].Cell.Blob = one
+	sharedModel.Fields[1].Cell.Blob = one
+	if wire, err := tablewire.Encode(m, sharedModel); len(wire) != 0 || err == nil || !strings.Contains(err.Error(), "blob_shared") {
+		t.Fatalf("reference writer accepted one string blob in two slots: %d bytes, %v", len(wire), err)
 	}
-	v.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte("")}
-	detached, err := tablewire.Encode(m, v)
+	equalModel := m.New(u.Tables["Root"])
+	equalModel.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte("")}
+	equalModel.Fields[1].Cell.Blob = &tabletext.Blob{Data: []byte("")}
+	equalWire, err := tablewire.Encode(m, equalModel)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(&b, "v.a=v.a;check(hex(w.rootWireSave(v))==%q,'same-value assignment detaches shared slot');\n", hex.EncodeToString(detached))
-	for _, big := range []bool{false, true} {
-		cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
-		if err != nil {
-			t.Fatal(err)
-		}
-		order := "Endian.little"
-		if big {
-			order = "Endian.big"
-		}
-		fmt.Fprintf(&b, "{final out=Uint8List(c.RootCook.cookMeasure(v));check(c.RootCook.cook(v,out,%s)&&hex(out)==%q,'reassigned same-value cook owns two nodes');}\n", order, hex.EncodeToString(cooked))
-	}
-	b.WriteString("}\n")
+
+	fmt.Fprintf(&b, `for(final retaining in [false,true]){
+ final sharedStore=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final data=bytes(%q);
+ final v=retaining?w.rootWireLoadRetain(data,sharedStore,r):w.rootWireLoad(data,r);
+ check(r.refused,'shared string read refuses');
+ check(v.a==null&&v.b==null,'refused shared string read lands nothing');
+ final equalStore=w.TableRetain(65536,List.filled(1024,0));final er=w.TableWireReport();
+ final loaded=retaining?w.rootWireLoadRetain(bytes(%q),equalStore,er):w.rootWireLoad(bytes(%q),er);
+ check(!er.refused,'equal strings read');
+ final saved=retaining?w.rootWireSaveRetain(loaded,equalStore,w.TableWireReport()):w.rootWireSave(loaded);
+ check(hex(saved)==%q,'equal strings save by value');
+}
+`, hex.EncodeToString(shared), hex.EncodeToString(equalWire), hex.EncodeToString(equalWire), hex.EncodeToString(equalWire))
+	b.WriteString(`{
+ final leaf=w.Leaf();leaf.caption='same';
+ final root=w.Root();root.left=leaf;root.right=leaf;
+ var saveRefused=false;try{w.rootWireSave(root);}on StateError catch(e){saveRefused=e.message.toString().contains('blob_shared');}
+ check(saveRefused,'one string object in two slots refuses');
+ var textRefused=false;try{w.rootToJson(root);}on StateError catch(e){textRefused=e.message.toString().contains('blob_shared');}
+ check(textRefused,'one string object in two slots JSON refuses');
+ final first=w.Leaf();first.caption='same';final second=w.Leaf();second.caption='same';
+ final split=w.Root();split.left=first;split.right=second;
+ check(w.rootWireSave(split).isNotEmpty,'equal strings save by value');
+ final sameRoot=w.Root();final same='same';sameRoot.a=same;sameRoot.b=same;
+ check(w.rootWireSave(sameRoot).isNotEmpty,'equal authored strings save by value');
+ final bytes1=Uint8List.fromList([1,2]);final bytesRoot=w.Root();bytesRoot.c=bytes1;bytesRoot.d=bytes1;
+ var bytesRefused=false;try{w.rootWireSave(bytesRoot);}on StateError catch(e){bytesRefused=e.message.toString().contains('blob_shared');}
+ check(bytesRefused,'one bytes object in two slots refuses');
+ bytesRoot.d=Uint8List.fromList([1,2]);
+ check(w.rootWireSave(bytesRoot).isNotEmpty,'equal bytes save by value');
+}
+`)
 	b.WriteString("}\n")
 	runFormsProbe(t, files, b.String())
 }

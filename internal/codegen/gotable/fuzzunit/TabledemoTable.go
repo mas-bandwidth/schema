@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x0a1bcab8f9b36714)
-const _ = uint64(0x0a1bcab8f9b36714 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x1bdc747f8e1017b1)
+const _ = uint64(0x1bdc747f8e1017b1 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -1806,7 +1806,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		clear(c.graph)
 		rec := c.records
 		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset)
+			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
 			ref, ok := rec.Leb()
 			if !ok {
 				return TableRefuseWireDamaged
@@ -1838,9 +1838,9 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	}
 	// a blob named twice is shared, and a record no pointer names is unreachable
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) > 1 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
 			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1])
+			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
 			ref, _ := rec.Leb()
 			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
 				return TableRefuseBlobShared
@@ -1848,7 +1848,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		}
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) == 0 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
 			return TableRefuseWireDamaged
 		}
 	}
@@ -2408,7 +2408,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)

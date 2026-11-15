@@ -620,8 +620,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 			min32 := float32(f.FMin)
-			delta := float32(f.FMax) - min32
+			max32 := float32(f.FMax)
+			delta := max32 - min32
 			g.pf("%s{\n%s    float compressed_value = %s;\n", ind, ind, name)
+			// SPEC §5.1 row 10: a NaN, an infinity or a finite value outside the
+			// declared range is writer misuse, debug asserted before quantizing.
+			g.pf("%s    serialize_assert( compressed_value >= %s && compressed_value <= %s ); // SPEC §5.1 row 10\n",
+				ind, formatFloat(float64(min32), true), formatFloat(float64(max32), true))
 			g.pf("%s    serialize_compressed_float_precomputed( stream, compressed_value, %du, %d, %s, %s );\n",
 				ind, steps, wireBits, formatFloat(float64(delta), true), formatFloat(float64(min32), true))
 			g.pf("%s}\n", ind)

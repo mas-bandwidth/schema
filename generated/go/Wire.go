@@ -331,17 +331,18 @@ const ProbeSampleMaxBytes = 40
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
+	if math.Float32bits(value.Orientation)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.Orientation < -180.0 || value.Orientation > 180.0 {
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(0)
 	if value.Active {
 		f0 = 1
 	}
 	f1 := uint64(0)
 	normalizedValue := (value.Orientation + 180.0) / 360.0
-	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue = 0
-	} else if !(normalizedValue <= 1) {
-		normalizedValue = 1
-	}
 	integerValue := uint32(float32(normalizedValue*36000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue > 36000 {
@@ -1204,6 +1205,12 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	if math.Float32bits(value.FloatValue)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
+	if math.Float32bits(value.CompressedFloatValue)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.CompressedFloatValue < 0.0 || value.CompressedFloatValue > 10.0 {
+		return serialize.ErrValueOutOfRange
+	}
 	if math.Float64bits(value.DoubleValue)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
 		return serialize.ErrNonFiniteFloat
 	}
@@ -1213,11 +1220,6 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	f11 := uint64(math.Float32bits(value.FloatValue)) & 0xffffffff
 	f12 := uint64(0)
 	normalizedValue := value.CompressedFloatValue / 10.0
-	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue = 0
-	} else if !(normalizedValue <= 1) {
-		normalizedValue = 1
-	}
 	integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue > 1000 {
@@ -1409,13 +1411,20 @@ const CompressedProbeMaxBytes = 8
 // cannot carry) or the stream's error; the size written is
 // stream.BitsProcessed().
 func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe) error {
+	if math.Float32bits(value.Boundary)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.Boundary < 0.0 || value.Boundary > 10.0 {
+		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.Offset)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if value.Offset < -5.0 || value.Offset > 5.0 {
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(0)
 	normalizedValue := value.Boundary / 10.0
-	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue = 0
-	} else if !(normalizedValue <= 1) {
-		normalizedValue = 1
-	}
 	integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue > 1000 {
@@ -1424,11 +1433,6 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 	f0 = uint64(integerValue) & 0x3ff
 	f1 := uint64(0)
 	normalizedValue2 := (value.Offset + 5.0) / 10.0
-	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
-		normalizedValue2 = 0
-	} else if !(normalizedValue2 <= 1) {
-		normalizedValue2 = 1
-	}
 	integerValue2 := uint32(float32(normalizedValue2*10000.0) + 0.5)
 	// the integer clamp is normative
 	if integerValue2 > 10000 {
