@@ -511,3 +511,45 @@ conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
 	$(call conformance-negative-control-cpp-wref,write-refusal-message,schema_assert( value.sku_length >= 0 && value.sku_length <= 32 ); // storage invariant,(void)0; /* SABOTAGED: no message length check */ // storage invariant,SABOTAGED: no message length check,write-refusal-message,message)
+
+# SPEC §5.1 row 10 on the packet Write: a compressed float is checked finite and
+# inside [min, max] before quantizing, by this leg's debug assert. The shared
+# cases in test/packet-write-cfloat name each refused value and each lawful
+# twin; every case runs in a child because the refusal aborts.
+PACKET_WRITE_CFLOAT_CPP_DIR := build/packet-write-cfloat/cpp
+
+$(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cpp.mk
+	@mkdir -p $(PACKET_WRITE_CFLOAT_CPP_DIR)
+	./bin/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+build/schema_test_packet_write_cfloat_cpp: $(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp test/packet-write-cfloat/cpp/main.cpp $(SERIALIZE)/serialize.h make/cpp.mk
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/cpp/main.cpp -o $@
+
+.PHONY: packet-write-cfloat-cpp
+packet-write-cfloat-cpp: build/schema_test_packet_write_cfloat_cpp
+	./build/schema_test_packet_write_cfloat_cpp test/packet-write-cfloat/cases.txt
+
+PACKET_WRITE_CFLOAT_CPP_NEGATIVE := build/packet-write-cfloat/cpp-negative
+
+.PHONY: packet-write-cfloat-cpp-negative-control
+packet-write-cfloat-cpp-negative-control: packet-write-cfloat-cpp
+	@rm -rf $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE) && mkdir -p $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated
+	go run ./tools/sabotage -name packet-write-cfloat-cpp-range-assert \
+		-out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json
+	go build -overlay $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema ./cmd/schema
+	$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/CFloat.schema
+	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/cpp/main.cpp -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver
+	@if ./$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver test/packet-write-cfloat/cases.txt > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the compressed-float write passed without its range assert"; \
+		cat $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log; exit 1; fi
+	@grep -q '^FAILED: above-max: write was not refused (debug assert)$$' $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C++ writer went red, but not on the range assert"; \
+		  cat $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log; exit 1; }
+	@grep -m1 '^FAILED:' $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log
+	@echo "negative control: removing the compressed-float range assert turns the C++ packet write RED"
+
+test: packet-write-cfloat-cpp

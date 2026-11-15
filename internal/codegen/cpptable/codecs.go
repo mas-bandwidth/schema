@@ -979,7 +979,7 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 		g.pf("%s}\n", ind)
 	case tkUnion:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
-		g.emitUnionElementMeasure(f, fmt.Sprintf(access, i), into, ind+"    ", sfx+"u")
+		g.emitUnionElementMeasure(f, fmt.Sprintf(access, i), into, ind+"    ", onBad, sfx+"u")
 		g.pf("%s}\n", ind)
 	default:
 		g.emitEnumElementCheckAt(f, access, n, ind, onBad, sfx)
@@ -1315,7 +1315,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("    if ( value.%s.type != %sType::None ) // None elides — the absence of the field is the None\n    {\n", f.Name, un.Name)
 		g.pf("        bytes += %s;\n", g.hdrBytes(id))
-		g.emitUnionPayloadMeasure(f, "value."+f.Name, "bytes", "        ", "")
+		g.emitUnionPayloadMeasure(f, "value."+f.Name, "bytes", "        ", "return -1;", "")
 		g.pf("    }\n")
 		if f.Required {
 			g.pf("    else { bytes += %s + 1; } // | required: None rides as a 1-byte zero arm ref (§2.3)\n", g.hdrBytes(id))
@@ -1361,7 +1361,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 // emitUnionPayloadMeasure adds a SET union's payload to `into`: the arm id
 // reference, the arm's kind byte, its L and its L bytes (docs/SPEC-TABLES.md
 // §3). The caller has already established that the tag is not None.
-func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx string) {
+func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, onBad, sfx string) {
 	un := f.Type.Ref.(*ir.Union)
 	body := "arm_payload" + sfx
 	wasField := g.unionField
@@ -1374,22 +1374,22 @@ func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, sfx str
 		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
-		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", "return -1;", sfx) })
+		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx) })
 		g.pf("%s        %s += TableLebBytes( arm_ref%s ) + 1 + %s;\n", ind, into, sfx, framed(body))
 		g.pf("%s        break;\n%s    }\n", ind, ind)
 	}
-	g.pf("%s    default: return -1; // invalid tag — the write side refuses it too\n%s}\n", ind, ind)
+	g.pf("%s    default: %s // invalid tag — the write side refuses it too\n%s}\n", ind, onBad, ind)
 }
 
 // emitUnionElementMeasure adds one element of an ARRAY OF UNIONS to `into`
 // (docs/SPEC-TABLES.md §2.6, §3): the single zero byte for None, and the arm
 // header and payload for a set arm. A tag no arm names measures as -1, exactly
 // as the write side refuses it.
-func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, sfx string) {
+func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, into, ind, onBad, sfx string) {
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%sif ( %s.type == %sType::None ) { %s += 1; } // a None element is the zero reference in its place\n", ind, expr, un.Name, into)
 	g.pf("%selse\n%s{\n", ind, ind)
-	g.inElementStep(f, func() { g.emitUnionPayloadMeasure(f, expr, into, ind+"    ", sfx) })
+	g.inElementStep(f, func() { g.emitUnionPayloadMeasure(f, expr, into, ind+"    ", onBad, sfx) })
 	g.pf("%s}\n", ind)
 }
 
@@ -2434,6 +2434,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
 		g.pf("%[1]s    if ( !r.getleb( count ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
+		g.pf("%s    // THE KEYED BODY'S ELEMENT KIND IS CLOSED, judged under any count\n", ind)
+		g.pf("%s    // before the reader's declaration (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableKeyedElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at a keyed body's element kind (§4), inside
 			// the mismatch branch and with a loop of its own, so the matching
@@ -2510,6 +2513,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    // RODE, so an optional is still PRESENT (§2.3) — only a foreign\n", ind)
 		g.pf("%s    // ELEMENT KIND says the payload is not this array's at all.\n", ind)
 		g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
+		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged under any count before the\n", ind)
+		g.pf("%s    // reader's declaration (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at an element kind (docs/SPEC-TABLES.md
 			// §4), inside the mismatch branch: ONE count for the field,

@@ -826,10 +826,8 @@ end
 local function liveCount(fd: any, holder: any, val: any): number
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
-		if type(c) ~= "number" then
-			c = 0
-		end
-		return math.min(c, fd.bound)
+		if type(c) ~= "number" or c ~= math.floor(c) or c < 0 or c > fd.bound then return 0 end
+		return c
 	end
 	return fd.bound
 end
@@ -987,7 +985,7 @@ end
 local function encodeText(c: any, fd: any, shape: any, kind: number, holder: any, val: any, named: any): boolean
 	local w = c.w
 	local s = if val == nil then "" else val
-	if type(s) ~= "string" or not V.utf8String(s) then
+	if type(s) ~= "string" or #s > fd.bound or not V.utf8String(s) then
 		return fail(c, "invalid_value", named)
 	end
 	put(w, #s, bitsReq(0, shape.max))
@@ -1000,8 +998,9 @@ end
 
 local function encodeBytes(c: any, fd: any, shape: any, holder: any, val: any): boolean
 	local w = c.w
-	local n = holder[fd.slot .. "Length"] or 0
-	if type(val) ~= "buffer" or n > buffer.len(val) then
+	local n = holder[fd.slot .. "Length"]
+	if n == nil then n = 0 end
+	if type(val) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound or n > buffer.len(val) then
 		return fail(c, "invalid_value", fd)
 	end
 	put(w, n, countBits(shape))
@@ -1029,6 +1028,7 @@ local function encodeElement(c: any, fd: any, shape: any, x: any): boolean
 end
 
 local function encodeArray(c: any, fd: any, entry: any, holder: any, val: any, count: number): boolean
+	if type(val) == "buffer" and count > buffer.len(val) then return fail(c, "invalid_value", fd) end
 	local shape = entry.shape
 	local bits = countBits(shape)
 	if bits > 0 then
@@ -1118,6 +1118,15 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 	local shape = entry.shape
 	local s = fd.s
 	local val = v[fd.slot]
+	if s == "bytes" and (fd.present == nil or v[fd.present]) then
+		local n = v[fd.slot .. "Length"]
+		if type(val) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound or n > buffer.len(val) then return fail(c, "invalid_value", fd) end
+	end
+	if s == "arr" and fd.array == "fixed" and type(val) == "buffer" and buffer.len(val) < fd.bound and (fd.present == nil or v[fd.present]) then return fail(c, "invalid_value", fd) end
+	if s == "arr" and fd.array == "counted" and (fd.present == nil or v[fd.present]) then
+		local n = v[fd.slot .. "Count"]
+		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return fail(c, "invalid_value", fd) end
+	end
 	local w = c.w
 	if fd.present ~= nil then
 		if not v[fd.present] then
@@ -1238,6 +1247,10 @@ encodeArm = function(c: any, un: any, u: any, named: any): boolean
 		return true
 	end
 	local val = u[arm.slot]
+	if s == "arr" and arm.array == "counted" then
+		local n = u[arm.slot .. "Count"]
+		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound then return fail(c, "invalid_value", arm) end
+	end
 	local shape = entry.shape
 	if s == "tab" then
 		return encodeBody(c, S.lookup(arm.t), val)
