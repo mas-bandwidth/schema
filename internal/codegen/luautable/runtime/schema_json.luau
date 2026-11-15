@@ -8,7 +8,7 @@
 -- Every value is written in DECLARATION order, defaults included, pretty-printed
 -- with a two-space indent and one trailing newline (§16.1). The reader accepts
 -- comments and trailing commas and never writes them; unknown keys are skipped
--- and counted, a repeated key is last-wins and counted, and a value of the wrong
+-- and counted, a repeated key is refused as malformed, and a value of the wrong
 -- JSON type is a kind mismatch, never coerced (§16.2). A node named by more than
 -- one pointer slot is DEFINED once as `{ "&node": N, ... }` and REFERENCED by
 -- `{ "&node": N }` after that (§16.7).
@@ -303,6 +303,10 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
+  -- A repeated key in a skipped object is malformed, exactly as in a read
+  -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
+  -- value rather than guessing which occurrence wins.
+  local seen: { [string]: boolean } = {}
   while true do
     local c = peek(inp)
     if c == close then inp.p = inp.p + 1; return true end
@@ -312,6 +316,8 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       local scanned, _, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
       local key = scanned :: string -- an ok scan returns its string
+      if seen[key] then inp.bad = true; return false end
+      seen[key] = true
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
       if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
