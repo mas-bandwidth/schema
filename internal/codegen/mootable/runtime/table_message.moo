@@ -1606,19 +1606,26 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 			return nil, refuseRead(t, "out_of_range")
 		end
 	end
-	-- narrow to the kind's raw domain
+	-- outside the reader kind's domain refuses, as a declared range does
+	-- (docs/SPEC-TABLES.md §3.3): never wrapped, never replaced
 	local raw: any = value
 	if mykw <= 4 then
-		if type(value) ~= "number" then
-			local l = limbs(value, signed)
-			if not signed then
-				local m = l[1] % POW2[mykw * 8]
-				raw = m
-			else
-				local n = (if Int64.is(value) then Int64 else Uint64).tryNumber(value)
-				raw = n or 0
-			end
+		local klo, khi = 0, 255
+		if mykw == 1 then
+			klo = if signed then -128 else 0
+			khi = if signed then 127 else 255
+		elseif mykw == 2 then
+			klo = if signed then -32768 else 0
+			khi = if signed then 32767 else 65535
+		else
+			klo = if signed then -2147483648 else 0
+			khi = if signed then 2147483647 else 4294967295
 		end
+		local n: number? = if type(value) == "number" then value else (if signed then Int64 else Uint64).tryNumber(value)
+		if n == nil or n < klo or n > khi then
+			return nil, refuseRead(t, "out_of_range")
+		end
+		raw = n
 	elseif mykw == 8 then
 		if type(value) == "number" then
 			raw = (if signed then Int64 else Uint64).fromNumber(value)
