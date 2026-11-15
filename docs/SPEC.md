@@ -2284,7 +2284,7 @@ statement of the rule; [CONTRIBUTING.md](CONTRIBUTING.md),
 
 **The contract**, for every writer of both wires — the packet `Write`, the
 table variable-form `Save` and its `Measure`, the fixed-form `FixedSave`, the
-message-form `SaveMessages` and the text writer — is the closed list of values
+message-form `SaveMessages` and its `MeasureMessages`, the text writer — is the closed list of values
 a caller can hold that the declaration does not admit:
 
 | # | the value | the reader's answer to it (§4, SPEC-TABLES §4) |
@@ -2358,7 +2358,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C**: 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build
 
-- **C#**: 1–4 debug, except that every build still refuses a negative text-list element length (`TextFits`) and a count past its bound in the region `Save`'s node walk; 5–8 every build; 9 unchecked; 10 every build for `required` fields only
+- **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
 - **Rust**: 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build
 
@@ -2421,9 +2421,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
 - **C#**
 
-  - `FixedSave`: 1–6 and 8 debug; 7 every build
+  - `FixedSave`: 1–8 debug
 
-  - `SaveMessages`: 1–2 debug; 3–8 every build
+  - `SaveMessages`: 1–8 debug
 
   - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked
 
@@ -2465,7 +2465,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 and 11 every build on the flat and the runtime tier; 8 not yet held
+  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
 
 - **Elixir**
 

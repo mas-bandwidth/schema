@@ -323,15 +323,15 @@ generated class per table and per map entry, each with its descriptor
 
   - `*T` pointers to tables: carried
 
-  - `*bytes`: refused
+  - `*bytes`: carried ([the table blobs](port-python/table-blobs.md))
 
-  - `*string`: refused
+  - `*string`: carried ([the table blobs](port-python/table-blobs.md))
 
   - `?T`: refused
 
-  - `[]T`: refused
+  - `[]T`: carried ([the table unbounded arrays](port-python/table-unbounded.md))
 
-  - `[E]T`: refused
+  - `[E]T`: carried ([the table keyed arrays](port-python/table-keyed.md))
 
   - `map[K]V` for the base key and value kinds: carried
     ([the table maps](port-python/table-maps.md))
@@ -340,9 +340,9 @@ generated class per table and per map entry, each with its descriptor
 
   - unions with table arms: refused
 
-- **A packet-typed field is refused by name.** A table field whose type is a
-  packet `type` reaches `refusePacketValues` and is refused naming the field
-  and the type, until P4 carries packet types into tables.
+- **A packet-typed field is carried by value.** A packet `type` in a table
+  field, array element, map value or union arm is carried
+  ([the table packet types](port-python/table-packet-types.md)).
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
@@ -506,6 +506,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bool`: carried
 
   - `int8` to `uint64` (bare or ranged): carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
   - enums: carried
 
@@ -523,7 +524,8 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - `float64`: carried ([the packet floats](port-python/packet-floats.md))
 
-  - `bits`: refused
+  - `bits`: carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
   - `string`: refused
 

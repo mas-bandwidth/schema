@@ -32,6 +32,11 @@ const tableRegionGraphSource = `
         // refuses a blob a second slot names (blob_shared), while Pack and
         // Cook place the graph as they find it.
         public bool RefuseSharedBlobs;
+        // The Save walk (SaveRegion, SaveRetainRegion) checks the caller's own
+        // values: a count past its bound or a tag naming no arm is a debug
+        // assert there (docs/SPEC.md §5.1, C# is an assert leg). Pack and Cook
+        // keep the refusal.
+        public bool Saving;
         public TableAllocator Allocator;
         public ReadOnlySpan<RegionNode> Nodes { get { return new ReadOnlySpan<RegionNode>(Entries, Count); } }
         static uint Mix(long at)
@@ -85,9 +90,9 @@ const tableRegionGraphSource = `
         public bool Add(ulong id)
         { if (Reference(id) != 0) { return true; } if (Count == Values.Length) { return false; } Values[Count++] = id; return true; }
     }
-    static RegionGraph RegionNumber(NativeValue root, TableTypeInfo type, TableAllocator allocator = default, bool refuseSharedBlobs = false)
+    static RegionGraph RegionNumber(NativeValue root, TableTypeInfo type, TableAllocator allocator = default, bool refuseSharedBlobs = false, bool saving = false)
     {
-        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator, RefuseSharedBlobs = refuseSharedBlobs };
+        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator, RefuseSharedBlobs = refuseSharedBlobs, Saving = saving };
         if (!RegionVisit(root, type, ref graph)) { graph.Dispose(); return default; }
         return graph;
     }
@@ -213,7 +218,11 @@ const tableRegionGraphSource = `
     {
         if (f == null) { return true; }
         int n = f.IsArray ? RegionCount(value, f) : 1;
-        if (f.Counted && (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound)) { return false; }
+        if (f.Counted)
+        {
+            if (graph.Saving) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
+            else if (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound) { return false; }
+        }
         if (f.Map) { for (int i = 1; i < n; i++) { if (RegionKeyOrder(value.Child(f, i - 1), value.Child(f, i), f.Table.Fields[0]) >= 0) { return false; } } }
         for (int i = 0; i < n; i++)
         {
@@ -221,7 +230,9 @@ const tableRegionGraphSource = `
             else if (f.Kind == 15)
             {
                 NativeValue union = value.Child(f, i); ulong tag = union.Tag(f);
-                if (tag > (ulong)f.EnumMax || !RegionVisitField(union.Arm(f), f.Arms.Arms[(int)tag].Field, ref graph)) { return false; }
+                if (graph.Saving) { System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax); }
+                else if (tag > (ulong)f.EnumMax) { return false; }
+                if (!RegionVisitField(union.Arm(f), f.Arms.Arms[(int)tag].Field, ref graph)) { return false; }
             }
             else if (f.Kind == 17)
             {
