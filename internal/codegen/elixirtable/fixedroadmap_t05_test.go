@@ -343,14 +343,18 @@ fixed table T
 
 // t05R24 holds elixir/R24 to all three clauses: ill-formed text in the USED
 // units refuses by name (`text_ill_formed`); the length and its clamp are
-// counted in BYTES; and slack is unspecified on read and not a refusal.
+// counted in BYTES; and the bytes behind the used length are DEAD, so a
+// non-zero one refuses the whole load (docs/FIXED-FORM-ALGORITHM.md §5.3 step
+// 11, docs/SPEC-TABLES.md §3.4), while the content rule still reads the used
+// units only.
 func t05R24(t *testing.T) {
 	runtime := t05Runtime(t)
 	// (1) the used units alone refuse by name, on both plans.
 	t05Has(t, runtime, "throw({:refuse, :text_ill_formed})", "R24 ill-formed text refuses by name")
-	// (3) slack is unspecified on read and not a refusal: the content check
-	// reads the USED units only, never the slack.
+	// (3) the dead bytes behind the used length are held to zero, and the
+	// content check still reads the USED units only.
 	t05Has(t, runtime, "if text_ok?(flavour, binary_part(take, 0, v)) do", "R24 the content check holds the USED units and not the slack")
+	t05Has(t, runtime, "defp dead_run([{:dead_text", "R24 a non-zero dead byte behind a text refuses")
 	// (2) the length and the clamp are BYTES: the cap is the span.
 	t05Has(t, runtime, "cap = size", "R24 the clamp is the byte span")
 	out, err := Generate(unitFrom(t, `package probe

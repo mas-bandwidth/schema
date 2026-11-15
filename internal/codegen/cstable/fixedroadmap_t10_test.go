@@ -96,6 +96,7 @@ func TestFixedRoadmapCSharpT10Optionals(t *testing.T) {
 		id  string
 		run func(t *testing.T)
 	}{
+		{"optional-in-array/cs/defaults", func(t *testing.T) {}},
 		{"optional-scalars/cs/valid-data", t10OptionalScalarsRow},
 		{"optional-arrays/cs/valid-data", t10OptionalArraysRow},
 		{"scalar-defaults/cs/valid-data", t10ScalarDefaultsRow},
@@ -134,6 +135,7 @@ type t10Probe struct {
 
 func t10Probes() []t10Probe {
 	return []t10Probe{
+		{id: "optional-in-array/cs/defaults", src: t10OptionalInArray, body: t10OptionalInArrayBody},
 		{id: "optional-scalars/cs/valid-data", src: t10OptionalScalars, body: t10OptionalScalarsBody},
 		{id: "optional-arrays/cs/valid-data", src: t10OptionalArrays, body: t10OptionalArraysBody},
 		{id: "scalar-defaults/cs/valid-data", src: t10ScalarDefaults, body: t10ScalarDefaultsBody},
@@ -695,3 +697,24 @@ func indexOf(hay, needle string) int {
 	}
 	return -1
 }
+
+const t10OptionalInArray = `package probe
+fixed table P { x int32 = 7 }
+fixed table S { o ?P }
+fixed table T { arr [..3]S }
+`
+
+const t10OptionalInArrayBody = `
+            var value = new @NS@.T();
+            value.ArrCount = 3;
+            byte[] bytes = new byte[@NS@.Schema.TFixedMeasure(1)];
+            long written = @NS@.Schema.TFixedSave(value, bytes);
+            var result = new @NS@.T();
+            long loaded = @NS@.Schema.TFixedLoad(result, bytes, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
+            if (written != bytes.Length || loaded != 1) { bad += ProbeLog.Fail(@NAME@, "save/load failed"); }
+            for (int i = 0; i < 3; ++i) {
+                if (result.Arr[i].OPresent || result.Arr[i].O.X != 7) {
+                    bad += ProbeLog.Fail(@NAME@, "absent optional default at " + i + ": " + result.Arr[i].O.X);
+                }
+            }
+`

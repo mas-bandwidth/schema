@@ -1869,7 +1869,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		clear(c.graph)
 		rec := c.records
 		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset)
+			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
 			ref, ok := rec.Leb()
 			if !ok {
 				return TableRefuseWireDamaged
@@ -1901,9 +1901,9 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	}
 	// a blob named twice is shared, and a record no pointer names is unreachable
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) > 1 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
 			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1])
+			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
 			ref, _ := rec.Leb()
 			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
 				return TableRefuseBlobShared
@@ -1911,7 +1911,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		}
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) == 0 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
 			return TableRefuseWireDamaged
 		}
 	}
@@ -8866,7 +8866,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -8877,8 +8877,8 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableEntityFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TableEntityFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TableEntityReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -9122,7 +9122,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -9133,8 +9133,8 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableStatFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TableStatFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TableStatReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -9603,7 +9603,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -9612,8 +9612,8 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := TableMixedFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := TableMixedFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				TableMixedReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -9622,8 +9622,8 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableMixedFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TableMixedFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TableMixedReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())

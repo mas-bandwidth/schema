@@ -11,8 +11,9 @@ import (
 // mooNightlyFuzzWiring holds the moo packet-wire fuzz's artefacts to the shape
 // that makes the nightly a gate rather than a script (make/moo-fuzz.mk,
 // make/schema-moo-nightly-fuzz.mk, .github/workflows/schema-moo-nightly-fuzz.yml):
-// a case-count budget and a seed, never a clock; a workflow that fuzzes at depth
-// only on the schedule and on dispatch; the findings kept on a red night; the
+// a case-count budget and a seed, never a clock; a workflow that runs only on
+// the schedule and on dispatch (the owner, 2026-11-15), never on a push or a pull
+// request; the findings kept on a red night; the
 // planted patterns run beside the long run; and the control's manifest line
 // carrying its reason. It returns every way the files fall short.
 func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
@@ -43,7 +44,7 @@ func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
 		bad = append(bad, "make/schema-moo-nightly-fuzz.mk budgets by a clock; the budget is a case count")
 	}
 	need(workflow, "schema-moo-nightly-fuzz.yml",
-		"schedule:", "workflow_dispatch:", "push:", "pull_request:",
+		"schedule:", "workflow_dispatch:",
 		"if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
 		"make schema-moo-nightly-fuzz MOO_NIGHTLY_FUZZ_SEED=${{ github.run_id }}",
 		"make schema-moo-nightly-fuzz-negative-control",
@@ -51,6 +52,12 @@ func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
 		"serialize.go.git serialize.go",
 		"build/moo-nightly-fuzz/findings/",
 		"TestSchemaMooNightlyFuzzWiring")
+	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
+	// not light moved to nightly test now." "no exceptions."): no push and no
+	// pull request starts the workflow.
+	for _, p := range nightlyOnlyTriggerProblems(workflow) {
+		bad = append(bad, "schema-moo-nightly-fuzz.yml: "+p)
+	}
 	var m struct {
 		Groups []struct {
 			Targets []string `json:"targets"`
@@ -95,7 +102,8 @@ func readRepoFile(t *testing.T, root string, parts ...string) string {
 }
 
 // TestSchemaMooNightlyFuzzWiring reads files only: the heavy work is the make
-// target the nightly runs; this is the cheap structural half a push can afford.
+// target the nightly runs; this is the cheap structural half the Go unit tier
+// can afford.
 func TestSchemaMooNightlyFuzzWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -113,8 +121,8 @@ func TestSchemaMooNightlyFuzzWiring(t *testing.T) {
 }
 
 // TestSchemaMooNightlyFuzzWiringNegativeControl: the nightly job's depth run
-// taken out of the workflow, or a clock put in as the budget, each turns the
-// check red for that reason.
+// taken out of the workflow, a clock put in as the budget, or a push trigger
+// restored, each turns the check red for that reason.
 func TestSchemaMooNightlyFuzzWiringNegativeControl(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -132,5 +140,12 @@ func TestSchemaMooNightlyFuzzWiringNegativeControl(t *testing.T) {
 	clock := nightly + "\nSCHEMA_MOO_FUZZ_TIME ?= 600\n"
 	if got := mooNightlyFuzzWiring(leg, clock, wf, manifest); len(got) != 1 || !strings.Contains(got[0], "a clock") {
 		t.Errorf("a clock budget: %v", got)
+	}
+	pushed := strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1)
+	if pushed == wf {
+		t.Fatal("the workflow's on: block moved; the control patches nothing")
+	}
+	if got := mooNightlyFuzzWiring(leg, nightly, pushed, manifest); len(got) != 1 || !strings.Contains(got[0], "push:") {
+		t.Errorf("a restored push trigger: %v", got)
 	}
 }

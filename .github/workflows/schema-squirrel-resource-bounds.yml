@@ -21,17 +21,8 @@ name: Schema squirrel resource bounds
 #     is HEAVY and runs nightly and on demand, never per commit.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-squirrel-resource-bounds.mk'
-      - '.github/workflows/schema-squirrel-resource-bounds.yml'
-      - 'internal/ci/schema_squirrel_resource_bounds_test.go'
-  pull_request:
-    paths:
-      - 'make/schema-squirrel-resource-bounds.mk'
-      - '.github/workflows/schema-squirrel-resource-bounds.yml'
-      - 'internal/ci/schema_squirrel_resource_bounds_test.go'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
