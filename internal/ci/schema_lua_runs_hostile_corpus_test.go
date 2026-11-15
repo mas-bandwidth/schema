@@ -414,6 +414,11 @@ func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	out := map[string]luaHostileCarried{}
 	// The message reader has no caller storage bound.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
+	// RELAXED 2026-11-15 the Lua JSON read accepts unpadded Base64
+	// (json-base64-canonical) and a zero escape in a skipped value (the
+	// skipped-value rule). re-enable: relax/hostile-rows-lua
+	out["conformance-base64-unpadded"] = luaHostileCarried{"accept", "-", "relax/hostile-rows-lua"}
+	out["conformance-str-zero-escape-unknown-key"] = luaHostileCarried{"accept", "-", "relax/hostile-rows-lua"}
 	return out
 }
 
