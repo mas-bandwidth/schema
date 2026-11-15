@@ -38,6 +38,8 @@ class FieldDesc:
         "array_kind",
         "array_min",
         "elem_kind",
+        "variant_ids",
+        "deprecated",
         "default",
         "elem",
         "keys",
@@ -61,6 +63,8 @@ class FieldDesc:
     array_kind: int
     array_min: int
     elem_kind: int
+    variant_ids: tuple[int, ...]
+    deprecated: frozenset[int]
     default: Any
     elem: "FieldDesc | None"
     keys: tuple[int, ...]
@@ -85,6 +89,8 @@ class FieldDesc:
         array_kind: int = 0,
         array_min: int = 0,
         elem_kind: int = 0,
+        variant_ids: tuple[int, ...] = (),
+        deprecated: tuple[int, ...] = (),
         default: Any = None,
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
@@ -107,6 +113,9 @@ class FieldDesc:
         self.array_kind = array_kind
         self.array_min = array_min
         self.elem_kind = elem_kind
+        self.variant_ids = variant_ids
+        # the ordinals of the variants marked `| deprecated` (§2.15)
+        self.deprecated = frozenset(deprecated)
         self.default = default
         self.elem = elem
         self.keys = keys
@@ -115,8 +124,11 @@ class FieldDesc:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
         if self.pointer or self.optional:
             return value is None
-        if self.codec in ("bool", "int", "unsupported"):
+        if self.codec in ("bool", "int", "enum", "string", "unsupported"):
             return bool(value == self.default)
+        if self.codec == "bytes":
+            raw = _as_bytes(value)
+            return raw is not None and bool(raw == self.default)
         if self.codec == "table":
             if value is None:
                 return True
@@ -142,6 +154,19 @@ def _array_is_default(fd: FieldDesc, value: Any) -> bool:
     if fd.array_kind == 1:  # [N]T
         return False
     return len(value) == 0
+
+
+def _as_bytes(value: Any) -> bytes | None:
+    """The bytes a caller's byte value holds, or None when it is not one."""
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        if value.format != "B":
+            return None
+        return value.tobytes()
+    return None
 
 
 class TableDesc:

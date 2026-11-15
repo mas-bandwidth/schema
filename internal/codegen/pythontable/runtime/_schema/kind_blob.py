@@ -80,7 +80,9 @@ class _Blob:
             _encode(fd, value, path)
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        ctx.blob_pending.append((ctx.current, fd, r.varint()))
+        index = r.varint()
+        ctx.blob_pending.append((ctx.current, fd, index))
+        ctx.edges.append(index)
         return None
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:

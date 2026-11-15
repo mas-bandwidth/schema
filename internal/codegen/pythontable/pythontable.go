@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"math/big"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -435,7 +436,7 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _skip, buffer_view, load_table\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
@@ -621,11 +622,15 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
-		fmt.Fprintf(b, "            size=%d,\n", f.Type.Size)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            array_kind=%d,\n", int(f.Array))
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 		fmt.Fprintf(b, "            elem_kind=%d,\n", ir.TableWireElemKind(f))
+		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
+		if dep := deprecatedOrdinals(f); dep != "" {
+			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
+		}
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
 		if codecOf(f) == "keyed" {
 			emitKeyedDesc(b, f)
@@ -641,16 +646,19 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	}
 }
 
-// scalarOnly reports whether every field is a bool or an integer the generated
-// straight-line shape can bind directly. A pointer, container or union keeps
-// the descriptor walk.
+// scalarOnly reports whether every field is a scalar the generated
+// straight-line shape can bind directly: a bool, an integer (a flags mask
+// included), a string, a bytes or an enum. A by-value table, a pointer, a
+// container or a union keeps the descriptor walk. The string, bytes and enum
+// kinds joined the set when the evolution kinds' shape bench measured the pair
+// faster (docs/PORT-PYTHON.md, THE TABLE FRAME, Bench).
 func scalarOnly(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
 			return false
 		}
 		switch codecOf(f) {
-		case "bool", "int":
+		case "bool", "int", "string", "bytes", "enum":
 		default:
 			return false
 		}
@@ -659,7 +667,7 @@ func scalarOnly(st *ir.Struct) bool {
 }
 
 // emitStraightLine emits the straight-line shape for a table whose fields are
-// all bools and integers (docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
+// all scalars (scalarOnly; docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
 // walk is unrolled with each field descriptor bound to a local, against the
 // runtime's descriptor walk over the same wire. The bench keeps the faster.
 func emitStraightLine(b *strings.Builder, st *ir.Struct) {
@@ -699,26 +707,24 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("            break\n")
 	b.WriteString("        field_id = reader.id_at(reference)\n")
 	b.WriteString("        kind = reader.byte()\n")
+	b.WriteString("        if field_id in seen:\n")
+	b.WriteString("            raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
+	b.WriteString("        seen.add(field_id)\n")
 	for i, f := range st.Fields {
 		if i == 0 {
 			fmt.Fprintf(b, "        if field_id == fields[%d].field_id:\n", i)
 		} else {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
-		b.WriteString("            if field_id in seen:\n")
-		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
-		b.WriteString("            seen.add(field_id)\n")
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}
 	if len(st.Fields) > 0 {
 		b.WriteString("        else:\n")
-		b.WriteString("            _skip(reader, kind)\n")
-		b.WriteString("            ctx.unknown += 1\n")
+		b.WriteString("            _unknown_field(reader, field_id, kind, ctx, True)\n")
 	} else {
-		b.WriteString("        _skip(reader, kind)\n")
-		b.WriteString("        ctx.unknown += 1\n")
+		b.WriteString("        _unknown_field(reader, field_id, kind, ctx, True)\n")
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
@@ -1011,6 +1017,12 @@ func codecOf(f *ir.Field) string {
 			return "table"
 		case *ir.Union:
 			return "union"
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			// a flags mask rides as a u64 and holds an int; its declared
+			// default is the mask the declaration names.
+			return "int"
 		}
 	}
 	return "unsupported"
@@ -1140,10 +1152,83 @@ func valueDefault(f *ir.Field) string {
 			return fmt.Sprintf("new_by_name(%q)", ref.Name)
 		case *ir.Union:
 			return fmt.Sprintf("new_union_by_name(%q)", ref.Name)
+		case *ir.Enum:
+			return strconv.FormatInt(enumDefaultValue(f), 10)
+		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.String()
+			}
+			return "0"
 		}
 		return "0"
 	}
 	return "None"
+}
+
+// enumDefaultValue is the ordinal a fresh enum field carries (SPEC §4.2): the
+// defaulted variant's number, or the implicit None at zero.
+func enumDefaultValue(f *ir.Field) int64 {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok || !f.HasDefault || f.DefVariant == "" || f.DefVariant == "None" {
+		return 0
+	}
+	for i, name := range ref.Variants {
+		if name == f.DefVariant {
+			return int64(i + 1)
+		}
+	}
+	return 0
+}
+
+// variantIds is an enum field's wire ids by ordinal: entry k-1 is the hash of
+// variant k's wire name, so a variant renamed under `was` keeps its id.
+func variantIds(f *ir.Field) string {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return "()"
+	}
+	ids := make([]string, 0, len(ref.Variants))
+	for i := range ref.Variants {
+		ids = append(ids, hex64(ir.TableWireId(ref.VariantWireName(i))))
+	}
+	if len(ids) == 1 {
+		return "(" + ids[0] + ",)"
+	}
+	return "(" + strings.Join(ids, ", ") + ")"
+}
+
+// deprecatedOrdinals is an enum field's deprecated variants by ordinal, as a
+// Python tuple, or "" when the enum deprecates none (docs/SPEC-TABLES.md
+// §2.15): a read of one yields the field's declared default, and a write of one
+// is refused.
+func deprecatedOrdinals(f *ir.Field) string {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return ""
+	}
+	var ords []string
+	for i := range ref.Variants {
+		if i < len(ref.VariantTags) && slices.Contains(ref.VariantTags[i], "deprecated") {
+			ords = append(ords, strconv.Itoa(i+1))
+		}
+	}
+	switch len(ords) {
+	case 0:
+		return ""
+	case 1:
+		return "(" + ords[0] + ",)"
+	}
+	return "(" + strings.Join(ords, ", ") + ")"
+}
+
+// fieldSize is a string or bytes field's declared byte bound, and 0 for every
+// field that declares none or is not a byte buffer.
+func fieldSize(f *ir.Field) int64 {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return f.Type.Size
+	}
+	return 0
 }
 
 func descriptorDefault(f *ir.Field) string {
@@ -1167,6 +1252,8 @@ func defaultFor(f *ir.Field, codec string) string {
 		return "b" + goBytesLiteral(f.DefBytes)
 	case "map":
 		return "{}"
+	case "enum":
+		return strconv.FormatInt(enumDefaultValue(f), 10)
 	}
 	return "None"
 }
@@ -1183,6 +1270,15 @@ func intRange(f *ir.Field) (lo, hi string) {
 		}
 	case ir.TBits:
 		return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)).String()
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			// the value is the variant's ordinal, 0 for the implicit None
+			return "0", strconv.FormatInt(ref.Max, 10)
+		case *ir.Flags:
+			// a file carries a mask whole, so its width is the u64's own
+			return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)).String()
+		}
 	}
 	return widthRange(f.Type.Width, f.Type.Signed)
 }
