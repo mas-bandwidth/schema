@@ -193,6 +193,7 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 			{Name: "health", Type: ir.FieldType{Kind: ir.TInt, Width: 16, Signed: true}},
 			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
 		}}},
+		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}},
 		{"union", &ir.Union{Name: "Event"}},
 	}
 	for _, c := range generates {
@@ -207,7 +208,6 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 		decl ir.Decl
 		want string
 	}{
-		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
 		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16}}}}, "uses fixed"},
 		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}, "uses float32"},
 		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}, "uses float64"},

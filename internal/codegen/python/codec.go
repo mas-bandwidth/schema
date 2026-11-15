@@ -110,6 +110,8 @@ func fieldKind(f *ir.Field) string {
 			return "int"
 		}
 		return ""
+	case ir.TBits:
+		return "bits"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -747,6 +749,8 @@ func (m *pyModule) fieldBits(f *ir.Field, seen map[string]bool) int64 {
 		if f.HasIntRange {
 			return rangeBits64Big(f.IntMin, f.IntMax)
 		}
+		return int64(f.Type.Width)
+	case ir.TBits:
 		return int64(f.Type.Width)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

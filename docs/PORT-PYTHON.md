@@ -471,12 +471,13 @@ the core stands against the P4 row; the rules of this page are unchanged.
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
   readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
-  ranged), enums, flags, types by value, unions, and `if`/`else` branches. A
-  field or item of any other kind (`bits`, `fixed`, `float32`, `float64`,
-  `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
-  integer) is refused at generate time by its kind, naming P4 the packet
-  wire. The class surface knows how to birth and compare those kinds already;
-  only their wire emitters are still to come.
+  ranged, serialized as an offset from the declared minimum), `bits(N)`,
+  enums, flags, types by value, unions, and `if`/`else` branches. A field or
+  item of any other kind (`fixed`, `float32`, `float64`, `string`, `bytes`,
+  an array, `const`, `reserved`, `align`, or a 128-bit integer) is refused at
+  generate time by its kind, naming P4 the packet wire. The class surface
+  knows how to birth and compare those kinds already; only their wire
+  emitters are still to come.
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and

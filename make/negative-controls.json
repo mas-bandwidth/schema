@@ -3235,6 +3235,15 @@
         "python-packet-core-negative-control"
       ],
       "python": "pin"
+    },
+    {
+      "name": "python-packet-ranged-bits",
+      "when": "pull-request",
+      "why": "the ranged integer and bits kinds' control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ProbeBits reader lands its first bits field one too low and TestPythonPacketRangedBitsNegativeControl must go red on the write-back marker. One SCHEMA_SLOW go test under the pinned interpreter, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-packet-ranged-bits-negative-control"
+      ],
+      "python": "pin"
     }
   ],
   "excluded": [

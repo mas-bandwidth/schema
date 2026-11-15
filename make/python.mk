@@ -28,6 +28,13 @@ update-goldens-python: ;
 python-packet-core-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
 
+# python-packet-ranged-bits-negative-control: the ranged integer and bits
+# kinds' control. It edits a COPY of the generated ProbeBits reader so its
+# first bits field lands one too low, and requires
+# TestPythonPacketRangedBitsNegativeControl to find the write-back marker red.
+python-packet-ranged-bits-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketRangedBitsNegativeControl' ./internal/codegen/python/
+
 # build/schema-python is the tagged compiler the conformance tree is generated
 # with; the ordinary bin/schema does not carry the target until the packet
 # layer drops the tag.
