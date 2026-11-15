@@ -1044,21 +1044,23 @@ final class TableWireReader {
     return b;
   }
 
-  // _placedNode is true for a node record the node table scan placed: a
-  // table this root can name, or a blob of a kind some pointer below the root
-  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
-  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
-  // other record — counted unknown, or a refused text blob — is an empty node.
+  // _placedNode is true for a node record whose type this reader can name: a
+  // table the unit declares, or one of the two reserved blob ids (docs/
+  // SPEC-TABLES.md §2.5, §3.1). A record of a type the unit does not declare,
+  // or a refused text blob, is an empty node: it counts one unknown and every
+  // pointer naming it reads null. A placed record of any other type under a
+  // slot is a wrong-type pointer target and refuses the load.
   bool _placedNode(int typeId) =>
       knownTypes.contains(typeId) ||
-      (typeId == _kStringBlobId && stringBlob) ||
-      (typeId == _kBytesBlobId && bytesBlob);
+      typeId == _kStringBlobId ||
+      typeId == _kBytesBlobId;
 
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
   // own type. A record is decoded once and stored before its body is read, so
-  // a second slot names the same object. A type this reader cannot place, or
-  // a type other than the field's target, is a kind mismatch and reads null.
+  // a second slot names the same object. A record of a type this reader cannot
+  // name reads null; one of a type it names that is not the field's target is
+  // a wrong-type pointer target and refuses the whole load.
   Object? resolveTable(int idx, int wantType) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
