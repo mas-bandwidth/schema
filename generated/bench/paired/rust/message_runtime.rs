@@ -183,7 +183,7 @@ impl<'a> TableVocabulary<'a> {
     /// THE ENTRY a reference names, counted from 1 (§3.3): one array index, no
     /// parse and no branch. Reference 0 names no entry.
     pub fn entry(&self, reference: u64) -> Option<&TableMessageEntry> {
-        if reference == 0 || reference as usize > self.count {
+        if reference == 0 || reference > self.count as u64 {
             return None;
         }
         Some(&self.entries[reference as usize - 1])
@@ -282,7 +282,7 @@ fn announce_read_once(
         report.damaged = true;
         return false;
     }
-    let end = data.len() - 8 - (trailer_count as usize) * 8;
+    let end = data.len() - 8 - (trailer_count * 8) as usize;
     // "a table carrying one id twice" is the whole wire malformed (§3.3),
     // proved with the open-addressing probe over a fixed 8192-slot stack table
     // rather than a pairwise scan (§3).
@@ -337,7 +337,7 @@ fn announce_read_once(
             report.damaged = true;
             return false;
         }
-        let id = read_u64(data, end + ((reference - 1) as usize) * 8);
+        let id = read_u64(data, end + ((reference - 1) * 8) as usize);
         let kind = body[at];
         at += 1;
         if id == TABLE_BUILD_VERSION_FIELD_ID {

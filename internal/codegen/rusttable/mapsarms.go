@@ -715,7 +715,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%sfor _ in 0..count {\n", i4)
 	i5 := i4 + "    "
 	fmt.Fprintf(b, "%slet Some(kref) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
-	fmt.Fprintf(b, "%sif kref == 0 || *off > sub || kref as usize > ids.len() { report.damaged = true; break; }\n", i5)
+	fmt.Fprintf(b, "%sif kref == 0 || *off > sub || kref > ids.len() as u64 { report.damaged = true; break; }\n", i5)
 	fmt.Fprintf(b, "%slet kid = ids[kref as usize - 1];\n", i5)
 	fmt.Fprintf(b, "%sif seen_keys.contains(&kid) { report.damaged = true; } else { seen_keys.push(kid); }\n", i5)
 	fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
@@ -839,7 +839,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%swhile let Some(kref) = leb_read(wire, &mut scan_off) {\n", i5)
 	i6 := i5 + "    "
 	fmt.Fprintf(b, "%sif kref == 0 { scan_ok = scan_off == eend; break; }\n", i6)
-	fmt.Fprintf(b, "%sif kref as usize > ids.len() || scan_off >= eend { break; }\n", i6)
+	fmt.Fprintf(b, "%sif kref > ids.len() as u64 || scan_off >= eend { break; }\n", i6)
 	fmt.Fprintf(b, "%slet kid = ids[kref as usize - 1];\n", i6)
 	fmt.Fprintf(b, "%slet kkind = wire[scan_off]; scan_off += 1;\n", i6)
 	fmt.Fprintf(b, "%sif kid == 0x%016x {\n", i6, ir.MapKeyWireId)
@@ -940,7 +940,7 @@ func (g *gen) emitUnionDecode(b *strings.Builder, f *ir.Field, field, bound stri
 	fmt.Fprintf(b, "%slet Some(aref) = leb_read(wire, off) else { report.damaged = true; return false; };\n", ind)
 	fmt.Fprintf(b, "%sif *off > %s { report.damaged = true; return false; }\n", ind, bound)
 	fmt.Fprintf(b, "%sif aref == 0 { %s = %s::None; }\n", ind, field, un.Name)
-	fmt.Fprintf(b, "%selse if aref as usize > ids.len() { report.damaged = true; return false; }\n", ind)
+	fmt.Fprintf(b, "%selse if aref > ids.len() as u64 { report.damaged = true; return false; }\n", ind)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%slet aid = ids[aref as usize - 1];\n", in)

@@ -357,7 +357,7 @@ impl IdTable {
 /// table's kth entry; reference 0 names no id; a reference past the table is
 /// None and the caller counts malformed.
 pub fn ref_id(ids: &[u64], r: u64) -> Option<u64> {
-    if r == 0 {
+    if r == 0 || r > ids.len() as u64 {
         return None;
     }
     ids.get(r as usize - 1).copied()
@@ -552,7 +552,7 @@ impl TableNodeReader {
                 Some(declared) => {
                     while off < sub {
                         let Some(tref) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
-                        if tref == 0 || tref as usize > ids.len() { scan_ok = false; break; }
+                        if tref == 0 || tref > ids.len() as u64 { scan_ok = false; break; }
                         let Some(bl) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if off > sub || bl > (sub - off) as u64 { scan_ok = false; break; }
                         let type_id = ids[tref as usize - 1];
@@ -753,11 +753,11 @@ impl TableNodeReader {
 
     fn note_pointer_edge(&mut self, index: u64, report: &mut TableReport) {
         if !self.good || index == 0 { return; }
-        let target = (index - 1) as usize;
-        if target >= self.wire_edges.len() {
+        if index - 1 >= self.wire_edges.len() as u64 {
             report.damaged = true;
             return;
         }
+        let target = (index - 1) as usize;
         let owner = self.wire_edge_owner;
         if owner < self.wire_edges.len() {
             self.wire_edges[owner].push(target);
@@ -786,7 +786,7 @@ impl TableNodeReader {
         match kind {
             30 => {
                 let Some(r) = leb_read(payload, &mut off) else { report.damaged = true; return; };
-                if off != payload.len() || r as usize > ids.len() { report.damaged = true; }
+                if off != payload.len() || r > ids.len() as u64 { report.damaged = true; }
             }
             17 => {
                 let Some(index) = leb_read(payload, &mut off) else { report.damaged = true; return; };
@@ -821,7 +821,7 @@ impl TableNodeReader {
             32 => { if !content.is_empty() { report.damaged = true; } }
             30 => {
                 let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
-                if off != content.len() || r as usize > ids.len() { report.damaged = true; }
+                if off != content.len() || r > ids.len() as u64 { report.damaged = true; }
             }
             17 => {
                 let Some(index) = leb_read(content, &mut off) else { report.damaged = true; return; };
@@ -876,7 +876,7 @@ impl TableNodeReader {
                 let mut seen_keys: Vec<u64> = Vec::new();
                 for _ in 0..count {
                     let Some(kref) = leb_read(content, &mut off) else { report.damaged = true; return; };
-                    if kref == 0 || kref as usize > ids.len() { report.damaged = true; return; }
+                    if kref == 0 || kref > ids.len() as u64 { report.damaged = true; return; }
                     let kid = ids[kref as usize - 1];
                     if seen_keys.contains(&kid) { report.damaged = true; return; }
                     seen_keys.push(kid);
@@ -895,7 +895,7 @@ impl TableNodeReader {
                     if off != content.len() { report.damaged = true; }
                     return;
                 }
-                if aref as usize > ids.len() || off >= content.len() { report.damaged = true; return; }
+                if aref > ids.len() as u64 || off >= content.len() { report.damaged = true; return; }
                 let akind = content[off]; off += 1;
                 let Some(al) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if off > content.len() || al != (content.len() - off) as u64 { report.damaged = true; return; }
@@ -915,11 +915,11 @@ impl TableNodeReader {
             if want != self.root_type { report.damaged = true; return None; }
             return Some(0);
         }
-        let k = (index - 2) as usize;
         if index - 2 >= self.slots.len() as u64 {
             report.damaged = true;
             return None;
         }
+        let k = (index - 2) as usize;
         match &self.slots[k] {
             TableNodeSlot::Null => {
                 if self.blob_named.len() < self.slots.len() {
@@ -1118,9 +1118,8 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         }
         12 | 13 | 14 | 16 | 31 | 32 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
-            let n = n as usize;
-            if *off > end || n > end - *off { return false; }
-            *off += n;
+            if *off > end || n > (end - *off) as u64 { return false; }
+            *off += n as usize;
             true
         }
         15 => {
@@ -1129,9 +1128,8 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
             if *off >= end { return false; }
             *off += 1;
             let Some(n) = leb_read(bounded, off) else { return false; };
-            let n = n as usize;
-            if *off > end || n > end - *off { return false; }
-            *off += n;
+            if *off > end || n > (end - *off) as u64 { return false; }
+            *off += n as usize;
             true
         }
         _ => false,
@@ -1332,7 +1330,7 @@ impl<'a> RetainCur<'a> {
 /// drops the record. It reads kind bytes, lengths and references and nothing
 /// else, so no value is decoded and no bound is checked.
 fn retain_id(ids: &[u64], r: u64, bad: &mut bool) -> u64 {
-    if r == 0 || r as usize > ids.len() {
+    if r == 0 || r > ids.len() as u64 {
         *bad = true;
         return 0;
     }

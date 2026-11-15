@@ -500,7 +500,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                     let Some(vref) = leb_read(wire, off) else { report.damaged = true; return false; };
                     if *off > end { report.damaged = true; return false; }
                     v.weapon = if vref == 0 { MixedWeapon::None }
-                    else if vref as usize > ids.len() { report.damaged = true; return false; }
+                    else if vref > ids.len() as u64 { report.damaged = true; return false; }
                     else {
                         match ids[vref as usize - 1] {
                             0xa790eee12766cf0c => MixedWeapon::Fists,
