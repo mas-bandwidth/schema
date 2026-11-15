@@ -19,12 +19,24 @@ export const FlatReadSlack = 8;
 // must hold RenderSpriteMaxBytes.
 export function WriteRenderSpriteFlat(view, value) {
   let v = 0, lo = 0;
+  if (typeof value.sortKey !== "bigint" || value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.sortKey, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
+  if (!Number.isInteger(value.meshId) || value.meshId < 0 || value.meshId > 4294967295) { // a bare integer must fit its width
+    return -1;
+  }
+  if (!Number.isInteger(value.materialId) || value.materialId < 0 || value.materialId > 4294967295) { // a bare integer must fit its width
+    return -1;
+  }
   view.setUint32(8, (((value.meshId) >>> 0)), true);
+  if (!Number.isInteger(value.layer) || value.layer < 0 || value.layer > 255) { // a bare integer must fit its width
+    return -1;
+  }
   view.setUint32(12, (((value.materialId) >>> 0)), true);
   if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return -1;
@@ -115,6 +127,12 @@ export function ReadRenderSpriteFlatBits(view, numBits, value) {
 // must hold RenderBlockMaxBytes.
 export function WriteRenderBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
+    return -1;
+  }
+  if (!Number.isInteger(value.spriteCountHint) || value.spriteCountHint < 0 || value.spriteCountHint > 4294967295) { // a bare integer must fit its width
+    return -1;
+  }
   view.setUint32(0, (((value.workerIndex) >>> 0)), true);
   if (!Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
@@ -125,6 +143,9 @@ export function WriteRenderBlockFlat(view, value) {
   sb = 7;
   for (let i0 = 0; i0 < value.spritesCount; i0++) {
     const e0 = value.sprites[i0];
+    if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+      return -1;
+    }
     SC.setBigUint64(0, e0.sortKey, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -144,6 +165,12 @@ export function WriteRenderBlockFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+    if (!Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
+      return -1;
+    }
+    if (!Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
+      return -1;
+    }
     v = (((e0.meshId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -152,6 +179,9 @@ export function WriteRenderBlockFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
+      return -1;
     }
     v = (((e0.materialId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
