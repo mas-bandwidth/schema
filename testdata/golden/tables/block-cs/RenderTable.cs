@@ -3699,6 +3699,7 @@ namespace Blockdemo
 
         public static long RenderCameraFixedSave(ReadOnlySpan<RenderCamera> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCameraFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCameraFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -3830,7 +3831,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -4386,6 +4387,7 @@ namespace Blockdemo
 
         public static long RenderShipFixedSave(ReadOnlySpan<RenderShip> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderShipFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderShipFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -4521,7 +4523,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5034,6 +5036,7 @@ namespace Blockdemo
 
         public static long RenderTurretFixedSave(ReadOnlySpan<RenderTurret> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderTurretFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderTurretFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -5169,7 +5172,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5694,6 +5697,7 @@ namespace Blockdemo
 
         public static long RenderMissileFixedSave(ReadOnlySpan<RenderMissile> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderMissileFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderMissileFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -5829,7 +5833,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -6357,6 +6361,7 @@ namespace Blockdemo
 
         public static long RenderDynamicPropFixedSave(ReadOnlySpan<RenderDynamicProp> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderDynamicPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderDynamicPropFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -6492,7 +6497,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -7021,6 +7026,7 @@ namespace Blockdemo
 
         public static long RenderStaticPropFixedSave(ReadOnlySpan<RenderStaticProp> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderStaticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderStaticPropFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -7156,7 +7162,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -7692,6 +7698,7 @@ namespace Blockdemo
 
         public static long RenderCosmeticPropFixedSave(ReadOnlySpan<RenderCosmeticProp> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCosmeticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCosmeticPropFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -7827,7 +7834,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -8338,6 +8345,7 @@ namespace Blockdemo
 
         public static long RenderLaserFixedSave(ReadOnlySpan<RenderLaser> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderLaserFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderLaserFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -8473,7 +8481,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -8999,6 +9007,7 @@ namespace Blockdemo
 
         public static long RenderExplosionFixedSave(ReadOnlySpan<RenderExplosion> values, Span<byte> buffer)
         {
+            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderExplosionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderExplosionFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -9134,7 +9143,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
+            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
