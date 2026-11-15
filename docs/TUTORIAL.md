@@ -3650,7 +3650,9 @@ GameConfig.json
 `unpack` prunes files it owns and did not write, so a deleted field's stale
 `.json` cannot haunt the tree.
 
-Both verbs are strict by default, and any non-silent report is a nonzero exit.
+Both verbs read strictly, and a refusal is a nonzero exit; a report that counts
+only lawful evolution — an unknown field from a newer writer, a widening — exits
+0.
 Tune a Freighter badly:
 
 ```
@@ -3660,13 +3662,12 @@ $ cat tree/ships/Freighter.json
 }
 $ schema pack --root GameConfig --out packed2.bin tree .
 report: unknown 0, kind_mismatch 1, clamped 0, duplicate 0, malformed false
-schema: the report is not silent — pass --tolerate to accept it
 $ echo $?
 1
 ```
 
 A string where a float belongs is a kind mismatch, and your CI stops until
-someone fixes the text or explicitly tolerates it. JSON has one number type, so
+someone fixes the text. JSON has one number type, so
 `2` and `2.0` both read into an integer field, a genuinely fractional value
 into an integer field is a mismatch, and `1.2.3` is malformed. Numbers never
 get quietly mangled.
@@ -4929,8 +4930,9 @@ $ schema generate --lang cpp --out gen . --verbose
 schema: stat --verbose: no such file or directory
 ```
 
-`pack`, `unpack` and `cook` exit nonzero on any non-silent report, `--tolerate`
-accepts it, and `--verbose` prints it regardless.
+`pack`, `unpack` and `cook` exit nonzero when their read refuses the input,
+a report that counts only lawful evolution exits 0, and `--verbose` prints the
+report either way.
 
 When something refuses and you want to know which schema fact is in play,
 `schema projection` for packets and `schema build-version --facts` for tables,

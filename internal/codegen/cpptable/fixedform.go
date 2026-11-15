@@ -645,6 +645,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("inline int64_t %sFixedSave( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    const int64_t need = %sFixedMeasure( count );\n", st.Name)
 	g.pf("    if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// the header and the layout are never written with no record behind them.
+	// The write contract is a DEBUG assert by rule (docs/rulings.json
+	// write-refusal), as the leg's other write checks are.
+	g.pf("    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)\n")
 	if g.writeAdmits(st) != "" {
 		g.pf("    for ( int64_t k = 0; k < count; ++k )\n    {\n")
 		g.emitWriteAssert(st, "values[k]", "        ")
@@ -800,7 +805,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // the identity lane is a plan too, and a caller's short plan owes the\n")
 	g.pf("    // same name there as it does for a lineage entry.\n")
 	g.pf("    if ( entry_count > plan_capacity )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::plan_too_large;\n        return -1;\n    }\n")
-	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §3.4,
+	// §22.6; docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout
+	// followed by no record is `truncated`, never a batch of none.
+	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::batch_too_large;\n        return -1;\n    }\n")
 	g.pf("    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own\n")

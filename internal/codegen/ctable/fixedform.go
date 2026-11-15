@@ -686,6 +686,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	g.pf("    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):\n")
+	g.pf("       the header and layout are never written with no record behind them, and\n")
+	g.pf("       an empty batch is the programmer's error, held as a debug assert (§5.1). */\n")
+	g.pf("    schema_assert( count > 0 );\n")
 	if a := g.writeAdmits(st); a != "" {
 		g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 		g.pf("        schema_assert( %s( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */\n    }\n", a)
@@ -839,10 +843,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    }\n")
 	}
 	// STEPS 9 and 10.
-	g.pf("    /* 9 and 10. the tail must be whole records, and they must fit the caller. */\n")
+	g.pf("    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be\n")
+	g.pf("       whole records, and they must fit the caller. */\n")
 	g.pf("    at = layout + layout_bytes;\n")
 	g.pf("    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
-	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
+	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
 	// STEP 11.

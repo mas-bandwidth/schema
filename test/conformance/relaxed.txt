@@ -170,7 +170,6 @@ moo json-hostile str-zero-escape-unknown-key relax/hostile-rows-moo
 rust json-hostile base64-unpadded relax/hostile-rows-rust
 rust json-hostile str-zero-escape-unknown-key relax/hostile-rows-rust
 squirrel json-hostile base64-unpadded relax/hostile-rows-squirrel
-squirrel json-hostile str-zero-escape-unknown-key relax/hostile-rows-squirrel
 c write-refusal-json jref_zero_byte relax/hostile-rows-c
 cpp write-refusal-json jref_zero_byte relax/hostile-rows-cpp
 cs write-refusal-json jref_zero_byte relax/hostile-rows-cs

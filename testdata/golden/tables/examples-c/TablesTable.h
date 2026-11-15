@@ -582,11 +582,11 @@ static SCHEMA_UNUSED int tabledemo_table_skip_framed( tabledemo_table_reader_t s
         case 12: return tabledemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return tabledemo_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && tabledemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             tabledemo_table_reader_t rr = sub;
-            return tabledemo_table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && tabledemo_table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -676,14 +676,17 @@ static SCHEMA_UNUSED int tabledemo_table_skip_value( tabledemo_table_reader_t * 
             if ( !tabledemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = tabledemo_table_reader_get8( r );
             if ( !tabledemo_table_reader_span( r, &arm ) ) { return 0; }
-            return tabledemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && tabledemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return tabledemo_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             tabledemo_table_reader_t sub;
             if ( !tabledemo_table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && tabledemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && tabledemo_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return tabledemo_table_skip_framed( sub, kind, nodes, depth );
         }
         default:
@@ -3487,6 +3490,7 @@ typedef struct tabledemo_table_node_map_t
     int good, arena, refused, cycle_indices;
     tabledemo_table_sink_t * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
+    int ( *declared )( uint64_t type_id ); /* a type this reader declares (§3.1) */
 } tabledemo_table_node_map_t;
 
 static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_node_map_t * nodes, tabledemo_table_ref_t * slot,
@@ -3497,7 +3501,14 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
     if ( index == 0 || nodes == NULL || !nodes->good ) { return; }
     if ( index > nodes->count ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return; }
     entry = &nodes->entries[index-1];
-    if ( entry->offset == UINT64_MAX ) { return; }
+    /* a node this root does not place reads null when its type is one this
+       reader cannot name; naming a type it DOES declare that is not the
+       slot's target is damage (docs/SPEC-TABLES.md §3.1) */
+    if ( entry->offset == UINT64_MAX )
+    {
+        if ( nodes->declared != NULL && nodes->declared( entry->type_id ) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        return;
+    }
     if ( entry->type_id != target ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return; }
     if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
     {
@@ -3569,6 +3580,12 @@ static SCHEMA_UNUSED int tabledemo_table_node_scan_next( tabledemo_table_node_sc
     if ( !tabledemo_table_reader_leb(&scan->payload,&ref) || ref == 0 || ref > scan->payload.id_count ||
          !tabledemo_table_reader_span(&scan->payload,body) ) { scan->damaged = 1; return 0; }
     *type_id = tabledemo_table_reader_id_at(&scan->payload,ref); scan->records++;
+    /* A RECORD'S TYPE MAY NOT NAME A RESERVED ID (docs/SPEC-TABLES.md §3.1,
+       §3.3): the node table, build version and vocabulary ids are transport,
+       never a record's type, so a reserved id in the TYPE position is
+       damage and the whole load refuses. The two blob type ids are a blob
+       record's lawful type (§2.5). */
+    if ( *type_id == UINT64_MAX || *type_id == UINT64_MAX - 1 || *type_id == UINT64_MAX - 2 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -3596,6 +3613,7 @@ static SCHEMA_UNUSED void tabledemo_table_mark_body( tabledemo_table_reader_t r,
 static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
 {
     uint8_t elem_kind; uint64_t count, i;
+    if ( depth > 128 ) { return; }
     switch ( kind )
     {
         case 13: tabledemo_table_mark_body( sub, named, records, depth ); return;
@@ -3603,13 +3621,18 @@ static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t 
             if ( sub.size < 2 ) { return; }
             elem_kind = tabledemo_table_reader_get8( &sub );
             if ( !tabledemo_table_reader_leb( &sub, &count ) ) { return; }
+            if ( count > 2147483647ull ) { return; }
+            if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
             for ( i = 0; i < count; i++ )
             {
+                int64_t before = sub.offset;
                 if ( kind == 14 ) { tabledemo_table_mark_value( &sub, elem_kind, named, records, depth ); }
-                else { uint64_t key; tabledemo_table_reader_t elem; if ( !tabledemo_table_reader_leb( &sub, &key ) || !tabledemo_table_reader_span( &sub, &elem ) ) { return; } tabledemo_table_mark_framed( elem, elem_kind, named, records, depth ); }
+                else { uint64_t key; tabledemo_table_reader_t elem; if ( !tabledemo_table_reader_leb( &sub, &key ) || !tabledemo_table_reader_span( &sub, &elem ) ) { return; } tabledemo_table_mark_framed( elem, elem_kind, named, records, depth + 1 ); }
+                if ( sub.offset == before ) { return; }
             }
             return;
         case 15: { tabledemo_table_reader_t rr = sub; tabledemo_table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: tabledemo_table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }
@@ -3650,6 +3673,7 @@ static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t *
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: return;
             }
+            if ( !tabledemo_table_reader_has( r, width ) ) { r->offset = r->size; return; }
             r->offset += width;
             return;
         }
@@ -4500,10 +4524,20 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int tabledemo_table_message_skip_body(tabledemo_table_message_reader_t * r)
 {
+ uint8_t seen[512];
+ /* one bit a reference, as the file form's body skip keeps */
  if(r->skip_depth>128)return 0;
+ memset(seen,0,sizeof(seen));
  for(;;) {const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
+     reference is bounded where the file form bounds it, so the bitset fits. */
+  ref=entry-r->vocabulary->entries+1;
+  if(ref<1||ref>4096)return 0;
+  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
   if(!tabledemo_table_message_skip(r,entry))return 0;
  }
 }
@@ -4519,6 +4553,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
 {
  uint64_t n,i;
  const tabledemo_table_message_entry_t * entry;
+ const uint8_t * text;
  int saved,ok;
  if(r->skip_depth>128)return 0;
  switch(e->kind) {
@@ -4535,23 +4570,68 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
  case 12:
+  /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
+     is inside the announced bound and its bytes are well-formed UTF-8 with no
+     zero byte. table_wire_utf8 is the check a named read applies. */
   if(!tabledemo_table_bit_get(&r->bits,&n,tabledemo_table_bits_required(0,e->max))||!tabledemo_table_bit_align_read(&r->bits))return 0;
-  return tabledemo_table_message_skip_run(r,n,8);
+  if(n>(uint64_t)e->max || n>INT64_MAX/8 || !tabledemo_table_bit_has(&r->bits,(int64_t)n*8))return 0;
+  text=r->bits.buffer+(r->bits.offset>>3);
+  if(!tabledemo_table_wire_utf8(text,n))return 0;
+  r->bits.offset+=(int64_t)n*8;
+  return 1;
  case 31:
   if(!tabledemo_table_bit_align_read(&r->bits)||!tabledemo_table_bit_get(&r->bits,&n,32))return 0;
   return tabledemo_table_message_skip_run(r,n,8);
+ case 10:
+  /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+     (§3.3): the same raw-bits rule a named float read applies. */
+  if(!tabledemo_table_bit_get(&r->bits,&n,e->value_bits))return 0;
+  if(e->packing==2)return n<=(uint64_t)e->qcount;
+  return tabledemo_table_bits_finite32((uint32_t)n);
+ case 11:
+  if(!tabledemo_table_bit_get(&r->bits,&n,64))return 0;
+  return tabledemo_table_bits_finite64(n);
  case 14:case 16: {
   tabledemo_table_message_entry_t elem=tabledemo_table_message_element(e);
   if(!tabledemo_table_message_count(r,e,&n))return 0;
-  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
-   int64_t width=elem.value_bits>0?elem.value_bits:0;
-   if(e->kind==16)width+=r->vocabulary->ref_bits;
-   return tabledemo_table_message_skip_run(r,n,width);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
+  if(n>(uint64_t)e->max)return 0;
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
+     a quantized element carries a value condition, so it is walked; a keyed
+     entry carries a key reference, so it is walked too. */
+  if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
+   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
+    return tabledemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
-  for(i=0;i<n;i++) {
-   if(e->kind==16 && !tabledemo_table_message_ref(r,&entry,1))return 0;
-   if(!tabledemo_table_message_skip_deeper(r,&elem))return 0;
-  }return 1;
+  {
+   uint8_t seen[512];
+   int64_t before;
+   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
+   if(e->kind==16)memset(seen,0,sizeof(seen));
+   for(i=0;i<n;i++) {
+    before=r->bits.offset;
+    if(e->kind==16) {
+     int64_t key;
+     if(!tabledemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
+     key=entry-r->vocabulary->entries+1;
+     if(key<1||key>4096)return 0;
+     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
+     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+    }
+    /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
+       its own value conditions at the array body's level; only a string, a
+       table, a nested array or keyed body, a union or an enum is walked one
+       level deeper. */
+    if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
+     if(!tabledemo_table_message_skip(r,&elem))return 0;
+    } else if(!tabledemo_table_message_skip_deeper(r,&elem))return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
+    if(r->bits.offset==before)return 0;
+   }
+   return 1;
+  }
  }
  default:return e->value_bits>=0 && tabledemo_table_bit_skip(&r->bits,e->value_bits);
  }
@@ -4712,7 +4792,11 @@ static SCHEMA_UNUSED int schema_tabledemo_table_cook_text_(tabledemo_table_numbe
 #ifndef SCHEMA_TABLEDEMO_TABLE_RETAIN_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_RETAIN_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_RETAIN_DEPTH_MAX 7
-#define SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX 64
+/* THE RESOLVING WALK HOLDS §4's ONE NESTING BOUND (docs/SPEC-TABLES.md §4,
+   §6.6 retain_walk_depth): the depth a walk passes is the level of the
+   payload holding a frame; a table, array or keyed body is one level deeper,
+   and a union is a level when its arm is structural. 128 levels pass. */
+#define SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX 128
 #define SCHEMA_TABLEDEMO_TABLE_RETAIN_HEADER 26
 
 typedef struct tabledemo_table_retain_id_t { uint64_t id; int32_t slot; } tabledemo_table_retain_id_t;
@@ -4924,8 +5008,11 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_content(tabledemo_table_retai
 {
  int64_t end;
  tabledemo_table_reader_t * r=&s->input;
- if(depth>SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX||!tabledemo_table_reader_has(r,length))return 0;
+ if(!tabledemo_table_reader_has(r,length))return 0;
  end=r->offset+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+ }depth++;
+ }
  switch(kind){
  case 13:for(;;){uint64_t ref;
  int64_t mark=r->offset;
@@ -4944,7 +5031,7 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_content(tabledemo_table_retai
  elem=tabledemo_table_reader_get8(r);
  if(!tabledemo_table_retain_raw(s,&elem,1)||!tabledemo_table_reader_leb(r,&n)||!tabledemo_table_retain_leb(s,n))return 0;
  for(i=0;i<n;i++){if(kind==16){uint64_t bytes;
- if(!tabledemo_table_retain_in_ref(s,0)||!tabledemo_table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!tabledemo_table_retain_in_frame(s,elem,(int64_t)bytes,depth+1))return 0;
+ if(!tabledemo_table_retain_in_ref(s,0)||!tabledemo_table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!tabledemo_table_retain_in_frame(s,elem,(int64_t)bytes,depth))return 0;
  }else if(!tabledemo_table_retain_in_payload(s,elem,depth))return 0;
  if(r->offset>end)return 0;
  }break;
@@ -4979,7 +5066,7 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_payload(tabledemo_table_retai
  r->offset+=(int64_t)length;
  return 1;
  case 13:case 14:case 16:if(!tabledemo_table_reader_leb(r,&length)||!tabledemo_table_reader_room(r,length))return 0;
- return tabledemo_table_retain_in_frame(s,kind,(int64_t)length,depth+1);
+ return tabledemo_table_retain_in_frame(s,kind,(int64_t)length,depth);
  case 15:{uint64_t arm;
  uint8_t k;
  int64_t mark=r->offset;
@@ -4990,8 +5077,10 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_payload(tabledemo_table_retai
  if(!tabledemo_table_reader_has(r,1))return 0;
  k=tabledemo_table_reader_get8(r);
  if(!tabledemo_table_retain_raw(s,&k,1)||!tabledemo_table_reader_leb(r,&length)||!tabledemo_table_reader_room(r,length))return 0;
- return tabledemo_table_retain_in_frame(s,k,(int64_t)length,depth+1);
- }
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+  }depth++;
+  }return tabledemo_table_retain_in_frame(s,k,(int64_t)length,depth);
+  }
  case 30:return tabledemo_table_retain_in_ref(s,1);
  default:return 0;
  }
@@ -5117,8 +5206,11 @@ static SCHEMA_UNUSED int tabledemo_table_retain_out_frame(tabledemo_table_retain
 static SCHEMA_UNUSED int tabledemo_table_retain_out_content(tabledemo_table_retain_out_t * s,uint8_t kind,int64_t length,int32_t depth)
 {
  int64_t end;
- if(depth>SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX||length<0||length>s->size-s->at)return 0;
+ if(length<0||length>s->size-s->at)return 0;
  end=s->at+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+ }depth++;
+ }
  switch(kind){
  case 13:for(;;){uint64_t id;
  uint8_t k;
@@ -5135,7 +5227,7 @@ static SCHEMA_UNUSED int tabledemo_table_retain_out_content(tabledemo_table_reta
  if(s->at>=end)return 0;
  elem=s->input[s->at++];
  if(!tabledemo_table_retain_out_raw(s,&elem,1)||!tabledemo_table_retain_out_leb_read(s,&n)||!tabledemo_table_retain_out_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){if(!tabledemo_table_retain_out_ref(s)||!tabledemo_table_retain_out_frame(s,elem,depth+1))return 0;
+ for(i=0;i<n;i++){if(kind==16){if(!tabledemo_table_retain_out_ref(s)||!tabledemo_table_retain_out_frame(s,elem,depth))return 0;
  }else if(!tabledemo_table_retain_out_payload(s,elem,depth))return 0;
  }break;
  }
@@ -5159,7 +5251,7 @@ static SCHEMA_UNUSED int tabledemo_table_retain_out_payload(tabledemo_table_reta
  case 12:case 31:case 32:if(!tabledemo_table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!tabledemo_table_retain_out_leb(s,length)||!tabledemo_table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;
  s->at+=(int64_t)length;
  return 1;
- case 13:case 14:case 16:return tabledemo_table_retain_out_frame(s,kind,depth+1);
+ case 13:case 14:case 16:return tabledemo_table_retain_out_frame(s,kind,depth);
  case 15:{uint64_t arm;
  uint8_t k;
  if(s->size-s->at<8)return 0;
@@ -5168,8 +5260,10 @@ static SCHEMA_UNUSED int tabledemo_table_retain_out_payload(tabledemo_table_reta
  if(!arm)return 1;
  if(s->at>=s->size)return 0;
  k=s->input[s->at++];
- return tabledemo_table_retain_out_raw(s,&k,1)&&tabledemo_table_retain_out_frame(s,k,depth+1);
- }
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_TABLEDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+  }depth++;
+  }return tabledemo_table_retain_out_raw(s,&k,1)&&tabledemo_table_retain_out_frame(s,k,depth);
+  }
  case 30:return tabledemo_table_retain_out_ref(s);
  default:return 0;
  }
@@ -10323,6 +10417,10 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_save( const tabledemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
     for ( k = 0; k < count; ++k )
     {
         schema_assert( schema_tabledemo_weapon_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
@@ -10438,10 +10536,11 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_load( tabledemo_weapo
     { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = tabledemo_weapon_config_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -10805,6 +10904,10 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
     for ( k = 0; k < count; ++k )
     {
         schema_assert( schema_tabledemo_loadout_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
@@ -10920,10 +11023,11 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_load( tabledemo_load
     { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = tabledemo_loadout_config_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -11339,6 +11443,10 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
     for ( k = 0; k < count; ++k )
     {
         schema_assert( schema_tabledemo_profile_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
@@ -11454,10 +11562,11 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_load( tabledemo_prof
     { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = tabledemo_profile_config_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -12263,6 +12372,10 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_save( const tabledemo_r
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
     for ( k = 0; k < count; ++k )
     {
         schema_assert( schema_tabledemo_root_config_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
@@ -12378,10 +12491,11 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_load( tabledemo_root_co
     { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = tabledemo_root_config_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
