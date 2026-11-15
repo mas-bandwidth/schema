@@ -1044,7 +1044,7 @@
     {
       "name": "python-table-packet-types",
       "when": "pull-request",
-      "why": "the packet-type-by-value control (make/python.mk): the nested body's length the generated table writer emits is moved in a copy of the runtime, and TestPythonTablePacketTypesNegativeControl must go red on its byte compare against the Go engine's wire. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "why": "the packet-type controls (make/python.mk): the nested body's length the generated table writer emits is moved in a copy of the runtime, and TestPythonTablePacketTypesNegativeControl must go red on its byte compare against the Go engine's wire; a packet type no table reaches has its generated writer move a field in a copy of the module, and TestPythonTablePacketTypesLooseNegativeControl must go red on its byte compare against the Go reference's packet wire. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
       "targets": [
         "python-table-packet-types-negative-control"
       ],

@@ -6,8 +6,8 @@
 // The runtime lives under the generated package's _schema directory, one
 // module per field kind beside one dispatch table (runtime/_schema/kinds.py),
 // so a later card adds a kind module and one registration line rather than
-// editing the body walk. A field whose type is a packet type is refused by
-// name until the packet layer carries it.
+// editing the body walk. A field whose type is a packet type is carried by
+// value through the packet core's hosted classes (see Generate).
 package pythontable
 
 import (
@@ -34,14 +34,17 @@ var runtimeFS embed.FS
 // least one table. A table-free unit generates nothing here; the packet layer
 // owns its files.
 //
-// A table field, array element, map entry or union arm whose type is a packet
-// type is carried by value on the form-1 table wire through the packet core's
-// own generated classes and their serialize-runtime codec (docs/PORT-PYTHON.md,
+// A table field, array element or union arm whose type is a packet type is
+// carried by value on the form-1 table wire through the packet core's own
+// generated classes and their serialize-runtime codec (docs/PORT-PYTHON.md,
 // THE TABLE FRAME): the packet classes are emitted into the same per-file
-// module, the table runtime walks them as kind-13 bodies, and each one carries
-// the table descriptor that names it. A packet type whose own fields use a
-// packet kind the packet wire does not carry yet is refused by name, naming the
-// kind and the packet card, never the whole unit silently.
+// module, the table runtime walks them as kind-13 bodies, and each one a table
+// reaches carries the table descriptor that names it. A map entry is not
+// carried here: maps are refused by name until the maps card carries them.
+// Every packet type and packet union of the unit is emitted, reached by a
+// table or not, so nothing the unit declares is dropped. A packet type whose
+// own fields use a packet kind the packet wire does not carry yet is refused
+// by name, naming the kind and the packet card, never the whole unit silently.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
@@ -165,8 +168,9 @@ func closureUnions(u *ir.Unit) map[string]bool {
 }
 
 // filePlan is one schema file's generated module: the closure's tables and
-// table-side unions it declares, and the packet types and packet unions a
-// table closure reaches (hosted from the packet core).
+// table-side unions it declares, and every packet type and packet union it
+// declares (hosted from the packet core), whether a table reaches it or not.
+// Only the ones a table closure reaches carry a table descriptor.
 type filePlan struct {
 	base         string
 	tables       []*ir.Struct
@@ -177,9 +181,11 @@ type filePlan struct {
 
 // filePlans groups everything one generated module holds by the schema file
 // that declares it.
+//
+// A packet type or packet union no table reaches is still the unit's
+// declaration: it is hosted exactly as the packet leg emits it for a
+// packet-only unit, so nothing the unit declares is dropped.
 func filePlans(u *ir.Unit) []*filePlan {
-	closure := ir.TableClosure(u)
-	unions := closureUnions(u)
 	tablesByFile, unionsByFile := tableFiles(u)
 	byBase := map[string]*filePlan{}
 	get := func(base string) *filePlan {
@@ -200,15 +206,13 @@ func filePlans(u *ir.Unit) []*filePlan {
 		for _, d := range f.Decls {
 			switch d := d.(type) {
 			case *ir.Struct:
-				if !d.IsTable && closure[d.Name] {
+				if !d.IsTable {
 					plan := get(f.Base)
 					plan.packets = append(plan.packets, d)
 				}
 			case *ir.Union:
-				if unions[d.Name] {
-					plan := get(f.Base)
-					plan.packetUnions = append(plan.packetUnions, d)
-				}
+				plan := get(f.Base)
+				plan.packetUnions = append(plan.packetUnions, d)
 			}
 		}
 	}
@@ -229,19 +233,19 @@ func fileFor(u *ir.Unit, base string) *ir.File {
 	return &ir.File{Base: base}
 }
 
-// refuseUncarriedPacketKinds refuses the first packet type or packet union a
-// table closure reaches whose own fields use a packet kind the packet wire does
-// not carry yet (docs/PORT-PYTHON.md, THE TABLE FRAME). The refusal names the
-// type, the field and the kind, and the packet card that carries it.
+// refuseUncarriedPacketKinds refuses the first packet type or packet union the
+// unit declares, reached by a table or not, whose own fields use a packet kind
+// the packet wire does not carry yet (docs/PORT-PYTHON.md, THE TABLE FRAME).
+// Every one of them is hosted, so every one is held to the check. The refusal
+// names the type, the field and the kind, and the packet card that carries it.
 func refuseUncarriedPacketKinds(u *ir.Unit) error {
-	closure := ir.TableClosure(u)
-	names := make([]string, 0, len(closure))
-	for name := range closure {
+	names := make([]string, 0, len(u.Structs))
+	for name := range u.Structs {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		st := closureMember(u, name)
+		st := u.Structs[name]
 		if st == nil || st.IsTable {
 			continue
 		}
@@ -249,16 +253,12 @@ func refuseUncarriedPacketKinds(u *ir.Unit) error {
 			return packetKindRefusal(st.Name, field, kind)
 		}
 	}
-	unions := closureUnions(u)
 	unionNames := make([]string, 0, len(u.Unions))
 	for name := range u.Unions {
 		unionNames = append(unionNames, name)
 	}
 	sort.Strings(unionNames)
 	for _, name := range unionNames {
-		if !unions[name] {
-			continue
-		}
 		for _, v := range u.Unions[name].Variants {
 			if v.Void() {
 				continue
@@ -388,17 +388,13 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 	fmt.Fprintf(&b, "\"\"\"%s.schema: the generated packet and table classes and their descriptors.\"\"\"\n\n", plan.base)
 	b.WriteString("from __future__ import annotations\n\n")
 
+	// Every packet-side declaration of the file is hosted, reached by a table
+	// or not: File.Decls holds no table and no table union, so the packet
+	// core emits each one exactly as it does for a packet-only unit.
 	host := python.NewHost(u, fileFor(u, plan.base))
 	host.Emit(func(d ir.Decl) bool {
-		switch d := d.(type) {
-		case *ir.Const, *ir.Enum, *ir.Flags:
-			return true
-		case *ir.Struct:
-			return !d.IsTable && ir.TableClosure(u)[d.Name]
-		case *ir.Union:
-			return closureUnions(u)[d.Name]
-		}
-		return false
+		st, ok := d.(*ir.Struct)
+		return !ok || !st.IsTable
 	})
 	imports := host.Imports()
 
@@ -449,15 +445,24 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 
 	// The packet classes' own table descriptors and registrations come before
 	// the table classes, so a table descriptor whose default names a packet
-	// class meets it registered.
+	// class meets it registered. Only a packet type or union a table reaches
+	// carries one: the rest is the packet core's alone.
+	closure := ir.TableClosure(u)
+	closureUn := closureUnions(u)
 	packets := append([]*ir.Struct(nil), plan.packets...)
 	sort.Slice(packets, func(i, j int) bool { return packets[i].Name < packets[j].Name })
 	for _, st := range packets {
+		if !closure[st.Name] {
+			continue
+		}
 		emitTableDescriptor(&b, u, st, true)
 	}
 	packetUnions := append([]*ir.Union(nil), plan.packetUnions...)
 	sort.Slice(packetUnions, func(i, j int) bool { return packetUnions[i].Name < packetUnions[j].Name })
 	for _, un := range packetUnions {
+		if !closureUn[un.Name] {
+			continue
+		}
 		emitUnionDescriptor(&b, un)
 		fmt.Fprintf(&b, "register_union(%s)\n\n\n", un.Name)
 	}

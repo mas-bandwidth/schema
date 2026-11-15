@@ -314,9 +314,9 @@ generated class per table and per map entry, each with its descriptor
   variable class, and the by-value arrays and unions a packet type reaches
   (below). `*bytes`, `*string`, `?T`, `[E]T` and maps have descriptors in this
   cut and refuse by name through `kind_unsupported.py` until their cards land.
-- **A packet type is carried by value.** A table field, array element, map
-  entry or union arm whose type is a packet `type` is carried on the form-1
-  table wire as SPEC-TABLES states for a type by value: the field's descriptor
+- **A packet type is carried by value.** A table field, an array element or
+  a union arm whose type is a packet `type` is carried on the form-1 table
+  wire as SPEC-TABLES states for a type by value: the field's descriptor
   names the packet class, the field rides kind 13, and an array of the type
   rides kind 14 with element kind 13 (`kind_array.py`) while a union arm that
   holds it rides kind 15 (`kind_union.py`). The class itself is the packet
@@ -324,12 +324,20 @@ generated class per table and per map entry, each with its descriptor
   (`python.Host`), and the runtime ships the packet core's serialize.py beside
   the table runtime so that class's `read`/`write` still work. The table
   descriptor is the one the table walk reads; it is registered by name only,
-  because a packet type by value never rides the node table's type ids.
+  because a packet type by value never rides the node table's type ids. A
+  map entry is not among them: maps are refused by name in this cut (above),
+  and a map entry whose type is a packet type is carried by the maps card
+  (P6, variable tables).
+- **Nothing the unit declares is dropped.** In a unit with tables, every
+  packet type and packet union is generated, reached by a table or not,
+  through the same `python.Host`: the class and codec the packet leg emits
+  for a packet-only unit, in its file's module beside the tables, with no
+  second runtime. Only the ones a table reaches carry a table descriptor.
 - **An uncarried packet kind is refused by name.** A packet type or packet
-  union the table closure reaches whose own fields use a kind the PACKET wire
-  does not carry (a `string`, a `float32`, a fixed-point or 128-bit integer,
-  an array, ...) is refused at generate time, naming the type, the field, the
-  kind and P4 the packet wire. It is never a blanket refusal of the unit, so a
+  union of the unit, reached by a table or not, whose own fields use a kind
+  the PACKET wire does not carry (a `string`, a `float32`, a fixed-point or
+  128-bit integer, an array, ...) is refused at generate time, naming the
+  type, the field, the kind and P4 the packet wire. It is never a blanket refusal of the unit, so a
   unit is refused only for the packet kind that is still missing.
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet

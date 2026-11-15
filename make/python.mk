@@ -61,11 +61,13 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
-# The packet-type-by-value control: the nested body's length the generated
-# table writer emits is moved in a copy of the runtime, and the probe's byte
-# compare against the Go engine's wire must go red by name.
+# The packet-type controls: the nested body's length the generated table writer
+# emits is moved in a copy of the runtime, and the probe's byte compare against
+# the Go engine's wire must go red by name; and a packet type no table reaches
+# has its generated writer move a field in a copy of the module, and the probe's
+# byte compare against the Go reference's packet wire must go red by name.
 python-table-packet-types-negative-control:
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTablePacketTypesNegativeControl' ./internal/codegen/pythontable/ -count=1
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -run '^TestPythonTablePacketTypes(Loose)?NegativeControl$$' ./internal/codegen/pythontable/ -count=1
 
 generated/bench/tables/python/.stamp: ;
 
