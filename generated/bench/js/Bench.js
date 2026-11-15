@@ -1347,6 +1347,9 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;

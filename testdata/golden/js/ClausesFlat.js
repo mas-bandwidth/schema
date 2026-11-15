@@ -478,7 +478,7 @@ export function WriteW52Flat(view, value) {
   lo = (((value.itemsCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (value.items[i0] > 4503599627370495n) {
+    if (value.items[i0] < 0n || value.items[i0] > 4503599627370495n) {
       return -1;
     }
     SC.setBigUint64(0, value.items[i0], true);
@@ -605,7 +605,7 @@ export function WriteW50Flat(view, value) {
   lo = (((value.itemsCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (value.items[i0] > 1125899906842623n) {
+    if (value.items[i0] < 0n || value.items[i0] > 1125899906842623n) {
       return -1;
     }
     SC.setBigUint64(0, value.items[i0], true);

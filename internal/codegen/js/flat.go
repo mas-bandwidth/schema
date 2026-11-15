@@ -1275,21 +1275,11 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 }
 
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and
-// full-range unsigned): vacuous guard halves elided per the storage bounds
-// (the C# discipline), offset via asUintN.
+// full-range unsigned): BigInt has no storage bound, so both halves of the
+// declared range test are always live; offset via asUintN.
 func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
-	sMin, sMax := storageBoundsBig(f.Type)
-	guardLo := f.IntMin.Cmp(sMin) > 0
-	guardHi := f.IntMax.Cmp(sMax) < 0
-	switch {
-	case guardLo && guardHi:
-		g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
-	case guardLo:
-		g.guard(fmt.Sprintf("%s < %sn", name, f.IntMin.String()), "", ind)
-	case guardHi:
-		g.guard(fmt.Sprintf("%s > %sn", name, f.IntMax.String()), "", ind)
-	}
+	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 	off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {
 		off = name
