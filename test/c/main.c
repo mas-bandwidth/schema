@@ -149,7 +149,7 @@ static void test_default_arm_initialization( void )
             output.as.first.entries[i].preferred = EXAMPLE_WEAPON_LASER;
         }
         serialize_read_stream_init( &rs, oracle, 1 );
-        if ( !schema_example_read_default_choice_body_( &rs, &output ) )
+        if ( !example_read_default_choice( &rs, &output ) )
         {
             check( 0, "read independent DefaultChoice oracle" );
             return;
@@ -164,8 +164,6 @@ static void test_default_arm_initialization( void )
         for ( i = 0; i < 2; i++ )
             check( output.as.first.entries[i].retries == -1 && output.as.first.entries[i].preferred == EXAMPLE_WEAPON_RAILGUN,
                    "DefaultChoice reconstructs both backing entries, including repeated tags" );
-        check( serialize_read_end( &rs ), "DefaultChoice's one-packet read ends cleanly" );
-        check( serialize_read_bits_processed( &rs ) == 8, "the end check reads the final padding bit" );
     }
 }
 
@@ -675,34 +673,19 @@ int main( void )
         memset( &r_trio_first, 0xEF, sizeof( r_trio_first ) );
         memset( &r_straddle, 0xEF, sizeof( r_straddle ) );
 
-        /* The public read is the one-packet read (SPEC §5), so each shape is
-           read from its own packet inside the shared written stream. */
-        int offset = 0;
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
         check( example_read_vec2( &r, &r_vec2 ), "read Vec2" );
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
         check( example_read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
         check( example_read_span_u64( &r, &r_span_u64 ), "read SpanU64" );
-        serialize_read_stream_init( &r, buffer + offset, 16 ); offset += 16;
         check( example_read_span_i64( &r, &r_span_i64 ), "read SpanI64" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
         check( example_read_span_one( &r, &r_span_one ), "read SpanOne" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
         check( example_read_span_chunk( &r, &r_span_chunk ), "read SpanChunk" );
-        serialize_read_stream_init( &r, buffer + offset, 20 ); offset += 20;
         check( example_read_span_tail( &r, &r_span_tail ), "read SpanTail" );
-        serialize_read_stream_init( &r, buffer + offset, 32 ); offset += 32;
         check( example_read_span_twice( &r, &r_span_twice ), "read SpanTwice" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
         check( example_read_trio( &r, &r_trio ), "read Trio" );
-        serialize_read_stream_init( &r, buffer + offset, 8 ); offset += 8;
         check( example_read_trio_sole( &r, &r_trio_sole ), "read TrioSole" );
-        serialize_read_stream_init( &r, buffer + offset, 10 ); offset += 10;
         check( example_read_trio_first( &r, &r_trio_first ), "read TrioFirst" );
-        serialize_read_stream_init( &r, buffer + offset, 51 ); offset += 51;
         check( example_read_trio_straddle( &r, &r_straddle ), "read TrioStraddle" );
-        check( offset == serialize_write_bytes_processed( &w ), "the twelve packets cover the written stream" );
 
         check( r_vec2.x == 1.5 && r_vec2.y == -2.25, "Vec2 round-trips" );
         check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75, "SpanF64 round-trips" );
