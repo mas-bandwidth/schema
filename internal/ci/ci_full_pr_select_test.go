@@ -105,6 +105,7 @@ func TestCIFullPRSelectMatchesTheFastPlan(t *testing.T) {
 	for p := range strings.SplitSeq(csCase[1], "|") {
 		p = strings.TrimSuffix(p, "*")
 		p = strings.ReplaceAll(p, ".", `\.`)
+		p = strings.ReplaceAll(p, "*", "[^/]*") // an inner glob star
 		if !strings.HasSuffix(p, "/") {
 			p += "$"
 		}
