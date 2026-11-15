@@ -972,6 +972,49 @@ pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
     }
 }
 
+/// A kind whose domain is two's complement (§3.3).
+pub fn table_message_signed_kind(kind: u8) -> bool {
+    (2..=5).contains(&kind) || kind == 18 || (20..=24).contains(&kind)
+}
+
+/// A RANGED value's skip holds base plus offset to the kind's own domain, the
+/// bound a named read holds it to: the offset's bits can spell a value past the
+/// sender's range (§3.3). The base and the offset are added exactly as the
+/// named read adds them, the wide lo/hi included, and a width of zero still
+/// holds the base.
+pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s: &TableMessageShape) -> bool {
+    if width < 0 {
+        return false;
+    }
+    let width = width as u32;
+    let Some(mut lo) = r.get(core::cmp::min(width, 64)) else { return false };
+    let mut hi = if width > 64 {
+        match r.get(width - 64) {
+            Some(v) => v,
+            None => return false,
+        }
+    } else {
+        0
+    };
+    let offset = ((hi as u128) << 64) | lo as u128;
+    let bits = kind_bits(kind);
+    if table_message_signed_kind(kind) {
+        let base = table_message_signed(kind, s.base_lo, s.base_hi);
+        if offset > i128::MAX as u128 {
+            return false;
+        }
+        let Some(value) = base.checked_add(offset as i128) else { return false };
+        let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
+        let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
+        value >= bottom && value <= top
+    } else {
+        let base = table_message_unsigned(kind, s.base_lo, s.base_hi);
+        let Some(value) = base.checked_add(offset) else { return false };
+        let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
+        value <= top
+    }
+}
+
 /// One scalar by its shape (§3.3): the value bits, the ranged base added back,
 /// a quantized step mapped back onto its float32 range — all at the announced
 /// storage width, before the file form's clamps.
@@ -1117,45 +1160,43 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                     _ => {}
                 }
             }
-            let mut seen = [0u8; 512];
-            for i in 0..n {
-                if e.kind == 16 {
-                    // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND
-                    // NO KEY REPEATS (§3.2, §3.3): the name reference and the
-                    // bitset hold it.
-                    let Some(reference) = r.get(v.ref_bits) else { return false };
-                    if v.name(reference).is_none() || reference > 4096 {
-                        return false;
-                    }
-                    let slot = reference as usize - 1;
-                    if seen[slot >> 3] & (1u8 << (slot & 7)) != 0 {
-                        return false;
-                    }
-                    seen[slot >> 3] |= 1u8 << (slot & 7);
-                }
+            // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+            // REPEATS (§3.2, §3.3): the set is one id per entry and the caller's
+            // vocabulary sizes it.
+            let mut seen: Vec<u64> = Vec::with_capacity(v.count);
+            for _ in 0..n {
+                // THE KEY IS PART OF THE WALKED ELEMENT: the offset is sampled
+                // before it so a width-0 slot cannot accept the run unread.
                 let at = r.offset;
+                if e.kind == 16 {
+                    let Some(reference) = r.get(v.ref_bits) else { return false };
+                    let Some(id) = v.name(reference) else { return false };
+                    if seen.contains(&id) {
+                        return false;
+                    }
+                    seen.push(id);
+                }
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
                 }
-                // A WALKED ELEMENT THAT CONSUMED NO BITS — a nested array
-                // whose inner run is itself zero-width — is the same run in a
-                // shape the arithmetic above cannot see (§3.3). Every element
-                // after it consumes nothing too, so the rest of the run is
-                // stepped in one, and a remaining count the bits left could
-                // not back is damage. The walk is bounded by the batch's bits
-                // whatever the count says.
+                // A WALKED ELEMENT THAT CONSUMES NO BITS, its key included, is
+                // damage (§3.3): the plain-array width-0 run is the arithmetic
+                // path above, not this one.
                 if r.offset == at {
-                    if n - i - 1 > (r.buffer.len() as u64) * 8 - r.offset {
-                        return false;
-                    }
-                    return true;
+                    return false;
                 }
             }
             true
         }
         kind => {
             let bits = table_message_value_bits(kind, s);
-            bits >= 0 && r.skip(bits as u64)
+            if bits < 0 {
+                return false;
+            }
+            if s.packing == 1 && (integer_kind(kind) || fixed_kind(kind)) {
+                return table_message_skip_ranged(r, kind, bits, s);
+            }
+            r.skip(bits as u64)
         }
     }
 }
@@ -1165,22 +1206,23 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
     if depth > 128 {
         return false;
     }
-    // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped.
-    let mut seen = [0u8; 512];
+    // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the set
+    // is one id per entry, whichever slot carried it, and the caller's
+    // vocabulary sizes it. A reference the entry table returns is lawful.
+    let mut seen: Vec<u64> = Vec::with_capacity(v.count);
     loop {
         match r.get(v.ref_bits) {
             None => return false,
             Some(0) => return true,
             Some(reference) => {
-                if reference > 4096 {
-                    return false;
-                }
                 let Some(e) = v.entry(reference).copied() else { return false };
-                let slot = reference as usize - 1;
-                if seen[slot >> 3] & (1u8 << (slot & 7)) != 0 {
+                if e.id >= 0xffff_ffff_ffff_fffd {
                     return false;
                 }
-                seen[slot >> 3] |= 1u8 << (slot & 7);
+                if seen.contains(&e.id) {
+                    return false;
+                }
+                seen.push(e.id);
                 if !table_message_skip(r, v, &e, depth) {
                     return false;
                 }
