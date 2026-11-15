@@ -86,7 +86,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
   - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
-  - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
+  - `relax/hostile-rows-js`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried finding); jref_zero_byte and str-zero-escape-unknown-key are gated again: the JS text writer refuses a zero byte, and the JS reader validates a skipped value. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
@@ -272,7 +272,6 @@ PR 3290. WIP for every proof slug: none unless named here.
   answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
   on the Rust side).
 
-- `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
 - `relax/proof-i3-moo`: 1 cell(s): `porting I3 / moo` (❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two block...). Real fix: the porting register's I3 cell for moo is proven (docs/PORTING.md).
