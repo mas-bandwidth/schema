@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x41dce6b6d2d9e7ca)
-const _ = uint64(0x41dce6b6d2d9e7ca - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x11536863a144e917)
+const _ = uint64(0x11536863a144e917 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -103,6 +103,10 @@ type TableOutOfRange = goruntime.TableOutOfRange
 
 type TableMalformedField = goruntime.TableMalformedField
 
+const tableWireBytesID = goruntime.TableWireBytesID
+
+const tableWireStringID = goruntime.TableWireStringID
+
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 
 type TableOpenVerdict = goruntime.TableOpenVerdict
@@ -154,6 +158,8 @@ const tableFixedWiden = goruntime.TableFixedWiden
 const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
+
+const tableFixedSlack = goruntime.TableFixedSlack
 
 const tableFixedPresent = goruntime.TableFixedPresent
 
@@ -272,6 +278,16 @@ func tableFixedOverlay(a0 unsafe.Pointer, a1 uintptr) []byte {
 const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
+
+func tableMessageSeenOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
+	goruntime.TableMessageSeenOpen(a0, a1, a2)
+}
+
+func tableMessageSeenFirst(a0 *TableVocabulary) { goruntime.TableMessageSeenFirst(a0) }
+
+func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
+	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
+}
 
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 
@@ -2207,6 +2223,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if theirTag >= 1 && theirTag <= 8 {
 			c.argW = uint8(theirTag)
 		}
+		span := te.Size - theirTag
 		myArm := mi + 1
 		for k := range me.Children {
 			ma := tableFixedEntryAt(mine, myArm)
@@ -2224,6 +2241,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 					c.chainLaid = false
 					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
 					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					if ta.Size < span {
+						// THE BYTES PAST A NARROWER TAKEN ARM ARE DEAD.
+						tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag + ta.Size, Size: span - ta.Size, Guard: theirAt, Op: tableFixedSlack})
+					}
 					c.chain = c.chain[:len(c.chain)-1]
 					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
@@ -2231,6 +2252,17 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 				theirArm += tableFixedSubtree(theirs, theirArm)
 			}
 			myArm += tableFixedSubtree(mine, myArm)
+		}
+		// TAG 0 NAMES NO ARM: the whole widest arm's span is dead
+		// (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+		// §3.1, §4.5).
+		if span > 0 {
+			savedAt, savedLaid := c.chainAt, c.chainLaid
+			c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: 0, ArgW: c.argW})
+			c.chainLaid = false
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag, Size: span, Guard: theirAt, Op: tableFixedSlack})
+			c.chain = c.chain[:len(c.chain)-1]
+			c.chainAt, c.chainLaid = savedAt, savedLaid
 		}
 		c.argW = savedW
 	case 30:
@@ -2983,17 +3015,18 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 
 // Resolve places a pointer slot from its node index (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1,
 // §6.5). A record of a type this reader cannot name reads null; one of a type
-// it names that is not the type the slot requires refuses. The open's wire
-// check has already refused an index past the table and a blob named twice.
+// it names that is not the slot's target refuses, as does an unplaced reserved
+// blob. The open's wire check has refused an index past the table and a blob named twice.
 type TableNodeDirEntry struct{ Offset, TypeID uint64 }
 type TableNodeMap struct {
-	Base    unsafe.Pointer
-	Entries []TableNodeDirEntry
-	Good    bool
-	Arena   bool
-	Once    bool
-	Indexed bool
-	Count   uint64
+	Base      unsafe.Pointer
+	Entries   []TableNodeDirEntry
+	Good      bool
+	Arena     bool
+	Once      bool
+	Indexed   bool
+	Count     uint64
+	NodeTypes []uint64
 }
 
 // Mark records that a slot the reader cannot name points at a node record, so
@@ -3237,12 +3270,32 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		w := TableReader{Buffer: r.Buffer, Ids: r.Ids}
 		at := int64(0)
 		nodes := int64(s.records)
+		var stack [4097]uint64
+		var types []uint64
+		if int(s.records)+1 <= len(stack) {
+			types = stack[:int(s.records)+1]
+		} else {
+			types = make([]uint64, int(s.records)+1)
+		}
+		types[0] = root.ID
 		scan := tableNodeScanBegin(w)
+		for k := 1; ; k++ {
+			id, _, ok := scan.next()
+			if !ok {
+				break
+			}
+			if nodeType(id) != nil || id == tableBytesTypeID || id == tableStringTypeID {
+				types[k] = id
+			}
+		}
+		w.Nodes.NodeTypes = types
+		scan = tableNodeScanBegin(w)
 		for {
 			id, body, ok := scan.next()
 			if !ok {
 				break
 			}
+			body.Nodes.NodeTypes = types
 			if t := nodeType(id); t != nil && tableWireExtent(&body, t, &at, nodes) != TableRefuseOk {
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 			}
@@ -3739,7 +3792,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo, kind uint8, at *int64, 
 		}
 	case 17:
 		index, ok := r.Leb()
-		if !ok || nodes >= 0 && index > uint64(nodes)+1 {
+		if !ok || nodes >= 0 && index > uint64(nodes)+1 || nodes >= 0 && index != 0 && f.Pointer && int(index) <= len(r.Nodes.NodeTypes) && r.Nodes.NodeTypes[index-1] != 0 && r.Nodes.NodeTypes[index-1] != f.TargetID {
 			return bad
 		}
 	case 30:
@@ -4034,6 +4087,10 @@ func tableCycleType(index uint64) *TableTypeInfo {
 	}
 	return nil
 }
+
+var tableDeclaredTypes = map[uint64]*TableTypeInfo{0x413e7bcf261bc3c7: ArchiveConfigTableType(), 0xffb1dfb1f6ce215b: GlobalSettingsTableType(), 0x5fcbe04615411b64: GunnerConfigTableType(), 0xb76842b2253337af: GunnerSettingsTableType(), 0x3066b130dfbd7890: HullConfigTableType(), 0xd6633ae4e94deecf: KeyedConfigTableType(), 0xa6aa0caea28dcca1: LoadoutConfigTableType(), 0xd02d825db114336e: PackConfigTableType(), 0x1c182e1c2529027b: PatrolTableType(), 0x19fffcb7859da778: ProfileConfigTableType(), 0xec79751dda28be2e: RangedSignedTableType(), 0x031ec0c4b7d28bf1: RangedUnsignedTableType(), 0xbf59694e9e4f5ed7: RangedWidthsTableType(), 0x5f4843f6def45e87: RootConfigTableType(), 0x1d1a9911da171a29: ShipEntryTableType(), 0x1cf8555d11fb113a: TeamConfigTableType(), 0x469dba0c16b2ad15: TurretConfigTableType(), 0x0577780d86c4b0c3: WeaponConfigTableType(), 0xab6a6961d3366451: WideBlobTableType()}
+
+func tableDeclaredType(id uint64) *TableTypeInfo { return tableDeclaredTypes[id] }
 func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	for i := range info.Fields {
 		f := &info.Fields[i]

@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/serialize.go/v2"
 	"math"
+	"slices"
 	"unsafe"
 )
 
