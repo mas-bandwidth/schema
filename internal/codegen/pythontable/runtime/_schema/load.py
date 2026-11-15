@@ -24,18 +24,18 @@ _T = TypeVar("_T")
 FORM = 1
 NODE_WIRE_ID = 0xFFFFFFFFFFFFFFFF
 # the two reserved announcement ids, out of place in a file body (§3.3)
-BUILD_VERSION_WIRE_ID = 0xFFFFFFFFFFFFFFFE
-MESSAGE_VOCABULARY_WIRE_ID = 0xFFFFFFFFFFFFFFFD
+_BUILD_VERSION_WIRE_ID = 0xFFFFFFFFFFFFFFFE
+_MESSAGE_VOCABULARY_WIRE_ID = 0xFFFFFFFFFFFFFFFD
 # the reserved blob record type ids, fnv1a64("bytes") and fnv1a64("string")
 # (§2.5): every reader knows them, and a blob record's body is its bytes
-BYTES_WIRE_TYPE_ID = 0x2F2EC0474F1C4FE4
-STRING_WIRE_TYPE_ID = 0x704BE0D8FAAFFC58
+_BYTES_WIRE_TYPE_ID = 0x2F2EC0474F1C4FE4
+_STRING_WIRE_TYPE_ID = 0x704BE0D8FAAFFC58
 ID_BOUND = 4096
 # THE BINARY NESTING BOUND (§4): a framed payload is one level deeper than the
 # payload holding it
-MAX_DEPTH = 128
+_MAX_DEPTH = 128
 # a collection count above the int32 storage cap
-COUNT_CAP = 0x7FFFFFFF
+_COUNT_CAP = 0x7FFFFFFF
 
 _FIXED_WIDTH = {
     1: 1,
@@ -235,7 +235,7 @@ def _id_table(view: memoryview) -> list[int]:
 def read_body(data: Any, obj: Any, ctx: Ctx) -> None:
     """Read one nested body whose bytes are exactly data."""
     reader = Reader(data, 0, len(data), ctx.ids)
-    if ctx.depth >= MAX_DEPTH:
+    if ctx.depth >= _MAX_DEPTH:
         raise Refused("wire_damaged", "a framed payload nested past the binary bound")
     ctx.depth += 1
     _read_body(reader, obj, ctx, False)
@@ -287,7 +287,7 @@ def _unknown_field(reader: Reader, field_id: int, kind: int, ctx: Ctx, root: boo
         _read_node_table(reader.take(length), ctx)
         ctx.saw_node = True
         return
-    if field_id == BUILD_VERSION_WIRE_ID or field_id == MESSAGE_VOCABULARY_WIRE_ID:
+    if field_id == _BUILD_VERSION_WIRE_ID or field_id == _MESSAGE_VOCABULARY_WIRE_ID:
         raise Refused("wire_damaged", "a reserved announcement id in a file body")
     _skip(reader, kind, ctx)
     ctx.unknown += 1
@@ -328,7 +328,7 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
     ctx.variable = bool(ctx.root.descriptor.variable)
     reader = Reader(payload, 0, len(payload), ctx.ids)
     count = reader.varint()
-    if count > COUNT_CAP:
+    if count > _COUNT_CAP:
         raise Refused("count_over_extent_cap", "a node count above the int32 storage cap")
     root_edges = ctx.edges
     nodes: list[Any] = []
@@ -343,9 +343,9 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
         edges: list[int] = []
         ctx.children.append(edges)
         types.append(type_id)
-        if type_id == BYTES_WIRE_TYPE_ID or type_id == STRING_WIRE_TYPE_ID:
+        if type_id == _BYTES_WIRE_TYPE_ID or type_id == _STRING_WIRE_TYPE_ID:
             # A BLOB RECORD IS ITS BYTES (§2.5, §3.1); this build places none
-            if type_id == STRING_WIRE_TYPE_ID:
+            if type_id == _STRING_WIRE_TYPE_ID:
                 _check_text(body, "a string blob record that is not well-formed text")
             ctx.blobs.append(True)
             nodes.append(None)
@@ -435,8 +435,8 @@ def _resolve(ctx: Ctx) -> None:
             if node is None:
                 type_id = ctx.types[index - 2]
                 if (
-                    type_id == BYTES_WIRE_TYPE_ID
-                    or type_id == STRING_WIRE_TYPE_ID
+                    type_id == _BYTES_WIRE_TYPE_ID
+                    or type_id == _STRING_WIRE_TYPE_ID
                     or descriptor.by_id(type_id) is not None
                 ):
                     raise Refused(
@@ -529,7 +529,7 @@ def _skip_content(data: memoryview, kind: int, ctx: Ctx, depth: int) -> None:
             raise Refused("wire_damaged", "kind 32 with a nonzero L")
         return
     if kind in (13, 14, 16):
-        if depth >= MAX_DEPTH:
+        if depth >= _MAX_DEPTH:
             raise Refused("wire_damaged", "a framed payload nested past the binary bound")
         if kind == 13:
             _skip_body(data, ctx, depth + 1)
@@ -562,7 +562,7 @@ def _skip_body(data: memoryview, ctx: Ctx, depth: int) -> None:
             raise Refused("wire_damaged", "the same field id twice in one body")
         seen.add(field_id)
         kind = reader.byte()
-        if field_id == BUILD_VERSION_WIRE_ID or field_id == MESSAGE_VOCABULARY_WIRE_ID:
+        if field_id == _BUILD_VERSION_WIRE_ID or field_id == _MESSAGE_VOCABULARY_WIRE_ID:
             raise Refused("wire_damaged", "a reserved announcement id out of place")
         if field_id == NODE_WIRE_ID:
             raise Refused("wire_damaged", "the node table's reserved id in a nested body")
@@ -575,7 +575,7 @@ def _array_header(data: memoryview, ctx: Ctx) -> tuple[int, int, Reader]:
         raise Refused("wire_damaged", "an array, keyed or map body too short for its header")
     reader = Reader(data, 1, len(data), ctx.ids)
     count = reader.varint()
-    if count > COUNT_CAP:
+    if count > _COUNT_CAP:
         raise Refused("count_over_extent_cap", "a collection count above the int32 storage cap")
     return int(data[0]), count, reader
 
@@ -619,7 +619,7 @@ def _skip_union(reader: Reader, ctx: Ctx, depth: int) -> None:
     payload = reader.take(length)
     # A UNION IS A LEVEL WHEN ITS ARM IS STRUCTURAL (§4)
     if kind in _STRUCTURAL_KINDS:
-        if depth >= MAX_DEPTH:
+        if depth >= _MAX_DEPTH:
             raise Refused("wire_damaged", "a union arm nested past the binary bound")
         depth += 1
     _skip_content(payload, kind, ctx, depth)
