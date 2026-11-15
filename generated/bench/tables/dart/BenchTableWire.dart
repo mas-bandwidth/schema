@@ -5463,8 +5463,12 @@ const String _jsonHex = '0123456789abcdef';
 // _jsonString renders one Dart string as one JSON string (§16.3): the escapes
 // JSON names and every other code point whole, so a multi-byte character rides
 // as itself. A string holding an unpaired surrogate is not text: the write
-// refuses (invalid_value, §16.14 W0) and nothing is replaced.
+// refuses (invalid_value, §16.14 W0) and nothing is replaced. A zero byte is
+// storage that is not text too: the reader refuses the \u0000 escape this
+// writer would otherwise spell, so the write asserts in a debug build
+// (SPEC.md §5.1 row 8, §16.14 W0 and W8).
 String _jsonString(String s) {
+  assert(!s.contains('\u0000'), 'invalid_value: a string holds a zero byte (docs/SPEC-TABLES.md §16.3)');
   final b = StringBuffer();
   b.write('"');
   for (final rune in s.runes) {
