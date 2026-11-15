@@ -4194,6 +4194,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (ch === "") { inp.bad = true; return false; }
   const k = inp.name();
   if (k === null) { return false; }
+  if (!TableVariableStoredText(k, inp, report)) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
   if (k !== "&node") {

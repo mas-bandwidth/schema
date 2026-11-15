@@ -103,6 +103,38 @@ for (const [file, verdict] of rows) {
 `)
 	})
 
+	t.Run("pointer-first-key", func(t *testing.T) {
+		t.Parallel()
+		const pointerSchema = `package probe
+
+table Node
+{
+    value int32 = 0
+}
+
+table Scene
+{
+    head *Node
+}
+`
+		u := unitFrom(t, pointerSchema)
+		files := map[string][]byte{
+			"zero.json":    []byte(`{"head":{"a\u0000b":1}}`),
+			"control.json": []byte(`{"head":{"a\u0001b":1}}`),
+		}
+		jsDiscardRun(t, u, files, `
+const rows = [["zero.json", "refused"], ["control.json", "read"]];
+for (const [file, want] of rows) {
+  const r = new m.TableVariableReport();
+  const value = m.SceneFromJson(readFileSync(file, "utf8"), r);
+  const got = value === null ? "refused" : "read";
+  if (got !== want) {
+    fail(file + ": verdict " + got + ", want " + want + " " + JSON.stringify(r));
+  }
+}
+`)
+	})
+
 	t.Run("message", func(t *testing.T) {
 		t.Parallel()
 		node := jsNode(t)
