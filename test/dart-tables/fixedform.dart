@@ -377,17 +377,18 @@ void corpusFiles(String dir) {
             turret.gunnerPresent == ((h + w) % 2 == 0),
             'keyed[$k]…turrets[$w].gunner present',
           );
-          // A PAYLOAD UNDER A CLEAR FLAG IS SLACK AND READS AS ZEROS (§3.4):
-          // a present gunner carries its values, an absent one carries none —
-          // not even the declared default `reaction = 0.2`, which is meaning.
+          // A PAYLOAD UNDER A CLEAR FLAG IS DEAD: the writer lays zeros there
+          // and the read holds them to zero, but it never decodes them as a
+          // value. An absent gunner READS ITS DECLARED DEFAULT, `reaction =
+          // 0.2` (docs/rulings.json fixed-dead-bytes-are-zero, 2026-11-10).
           check(
             turret.gunner.tracking == (turret.gunnerPresent && (w % 2 == 1)),
             'keyed[$k]…turrets[$w].gunner.tracking',
           );
           check(
-            turret.gunnerPresent || turret.gunner.reaction == 0.0,
-            'keyed[$k]…turrets[$w]: an absent gunner is zeros, '
-            'not the declared 0.2',
+            turret.gunnerPresent ||
+                turret.gunner.reaction == demo.GunnerConfig().reaction,
+            'keyed[$k]…turrets[$w]: an absent gunner reads the declared 0.2',
           );
         }
       }
@@ -457,17 +458,18 @@ void corpusFiles(String dir) {
           ship.gunnerPresent == (s % 2 == 0),
           'pack[$k].ships[$s] gunner present',
         );
-        // as in keyed: an absent gunner's payload is slack, so it is zeros
-        // and its callsign is empty (§3.4)
+        // as in keyed: an absent gunner's payload is dead and never decoded,
+        // so the gunner reads its declared defaults: an empty callsign and
+        // `reaction = 0.2` (docs/rulings.json fixed-dead-bytes-are-zero)
         check(
           text(ship.gunner.callsign, ship.gunner.callsignLength) ==
               (ship.gunnerPresent ? calls[s] : ''),
           'pack[$k].ships[$s].gunner.callsign',
         );
         check(
-          ship.gunnerPresent || ship.gunner.reaction == 0.0,
-          'pack[$k].ships[$s]: an absent gunner is zeros, '
-          'not the declared 0.2',
+          ship.gunnerPresent ||
+              ship.gunner.reaction == demo.GunnerSettings().reaction,
+          'pack[$k].ships[$s]: an absent gunner reads the declared 0.2',
         );
         check(v.thresholds[s] == 100 * (s + 1) + k, 'pack[$k].thresholds[$s]');
       }
@@ -488,8 +490,8 @@ void corpusFiles(String dir) {
           'pack[$k].reserves[$r] gunner absent',
         );
         check(
-          v.reserves[r].gunner.reaction == 0.0,
-          'pack[$k].reserves[$r]: the absent gunner\'s payload is zeros',
+          v.reserves[r].gunner.reaction == demo.GunnerSettings().reaction,
+          'pack[$k].reserves[$r]: the absent gunner reads its declared default',
         );
       }
     }
@@ -1749,8 +1751,16 @@ void textLengthClampCase() {
 
   // THE LOOP ALONE. Run the identity plan over the forged body and read the
   // length word it LANDS in the reader's image, plus the refusal the run names.
+  //
+  // THE UNITS PAST THE FORGED LENGTH ARE DEAD and must be zero
+  // (docs/rulings.json fixed-dead-bytes-are-zero), so each run lays the
+  // valid UTF-8 in the units the length USES and zeros behind them; a
+  // length out of range refuses before any unit is looked at.
   (int, int) loopRun(int forged) {
     fileView.setInt32(body + labelAt, forged, Endian.little);
+    for (var i = 0; i < cap; i++) {
+      file[body + labelAt + 4 + i] = i < forged ? 0x61 + i : 0;
+    }
     final plan = fx1.fxRootFixedNewPlan();
     plan.image.setRange(0, fx1.fxRootFixedBodyBytes, fx1.fxRootFixedPrefill);
     final r = fx1home.TableFixedReport();
@@ -2236,21 +2246,21 @@ void writeSlackCase() {
   quiet(r, 'W1 slack');
 }
 
-// W4: READ SLACK IS UNSPECIFIED (docs/FIXED-FORM-ALGORITHM.md §3.1). The rule,
-// by name: "Slack is UNSPECIFIED on read and not a refusal: a reader validates
-// the USED UNITS only, and non-zero slack is not `malformed`, not a refusal,
-// and moves no counter." `absentOptionalCase` above is the WRITE half of the
-// same rule; this is the read half, and the one that faces a STRANGER's bytes.
+// W4: READ SLACK IS DEAD (docs/FIXED-FORM-ALGORITHM.md §3.1). The rule,
+// docs/rulings.json fixed-dead-bytes-are-zero (2026-11-10): "every dead byte
+// in a fixed record is zero on write and refused if non-zero on read". It
+// superseded the older "slack is UNSPECIFIED on read and not a refusal" this
+// case once held. `absentOptionalCase` above is the WRITE half of the same
+// rule; this is the read half, and the one that faces a STRANGER's bytes.
 //
 // THE STAIN IS ON THE WIRE, which is what separates this from every other slack
 // case in this file. A clean writer lays the template's zeros in the slack, so
 // reading a record THIS BUILD wrote cannot tell a reader that walks the USED
 // UNITS from one that walks the DECLARED BOUND. Here the slack of V1's
 // `items [..8]int32` (a RANGED element: | min = 0, max = 255) is stained AFTER
-// the write with four 0xFF bytes per unused slot — a value past the range — so
-// a decode that walked the bound would clamp seven times and a decode that
-// walks the live count clamps none. `clamped` is the observable, and the doc's
-// "moves no counter" is the claim.
+// the write with four 0xFF bytes per unused slot. Those bytes are dead, so the
+// whole load refuses wire_damaged and lands nothing; the control puts the
+// zeros back and the same record reads whole.
 void readSlackUnspecified() {
   // THE COUNT'S OFFSET IS FOUND, NOT SPELLED: two saves that differ only in the
   // live count, and the first byte that differs is the count's own. A hardcoded
@@ -2318,19 +2328,35 @@ void readSlackUnspecified() {
     v1.cfgFixedNewPlan(),
     r,
   );
-  check(n == 1, 'read slack: the record reads (got $n)');
+  check(n == -1, 'read slack: the stained record refuses the load (got $n)');
   check(
-    r.refused == 0,
-    'SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal',
+    r.refused == v1home.TableFixedRefusal.damaged,
+    'SLACK IS DEAD: a non-zero byte past the live count refuses wire_damaged '
+    '(refused ${r.refused})',
   );
   check(
-    back[0].itemsCount == 1 && back[0].items[0] == 7,
-    'SLACK IS UNSPECIFIED: the USED UNITS land and the slack behind them is not read',
+    back[0].itemsCount == 0 && back[0].items[0] == 0,
+    'SLACK IS DEAD: the refused load lands nothing in the caller\'s values',
   );
   check(
-    r.refused == 0 && r.unknown == 0 && r.widened == 0,
-    'SLACK IS UNSPECIFIED: a reader validates the USED UNITS only and moves no '
-    'counter (refused ${r.refused})',
+    r.unknown == 0 && r.widened == 0,
+    'SLACK IS DEAD: the refusal moves no other counter',
+  );
+
+  // CONTROL: the same record with its slack back at the writer's zeros
+  // reads whole, so the refusal above is the stain's and nothing else's.
+  for (var i = slackAt; i < slackEnd; i++) {
+    live[i] = 0;
+  }
+  final clean = <v1home.Cfg>[v1home.Cfg()];
+  final rc = v1home.TableFixedReport();
+  check(
+    v1.cfgFixedLoad(clean, 1, live, live.length, v1.cfgFixedNewPlan(), rc) ==
+            1 &&
+        rc.refused == 0 &&
+        clean[0].itemsCount == 1 &&
+        clean[0].items[0] == 7,
+    'CONTROL: zero slack reads whole and refuses nothing',
   );
 }
 
@@ -3138,6 +3164,11 @@ void negativeControl() {
 // This case STAINs the slack THROUGH STORAGE, with the same out-of-range value
 // CONTROL 1 puts in a live element, and holds the read to `clamped == 0` — the
 // number only a pass that walks the LIVE COUNT can produce.
+//
+// Since docs/rulings.json fixed-dead-bytes-are-zero (2026-11-10) the slack is
+// DEAD and held to zero before any record lands, so the stained read now
+// refuses wire_damaged; CONTROL 1 below still holds a LIVE out-of-range value
+// to out_of_range.
 void boundsCase() {
   // a record with a PARTLY-FILLED counted array: reservesCount = 2, and the
   // third ShipEntry is slack. Every LIVE value is in range, so a clean read
@@ -3192,19 +3223,19 @@ void boundsCase() {
     pack.packConfigFixedNewPlan(),
     r,
   );
-  check(n == 1, 'bounds: the stained record still reads (got $n)');
+  // THE SLACK ELEMENT IS DEAD (docs/rulings.json fixed-dead-bytes-are-zero,
+  // 2026-11-10): its stained bytes are non-zero, so the whole load refuses
+  // wire_damaged and lands nothing — it is never decoded, and so never
+  // clamped or refused as out_of_range.
+  check(n == -1, 'bounds: the stained record refuses the load (got $n)');
   check(
-    back[0].reservesCount == 2 &&
-        back[0].reserves[0].hardpoints[0] == 1 &&
-        back[0].reserves[1].hardpoints[0] == 2,
-    'bounds: the two live elements land, and the slack\'s stain is never decoded',
+    back[0].reservesCount == 0,
+    'bounds: the refused load lands nothing in the caller\'s values',
   );
   check(
-    r.refused == 0,
-    'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
-    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): checking storage nobody wrote '
-    'would refuse every clean read — the out-of-range value stained into the '
-    'slack refuses nothing (refused=${r.refused})',
+    r.refused == demo.TableFixedRefusal.damaged,
+    'A COUNTED ARRAY\'S SLACK IS DEAD: a non-zero byte past the live count '
+    'refuses wire_damaged, not out_of_range (refused=${r.refused})',
   );
 
   // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its
