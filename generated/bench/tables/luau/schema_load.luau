@@ -440,6 +440,9 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 			x = 0.0
 		else
 			x = f32_of(bits)
+			-- a ranged float's -0 lands as +0, uncounted (docs/SPEC-TABLES.md
+			-- §3.3, the special values); a plain float keeps its sign
+			if fd.s == "float" and fd.lo ~= nil and x == 0 then x = 0 end
 		end
 	elseif kind == 11 then
 		-- the high half holds the whole exponent field; the width is checked above
@@ -554,6 +557,7 @@ local read_array: any
 local read_element: any
 local read_union: any
 local read_map: any
+local put: any
 
 -- an enum reference (§3, §2.15): a retired id reads its field default, not unknown; 0 is None, a reference past the id table is damage,
 -- a variant this enum cannot name reads None and counts unknown. The value is
@@ -904,7 +908,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
+			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
 		end
 	end
 	r.at = endpos
@@ -1053,7 +1057,7 @@ end
 
 -- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
 -- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
+put = function(dst: any, i: number, x: any)
 	if typeof(dst) == "buffer" then
 		buffer.writeu8(dst, i - 1, x)
 	else
@@ -1561,9 +1565,14 @@ local function resolve(report: any)
 			else
 				local n = _nodes[p.index - 1]
 				-- §3.1: a placeholder is a refused record; every pointer
-				-- naming it reads null, counted once at the node, not here
-				if n ~= nil and n.kind ~= "x" then
-					if p.d.s == "sblob" then
+				-- naming it reads null, counted once at the node, not here.
+				-- A placeholder of a type this reader DECLARES is not a newer
+				-- writer's type: naming it at a slot that is not its target is
+				-- damage, and the whole load refuses.
+				if n ~= nil then
+					if n.kind == "x" then
+						if n.declared then report.kindMismatch = report.kindMismatch + 1 end
+					elseif p.d.s == "sblob" then
 						if n.kind == "s" then
 							if landed[n] then report.blobShared = (report.blobShared or 0) + 1; noteField("blobShared", p.name) end
 							landed[n] = true
@@ -1737,10 +1746,13 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 				local nc = place[tid]
 				if nc == nil then
 					-- §3.1: a type id this reader cannot name is counted once
-					-- here and KEEPS ITS INDEX; the placeholder grows the array
+					-- here and KEEPS ITS INDEX; the placeholder grows the array.
+					-- A type it DECLARES at a slot that is not its target is
+					-- damage, so the placeholder remembers that it was named.
 					report.unknown = report.unknown + 1
 					noteField("unknown", idName(tid))
-					_nodes[#_nodes + 1] = { kind = "x" }
+					local declared = S.tableId(tid) or tid == StringBlobId or tid == BytesBlobId
+					_nodes[#_nodes + 1] = { kind = "x", declared = declared }
 				else
 					local inst = nc.new()
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = inst, body = rec.body }
@@ -2330,6 +2342,11 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 			return nil
 		end
 		if _countRefused then
+			-- the wire-alone walk's count refusal (§2.9): name it as the value
+			-- walk does, so a refusal is never silent
+			restoreCount(rep)
+			rep.refused = (rep.refused or 0) + 1
+			rep.reason = "count_over_extent_cap"
 			return nil
 		end
 		if damaged then
