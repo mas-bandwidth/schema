@@ -1117,19 +1117,33 @@ static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* SPEC-TABLES 16.2: comments are whitespace on read. */
-        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
+        /* SPEC-TABLES 16.2: comments are whitespace on read. A line comment
+           runs to a line feed or the end of input, a block comment to its
+           closing delimiter, and the bytes inside either are well-formed
+           UTF-8 (string_not_utf8, 16.3) and hold no NUL. */
+        if ( c == '/' && in->pos + 1 < in->size && ( in->text[in->pos + 1] == '/' || in->text[in->pos + 1] == '*' ) )
         {
-            in->pos += 2;
-            while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
-            continue;
-        }
-        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
-        {
+            int block = in->text[in->pos + 1] == '*';
             int64_t at = in->pos + 2;
-            while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
-            if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
-            in->pos = at + 2;
+            while ( at < in->size )
+            {
+                unsigned char b = (unsigned char) in->text[at];
+                int32_t width = 1;
+                if ( block ? ( b == '*' && at + 1 < in->size && in->text[at + 1] == '/' ) : b == '\n' ) { break; }
+                if ( b == 0 ) { in->bad = 1; in->pos = in->size; return; }
+                if ( b >= 0x80 )
+                {
+                    int64_t left = in->size - at;
+                    if ( table_json_utf8( in->text + at, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; in->pos = in->size; return; }
+                }
+                at += width;
+            }
+            if ( block )
+            {
+                if ( at >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+                at += 2;
+            }
+            in->pos = at;
             continue;
         }
         if ( c == '/' ) { in->bad = 1; }
