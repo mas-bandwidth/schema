@@ -321,8 +321,10 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	if form == 2 then return refuse(report, "message_form_as_file") end
 	if form ~= 1 then return refuse(report, "newer_form") end
 	if len < 9 then report.malformed = true; return false end
+	-- the count is the unsigned u64 of docs/SPEC-TABLES.md §3, not a signed
+	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(data, len - 8))
-	if count > math.floor((len - 9) / 8) then report.malformed = true; return false end
+	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return false end
 	-- the id table holds at most 4096 entries (docs/SPEC-TABLES.md §3,
 	-- ir.TableWireIdTableBound), whatever the buffer would hold
 	if count > 4096 then report.malformed = true; return false end
