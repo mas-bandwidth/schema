@@ -946,6 +946,9 @@ function F.save(d: any, fixed: Fixed, values: { any }): buffer
 		fixed = fixedFor(d) :: any
 		if fixed == nil then error(refuse("unknown_form"), 0) end
 	end
+	-- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6), so a
+	-- save of zero records is refused before any byte is written.
+	if #values == 0 then error(refuse("truncated"), 0) end
 	local layout = fixed.layout
 	local trailer = if declaresIntegrity(d) then TRAILER else 0
 	local bytes = HEADER + 4 + 4 + #layout * ENTRY
@@ -1122,11 +1125,13 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: 
 	-- comparison and never a hash a runtime computed (§5.3)
 	local plan = planFor(d, fixed, k, k.hash == fixed.hash)
 	if plan.refused ~= nil then return no(plan.refused) end
-	-- 9: the records must fill the rest of the file exactly
+	-- 9: the records must fill the rest of the file exactly, and there must
+	-- be at least one: a header and a layout followed by no record is a batch
+	-- of none, which holds no value to read (§5.3 step 9)
 	local at0 = HEADER + 4 + length
 	local rest = buffer.len(file) - at0
 	local stride = k.recordBytes
-	if stride <= 8 or rest % stride ~= 0 then return no("truncated") end
+	if rest == 0 or stride <= 8 or rest % stride ~= 0 then return no("truncated") end
 	local count = rest // stride
 	-- 10: the caller's capacity, the default when none was given
 	local cap = capacity or MAX_RECORDS
