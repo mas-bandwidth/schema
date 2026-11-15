@@ -73,6 +73,8 @@ var lobsterRuntimeNames = map[string][]string{
 		"fixed_file", "fixed_record",
 	},
 	"fixedevolve.lobster": {
+		"fixed_dead_zero", "fixed_entry_has_guard", "fixed_guard_arg", "fixed_guard_first", "fixed_guard_live",
+		"fixed_guard_width", "fixed_union_dead_refusal",
 		"TableFixedDst", "TableFixedEntry", "TableFixedForm", "TableFixedGuardLink", "TableFixedHashAt",
 		"TableFixedHeaderBytes", "TableFixedHole", "TableFixedKnownLayout", "TableFixedLayoutEntry",
 		"TableFixedLayoutView", "TableFixedLineagePlan", "TableFixedPlan", "TableOpenCompatible",
@@ -103,6 +105,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"tableFixedTextUtf8", "tableFixedWiden", "tableFixedWidenF", "u128_lt",
 	},
 	"json.lobster": {
+		"j_comment_text", "j_integer_token", "j_shape_matches", "j_wide_integer_kind",
 		"JsonBlobCount", "JsonFlags", "JsonGuard", "JsonInt", "JsonLabel", "JsonNodeCount", "JsonReader", "JsonTextTotal",
 		"JsonWriter", "j_array_count", "j_b64", "j_b64_alphabet", "j_b64_table", "j_bn_add", "j_bn_add_small",
 		"j_bn_cmp", "j_bn_copy", "j_bn_divmod_small", "j_bn_from_dec", "j_bn_lanes", "j_bn_low", "j_bn_mask",
@@ -130,6 +133,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"json_text_list_registry", "json_text_total", "json_text_total_registry", "json_write",
 	},
 	"load.lobster": {
+		"declares",
 		"FixedRecordCodec", "fixed_record_codecs", "fixed_record_codec", "register_fixed_record_codec",
 		"ArrayShape", "EnumShape", "KeyedKeys", "KeyedShape", "LoadReport", "LoadState", "MapShape", "Node",
 		"NodeRecord", "PointerShape", "Reader", "Record", "RetainCapture", "RetainedField", "Shape", "Slot",

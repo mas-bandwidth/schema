@@ -1,6 +1,7 @@
 package lobstertable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,9 +67,7 @@ func TestLobsterTableConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("consts %v: %v", set, err)
 		}
-		for name, data := range shadowTables {
-			shadow[name] = data
-		}
+		maps.Copy(shadow, shadowTables)
 		dir := t.TempDir()
 		tableWriteAll(t, dir, shadow)
 		tableWriteFile(t, dir, "main.lobster", tableConstNamesProbe)
@@ -155,9 +154,7 @@ func runTableTypeNames(t *testing.T, src string) {
 	if err != nil {
 		t.Fatalf("generate tables: %v\n%s", err, src)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	tableWriteAll(t, dir, files)
 	tableWriteFile(t, dir, "main.lobster", tableTypeNamesProbe)
@@ -218,7 +215,7 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range tableGeneratedDefLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				name, _, _ := strings.Cut(fields[0], ":")
@@ -227,7 +224,7 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range tableGeneratedDeclLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				name, _, _ := strings.Cut(fields[0], ":")
@@ -236,7 +233,7 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range tableGeneratedForLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				add(fields[0])
