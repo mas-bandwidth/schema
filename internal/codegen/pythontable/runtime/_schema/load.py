@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds
-from . import kind_blob, kind_bool, kind_bytes, kind_int, kind_pointer, kind_string, kind_table, kind_unsupported
+from . import kind_blob, kind_bool, kind_bytes, kind_int, kind_map, kind_pointer, kind_string, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 _T = TypeVar("_T")
@@ -113,7 +113,7 @@ class Ctx:
     def __init__(self, ids: list[int]) -> None:
         self.ids = ids
         self.unknown = 0
-        self.pending: list[tuple[Any, str, int]] = []
+        self.pending: list[tuple[Any, Any, int]] = []
         self.blob_pending: list[tuple[Any, FieldDesc, int]] = []
         self.current: Any = None
         self.root: Any = None
@@ -272,7 +272,10 @@ def _resolve(ctx: Ctx) -> None:
             raise Refused("wire_damaged", "a node index is past the node table")
         if isinstance(value, kind_blob._BlobValue):
             raise Refused("wire_damaged", "a table pointer slot names a byte buffer")
-        setattr(owner, name, value)
+        if isinstance(owner, dict):
+            owner[name] = value
+        else:
+            setattr(owner, name, value)
     seen_blob: set[int] = set()
     for owner, field, index in ctx.blob_pending:
         if index == 0:

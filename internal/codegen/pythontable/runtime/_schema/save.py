@@ -10,7 +10,7 @@ from typing import Any
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_blob, kind_bool, kind_bytes, kind_int, kind_pointer, kind_string, kind_table, kind_unsupported
+from . import kind_blob, kind_bool, kind_bytes, kind_int, kind_map, kind_pointer, kind_string, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -128,8 +128,38 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if target is None or not isinstance(current, target):
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
+        elif field.codec == "map":
+            _validate_map(field, current, where, seen)
         else:
             kinds._REGISTRY[field.codec].validate(field, current, where)
+
+
+def _validate_map(field: FieldDesc, value: Any, path: str, seen: set[int]) -> None:
+    if type(value) is not dict:
+        raise InvalidValue(path, "not a dict")
+    entry = descriptor.by_name(field.target)
+    if entry is None:
+        raise InvalidValue(path, f"the table {field.target} is not registered")
+    key_field = entry.descriptor.fields[0]
+    value_field = entry.descriptor.fields[1]
+    if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
+        # A map whose VALUE is a byte buffer, `map[K]*bytes` or `map[K]*string`,
+        # is not carried yet: refused by name, as before the buffers landed.
+        raise InvalidValue(path, kind_unsupported._RULE)
+    for key, current in value.items():
+        where = f"{path}[{key!r}]"
+        kinds._REGISTRY[key_field.codec].validate(key_field, key, where)
+        if value_field.codec == "pointer":
+            kinds._REGISTRY["pointer"].validate(value_field, current, where)
+            if current is not None:
+                _validate(current, current.descriptor, where, seen)
+        elif value_field.codec == "table":
+            kinds._REGISTRY["table"].validate(value_field, current, where)
+            _validate(current, current.descriptor, where, seen)
+        elif value_field.codec == "map":
+            _validate_map(value_field, current, where, seen)
+        else:
+            kinds._REGISTRY[value_field.codec].validate(value_field, current, where)
 
 
 def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
@@ -165,6 +195,45 @@ def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
             if field.is_default(current):
                 continue
             _collect(current, ctx, blobs)
+        elif field.codec == "map":
+            _collect_map(field, current, ctx, blobs)
+
+
+def _collect_map(field: FieldDesc, value: dict[Any, Any], ctx: Ctx, blobs: list[int]) -> None:
+    # A map is a by-value edge of the owner's body: a table value's blob slots
+    # are the owner's, numbered in the ascending key order the map writes in;
+    # a pointer value's node keeps its own.
+    entry = descriptor.by_name(field.target)
+    if entry is None:
+        raise InvalidValue(field.name, f"the table {field.target} is not registered")
+    value_field = entry.descriptor.fields[1]
+    for key in kind_map._sorted_keys(field, value):
+        current = value[key]
+        if value_field.codec == "pointer":
+            if current is None:
+                continue
+            node = id(current)
+            if node in ctx.indices:
+                if node in ctx.onstack:
+                    raise InvalidValue(
+                        _path(field.name, repr(key)),
+                        "a pointer cycle has no wire form",
+                    )
+                continue
+            node_index = len(ctx.order) + 2
+            ctx.indices[node] = node_index
+            ctx.order.append(current)
+            ctx.onstack.add(node)
+            inner: list[int] = []
+            ctx.node_blobs[node_index] = inner
+            _collect(current, ctx, inner)
+            ctx.onstack.discard(node)
+        elif value_field.codec == "table":
+            if value_field.is_default(current):
+                continue
+            _collect(current, ctx, blobs)
+        elif value_field.codec == "map":
+            _collect_map(value_field, current, ctx, blobs)
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:

@@ -3061,6 +3061,7 @@ public final class TableJson {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
+            assert c != 0 : "zero byte is not text";
             switch (c) {
                 case '"':
                     b.append("\\\"");

@@ -33,22 +33,22 @@
       "who": "nova",
       "route": "route/one",
       "model": "model-A",
-      "started": 100,
-      "ended": 200,
+      "started": "100",
+      "ended": "200",
       "outcome": "ok",
       "line": "line one",
-      "cost_micro_usd": 7
+      "cost_micro_usd": "7"
     },
     {
       "kind": "worker",
       "who": "nova",
       "route": "route/two",
       "model": "model-B",
-      "started": 300,
-      "ended": 400,
+      "started": "300",
+      "ended": "400",
       "outcome": "ok",
       "line": "line two",
-      "cost_micro_usd": 11
+      "cost_micro_usd": "11"
     }
   ]
 }
