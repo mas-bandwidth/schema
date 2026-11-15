@@ -547,8 +547,13 @@ skip_entry = function(R, e, ctx)
     return true
   elseif k == 10 then
     if e.packing == 2 then
-      local _, ok = R:get(e.bits or 0)
-      return ok
+      -- A QUANTIZED STEP INDEX RIDES ITS OWN WIDTH AND IS HELD TO ITS COUNT
+      -- (docs/SPEC-TABLES.md §3.3, SPEC.md §4.3): an index above the count is
+      -- damage, and the three-byte triple that fixes both facts was derived
+      -- with the shape.
+      local index, ok = R:get(e.bits or 0)
+      if not ok then return false end
+      return index <= (e.count or 0)
     end
     local _, ok = R:get(32)
     return ok
@@ -1030,6 +1035,32 @@ local function read_leb(s, at)
   end
 end
 
+-- f32 rounds a number to float32, the type the quantized triple is announced
+-- in (SPEC.md §4.3): the step count derives from those three facts, and the
+-- index width is the count's own bit length.
+local function f32(v)
+  return (string.unpack("<f", string.pack("<f", v)))
+end
+
+-- quantized_count is the triple's derivation: the step count and the bits one
+-- step index rides, and nil where the triple is non-conforming. `min` must be
+-- below `max`, `res` above zero, and `delta` and `delta / res` finite in
+-- float32 (docs/SPEC-TABLES.md §3.3).
+local function quantized_count(qmin, qmax, qres)
+  if not (qmin < qmax) or not (qres > 0) then return nil end
+  local delta = f32(qmax - qmin)
+  local values = f32(delta / qres)
+  if delta - delta ~= 0 or values - values ~= 0 then return nil end
+  if not (values >= 1) then
+    values = 1
+  elseif values > 4294967040.0 then
+    values = 4294967040.0
+  end
+  local count = math.tointeger(math.ceil(values))
+  if count == nil then return nil end
+  return count, u_bits(count)
+end
+
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
 -- not an entry's to give (§3.3).
 local function known_kind(kind)
@@ -1089,7 +1120,14 @@ local function read_shape(e, s, at)
     at = at + 1
     if packing == 0 then return at end
     if packing ~= 2 or at + 11 > #s then return nil end
+    local qmin = string.unpack("<f", s, at)
+    local qmax = string.unpack("<f", s, at + 4)
+    local qres = string.unpack("<f", s, at + 8)
+    local count, bits = quantized_count(qmin, qmax, qres)
+    if count == nil then return nil end
     e.packing = 2
+    e.bits = bits
+    e.count = count
     return at + 12
   elseif kind >= 20 and kind <= 29 then
     if at > #s then return nil end
