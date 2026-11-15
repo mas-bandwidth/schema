@@ -11,12 +11,12 @@
 // Error tells the two apart.
 //
 // WRITE-side contracts — a value outside its declared range, a count or a
-// length outside its bound, a mask bit above the wire width, an interior
-// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
-// they compile out of a release build along with the call, exactly as
-// serialize.cs's own WriteStream does. In a shipping release build it is
-// the caller's responsibility to be correct on the write side; every check
-// the reader needs is on the read side and runs in every build.
+// length outside its bound, a mask bit above the wire width, a zero byte or
+// ill-formed UTF-8 in a string(N) — are CALLER ERROR and ride on
+// Debug.Assert, so they compile out of a release build along with the call,
+// exactly as serialize.cs's own WriteStream does. In a shipping release
+// build it is the caller's responsibility to be correct on the write side;
+// every check the reader needs is on the read side and runs in every build.
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
