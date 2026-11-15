@@ -27,9 +27,22 @@ table Inner
     n int32
 }
 
+table D
+{
+    a int32 = 9
+    b bool = true
+}
+
+table Holder
+{
+    o ?int32
+    d ?D
+}
+
 table Node
 {
     value int32
+    o     ?int32
     next  *Node
 }
 
@@ -42,6 +55,8 @@ table Root
     inner ?Inner
     total int32
     head  *Node
+    d     ?D
+    h     Holder
 }
 `
 
@@ -78,10 +93,30 @@ func optionalProbeInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 		"present":  `{"flag":true,"tier":-7,"mask":1234,"pair":{"a":9,"b":true},"inner":{"n":11},"total":5}`,
 		"defaults": `{"flag":false,"tier":0,"mask":0,"pair":{"a":0,"b":false},"total":5}`,
 		"nested":   `{"tier":3,"head":{"value":1,"next":{"value":2}},"total":5}`,
+		// D declares non-zero defaults, so present-at-default and
+		// present-at-zero are different wires, and both differ from absent.
+		"d_absent":  `{"total":5}`,
+		"d_default": `{"d":{"a":9,"b":true},"total":5}`,
+		"d_zero":    `{"d":{"a":0,"b":false},"total":5}`,
+		// ?T inside a by-value nested table (Root.h) and inside a *Node.
+		"holder_zero":   `{"h":{"o":0,"d":{"a":0,"b":false}},"total":5}`,
+		"holder_absent": `{"h":{"d":{"a":9,"b":true}},"total":5}`,
+		"node_zero":     `{"head":{"value":1,"o":0,"next":{"value":2}},"total":5}`,
+		"node_absent":   `{"head":{"value":1,"next":{"value":2,"o":-4}},"total":5}`,
 	}
 	inputs := map[string][]byte{}
 	for name, text := range cases {
 		inputs[name+".wire"] = optionalEngineWire(t, u, "Root", text)
+	}
+	// The three D wires must be distinct on the engine side, or the probe
+	// could not tell the cases apart.
+	da, dd, dz := string(inputs["d_absent.wire"]), string(inputs["d_default.wire"]), string(inputs["d_zero.wire"])
+	if da == dd || da == dz || dd == dz {
+		t.Fatalf("the engine's absent, present-at-default and present-at-zero ?D wires are not distinct")
+	}
+	if string(inputs["holder_zero.wire"]) == string(inputs["holder_absent.wire"]) ||
+		string(inputs["node_zero.wire"]) == string(inputs["node_absent.wire"]) {
+		t.Fatalf("the engine's nested present-at-zero and absent ?T wires are not distinct")
 	}
 	present := inputs["present.wire"]
 	inputs["damaged.wire"] = append([]byte(nil), present[:len(present)-3]...)
@@ -89,7 +124,7 @@ func optionalProbeInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	return inputs
 }
 
-const optionalProbe = `from optional import InvalidValue, Refused, Root, Pair
+const optionalProbe = `from optional import D, InvalidValue, Node, Refused, Root, Pair
 
 def wire(name):
     with open(name, "rb") as f:
@@ -135,13 +170,74 @@ except Refused as err:
     print("damaged", err.reason)
 print("witness", witness.save() == witness_wire)
 
-bad = Root()
-bad.tier = True
-try:
-    bad.save()
-    print("invalid", "wrote")
-except InvalidValue:
-    print("invalid", "refused")
+def d_value(d):
+    return None if d is None else (d.a, d.b)
+
+d_absent, _ = roundtrip("d_absent")
+d_default, _ = roundtrip("d_default")
+d_zero, _ = roundtrip("d_zero")
+print("d_absent", d_value(d_absent.d))
+print("d_default", d_value(d_default.d))
+print("d_zero", d_value(d_zero.d))
+print("d_fresh", d_value(D()))
+
+holder_zero, _ = roundtrip("holder_zero")
+holder_absent, _ = roundtrip("holder_absent")
+print("holder_zero", holder_zero.h.o, d_value(holder_zero.h.d))
+print("holder_absent", holder_absent.h.o, d_value(holder_absent.h.d))
+
+node_zero, _ = roundtrip("node_zero")
+node_absent, _ = roundtrip("node_absent")
+print("node_zero", node_zero.head.o, node_zero.head.next.o)
+print("node_absent", node_absent.head.o, node_absent.head.next.o)
+
+def refuse(label, build):
+    value = build()
+    try:
+        value.save()
+        print("invalid", label, "wrote")
+    except InvalidValue as err:
+        print("invalid", label, "|" + err.path + "|" + err.rule + "|")
+
+def with_root(**fields):
+    def build():
+        value = Root()
+        for name, item in fields.items():
+            setattr(value, name, item)
+        return value
+    return build
+
+def with_d(a):
+    def build():
+        value = Root()
+        value.d = D()
+        value.d.a = a
+        return value
+    return build
+
+def with_holder(o):
+    def build():
+        value = Root()
+        value.h.o = o
+        return value
+    return build
+
+def with_node(o):
+    def build():
+        value = Root()
+        value.head = Node()
+        value.head.o = o
+        return value
+    return build
+
+refuse("tier_type", with_root(tier=True))
+refuse("tier_high", with_root(tier=2**31))
+refuse("tier_low", with_root(tier=-2**31 - 1))
+refuse("mask_high", with_root(mask=4096))
+refuse("mask_low", with_root(mask=-1))
+refuse("d_a_high", with_d(2**31))
+refuse("holder_o_high", with_holder(2**31))
+refuse("node_o_high", with_node(2**31))
 
 print("OK")
 `
@@ -178,7 +274,22 @@ func TestPythonVtOptional(t *testing.T) {
 		"absent_pair True",
 		"cleared True",
 		"witness True",
-		"invalid refused",
+		"d_absent None",
+		"d_default (9, True)",
+		"d_zero (0, False)",
+		"d_fresh (9, True)",
+		"holder_zero 0 (0, False)",
+		"holder_absent None (9, True)",
+		"node_zero 0 None",
+		"node_absent None -4",
+		"invalid tier_type |tier|not an int|",
+		"invalid tier_high |tier|2147483648 is outside [-2147483648, 2147483647]|",
+		"invalid tier_low |tier|-2147483649 is outside [-2147483648, 2147483647]|",
+		"invalid mask_high |mask|4096 is outside [0, 4095]|",
+		"invalid mask_low |mask|-1 is outside [0, 4095]|",
+		"invalid d_a_high |d.a|2147483648 is outside [-2147483648, 2147483647]|",
+		"invalid holder_o_high |h.o|2147483648 is outside [-2147483648, 2147483647]|",
+		"invalid node_o_high |head.o|2147483648 is outside [-2147483648, 2147483647]|",
 		"OK",
 	} {
 		if !strings.Contains(got, line+"\n") {
