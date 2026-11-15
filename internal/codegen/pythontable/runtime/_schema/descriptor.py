@@ -95,6 +95,14 @@ class FieldDesc:
             return value is None
         if self.codec == "union":
             return bool(getattr(value, "type", None) == 0)
+        if self.codec == "union_array":
+            # As the engine elides (internal/tablewire/encode.go): a counted
+            # array only when it holds nothing, a fixed array when every
+            # element is at the declared default, judged per element by its
+            # selected arm, never by == against a fresh value.
+            if not self.array_fixed:
+                return len(value) == 0
+            return all(element.type == 0 for element in value)
         if self.codec in ("bool", "int", "unsupported"):
             return bool(value == self.default)
         if self.codec == "table":

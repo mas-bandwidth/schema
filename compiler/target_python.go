@@ -11,6 +11,9 @@
 package compiler
 
 import (
+	"fmt"
+	"sort"
+
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -29,7 +32,10 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 			return nil, err
 		}
 	}
-	if err := pythonRefuseUnported(u); err != nil {
+	if err := refuseUnported(u, "python"); err != nil {
+		return nil, err
+	}
+	if err := pythonRefusePacketUnionArrays(u); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "python"); err != nil {
@@ -50,40 +56,14 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return python.Generate(u)
 }
 
-// pythonRefuseUnported is the shared refusal chain with one table-frame
-// carve-out: a bounded array of TABLE-SIDE unions is what this target carries
-// (a union with a general arm), while an array of packet unions waits for the
-// packet layer. The shared list is coarser because its test unit has packet
-// arms, so it would otherwise speak for a construct Python already carries.
-func pythonRefuseUnported(u *ir.Unit) error {
-	if err := refuseValueDefaults(u, "python"); err != nil {
-		return err
-	}
-	if err := refuseWasRows(u, "python"); err != nil {
-		return err
-	}
-	if err := refuseTableArms(u, "python"); err != nil {
-		return err
-	}
-	if err := refuseVoidArms(u, "python"); err != nil {
-		return err
-	}
-	if !pythonCarriesUnionArrays(u) {
-		if err := refuseUnionArrays(u, "python"); err != nil {
-			return err
-		}
-	}
-	if err := refuseBytes(u, "python"); err != nil {
-		return err
-	}
-	return refuseStrings(u, "python")
-}
-
-// pythonCarriesUnionArrays reports whether every array of unions the table
-// closure declares names a table-side union. A closure with no such array
-// answers false, so the shared refusal keeps its own wording.
-func pythonCarriesUnionArrays(u *ir.Unit) bool {
-	seen := false
+// pythonRefusePacketUnionArrays is this target's one addition to the shared
+// chain. Python registers as a union-array carrier (carries_python_unions.go),
+// so refuseUnported's union-array step passes: an array of TABLE-SIDE unions
+// (a union with a general arm) is what the table frame carries. An array of
+// PACKET unions, whose arms are all packet types, waits for the packet layer
+// (P4), so it is named here.
+func pythonRefusePacketUnionArrays(u *ir.Unit) error {
+	var fields []string
 	for name := range ir.TableClosure(u) {
 		st := ir.ClosureMember(u, name)
 		if st == nil {
@@ -97,13 +77,17 @@ func pythonCarriesUnionArrays(u *ir.Unit) bool {
 			if !ok {
 				continue
 			}
-			seen = true
 			if _, carried := u.TableUnions[ref.Name]; !carried {
-				return false
+				fields = append(fields, name+"."+f.Name)
 			}
 		}
 	}
-	return seen
+	if len(fields) == 0 {
+		return nil
+	}
+	sort.Strings(fields)
+	return fmt.Errorf("unit declares an array of packet unions in a table closure (%s) — the python table frame carries arrays of table-side unions, and an array of a union whose arms are all packet types is the packet layer's named follow-on; wrap the union in a table and declare an array of that (docs/PORT-PYTHON.md, docs/SPEC-TABLES.md §2.6, §11)",
+		englishList(fields))
 }
 
 func init() {

@@ -840,12 +840,14 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
+		// A fixed array is born with every slot; a counted array is born
+		// empty whatever its minimum, as the engine's reset builds it
+		// (internal/tabletext/value.go), so an absent counted field reads as
+		// the engine reads it. The minimum binds the writer, which refuses
+		// an array below it.
 		count := int64(0)
-		switch f.Array {
-		case ir.ArrayFixed:
+		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
-		case ir.ArrayCounted:
-			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"

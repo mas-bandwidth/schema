@@ -20,24 +20,14 @@ from .descriptor import ArmDesc, FieldDesc
 # bytes after that length, so the arm's L is that length.
 _LENGTH_KINDS = frozenset((12, 13, 14, 16, 31, 32))
 
+_EXTENT_CAP = 0x7FFFFFFF
+
 
 def _union_class(name: str) -> type[Any]:
     cls = descriptor._union_by_name(name)
     if cls is None:
         raise InvalidValue(name, f"the union {name} is not registered")
     return cls
-
-
-def _varint_bytes(value: int) -> bytes:
-    out = bytearray()
-    while True:
-        byte = value & 0x7F
-        value >>= 7
-        if value:
-            out.append(byte | 0x80)
-        else:
-            out.append(byte)
-            return bytes(out)
 
 
 def _header_end(data: bytearray) -> int:
@@ -56,25 +46,31 @@ def _arm(un: type[Any], tag: int, path: str) -> ArmDesc:
     return arms[tag - 1]
 
 
-def _read_union_payload(r: Any, un: type[Any], ctx: Any, allow_none: bool) -> Any:
-    from .load import Reader
+def _read_union_payload(r: Any, un: type[Any], ctx: Any) -> Any:
+    from .load import check_content
 
     reference = r.varint()
     if reference == 0:
-        if not allow_none:
-            raise Refused("wire_damaged", "a union field carries the empty arm")
+        # The empty arm reads as None, in a field as in an array element: the
+        # Go engine reads a union field's zero reference so (and writes it so
+        # for a required union). The spec names a field's arm 0 a non-canonical
+        # spelling; refusing it is the cross-leg tightening's, not this leg's
+        # alone.
         return un()
     arm_id = r.id_at(reference)
     arm = un.descriptor.by_id.get(arm_id)
+    kind = r.byte()
+    framed = r.pos
+    length = r.varint()
+    start = r.pos
+    payload = r.take(length)
     if arm is None:
-        kind = r.byte()
-        length = r.varint()
-        r.take(length)
+        # An arm this reader cannot name reads as None, counted unknown, and
+        # its payload is judged as the engine's wire check judges any skipped
+        # value (internal/tablewire/wirecheck.go, union and content).
+        check_content(payload, kind, ctx.ids)
         ctx.unknown += 1
         return un()
-    kind = r.byte()
-    length = r.varint()
-    payload = r.take(length)
     if kind != arm.kind:
         raise Refused(
             "kind_mismatch",
@@ -83,45 +79,35 @@ def _read_union_payload(r: Any, un: type[Any], ctx: Any, allow_none: bool) -> An
     value = un()
     value.type = arm.tag
     if arm.field is None:
-        if kind != 32:
-            raise Refused(
-                "kind_mismatch",
-                f"{un.descriptor.name}.{arm.name} rides under kind {kind}, not 32",
-            )
         if length != 0:
-            raise Refused("wire_damaged", "a payload-free arm carries bytes")
+            raise Refused("wire_damaged", "kind 32 with a nonzero L")
         return value
     previous = ctx.current
     ctx.current = value
     try:
-        loaded = _read_arm_payload(payload, arm.field, ctx)
+        loaded = _read_arm_payload(r, framed, start, arm.field, ctx)
     finally:
         ctx.current = previous
     setattr(value, arm.name, loaded)
     return value
 
 
-def _read_arm_payload(payload: Any, f: FieldDesc, ctx: Any) -> Any:
+def _read_arm_payload(r: Any, framed: int, start: int, f: FieldDesc, ctx: Any) -> Any:
+    """Read one arm's payload in place, out of the reader that framed it.
+
+    A length kind's field payload begins with its own L, which is the arm's L,
+    so the field codec reads from the arm's L onward; every other kind reads
+    the bytes after it. Both are bounded to the arm's end, never copied.
+    """
     from .load import Reader
 
-    codec = kinds._REGISTRY[f.codec]
+    sub = Reader(r.data, framed if f.kind in _LENGTH_KINDS else start, r.pos, ctx.ids)
     if f.codec == "union":
-        sub = Reader(payload, 0, len(payload), ctx.ids)
-        inner = _read_union_payload(sub, _union_class(f.target), ctx, True)
-        if sub.pos != sub.end:
-            raise Refused("wire_damaged", "bytes left inside a union arm")
-        return inner
-    if f.kind in _LENGTH_KINDS:
-        framed = memoryview(_varint_bytes(len(payload)) + bytes(payload))
-        sub = Reader(framed, 0, len(framed), ctx.ids)
-        value = codec.read(sub, f, ctx)
-        if sub.pos != sub.end:
-            raise Refused("wire_damaged", "bytes left inside a union arm")
-        return value
-    sub = Reader(payload, 0, len(payload), ctx.ids)
-    value = codec.read(sub, f, ctx)
+        value = _read_union_payload(sub, _union_class(f.target), ctx)
+    else:
+        value = kinds._REGISTRY[f.codec].read(sub, f, ctx)
     if sub.pos != sub.end:
-        raise Refused("wire_damaged", "bytes left inside a union arm")
+        raise Refused("wire_damaged", "bytes left inside an arm's L after its payload")
     return value
 
 
@@ -132,12 +118,14 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         w.varint(0)
         return
     f = arm.field
+    if f.kind in _LENGTH_KINDS:
+        # The arm's field line IS the arm header: the field id is the arm id,
+        # and the field's own L is the arm's L, so the codec writes in place.
+        kinds._REGISTRY[f.codec].write(w, f, value, ctx)
+        return
     ctx.idref(arm.arm_id)
     body = bytearray()
     kinds._REGISTRY[f.codec].write(_writer(body), f, value, ctx)
-    if f.kind in _LENGTH_KINDS:
-        w.raw(body)
-        return
     end = _header_end(body)
     payload = body[end:]
     w.raw(body[:end])
@@ -172,7 +160,7 @@ def _validate_union(value: Any, name: str, path: str, seen: set[int]) -> None:
     arm = un.descriptor.arms[tag - 1]
     if arm.field is None:
         return
-    _validate_arm_value(getattr(value, arm.name), arm.field, path, seen)
+    _validate_arm_value(getattr(value, arm.name), arm.field, f"{path}.{arm.name}", seen)
 
 
 def _validate_union_array(value: Any, f: FieldDesc, path: str, seen: set[int]) -> None:
@@ -261,7 +249,7 @@ class _Union:
         _validate_union(value, fd.target, path, set())
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        return _read_union_payload(r, _union_class(fd.target), ctx, False)
+        return _read_union_payload(r, _union_class(fd.target), ctx)
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.varint(ctx.idref(fd.field_id))
@@ -291,17 +279,16 @@ class _UnionArray:
                 f"{fd.name} carries element kind {element_kind}, not 15",
             )
         count = sub.varint()
+        if count > _EXTENT_CAP:
+            raise Refused("count_over_extent_cap", f"{fd.name} counts {count}, past the int32 storage cap")
         if count > fd.bound:
-            raise Refused("out_of_range", f"an array of {count} is past its bound {fd.bound}")
+            raise Refused("count_over_bound", f"{fd.name} counts {count}, past its bound {fd.bound}")
         un = _union_class(fd.target)
-        if fd.array_fixed:
-            values = [un() for _ in range(fd.bound)]
-        else:
-            if count < fd.array_min:
-                raise Refused("out_of_range", f"an array of {count} is below its minimum {fd.array_min}")
-            values = []
+        # A counted array below its declared minimum is read as it stands, as
+        # the engine reads it; the minimum binds the writer (save refuses it).
+        values = [un() for _ in range(fd.bound)] if fd.array_fixed else []
         for index in range(count):
-            value = _read_union_payload(sub, un, ctx, True)
+            value = _read_union_payload(sub, un, ctx)
             if fd.array_fixed:
                 values[index] = value
             else:
