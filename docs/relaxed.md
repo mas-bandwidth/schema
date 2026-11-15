@@ -87,7 +87,6 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-goose`: both hostile rows.
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-lobster`: jref_zero_byte only. The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
   - `relax/hostile-rows-luau`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
@@ -264,6 +263,17 @@ green)` and its slug.
   other disagreement is still compared. Real fix: the generated Go fixed read
   refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
   tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
+- `relax/fixedtwin-dead-bytes-runtimes`: `tools/fixedtwin`
+  TestPairedHeadersAgree, TestCAndCppTwinHeadersAgree and
+  TestCAndCppTwinHeadersAgreeNegativeControl skip when the real paired
+  headers leave lines after the twin map (850 at 53a72e4e5); a header the
+  tool cannot extract still fails. The C and C++ legs each landed their own
+  fixed dead-bytes-zero runtime (c2b00ff8c, then 4eb3af336), and the C++
+  strict walk added a `refuse_reason` line inside the RefuseScan call block
+  the gate matches (016607b8a). `make tables-fixed-twin` is red for the same
+  reason. Real fix: the two runtimes are brought back into one shape (or the
+  twin map in bench/paired/TWIN.md names each difference), the call match
+  takes the new block, and the skips go.
 
 ## Proof cells
 

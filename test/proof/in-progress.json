@@ -155,11 +155,6 @@
     },
     {
       "row": "surface write-refusal-json",
-      "lang": "lobster",
-      "slug": "relax/hostile-rows-lobster"
-    },
-    {
-      "row": "surface write-refusal-json",
       "lang": "lua",
       "slug": "relax/hostile-rows-lua"
     },

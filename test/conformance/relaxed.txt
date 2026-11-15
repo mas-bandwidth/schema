@@ -134,7 +134,6 @@ cpp write-refusal-json jref_zero_byte relax/hostile-rows-cpp
 cs write-refusal-json jref_zero_byte relax/hostile-rows-cs
 elixir write-refusal-json jref_zero_byte relax/hostile-rows-elixir
 js write-refusal-json jref_zero_byte relax/hostile-rows-js
-lobster write-refusal-json jref_zero_byte relax/hostile-rows-lobster
 lua write-refusal-json jref_zero_byte relax/hostile-rows-lua
 #
 # The go leg (the generated Go API driver): its cook writer still writes the

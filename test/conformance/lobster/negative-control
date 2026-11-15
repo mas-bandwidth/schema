@@ -31,7 +31,7 @@
 #           §4), so exactly `lobster / framing` goes red, on its node_cycle_*
 #           rows; `wire`, `report` and `retain` green.
 #   write-refusal
-#           fixedevolve.go's checked fixed writer never runs its write check
+#           fixedform.go's checked fixed writer (<T>Save) never runs its write check
 #           (docs/SPEC.md §5.1): exactly `write-refusal` and
 #           `write-refusal-fixed` go red — every row of both batteries is a
 #           declared fixed root, saved through its own form's one checked
@@ -71,9 +71,9 @@ walk)
     sed 's/^        if sl\.fd\.json == key:$/        if sl.fd.json == key and i != 0:/' "$source" > "$out/runtime.lobster"
     ;;
 write-refusal)
-    # the emitter's fixed SaveChecked stops calling its write check (a copy
-    # of fixedevolve.go, overlaid as the runtime files are)
-    source=internal/codegen/lobstertable/fixedevolve.go
+    # the emitter's fixed <T>Save stops calling its write check (a copy
+    # of fixedform.go, overlaid as the runtime files are)
+    source=internal/codegen/lobstertable/fixedform.go
     sed 's/if not %sFixedCheckBody(v):/if false and not %sFixedCheckBody(v):/' "$source" > "$out/runtime.lobster"
     ;;
 write-refusal-message)

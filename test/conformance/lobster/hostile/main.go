@@ -51,8 +51,8 @@ const program = "test/conformance/lobster/hostile.lobster"
 const packetMarker = "// ==== PACKET UNIT ===="
 
 var (
-	packetReadRe  = regexp.MustCompile(`(?m)^def Read([A-Za-z_][A-Za-z0-9_]*)\(stream:serialize_read_stream, value:[A-Za-z_][A-Za-z0-9_]*\) -> bool:`)
-	packetWriteRe = regexp.MustCompile(`(?m)^def Write([A-Za-z_][A-Za-z0-9_]*)\(s:serialize_write_stream, v:[A-Za-z_][A-Za-z0-9_]*\) -> bool:`)
+	packetReadRe  = regexp.MustCompile(`(?m)^def Read([A-Za-z_][A-Za-z0-9_]*)\(stream·?:serialize_read_stream, value·?:[A-Za-z_][A-Za-z0-9_]*\) -> bool:`)
+	packetWriteRe = regexp.MustCompile(`(?m)^def Write([A-Za-z_][A-Za-z0-9_]*)\(s·?:serialize_write_stream, v·?:[A-Za-z_][A-Za-z0-9_]*\) -> bool:`)
 	packetNewRe   = regexp.MustCompile(`(?m)^def New([A-Za-z_][A-Za-z0-9_]*)\(\) -> [A-Za-z_][A-Za-z0-9_]*:`)
 	namespaceRe   = regexp.MustCompile(`(?m)^namespace ([A-Za-z_][A-Za-z0-9_]*)`)
 )
