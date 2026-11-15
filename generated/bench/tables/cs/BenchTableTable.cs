@@ -1898,14 +1898,18 @@ namespace Benchtable
                         if (next == '/')
                         {
                             input.Pos += 2;
+                            int start = input.Pos;
                             while (input.Pos < text.Length && text[input.Pos] != '\n') { input.Pos++; }
+                            if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                             continue;
                         }
                         if (next == '*')
                         {
                             input.Pos += 2;
+                            int start = input.Pos;
                             while (input.Pos + 1 < text.Length && !(text[input.Pos] == '*' && text[input.Pos + 1] == '/')) { input.Pos++; }
                             if (input.Pos + 1 >= text.Length) { input.Bad = true; return; }
+                            if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                             input.Pos += 2;
                             continue;
                         }
