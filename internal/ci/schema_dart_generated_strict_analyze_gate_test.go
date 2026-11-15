@@ -151,7 +151,6 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"schema-dart-generated-strict-analyze-gate-all DART=dart",
 		"workflow_dispatch:",
 		"schedule:",
-		"pull_request:",
 		"push:",
 		"dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d",
 		"sdk: 3.13.2",
@@ -174,9 +173,29 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			t.Errorf("Dart nightly job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
 		}
 	}
+	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): on a pull request the
+	// fast half runs there as lang-lint (dart), selected by path.
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-dart", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobSelectsSelfHosted(wf, "fast", ev); err != nil || ok {
+			t.Errorf("Dart fast job ran on a pull request (%+v): ok=%v err=%v; the PR gate is ci-fast.yml lang-lint", ev, ok, err)
+		}
+	}
+	fast, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"make schema-dart-generated-strict-analyze-gate DART=dart",
+		"make schema-dart-generated-strict-analyze-gate-negative-control DART=dart",
+	} {
+		if !strings.Contains(string(fast), want) {
+			t.Errorf("ci-fast.yml lang-lint does not carry %q: a Dart pull request would run no strict analyze", want)
+		}
+	}
+	for _, ev := range []ciEvent{
 		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
@@ -190,9 +209,9 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			t.Errorf("Dart nightly job under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNightly)
 		}
 	}
-	// Guard mutation must fail fork PR admission.
-	mutated := strings.Replace(wf, "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n", "", 1)
-	if ok, err := jobSelectsSelfHosted(mutated, "fast", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}); err != nil || !ok {
-		t.Errorf("guard mutation control did not admit fork PR as expected: ok=%v err=%v", ok, err)
+	// Mutation: a restored pull_request trigger is seen by the check above.
+	mutated := strings.Replace(wf, "\non:\n", "\non:\n  pull_request:\n", 1)
+	if ok, err := jobSelectsSelfHosted(mutated, "fast", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || !ok {
+		t.Errorf("trigger mutation control: a restored pull_request trigger was not seen: ok=%v err=%v", ok, err)
 	}
 }
