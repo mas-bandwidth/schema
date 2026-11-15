@@ -50,7 +50,11 @@ func cyclicListWire(t *testing.T, to byte, orphan bool) []byte {
 		if !ok {
 			t.Fatal("ListNode has no value")
 		}
+		// the writer compares a signed cell's I against the default and
+		// writes its U, so both carry the value: the fixture is the
+		// canonical spelling, a value no writer elides
 		v.Cell.I = int64(0x41 + i)
+		v.Cell.U = uint64(0x41 + i)
 	}
 	for i := range 3 {
 		next, ok := nodes[i].FieldByKey("next")
