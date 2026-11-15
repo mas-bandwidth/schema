@@ -66,7 +66,16 @@ func TestElixirDriverReadsStrictAndWritesBack(t *testing.T) {
 	root := elixirConformanceRoot(t)
 	elixirConformanceBuild(t, root)
 
-	// The whole matrix over the real corpus.
+	// Three parts over the one build, each run once and each runnable alone
+	// (-run 'TestElixirDriverReadsStrictAndWritesBack/<part>'): the whole
+	// matrix is the long one, the two driver answers take seconds.
+	t.Run("matrix", func(t *testing.T) { elixirDriverMatrix(t, root) })
+	t.Run("fixed_root", func(t *testing.T) { elixirDriverFixedRoot(t, root) })
+	t.Run("retain", func(t *testing.T) { elixirDriverRetain(t, root) })
+}
+
+// elixirDriverMatrix runs the whole matrix over the real corpus.
+func elixirDriverMatrix(t *testing.T, root string) {
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "elixir", "--work", t.TempDir())
@@ -78,8 +87,11 @@ func TestElixirDriverReadsStrictAndWritesBack(t *testing.T) {
 	if !strings.Contains(string(out), "tables conformance: every registered surface passes") {
 		t.Fatalf("conformance harness did not pass every surface:\n%s", out)
 	}
+}
 
-	// A fixed root's positive (form-3) wire: read, text and write-back.
+// elixirDriverFixedRoot reads a fixed root's positive (form-3) wire: read,
+// text and write-back.
+func elixirDriverFixedRoot(t *testing.T, root string) {
 	wirePath := filepath.Join(root, "testdata", "conformance", "tables", "wire", "root_full.bin")
 	outDir := elixirDriverSurface(t, root, "report", "report root_full tabledemo RootConfig "+wirePath+"\n")
 	got, err := os.ReadFile(filepath.Join(outDir, "root_full"))
@@ -104,15 +116,18 @@ func TestElixirDriverReadsStrictAndWritesBack(t *testing.T) {
 	if !bytes.Equal(gotWire, wantWire) {
 		t.Fatalf("root_full write-back wire (%d bytes) differs from the canonical wire (%d bytes)", len(gotWire), len(wantWire))
 	}
+}
 
-	// Retain: `read\n` plus the complete known value.
+// elixirDriverRetain reads under retain: `read\n` plus the complete known
+// value.
+func elixirDriverRetain(t *testing.T, root string) {
 	retainWire := filepath.Join(root, "testdata", "wire", "tables", "retain_rt2.bin")
-	outDir = elixirDriverSurface(t, root, "retain", "retain retain_round_trip tblrt1 Node "+retainWire+" full full\n")
-	got, err = os.ReadFile(filepath.Join(outDir, "retain_round_trip"))
+	outDir := elixirDriverSurface(t, root, "retain", "retain retain_round_trip tblrt1 Node "+retainWire+" full full\n")
+	got, err := os.ReadFile(filepath.Join(outDir, "retain_round_trip"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantText, err = os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "retain-values", "retain_round_trip.json"))
+	wantText, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "retain-values", "retain_round_trip.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

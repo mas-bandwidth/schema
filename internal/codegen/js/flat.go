@@ -13,6 +13,7 @@
 //
 //	Write<Name>Flat(view, value)          -> bytes written | -1 (refusal)
 //	Read<Name>Flat(view, numBits, value)  -> bool
+//	Read<Name>FlatBits(view, numBits, value) -> bits consumed | false
 //
 // Target first, value last — the runtime tier's Write<Name>(stream, value)
 // order, with the view (and, reading, its bit count) in the stream's place.
@@ -269,6 +270,9 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// refuses an out-of-contract value — in every build, production\n")
 		h.WriteString("// included. Read<Name>Flat(view, numBits, value) -> bool, the family read\n")
 		h.WriteString("// verdict; reader obligations ride in every build too.\n")
+		h.WriteString("// Read<Name>FlatBits(view, numBits, value) -> the bits that read consumed,\n")
+		h.WriteString("// or false. The framing entry: the same refusals, and not the end-of-packet\n")
+		h.WriteString("// check, so a later object may follow in the same buffer (SPEC §5, §6.3).\n")
 		h.WriteString("//\n")
 		h.WriteString("// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes\n")
 		h.WriteString("// (the constants live in the runtime-tier module). Read buffers: at least\n")
@@ -333,6 +337,7 @@ func (g *fgen) emitUnionFlat(u *ir.Union) {
 	g.bpf("// ---- union %s: the flat codec ----\n\n", u.Name)
 	g.emitWriteFlat(u.Name, func() { g.emitWriteUnionFlat(u, "value", "  ") })
 	g.emitReadFlatBody(u.Name, func() { g.emitReadUnionFlat(u, "value", "  ", false) })
+	g.emitReadFlatBits(u.Name, func() { g.emitReadUnionFlat(u, "value", "  ", false) })
 }
 
 // ---- shared kernel text (the probe's gen_flat.mjs, transliterated) ----
@@ -499,9 +504,10 @@ func (g *fgen) readClose() {
 }
 
 // readDrop abandons a window's pending advance instead of emitting it. Legal
-// at exactly one place — the end of a read function, where the only
-// statement left is `return true`: the flat reader answers a verdict, not a
-// length, so nothing downstream can observe the cursor.
+// at exactly one place — the end of Read<name>Flat, where the only statement
+// left is `return true`: that entry answers a verdict, not a length, so
+// nothing downstream can observe the cursor. Read<name>FlatBits settles the
+// window and returns the position.
 func (g *fgen) readDrop() {
 	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
 }
@@ -618,6 +624,7 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 	g.bpf("// ---- type %s: the flat codec ----\n\n", st.Name)
 	g.emitWriteFlat(st.Name, func() { g.emitWriteItems(st.Items, "value", "  ") })
 	g.emitReadFlatBody(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
+	g.emitReadFlatBits(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
 }
 
 // emitWriteFlat emits Write<name>Flat: one writer, the same in every build.
@@ -717,6 +724,32 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	// a parameter nothing reads is not declared (eslint no-unused-vars) — an
 	// empty type reads none; a caller's arguments are accepted and ignored
 	g.bpf("export function Read%sFlat(%s) {\n%s  return true;\n}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
+}
+
+// emitReadFlatBits emits Read<name>FlatBits beside Read<name>Flat (SPEC §5,
+// §6.3). The body is the same read, so a refusal is the same `return false`.
+// The success value is the bits consumed. This entry does not run the
+// end-of-packet check: it is what frames a second object behind the first.
+func (g *fgen) emitReadFlatBits(name string, emit func()) {
+	g.fn.Reset()
+	g.resetNeeds()
+	emit()
+	// the verdict entry drops the last window's advance, because nothing
+	// there observes the cursor. This entry returns it, so the window settles.
+	g.readClose()
+	if g.rKnown {
+		g.rawf("  return %d;\n", g.rBr)
+	} else {
+		g.rawf("  return br;\n")
+	}
+	body := g.readBody(g.fn.String())
+	g.fn.Reset()
+
+	g.bpf("// Read%sFlatBits(view, numBits, value) -> bits consumed, or false\n", name)
+	g.bpf("// (SPEC §5, §6.3). The same refusals as Read%sFlat, without the\n", name)
+	g.bpf("// end-of-packet check, so a later object may follow in the buffer.\n")
+	g.bpf("// The buffer behind view must extend FlatReadSlack bytes past the payload.\n")
+	g.bpf("export function Read%sFlatBits(%s) {\n%s}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
 }
 
 // deadCursorStore matches a read cursor materialization line.

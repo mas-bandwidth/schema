@@ -839,6 +839,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	none := g.enumConst(e, 0)
 	g.pf("%s %sFromName(dynamic val, TableTextReport r, [%s? def]) {\n", g.enumType(e), dn, g.enumType(e))
 	g.pf("\tif (val is! String) { r.refuse('kind_mismatch'); return def ?? %s; }\n", none)
+	g.pf("\tif (!_jsonName(val, r)) return def ?? %s;\n", none)
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
@@ -1027,8 +1028,8 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", strconv.Quote(ir.TableFieldJsonKey(st.Fields[0])))
 	} else {
 		g.pf("\tfinal entries = _jsonEntries(obj);\n")
+		g.pf("\tif (entries == null) return;\n")
 	}
-	g.pf("\tif (entries == null) return;\n")
 	g.pf("\tfinal seen = <String>{};\n")
 	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
@@ -1037,6 +1038,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	// that decodes to U+0000 refuses the read.
 	g.pf("\t\t_jsonText(key);\n")
 	g.pf("\t\tfinal val = entry.value;\n")
+	g.pf("\t\tif (!_jsonName(key, r)) return;\n")
 	g.pf("\t\tswitch (key) {\n")
 	g.pf("\t\t\tcase '&node':\n\t\t\t\tif (!pointer) throw const FormatException('label outside pointer');\n\t\t\t\tbreak;\n")
 	for _, f := range st.Fields {
@@ -1045,7 +1047,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	// an unknown key is skipped and counted, and its repeat is damage like a
 	// known key's (§2.8). Its VALUE is held to the grammar and text rules a
 	// placed value is held to (§16.3, §4), so damage inside it refuses.
-	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val);\n\t\t\t\tr.unknown++;\n")
+	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val, r);\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")
@@ -1239,12 +1241,15 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
 	if st.JsonArray {
 		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
+		// The throw above already leaves root a List here, so the call takes
+		// no second shape test.
+		g.pf("\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	} else {
 		g.pf("\tif (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: %s');\n", st.Name)
+		g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
+		g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
+		g.pf("\t}\n")
 	}
-	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
-	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
-	g.pf("\t}\n")
 	// A caller who supplied a report reads the verdict from it and lands the
 	// type's defaults; a caller who did not gets the refusal as a throw.
 	g.pf("\tif (r.refused) {\n")

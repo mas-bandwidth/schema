@@ -106,12 +106,25 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
 // _jsonSkipValue holds a value the read only SKIPS to the grammar and text
 // rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
 // the parser has judged its grammar, and every object key and every string in
 // it goes through the same text check a placed string does, so one that
-// decodes to U+0000 refuses the read as a placed one would.
-void _jsonSkipValue(dynamic val) {
+// decodes to U+0000 refuses the read as a placed one would. Every object key
+// also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+void _jsonSkipValue(dynamic val, TableTextReport r) {
   if (val is String) {
     _jsonText(val);
     return;
@@ -119,13 +132,14 @@ void _jsonSkipValue(dynamic val) {
   if (val is _JObj) {
     for (final entry in val.entries) {
       _jsonText(entry.key);
-      _jsonSkipValue(entry.value);
+      _jsonName(entry.key, r);
+      _jsonSkipValue(entry.value, r);
     }
     return;
   }
   if (val is List) {
     for (final item in val) {
-      _jsonSkipValue(item);
+      _jsonSkipValue(item, r);
     }
     return;
   }
@@ -134,7 +148,8 @@ void _jsonSkipValue(dynamic val) {
       final key = entry.key;
       if (key is! String) throw const FormatException('kind_mismatch');
       _jsonText(key);
-      _jsonSkipValue(entry.value);
+      _jsonName(key, r);
+      _jsonSkipValue(entry.value, r);
     }
   }
 }
@@ -455,7 +470,8 @@ bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
-      final b = base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
       if (b.length > bound) {
         r.refuse('length_over_bound');
         return def;
@@ -481,7 +497,9 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
+      return b;
     } on FormatException {
       r.refuse('kind_mismatch');
       return null;
@@ -535,6 +553,7 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
       // AN UNKNOWN KEY AND ITS VALUE are held to the text and grammar rules a
@@ -542,7 +561,7 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
       // string inside the value that decodes to U+0000 refuses the read.
       _jsonText(entry.key);
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
-      _jsonSkipValue(entry.value);
+      _jsonSkipValue(entry.value, r);
       r.unknown++;
       continue;
     }
@@ -704,6 +723,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tif (val is! List) { r.refuse('kind_mismatch'); return def; }\n")
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
+		g.pf("\t\tif (item is String && !_jsonName(item, r)) return def;\n")
 		g.pf("\t\tswitch (item) {\n")
 		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
@@ -744,6 +764,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (entries.isEmpty) return v;\n")
 		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\tif (!_jsonName(entries.first.key, r)) return v;\n")
 		g.pf("\tfinal item = entries.first.value;\n")
 		g.pf("\tswitch (entries.first.key) {\n")
 		for i, arm := range un.Variants {
@@ -759,7 +780,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipValue(item, r);\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")
