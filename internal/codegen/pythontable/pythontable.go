@@ -484,7 +484,7 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 			}
 		}
 	}
-	for _, un := range unions {
+	for _, un := range orderUnions(unions) {
 		emitUnion(&b, un)
 	}
 	for _, st := range tables {
@@ -518,6 +518,43 @@ func sortedSet(set map[string]bool) []string {
 		out = append(out, name)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// orderUnions emits a union whose arm names another union after that arm's
+// union: a generated union's constructor builds every payload arm at its
+// default, so the class it names must already be registered.
+func orderUnions(unions []*ir.Union) []*ir.Union {
+	byName := make(map[string]*ir.Union, len(unions))
+	for _, un := range unions {
+		byName[un.Name] = un
+	}
+	sorted := append([]*ir.Union(nil), unions...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+	out := make([]*ir.Union, 0, len(sorted))
+	done := map[string]bool{}
+	active := map[string]bool{}
+	var emit func(un *ir.Union)
+	emit = func(un *ir.Union) {
+		if done[un.Name] || active[un.Name] {
+			return
+		}
+		active[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			if ref, ok := v.F.Type.Ref.(*ir.Union); ok && byName[ref.Name] != nil {
+				emit(byName[ref.Name])
+			}
+		}
+		active[un.Name] = false
+		done[un.Name] = true
+		out = append(out, un)
+	}
+	for _, un := range sorted {
+		emit(un)
+	}
 	return out
 }
 
@@ -851,7 +888,7 @@ func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
 	b.WriteString("    arms=(\n")
-	for _, v := range un.Variants {
+	for tag, v := range un.Variants {
 		wire := v.Name
 		if v.WasName != "" {
 			wire = v.WasName
@@ -866,14 +903,74 @@ func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
 		}
 		fmt.Fprintf(b, "        ArmDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(v.Name))
+		fmt.Fprintf(b, "            tag=%d,\n", tag+1)
 		fmt.Fprintf(b, "            arm_id=%s,\n", hex64(ir.TableWireId(wire)))
 		fmt.Fprintf(b, "            kind=%d,\n", kind)
 		fmt.Fprintf(b, "            target=%s,\n", strconv.Quote(target))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(pointer))
+		fmt.Fprintf(b, "            field=%s,\n", armFieldDesc(v, tag+1))
 		fmt.Fprintf(b, "        ),\n")
 	}
 	b.WriteString("    ),\n")
 	b.WriteString(")\n")
+}
+
+// armFieldDesc is one arm's field line as data: the same descriptor facts a
+// field carries (emitTableDescriptor), with the arm id standing in for the
+// field id (docs/SPEC-TABLES.md §2.6, §3). A payload-free arm has no field
+// line. An arm whose codec needs a walk the union module does not run (a
+// keyed array, a byte buffer) refuses by name through kind_unsupported.py.
+func armFieldDesc(v ir.UnionVariant, tag int) string {
+	f := v.F
+	if f == nil {
+		return "None"
+	}
+	wire := v.Name
+	if v.WasName != "" {
+		wire = v.WasName
+	}
+	codec := codecOf(f)
+	switch codec {
+	case "keyed", "string_blob", "bytes_blob":
+		codec = "unsupported"
+	}
+	elemCodec := ""
+	if codec == "array" {
+		elemCodec = elementCodecOf(f)
+	}
+	lo, hi := intRange(f)
+	mapEntry := ""
+	if f.MapEntry != nil {
+		mapEntry = f.MapEntry.Name
+	}
+	deprecated := ""
+	if dep := deprecatedOrdinals(f); dep != "" {
+		deprecated = ", deprecated=" + dep
+	}
+	return "FieldDesc(" +
+		"name=" + strconv.Quote(v.Name) +
+		", field_id=" + hex64(ir.TableWireId(wire)) +
+		", kind=" + strconv.Itoa(ir.TableWireFieldKind(f)) +
+		", codec=" + strconv.Quote(codec) +
+		", ordinal=" + strconv.Itoa(tag) +
+		", lo=" + lo +
+		", hi=" + hi +
+		", target=" + strconv.Quote(targetName(f)) +
+		", map_entry=" + strconv.Quote(mapEntry) +
+		", pointer=" + pyBool(f.Type.Pointer) +
+		", optional=" + pyBool(f.Type.Optional) +
+		", array=" + pyBool(f.Array != ir.ArrayNone) +
+		", bound=" + strconv.FormatInt(f.ArrayBound, 10) +
+		", key_enum=" + strconv.Quote(f.KeyEnum) +
+		", array_kind=" + strconv.Itoa(int(f.Array)) +
+		", array_min=" + strconv.FormatInt(f.ArrayMin, 10) +
+		", elem_kind=" + strconv.Itoa(ir.TableWireElemKind(f)) +
+		", elem_codec=" + strconv.Quote(elemCodec) +
+		", size=" + strconv.FormatInt(fieldSize(f), 10) +
+		", variant_ids=" + variantIds(f) +
+		deprecated +
+		", default=" + defaultFor(f, codec) +
+		")"
 }
 
 func packageInit(u *ir.Unit, plans []*filePlan) string {
@@ -993,6 +1090,11 @@ func codecOf(f *ir.Field) string {
 		// A fixed or counted array carries a declared type by value: a
 		// kind-14 body of kind-13 elements, the nested body the field form
 		// rides (a packet type by value in an array, docs/PORT-PYTHON.md).
+		// An array of unions is kind_union.py's: each element is an arm
+		// header in place (§3), in a fixed, counted or unbounded array.
+		if _, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed && !f.Type.Pointer {
+			return "union_array"
+		}
 		element := elementCodecOf(f)
 		if element == "unsupported" {
 			return "unsupported"
@@ -1142,12 +1244,14 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
+		// A fixed array is born with every slot; a counted array is born
+		// empty whatever its minimum, as the engine's reset builds it
+		// (internal/tabletext/value.go), so an absent counted field reads as
+		// the engine reads it. The minimum binds the writer, which refuses
+		// an array below it.
 		count := int64(0)
-		switch f.Array {
-		case ir.ArrayFixed:
+		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
-		case ir.ArrayCounted:
-			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"

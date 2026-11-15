@@ -164,13 +164,33 @@ class FieldDesc:
                 return True
             if not self.target:
                 return False
-            return bool(value == new_by_name(self.target))
+            # The engine elides a by-value table whose body is its terminator
+            # alone (internal/tablewire/encode.go), which is every field of it
+            # elided: judged field by field through the descriptors, never by
+            # the generated __eq__, so a union inside it elides by its
+            # selected arm and a user __eq__ cannot move a byte.
+            fields: tuple[FieldDesc, ...] = value.descriptor.fields
+            return all(field.is_default(getattr(value, field.name)) for field in fields)
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None
             # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
             return value is None or value.type == 0
         if self.codec == "array":
             return _array_is_default(self, value)
+        if self.codec == "union_array":
+            # As the engine elides (internal/tablewire/encode.go): a counted
+            # or unbounded array only when it holds nothing, a fixed array
+            # when every element is at the declared default, judged per
+            # element by its selected arm, never by == against a fresh value.
+            if self.array_kind != 1:
+                return len(value) == 0
+            return all(element.type == 0 for element in value)
+        if self.codec == "keyed":
+            # A keyed array whose every slot elides writes no field
+            # (kind_keyed.py): the same test, slot by slot, so a table that
+            # holds one elides as its body does.
+            elem = self.elem
+            return elem is not None and all(elem.is_default(slot) for slot in value._values)
         return bool(value == self.default)
 
 
@@ -233,13 +253,15 @@ class TableDesc:
 class ArmDesc:
     """One arm of a table-side union."""
 
-    __slots__ = ("name", "arm_id", "kind", "target", "pointer")
+    __slots__ = ("name", "tag", "arm_id", "kind", "target", "pointer", "field")
 
     name: str
+    tag: int
     arm_id: int
     kind: int
     target: str
     pointer: bool
+    field: FieldDesc | None
 
     def __init__(
         self,
@@ -248,12 +270,16 @@ class ArmDesc:
         kind: int,
         target: str = "",
         pointer: bool = False,
+        tag: int = 0,
+        field: FieldDesc | None = None,
     ) -> None:
         self.name = name
+        self.tag = tag
         self.arm_id = arm_id
         self.kind = kind
         self.target = target
         self.pointer = pointer
+        self.field = field
 
 
 class UnionDesc:
