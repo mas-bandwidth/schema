@@ -21,6 +21,7 @@
 package bench
 
 import (
+	"bytes"
 	"encoding/base64"
 	"math"
 	"strconv"
@@ -831,8 +832,7 @@ type tableJSONIn struct {
 	// mas-bandwidth/schema docs/SPEC-TABLES.md §16.2, the read option: null where the row is an
 	// array or a map reads as [] or {}
 	nullEmpty bool
-	// zero is set when the walk stopped on a U+0000 bound for text storage
-	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
+	// zero is set on U+0000 text (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3); its field loop names it.
 	zero bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
@@ -847,26 +847,22 @@ func (in *tableJSONIn) space() {
 			in.pos++
 			continue
 		}
-		if c == '/' && in.pos+1 < len(in.text) {
-			switch in.text[in.pos+1] {
-			case '/':
-				in.pos += 2
-				for in.pos < len(in.text) && in.text[in.pos] != '\n' {
-					in.pos++
-				}
-				continue
-			case '*':
-				in.pos += 2
-				for in.pos+1 < len(in.text) && !(in.text[in.pos] == '*' && in.text[in.pos+1] == '/') {
-					in.pos++
-				}
-				if in.pos+1 >= len(in.text) {
-					in.bad = true
-					return
-				}
-				in.pos += 2
-				continue
+		// a comment, line or block, is well-formed UTF-8 holding no NUL (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2, §16.3)
+		if c == '/' && in.pos+1 < len(in.text) && (in.text[in.pos+1] == '/' || in.text[in.pos+1] == '*') {
+			body, end := in.text[in.pos+2:], "*/"
+			if in.text[in.pos+1] == '/' {
+				end = "\n"
 			}
+			n := bytes.Index(body, []byte(end))
+			if n < 0 && end == "\n" {
+				n, end = len(body), ""
+			}
+			if n < 0 || bytes.IndexByte(body[:n], 0) >= 0 || !utf8.Valid(body[:n]) {
+				in.bad = true
+				return
+			}
+			in.pos += 2 + n + len(end)
+			continue
 		}
 		return
 	}
