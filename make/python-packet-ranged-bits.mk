@@ -14,12 +14,13 @@
 # reference marker red.
 #
 # TestPythonPacketRangedBits writes its own fixture with the generated Go code
-# as the byte reference, so the leg's package run needs the Go runtime.
+# as the byte reference, so the package run and both controls name deps-go,
+# which stages the pinned serialize.go sibling where none is present.
 .PHONY: python-packet-ranged-bits-negative-control python-packet-ranged-bits-goref-negative-control
-test-python: python-packet-ranged-bits-negative-control python-packet-ranged-bits-goref-negative-control $(SERIALIZE_GO_RUNTIME)/go.mod
+test-python: python-packet-ranged-bits-negative-control python-packet-ranged-bits-goref-negative-control deps-go
 
-python-packet-ranged-bits-negative-control: python-toolchain-check
+python-packet-ranged-bits-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketRangedBitsNegativeControl$$' ./internal/codegen/python/
 
-python-packet-ranged-bits-goref-negative-control: python-toolchain-check $(SERIALIZE_GO_RUNTIME)/go.mod
+python-packet-ranged-bits-goref-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketRangedBitsGoReferenceNegativeControl$$' ./internal/codegen/python/
