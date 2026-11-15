@@ -1459,9 +1459,8 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
     TableReader r( b + 1, n - 1, &ignored, s.ids );
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
-    // a count past the int32 extent cap is the decode's to name (§2.9), and the
-    // decode walks no further, so this walk leaves it to the decode too
-    if ( count > 0x7FFFFFFFull ) { return true; }
+    // the cap applies even when this array belongs to an unknown field
+    if ( count > 0x7FFFFFFFull ) { return false; }
     for ( uint64_t i = 0; i < count; i++ )
     {
         if ( !TableStrictPayload( s, r, elem, depth ) ) { return false; }
@@ -1478,7 +1477,8 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     TableReader r( b + 1, n - 1, &ignored, s.ids );
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
-    if ( count > 0x7FFFFFFFull ) { return true; }
+    // the cap applies even when this keyed array belongs to an unknown field
+    if ( count > 0x7FFFFFFFull ) { return false; }
     uint64_t seen[kTableStrictSeenWords];
     for ( int32_t w = 0; w < kTableStrictSeenWords; w++ ) { seen[w] = 0; }
     for ( uint64_t i = 0; i < count; i++ )

@@ -14,10 +14,9 @@
 // pointer-bearing type needs no marks at all — a fixed reader has no reference
 // that could reach a node, so it refuses a non-empty node table outright.
 //
-// Two conditions stay with the decode rather than the walk, because the decode
-// names them by the field that met them and in read order (the oracle hands
-// them back the same way): a non-finite float (§3.3) and a count above the
-// int32 extent cap (§2.9). The walk refuses the damage they ride with.
+// A non-finite float (§3.3) stays with the decode, which names it by the field
+// that met it. Counts above the int32 extent cap (§2.9) are refused here even
+// in fields the decoder skips: their verdict is decidable from the wire.
 package cpptable
 
 // tableStrictRuntime returns the shared walk: the cursor, the two bounds, and
@@ -262,9 +261,8 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
     TableReader r( b + 1, n - 1, &ignored, s.ids );
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
-    // a count past the int32 extent cap is the decode's to name (§2.9), and the
-    // decode walks no further, so this walk leaves it to the decode too
-    if ( count > 0x7FFFFFFFull ) { return true; }
+    // the cap applies even when this array belongs to an unknown field
+    if ( count > 0x7FFFFFFFull ) { return false; }
     for ( uint64_t i = 0; i < count; i++ )
     {
         if ( !TableStrictPayload( s, r, elem, depth ) ) { return false; }
@@ -281,7 +279,8 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     TableReader r( b + 1, n - 1, &ignored, s.ids );
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
-    if ( count > 0x7FFFFFFFull ) { return true; }
+    // the cap applies even when this keyed array belongs to an unknown field
+    if ( count > 0x7FFFFFFFull ) { return false; }
     uint64_t seen[kTableStrictSeenWords];
     for ( int32_t w = 0; w < kTableStrictSeenWords; w++ ) { seen[w] = 0; }
     for ( uint64_t i = 0; i < count; i++ )
