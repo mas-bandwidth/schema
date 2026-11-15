@@ -29,7 +29,6 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 	u := fixedUnit(t, "test/tables/DeadBytes.schema")
 	ns := goose.Namespace(u)
 	for _, vec := range fixedvector.DeadBytes {
-		vec := vec
 		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			data := gooseCorpusFile(t, corpus, vec.File)
