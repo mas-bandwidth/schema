@@ -2672,10 +2672,24 @@
     {
       "name": "go-proof-2",
       "when": "pull-request",
-      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md M14, I4, J6): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision), the card renderer check (8 s on hulk, 24 s on vision), and the &node graph-label check (5 s on hulk, 13 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (52 s warm on vision).",
+      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md I4): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739), then from go-proof-4 and go-proof-5: the three run one after another under `make -k` and hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2: the cards generations alone took about 3 minutes), so each now has its own row.",
       "targets": [
-        "conformance-negative-control-go-absent",
-        "cards-conformance-go-negative-control",
+        "conformance-negative-control-go-absent"
+      ]
+    },
+    {
+      "name": "go-proof-4",
+      "when": "pull-request",
+      "why": "the Go leg's card renderer proof-cell control (docs/PORTING.md J6, 8 s on hulk, 24 s on vision). Split from go-proof-2, whose three serial controls hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2).",
+      "targets": [
+        "cards-conformance-go-negative-control"
+      ]
+    },
+    {
+      "name": "go-proof-5",
+      "when": "pull-request",
+      "why": "the Go leg's &node graph-label proof-cell control (docs/PORTING.md M14, 5 s on hulk, 13 s on vision). Split from go-proof-2, whose three serial controls hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2).",
+      "targets": [
         "tables-go-graph-label-negative-control"
       ]
     },
