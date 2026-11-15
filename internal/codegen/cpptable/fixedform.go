@@ -554,11 +554,16 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 			}
 		case e.Kind == ir.TableKindKeyed:
 			// The slots are the storage's first member; the key enum rides no
-			// bytes, so the element begins at the field's own offset.
-			n := i + 1
-			walk(n, src)
-			n = next(n)
-			walk(n, src)
+			// bytes, so every slot begins at the field's own offset and repeats
+			// the element. Walk each slot, not just the first: a counted array
+			// or optional inside a later slot carries its own wire spans too.
+			child := next(i + 1)
+			elem := entries[child].Size
+			if elem > 0 {
+				for k := int64(0); k < e.Size/elem; k++ {
+					walk(child, src+k*elem)
+				}
+			}
 		case e.Kind == ir.TableKindUnion:
 			// Every arm begins after the tag: the union's size minus its widest
 			// arm's size is the tag's width.
