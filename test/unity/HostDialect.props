@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- The .NET host every Unity harness runs in: the generated code is
+       compiled by a UnityDialect.props library beside it, never here. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+</Project>

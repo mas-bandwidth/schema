@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Unity twin of the C# harness beside it, over the Unity-target units
+       lib/ compiles in the Unity dialect. -->
+  <Import Project="../../unity/HostDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>packet-text-unity</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <ProjectReference Include="lib/packettextunity.csproj" />
+  </ItemGroup>
+
+</Project>

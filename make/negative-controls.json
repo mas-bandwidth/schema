@@ -3206,6 +3206,17 @@
         "python-packet-core-negative-control"
       ],
       "python": "pin"
+    },
+    {
+      "name": "unity-packet",
+      "when": "nightly",
+      "why": "the Unity C# packet controls: a wrong wire constant must fail the C++-pinned golden, missing constructor bytes must fail the construction-form check, and a removed UTF-8 read check must fail bit-flip agreement. Each is one SDK build of the netstandard2.1 library. Unmeasured against the per-commit budget, so they run nightly.",
+      "targets": [
+        "unity-wire-negative-control",
+        "packet-defaults-unity-negative-control",
+        "packet-utf8-unity-negative-control"
+      ],
+      "dotnet": "pin"
     }
   ],
   "excluded": [
