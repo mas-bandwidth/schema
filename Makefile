@@ -4585,6 +4585,15 @@ tables-tool-cook-differential-negative-control: build/conformance-cpp
 # alignment. Each control takes one half away from the tool through go test
 # -overlay, and the tool's cook of widelist_wide must go red on cook-check's
 # alignment clause, and no other row may.
+#
+# RELAXED 2026-11-14 (maintainer: get main green): five cook-write fixtures
+# (archive, loadout_full, profile_elide, root_default, root_full) still hold a
+# counted array's dead slots as defaults, while the tool, since #3424
+# (fixed-dead-bytes-are-zero), writes them zero; regenerating them reds the C++
+# and Go cook writers, which still write the defaults. Those five rows are red
+# with or without the plant, so this control does not count them.
+# re-enable: relax/cook-dead-slots-zero-ports
+NODE_ALIGN_STALE_ROWS := /(widelist_wide|archive|loadout_full|profile_elide|root_default|root_full)[ ]
 .PHONY: tables-tool-cook-node-align-negative-control
 tables-tool-cook-node-align-negative-control:
 	@rm -rf build/node-align-control && mkdir -p build/node-align-control
@@ -4607,7 +4616,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on widelist_wide"; cat build/node-align-control/$$half.log; exit 1; }; \
 		grep -q -- 'widelist_wide: .* differs at byte offset' build/node-align-control/$$half.log || \
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on a widelist_wide cook that differs"; cat build/node-align-control/$$half.log; exit 1; }; \
-		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v -q '/widelist_wide '; then \
+		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v -q -E '$(NODE_ALIGN_STALE_ROWS)'; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half control went red on a row that holds no sixteen-aligned array"; exit 1; \
 		fi; \
 		echo "negative control ($$half): the tool's cook of widelist_wide goes RED and no other row does"; \
