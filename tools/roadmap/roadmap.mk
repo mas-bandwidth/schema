@@ -38,6 +38,7 @@ roadmap-page-check:
 	$(SBCL) --script tools/roadmap/render.lisp --check docs/roadmap.sexp ROADMAP.md
 	$(ROADMAP_HANDTEXT) -page ROADMAP.md
 	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
+	ROADMAP_PAGE_CHECK=1 go test -count=1 -run '^TestRoadmapIsGeneratedFromTheData$$' ./tools/roadmap/
 
 roadmap-data-check: roadmap-check
 
