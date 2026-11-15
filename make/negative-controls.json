@@ -2858,6 +2858,7 @@
       "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
       "targets": [
         "packet-defaults-luau-negative-control",
+        "packet-write-cfloat-luau-negative-control",
         "packet-finite-luau-negative-control",
         "packet-utf8-luau-negative-control"
       ],

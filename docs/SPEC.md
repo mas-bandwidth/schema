@@ -2394,7 +2394,7 @@ active, a writer never produces bytes its own reader refuses.
 | JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 and 10 not yet held |
 | Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
 | Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 and 10 not yet held |
-| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 and 10 every build; 7 raises; 8 not yet held |
 | Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 and 10 not yet held |
 | MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
 | Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 and 10 not yet held |

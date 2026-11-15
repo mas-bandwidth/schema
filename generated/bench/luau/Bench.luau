@@ -1440,8 +1440,11 @@ function _M.WriteBenchMixed(stream: any, v: any): boolean
   BITS.value = v.PayloadLength
   if not stream:serializeBits(BITS, 5) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.Payload, 0, v.PayloadLength))) then return false end -- align, then the used bytes (SPEC §4.7)
+  if v.AimX ~= v.AimX or v.AimX < -1.0 or v.AimX > 1.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.AimX }, -1.0, 1.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  if v.AimY ~= v.AimY or v.AimY < -1.0 or v.AimY > 1.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.AimY }, -1.0, 1.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  if v.AimZ ~= v.AimZ or v.AimZ < -1.0 or v.AimZ > 1.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.AimZ }, -1.0, 1.0, 0.01) then return false end -- the step index (SPEC §4.3)
   if not stream:serializeFloat({ value = v.Recoil }) then return false end
   if not stream:serializeDouble({ value = v.Drift }) then return false end
