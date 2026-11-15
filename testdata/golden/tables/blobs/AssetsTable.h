@@ -5725,6 +5725,19 @@ struct TableNodeEntry
     uint64_t type_id;
     int64_t ( *measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
     bool ( *save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
+    // The same entry drives Lock's region pack: one node's own bytes, its copy
+    // and extent, and the rewrite of the slots inside it. They are per node so
+    // no pass descends a pointer; the numbering's order IS the region's order
+    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    int64_t ( *pack_bytes )( const void * ctx, const void * node );
+    bool ( *pack_copy )( const void * ctx, const void * src, void * dst, uint8_t * base, int64_t capacity );
+    bool ( *pack_slots )( const void * ctx, TablePackMap & seen, const void * src, void * dst, uint8_t * base );
+    // The numbering's pending work: one node still to number, or a close marker
+    // that ends its descent. The stack is the explicit work list that replaces
+    // a call per pointer edge (docs/SPEC-TABLES.md §3.1).
+    bool ( *walk )( const void * ctx, TableNumbering & numbering, const void * node );
+    bool close;
+    int64_t hint;
 };
 
 struct TableNumbering
@@ -5733,6 +5746,10 @@ struct TableNumbering
     TableNodeEntry * entries = NULL;
     int64_t count = 0;
     int64_t capacity = 0;
+    // THE PENDING WORK, a stack of node entries in first-visit order.
+    TableNodeEntry * work = NULL;
+    int64_t work_count = 0;
+    int64_t work_capacity = 0;
     // ONE BLOB RECORD NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5, §16.7):
     // every writer refuses the graph by name, blob_shared, rather than writing
     // a copy per slot. The Go oracle is internal/codegen/gotable/regions.go
@@ -5748,6 +5765,9 @@ inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.work = NULL;
+    n.work_count = 0;
+    n.work_capacity = 0;
     n.shared = false;
 }
 
@@ -5756,9 +5776,13 @@ inline void TableNumberingShutdown( TableNumbering & n )
     TableAllocator allocator = n.seen.allocator;
     TablePackMapShutdown( n.seen );
     table_release( allocator, n.entries );
+    table_release( allocator, n.work );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.work = NULL;
+    n.work_count = 0;
+    n.work_capacity = 0;
 }
 
 // The index a numbered node was given, for the save that writes it into a
@@ -5794,6 +5818,29 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
         n.capacity = capacity;
     }
     n.entries[n.count++] = entry;
+    return true;
+}
+
+// TableNumberingWorkPush appends one pending node (or close marker) to the
+// explicit work list. It grows by copy on the same allocator the numbering
+// carries, so the walk itself has no recursion and no fixed depth.
+inline bool TableNumberingWorkPush( TableNumbering & n, const TableNodeEntry & entry )
+{
+    if ( n.work_count == n.work_capacity )
+    {
+        int64_t capacity = n.work_capacity != 0 ? n.work_capacity * 4 : 256;
+        TableAllocator allocator = n.seen.allocator;
+        TableNodeEntry * grown = (TableNodeEntry *) table_allocate( allocator, capacity * (int64_t) sizeof( TableNodeEntry ) );
+        if ( grown == NULL ) { return false; }
+        if ( n.work != NULL )
+        {
+            memcpy( grown, n.work, (size_t) n.work_count * sizeof( TableNodeEntry ) );
+            table_release( allocator, n.work );
+        }
+        n.work = grown;
+        n.work_capacity = capacity;
+    }
+    n.work[n.work_count++] = entry;
     return true;
 }
 
@@ -8456,17 +8503,25 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
 // ---- pointer-graph walkers: number (measure/save), pack (Lock) ----
 
 template <typename Ctx>
+inline bool AssetNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Asset & value );
+template <typename Ctx>
 inline bool AssetNumber( const Ctx & ctx, TableNumbering & numbering, const Asset & value );
 template <typename Ctx>
-inline int64_t AssetPackMeasure( const Ctx & ctx, TablePackMap & seen, const Asset & value );
+inline int64_t AssetPackBytes( const Ctx & ctx, const Asset & value );
 template <typename Ctx>
-inline bool AssetPack( const Ctx & ctx, TablePackMap & seen, const Asset & src, Asset & dst, uint8_t * base, int64_t capacity, int64_t & used );
+inline bool AssetPackCopy( const Ctx & ctx, const Asset & src, void * dst, uint8_t * base, int64_t capacity );
+template <typename Ctx>
+inline bool AssetPackSlots( const Ctx & ctx, TablePackMap & seen, const Asset & src, Asset & dst, uint8_t * base );
+template <typename Ctx>
+inline bool CatalogNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Catalog & value );
 template <typename Ctx>
 inline bool CatalogNumber( const Ctx & ctx, TableNumbering & numbering, const Catalog & value );
 template <typename Ctx>
-inline int64_t CatalogPackMeasure( const Ctx & ctx, TablePackMap & seen, const Catalog & value );
+inline int64_t CatalogPackBytes( const Ctx & ctx, const Catalog & value );
 template <typename Ctx>
-inline bool CatalogPack( const Ctx & ctx, TablePackMap & seen, const Catalog & src, Catalog & dst, uint8_t * base, int64_t capacity, int64_t & used );
+inline bool CatalogPackCopy( const Ctx & ctx, const Catalog & src, void * dst, uint8_t * base, int64_t capacity );
+template <typename Ctx>
+inline bool CatalogPackSlots( const Ctx & ctx, TablePackMap & seen, const Catalog & src, Catalog & dst, uint8_t * base );
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
@@ -9195,69 +9250,84 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
     }
 }
 
-// AssetNumber: number everything Asset POINTS AT, in first-visit order —
-// the fields in declaration order, a by-value edge descended in place.
-// A reference to an entry whose descent is still OPEN is a data cycle,
-// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+// AssetNumberEdges: push the pointer targets named by ONE Asset, in walk order.
+// A by-value edge is descended in place; a pointer edge is never descended
+// here (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
-inline bool AssetNumber( const Ctx & ctx, TableNumbering & numbering, const Asset & value )
+inline bool AssetNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Asset & value )
 {
     {
         const TableBlob * blob = TableBlobAt( ctx, value.data ); // data: a byte buffer
         if ( blob != NULL )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( taken )
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
+            if ( found != NULL )
+            {
+                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
+            }
+            else
             {
                 TableNodeEntry node;
                 node.node = (const void *) blob;
                 node.type_id = kTableBytesTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
-                TablePackMapClose( numbering.seen, (const void *) blob, slot );
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, false ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
+                {
+                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
+                    const TableBlob * pack_blob = (const TableBlob *) pack_src;
+                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
+                    return true;
+                };
+                node.pack_slots = NULL;
+                node.walk = NULL; // a blob reaches nothing: no descent
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
             }
-            else { numbering.shared = true; } // a SECOND slot names the one blob (docs/SPEC-TABLES.md §2.5, §16.7)
         }
     }
     {
         const TableBlob * blob = TableBlobAt( ctx, value.caption ); // caption: a byte buffer
         if ( blob != NULL )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( taken )
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
+            if ( found != NULL )
+            {
+                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
+            }
+            else
             {
                 TableNodeEntry node;
                 node.node = (const void *) blob;
                 node.type_id = kTableStringTypeId;
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
-                TablePackMapClose( numbering.seen, (const void *) blob, slot );
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, true ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
+                {
+                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
+                    const TableBlob * pack_blob = (const TableBlob *) pack_src;
+                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
+                    return true;
+                };
+                node.pack_slots = NULL;
+                node.walk = NULL; // a blob reaches nothing: no descent
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
             }
-            else { numbering.shared = true; } // a SECOND slot names the one blob (docs/SPEC-TABLES.md §2.5, §16.7)
         }
     }
     {
         const Asset * pointee = AssetAt( ctx, value.next ); // next
         if ( pointee != NULL )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+            if ( found != NULL )
             {
-                if ( entry->open != 0 ) { return false; } // a data cycle
+                if ( found->open != 0 ) { return false; } // a data cycle
             }
             else
             {
@@ -9266,10 +9336,67 @@ inline bool AssetNumber( const Ctx & ctx, TableNumbering & numbering, const Asse
                 node.type_id = 0x8e4e6dccfe5f64fbull; // fnv1a64( "Asset" )
                 node.measure = &TableNodeMeasureThunk<Ctx, Asset>;
                 node.save = &TableNodeSaveThunk<Ctx, Asset>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
-                if ( !AssetNumber( ctx, numbering, *pointee ) ) { return false; }
-                TablePackMapClose( numbering.seen, (const void *) pointee, slot );
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return AssetPackBytes( *(const Ctx *) pack_ctx, *(const Asset *) pack_node ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return AssetPackCopy( *(const Ctx *) pack_ctx, *(const Asset *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return AssetPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Asset *) pack_src, *( Asset * ) pack_dst, pack_base ); };
+                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return AssetNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Asset *) walk_node ); };
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
             }
+        }
+    }
+    return true;
+}
+
+// AssetNumber: number everything Asset POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
+// A reference to an entry whose descent is still OPEN is a data cycle,
+// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool AssetNumber( const Ctx & ctx, TableNumbering & numbering, const Asset & value )
+{
+    const int64_t before = numbering.work_count;
+    if ( !AssetNumberEdges( ctx, numbering, value ) ) { return false; }
+    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )
+    {
+        const TableNodeEntry swap = numbering.work[i];
+        numbering.work[i] = numbering.work[j];
+        numbering.work[j] = swap;
+    }
+    while ( numbering.work_count > before )
+    {
+        const TableNodeEntry work = numbering.work[--numbering.work_count];
+        if ( work.close )
+        {
+            TablePackMapClose( numbering.seen, work.node, work.hint );
+            continue;
+        }
+        bool taken = false;
+        int64_t slot = 0;
+        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,
+            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit
+        if ( entry == NULL ) { return false; } // the map could not grow
+        if ( !taken )
+        {
+            if ( entry->open != 0 ) { return false; } // a data cycle
+            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob
+            continue;
+        }
+        if ( !TableNumberingAppend( numbering, work ) ) { return false; }
+        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        TableNodeEntry close;
+        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
+        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
+        close.close = true; close.hint = slot;
+        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
+        const int64_t first = numbering.work_count;
+        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
+        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )
+        {
+            const TableNodeEntry swap = numbering.work[i];
+            numbering.work[i] = numbering.work[j];
+            numbering.work[j] = swap;
         }
     }
     return true;
@@ -9288,104 +9415,39 @@ inline bool AssetCycleSlots( const Ctx & ctx, TableCycle & cycle, const Asset & 
     return true;
 }
 
-// AssetPackMeasure: the packed region bytes of everything Asset POINTS AT.
-// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
-// node two references name is measured ONCE and packed once, and a
-// reference to a node whose descent is still open is a data cycle, refused.
+// AssetPackBytes: Asset's OWN region bytes, its extent included.
 template <typename Ctx>
-inline int64_t AssetPackMeasure( const Ctx & ctx, TablePackMap & seen, const Asset & value )
+inline int64_t AssetPackBytes( const Ctx & ctx, const Asset & value )
 {
-    int64_t bytes = 0;
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.data ); // data: a byte buffer, packed at its used size
-        if ( blob != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( taken )
-            {
-                TablePackMapClose( seen, (const void *) blob, slot );
-                bytes += TableBlobStorage( (int64_t) blob->length, false );
-            }
-        }
-    }
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.caption ); // caption: a byte buffer, packed at its used size
-        if ( blob != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( taken )
-            {
-                TablePackMapClose( seen, (const void *) blob, slot );
-                bytes += TableBlobStorage( (int64_t) blob->length, true );
-            }
-        }
-    }
-    {
-        const Asset * pointee = AssetAt( ctx, value.next ); // next
-        if ( pointee != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( !taken )
-            {
-                if ( entry->open != 0 ) { return -1; } // a data cycle
-            }
-            else
-            {
-                int64_t inner = AssetPackMeasure( ctx, seen, *pointee );
-                if ( inner < 0 ) { return -1; }
-                TablePackMapClose( seen, (const void *) pointee, slot );
-                bytes += TableAlignUp64( (int64_t) sizeof( Asset ) ) + inner;
-            }
-        }
-    }
-    return bytes;
+    (void) ctx;
+    (void) value; // no list or map below this record
+    return TableAlignUp64( (int64_t) sizeof( Asset ) );
 }
 
-// AssetPack: copy src into dst (already placed), then lay every pointee out
-// depth-first behind it, in FIELD ORDER, by bump allocation.
-//
-// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
-// where it landed, so a node's FIRST reference lays it out and every later
-// reference points BACK at that one body. A region delta therefore has no
-// required sign (§6.3), and sharing and a back-reference are one fact. A
-// reference to a node whose descent is still OPEN is a cycle, and this
-// refuses it rather than packing one.
+// AssetPackCopy: copy one Asset to its place, carving its extent.
 template <typename Ctx>
-inline bool AssetPack( const Ctx & ctx, TablePackMap & seen, const Asset & src, Asset & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool AssetPackCopy( const Ctx & ctx, const Asset & src, void * dst_storage, uint8_t * base, int64_t capacity )
 {
-    memcpy( (void *) &dst, (const void *) &src, sizeof( Asset ) ); // trivially copyable, by construction
+    Asset * dst = new ( dst_storage ) Asset;
+    memcpy( (void *) dst, (const void *) &src, sizeof( Asset ) ); // trivially copyable, by construction
+    (void) ctx;
+    (void) base;
+    (void) capacity; // no list or map below this record
+    return true;
+}
+
+// AssetPackSlots: point one Asset's slots at the region's already-placed nodes.
+template <typename Ctx>
+inline bool AssetPackSlots( const Ctx & ctx, TablePackMap & seen, const Asset & src, Asset & dst, uint8_t * base )
+{
     {
         dst.data.value = 0; // data: a byte buffer
         const TableBlob * blob = TableBlobAt( ctx, src.data );
         if ( blob != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                dst.data.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.data ); // the one body it already has
-            }
-            else
-            {
-                int64_t storage = TableBlobStorage( (int64_t) blob->length, false );
-                if ( at + storage > capacity ) { return false; }
-                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );
-                used = at + storage;
-                dst.data.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.data );
-                TablePackMapClose( seen, (const void *) blob, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.data.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.data );
         }
     }
     {
@@ -9393,24 +9455,9 @@ inline bool AssetPack( const Ctx & ctx, TablePackMap & seen, const Asset & src, 
         const TableBlob * blob = TableBlobAt( ctx, src.caption );
         if ( blob != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                dst.caption.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.caption ); // the one body it already has
-            }
-            else
-            {
-                int64_t storage = TableBlobStorage( (int64_t) blob->length, true );
-                if ( at + storage > capacity ) { return false; }
-                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );
-                used = at + storage;
-                dst.caption.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.caption );
-                TablePackMapClose( seen, (const void *) blob, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.caption.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.caption );
         }
     }
     {
@@ -9418,24 +9465,139 @@ inline bool AssetPack( const Ctx & ctx, TablePackMap & seen, const Asset & src, 
         const Asset * pointee = AssetAt( ctx, src.next );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.next.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.next );
+        }
+    }
+    return true;
+}
+
+// CatalogNumberEdges: push the pointer targets named by ONE Catalog, in walk order.
+// A by-value edge is descended in place; a pointer edge is never descended
+// here (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool CatalogNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Catalog & value )
+{
+    {
+        const Asset * pointee = AssetAt( ctx, value.head ); // head
+        if ( pointee != NULL )
+        {
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+            if ( found != NULL )
             {
-                if ( entry->open != 0 ) { return false; } // a data cycle
-                dst.next.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.next ); // the one body it already has
+                if ( found->open != 0 ) { return false; } // a data cycle
             }
             else
             {
-                if ( at + (int64_t) sizeof( Asset ) > capacity ) { return false; }
-                used = at + TableAlignUp64( (int64_t) sizeof( Asset ) );
-                Asset * child = new ( base + at ) Asset; // lifetime only: the Pack below memcpy's the whole node over it
-                dst.next.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.next );
-                if ( !AssetPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
-                TablePackMapClose( seen, (const void *) pointee, slot );
+                TableNodeEntry node;
+                node.node = (const void *) pointee;
+                node.type_id = 0x8e4e6dccfe5f64fbull; // fnv1a64( "Asset" )
+                node.measure = &TableNodeMeasureThunk<Ctx, Asset>;
+                node.save = &TableNodeSaveThunk<Ctx, Asset>;
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return AssetPackBytes( *(const Ctx *) pack_ctx, *(const Asset *) pack_node ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return AssetPackCopy( *(const Ctx *) pack_ctx, *(const Asset *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return AssetPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Asset *) pack_src, *( Asset * ) pack_dst, pack_base ); };
+                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return AssetNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Asset *) walk_node ); };
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+            }
+        }
+    }
+    {
+        const TableBlob * blob = TableBlobAt( ctx, value.thumb ); // thumb: a byte buffer
+        if ( blob != NULL )
+        {
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
+            if ( found != NULL )
+            {
+                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
+            }
+            else
+            {
+                TableNodeEntry node;
+                node.node = (const void *) blob;
+                node.type_id = kTableBytesTypeId;
+                node.measure = &TableBlobMeasureThunk<Ctx>;
+                node.save = &TableBlobSaveThunk<Ctx>;
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, false ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
+                {
+                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
+                    const TableBlob * pack_blob = (const TableBlob *) pack_src;
+                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
+                    return true;
+                };
+                node.pack_slots = NULL;
+                node.walk = NULL; // a blob reaches nothing: no descent
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+            }
+        }
+    }
+    {
+        const TableBlob * blob = TableBlobAt( ctx, value.note ); // note: a byte buffer
+        if ( blob != NULL )
+        {
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
+            if ( found != NULL )
+            {
+                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
+            }
+            else
+            {
+                TableNodeEntry node;
+                node.node = (const void *) blob;
+                node.type_id = kTableStringTypeId;
+                node.measure = &TableBlobMeasureThunk<Ctx>;
+                node.save = &TableBlobSaveThunk<Ctx>;
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, true ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
+                {
+                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
+                    const TableBlob * pack_blob = (const TableBlob *) pack_src;
+                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
+                    return true;
+                };
+                node.pack_slots = NULL;
+                node.walk = NULL; // a blob reaches nothing: no descent
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+            }
+        }
+    }
+    {
+        const TableBlob * blob = TableBlobAt( ctx, value.alias ); // alias: a byte buffer
+        if ( blob != NULL )
+        {
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
+            if ( found != NULL )
+            {
+                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
+            }
+            else
+            {
+                TableNodeEntry node;
+                node.node = (const void *) blob;
+                node.type_id = kTableBytesTypeId;
+                node.measure = &TableBlobMeasureThunk<Ctx>;
+                node.save = &TableBlobSaveThunk<Ctx>;
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, false ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
+                {
+                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
+                    const TableBlob * pack_blob = (const TableBlob *) pack_src;
+                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
+                    return true;
+                };
+                node.pack_slots = NULL;
+                node.walk = NULL; // a blob reaches nothing: no descent
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
             }
         }
     }
@@ -9449,96 +9611,47 @@ inline bool AssetPack( const Ctx & ctx, TablePackMap & seen, const Asset & src, 
 template <typename Ctx>
 inline bool CatalogNumber( const Ctx & ctx, TableNumbering & numbering, const Catalog & value )
 {
+    const int64_t before = numbering.work_count;
+    if ( !CatalogNumberEdges( ctx, numbering, value ) ) { return false; }
+    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )
     {
-        const Asset * pointee = AssetAt( ctx, value.head ); // head
-        if ( pointee != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                if ( entry->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0x8e4e6dccfe5f64fbull; // fnv1a64( "Asset" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Asset>;
-                node.save = &TableNodeSaveThunk<Ctx, Asset>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
-                if ( !AssetNumber( ctx, numbering, *pointee ) ) { return false; }
-                TablePackMapClose( numbering.seen, (const void *) pointee, slot );
-            }
-        }
+        const TableNodeEntry swap = numbering.work[i];
+        numbering.work[i] = numbering.work[j];
+        numbering.work[j] = swap;
     }
+    while ( numbering.work_count > before )
     {
-        const TableBlob * blob = TableBlobAt( ctx, value.thumb ); // thumb: a byte buffer
-        if ( blob != NULL )
+        const TableNodeEntry work = numbering.work[--numbering.work_count];
+        if ( work.close )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( taken )
-            {
-                TableNodeEntry node;
-                node.node = (const void *) blob;
-                node.type_id = kTableBytesTypeId;
-                node.measure = &TableBlobMeasureThunk<Ctx>;
-                node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
-                TablePackMapClose( numbering.seen, (const void *) blob, slot );
-            }
-            else { numbering.shared = true; } // a SECOND slot names the one blob (docs/SPEC-TABLES.md §2.5, §16.7)
+            TablePackMapClose( numbering.seen, work.node, work.hint );
+            continue;
         }
-    }
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.note ); // note: a byte buffer
-        if ( blob != NULL )
+        bool taken = false;
+        int64_t slot = 0;
+        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,
+            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit
+        if ( entry == NULL ) { return false; } // the map could not grow
+        if ( !taken )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( taken )
-            {
-                TableNodeEntry node;
-                node.node = (const void *) blob;
-                node.type_id = kTableStringTypeId;
-                node.measure = &TableBlobMeasureThunk<Ctx>;
-                node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
-                TablePackMapClose( numbering.seen, (const void *) blob, slot );
-            }
-            else { numbering.shared = true; } // a SECOND slot names the one blob (docs/SPEC-TABLES.md §2.5, §16.7)
+            if ( entry->open != 0 ) { return false; } // a data cycle
+            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob
+            continue;
         }
-    }
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.alias ); // alias: a byte buffer
-        if ( blob != NULL )
+        if ( !TableNumberingAppend( numbering, work ) ) { return false; }
+        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        TableNodeEntry close;
+        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
+        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
+        close.close = true; close.hint = slot;
+        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
+        const int64_t first = numbering.work_count;
+        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
+        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( taken )
-            {
-                TableNodeEntry node;
-                node.node = (const void *) blob;
-                node.type_id = kTableBytesTypeId;
-                node.measure = &TableBlobMeasureThunk<Ctx>;
-                node.save = &TableBlobSaveThunk<Ctx>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent
-                TablePackMapClose( numbering.seen, (const void *) blob, slot );
-            }
-            else { numbering.shared = true; } // a SECOND slot names the one blob (docs/SPEC-TABLES.md §2.5, §16.7)
+            const TableNodeEntry swap = numbering.work[i];
+            numbering.work[i] = numbering.work[j];
+            numbering.work[j] = swap;
         }
     }
     return true;
@@ -9558,120 +9671,39 @@ inline bool CatalogCycleSlots( const Ctx & ctx, TableCycle & cycle, const Catalo
     return true;
 }
 
-// CatalogPackMeasure: the packed region bytes of everything Catalog POINTS AT.
-// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
-// node two references name is measured ONCE and packed once, and a
-// reference to a node whose descent is still open is a data cycle, refused.
+// CatalogPackBytes: Catalog's OWN region bytes, its extent included.
 template <typename Ctx>
-inline int64_t CatalogPackMeasure( const Ctx & ctx, TablePackMap & seen, const Catalog & value )
+inline int64_t CatalogPackBytes( const Ctx & ctx, const Catalog & value )
 {
-    int64_t bytes = 0;
-    {
-        const Asset * pointee = AssetAt( ctx, value.head ); // head
-        if ( pointee != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( !taken )
-            {
-                if ( entry->open != 0 ) { return -1; } // a data cycle
-            }
-            else
-            {
-                int64_t inner = AssetPackMeasure( ctx, seen, *pointee );
-                if ( inner < 0 ) { return -1; }
-                TablePackMapClose( seen, (const void *) pointee, slot );
-                bytes += TableAlignUp64( (int64_t) sizeof( Asset ) ) + inner;
-            }
-        }
-    }
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.thumb ); // thumb: a byte buffer, packed at its used size
-        if ( blob != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( taken )
-            {
-                TablePackMapClose( seen, (const void *) blob, slot );
-                bytes += TableBlobStorage( (int64_t) blob->length, false );
-            }
-        }
-    }
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.note ); // note: a byte buffer, packed at its used size
-        if ( blob != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( taken )
-            {
-                TablePackMapClose( seen, (const void *) blob, slot );
-                bytes += TableBlobStorage( (int64_t) blob->length, true );
-            }
-        }
-    }
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.alias ); // alias: a byte buffer, packed at its used size
-        if ( blob != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( taken )
-            {
-                TablePackMapClose( seen, (const void *) blob, slot );
-                bytes += TableBlobStorage( (int64_t) blob->length, false );
-            }
-        }
-    }
-    return bytes;
+    (void) ctx;
+    (void) value; // no list or map below this record
+    return TableAlignUp64( (int64_t) sizeof( Catalog ) );
 }
 
-// CatalogPack: copy src into dst (already placed), then lay every pointee out
-// depth-first behind it, in FIELD ORDER, by bump allocation.
-//
-// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
-// where it landed, so a node's FIRST reference lays it out and every later
-// reference points BACK at that one body. A region delta therefore has no
-// required sign (§6.3), and sharing and a back-reference are one fact. A
-// reference to a node whose descent is still OPEN is a cycle, and this
-// refuses it rather than packing one.
+// CatalogPackCopy: copy one Catalog to its place, carving its extent.
 template <typename Ctx>
-inline bool CatalogPack( const Ctx & ctx, TablePackMap & seen, const Catalog & src, Catalog & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool CatalogPackCopy( const Ctx & ctx, const Catalog & src, void * dst_storage, uint8_t * base, int64_t capacity )
 {
-    memcpy( (void *) &dst, (const void *) &src, sizeof( Catalog ) ); // trivially copyable, by construction
+    Catalog * dst = new ( dst_storage ) Catalog;
+    memcpy( (void *) dst, (const void *) &src, sizeof( Catalog ) ); // trivially copyable, by construction
+    (void) ctx;
+    (void) base;
+    (void) capacity; // no list or map below this record
+    return true;
+}
+
+// CatalogPackSlots: point one Catalog's slots at the region's already-placed nodes.
+template <typename Ctx>
+inline bool CatalogPackSlots( const Ctx & ctx, TablePackMap & seen, const Catalog & src, Catalog & dst, uint8_t * base )
+{
     {
         dst.head.value = 0; // head
         const Asset * pointee = AssetAt( ctx, src.head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                if ( entry->open != 0 ) { return false; } // a data cycle
-                dst.head.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.head ); // the one body it already has
-            }
-            else
-            {
-                if ( at + (int64_t) sizeof( Asset ) > capacity ) { return false; }
-                used = at + TableAlignUp64( (int64_t) sizeof( Asset ) );
-                Asset * child = new ( base + at ) Asset; // lifetime only: the Pack below memcpy's the whole node over it
-                dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
-                if ( !AssetPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
-                TablePackMapClose( seen, (const void *) pointee, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.head.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.head );
         }
     }
     {
@@ -9679,24 +9711,9 @@ inline bool CatalogPack( const Ctx & ctx, TablePackMap & seen, const Catalog & s
         const TableBlob * blob = TableBlobAt( ctx, src.thumb );
         if ( blob != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                dst.thumb.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.thumb ); // the one body it already has
-            }
-            else
-            {
-                int64_t storage = TableBlobStorage( (int64_t) blob->length, false );
-                if ( at + storage > capacity ) { return false; }
-                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );
-                used = at + storage;
-                dst.thumb.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.thumb );
-                TablePackMapClose( seen, (const void *) blob, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.thumb.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.thumb );
         }
     }
     {
@@ -9704,24 +9721,9 @@ inline bool CatalogPack( const Ctx & ctx, TablePackMap & seen, const Catalog & s
         const TableBlob * blob = TableBlobAt( ctx, src.note );
         if ( blob != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                dst.note.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.note ); // the one body it already has
-            }
-            else
-            {
-                int64_t storage = TableBlobStorage( (int64_t) blob->length, true );
-                if ( at + storage > capacity ) { return false; }
-                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );
-                used = at + storage;
-                dst.note.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.note );
-                TablePackMapClose( seen, (const void *) blob, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.note.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.note );
         }
     }
     {
@@ -9729,24 +9731,9 @@ inline bool CatalogPack( const Ctx & ctx, TablePackMap & seen, const Catalog & s
         const TableBlob * blob = TableBlobAt( ctx, src.alias );
         if ( blob != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                dst.alias.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.alias ); // the one body it already has
-            }
-            else
-            {
-                int64_t storage = TableBlobStorage( (int64_t) blob->length, false );
-                if ( at + storage > capacity ) { return false; }
-                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );
-                used = at + storage;
-                dst.alias.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.alias );
-                TablePackMapClose( seen, (const void *) blob, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.alias.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.alias );
         }
     }
     return true;
@@ -9825,54 +9812,100 @@ struct AssetBuilder
     bool Lock();
 };
 
+template <typename Ctx>
+inline bool AssetNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Asset & root );
+
 inline bool AssetBuilder::Lock()
 {
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Asset & root = *(const Asset *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // The ROOT takes the map's first entry: it is packed at offset 0, and its
-    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
-    TablePackMap seen;
-    TablePackMapInit( seen, arena.allocator );
-    bool root_taken = false;
-    int64_t root_slot = 0;
-    int64_t below = -1;
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
+    TableNumbering numbering;
+    TableNumberingInit( numbering, arena.allocator );
+    int64_t total = -1;
+    if ( AssetNumberFrom( ctx, numbering, root ) )
     {
-        below = AssetPackMeasure( ctx, seen, root );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        int64_t measured = AssetPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
     }
-    if ( below < 0 )
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && AssetNumberFrom( ctx, numbering, root );
+    if ( ok )
     {
-        TablePackMapShutdown( seen );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = AssetPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            used = TableAlignUp64( used );
+            entry->offset = used;
+            used += bytes;
+        }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
+    }
+    if ( !ok )
+    {
+        TableNumberingShutdown( numbering );
         return false;
-    } // a data cycle, named at the reference that closes it
-    int64_t total = TableAlignUp64( (int64_t) sizeof( Asset ) ) + below;
+    } // a data cycle, a sort that could not run, or an allocator that refused
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
     uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
     }
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Asset ) );
-    Asset * destination = new ( packed ) Asset; // lifetime only: the Pack below memcpy's the whole node over it
-    // The pack walk RE-DERIVES the same numbering rather than carrying the
-    // measure's — nothing passes between them, which is what makes
-    // `used == total` below a real check and not a tautology (§3.1). The
-    // map keeps the capacity the measure paid for, so the second walk
-    // rehashes nothing.
-    TablePackMapReset( seen );
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-        !AssetPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+    ok = AssetPackCopy( ctx, root, packed, packed, total );
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
-        TablePackMapShutdown( seen );
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
+    }
+    if ( ok ) { ok = AssetPackSlots( ctx, numbering.seen, root, *( Asset * ) packed, packed ); }
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
+    {
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
+    }
+    TableNumberingShutdown( numbering );
+    if ( !ok )
+    {
         table_release( arena.allocator, packed );
         return false;
     }
-    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -10695,54 +10728,100 @@ struct CatalogBuilder
     bool Lock();
 };
 
+template <typename Ctx>
+inline bool CatalogNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Catalog & root );
+
 inline bool CatalogBuilder::Lock()
 {
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Catalog & root = *(const Catalog *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // The ROOT takes the map's first entry: it is packed at offset 0, and its
-    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
-    TablePackMap seen;
-    TablePackMapInit( seen, arena.allocator );
-    bool root_taken = false;
-    int64_t root_slot = 0;
-    int64_t below = -1;
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
+    TableNumbering numbering;
+    TableNumberingInit( numbering, arena.allocator );
+    int64_t total = -1;
+    if ( CatalogNumberFrom( ctx, numbering, root ) )
     {
-        below = CatalogPackMeasure( ctx, seen, root );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        int64_t measured = CatalogPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
     }
-    if ( below < 0 )
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && CatalogNumberFrom( ctx, numbering, root );
+    if ( ok )
     {
-        TablePackMapShutdown( seen );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = CatalogPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            used = TableAlignUp64( used );
+            entry->offset = used;
+            used += bytes;
+        }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
+    }
+    if ( !ok )
+    {
+        TableNumberingShutdown( numbering );
         return false;
-    } // a data cycle, named at the reference that closes it
-    int64_t total = TableAlignUp64( (int64_t) sizeof( Catalog ) ) + below;
+    } // a data cycle, a sort that could not run, or an allocator that refused
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
     uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
     }
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Catalog ) );
-    Catalog * destination = new ( packed ) Catalog; // lifetime only: the Pack below memcpy's the whole node over it
-    // The pack walk RE-DERIVES the same numbering rather than carrying the
-    // measure's — nothing passes between them, which is what makes
-    // `used == total` below a real check and not a tautology (§3.1). The
-    // map keeps the capacity the measure paid for, so the second walk
-    // rehashes nothing.
-    TablePackMapReset( seen );
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-        !CatalogPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+    ok = CatalogPackCopy( ctx, root, packed, packed, total );
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
-        TablePackMapShutdown( seen );
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
+    }
+    if ( ok ) { ok = CatalogPackSlots( ctx, numbering.seen, root, *( Catalog * ) packed, packed ); }
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
+    {
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
+    }
+    TableNumberingShutdown( numbering );
+    if ( !ok )
+    {
         table_release( arena.allocator, packed );
         return false;
     }
-    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
