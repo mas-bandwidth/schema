@@ -21,6 +21,7 @@ public final class MixedHitEventMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.targetId != 0) {
                 w.put(45L, 7);
@@ -47,6 +48,18 @@ public final class MixedHitEventMessage {
         }
         w.put(0L, 7);
         return !w.overflow;
+    }
+
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedHitEventFixed.Value v) {
+        assert v != null;
+        assert v.targetId >= 0 && v.targetId <= 4095L;
+        assert v.damage >= 0L;
+        assert v.damage <= 0xfffL;
+        assert v.hitKind >= 0L;
+        assert v.hitKind <= 0x7L;
+        return true;
     }
 
     public static boolean loadMessageBody(TableMessage.Reader r, MixedHitEventFixed.Value v) {
