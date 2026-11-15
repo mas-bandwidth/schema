@@ -311,6 +311,9 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 // shared home file is smaller than the standalone one. The count guard keeps
 // an emptied glob from passing.
 func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
+	// every table corpus through the shared runtime: 73 s alone on a loaded
+	// bench and cancelled at the two-minute cap there, so it runs nightly
+	slowtest.Gate(t, "every table corpus through the shared runtime")
 	t.Parallel()
 	paths, err := filepath.Glob("../../../tables/*/*.schema")
 	if err != nil {

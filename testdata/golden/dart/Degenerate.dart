@@ -819,6 +819,8 @@ int writeSpanTail(SpanTail value, ByteData view) {
       scratch = v >>> (64 - scratchBits);
     }
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 4294967295);
   v = value.tail & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
