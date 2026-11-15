@@ -1060,6 +1060,8 @@ end
 -- type Chat (SPEC §6.1: the wire order is the declared order)
 function _M.WriteChat(stream, v)
   if type(v.Text) ~= "string" or #v.Text > 256 then return false end
+  if not utf8valid(v.Text) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
+  if string.find(v.Text, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)
   if not stream:serializeBits({ value = #v.Text }, 9) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
   if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end
@@ -1135,6 +1137,8 @@ function _M.WriteTestData(stream, v)
     if not stream:serializeBits({ value = v.FixedBytes[_i] }, 8) then return false end -- the storage width
   end
   if type(v.Text) ~= "string" or #v.Text > 255 then return false end
+  if not utf8valid(v.Text) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
+  if string.find(v.Text, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)
   if not stream:serializeBits({ value = #v.Text }, 8) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
   if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end

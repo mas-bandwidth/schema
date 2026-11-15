@@ -236,7 +236,8 @@
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
         "packet-end-lua-negative-control",
-        "packet-write-cfloat-lua-negative-control"
+        "packet-write-cfloat-lua-negative-control",
+        "packet-write-text-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
