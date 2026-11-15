@@ -378,6 +378,8 @@ pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result
     stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
     if value.flag {
         debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
+        debug_assert!(!value.s[..value.s_length as usize].contains(&0), "s holds a zero byte");
+        debug_assert!(std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
         {
             let mut offset_value = value.s_length as u32;
             stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
@@ -844,6 +846,8 @@ pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfte
         }
     }
     debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
+    debug_assert!(!value.s[..value.s_length as usize].contains(&0), "s holds a zero byte");
+    debug_assert!(std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
     {
         let mut offset_value = value.s_length as u32;
         stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)

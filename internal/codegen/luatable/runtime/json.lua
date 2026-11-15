@@ -507,8 +507,14 @@ local function skip_container(inp, close, depth, graph)
       return false
     end
     if close == "}" then
-      local key, _, ok = scan_string(inp, MAX_KEY)
+      -- §16.2: a key is a schema name in every object, a skipped one
+      -- included, so one past 255 decoded bytes refuses the read
+      local key, over_bound, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      if over_bound then
+        inp.bad = true
+        return false
+      end
       if seen[key] then
         inp.bad = true
         return false
@@ -1717,11 +1723,10 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       inp.bad = true
       return false
     end
-    -- §2.13.1: an UNBOUNDED map key has no length bound, so it is scanned
-    -- with none; a bounded key keeps the walker's own scratch cap and its
-    -- declared bound below.
+    -- §2.13.1, §16.2: a string map key is data, never a schema name, so it
+    -- is scanned with no cap; a bounded key meets its declared bound below.
     local keycap = MAX_KEY
-    if string_key and kf.bound == nil then keycap = -1 end
+    if string_key then keycap = -1 end
     local kraw, over_bound, ok, nul = scan_string(inp, keycap)
     if not ok then return false end
     if peek(inp) ~= ":" then
@@ -1898,11 +1903,14 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     inp.p = inp.p + 1
     return { tag = 0 }
   end
-  -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3);
-  -- a key past the bound names no arm
+  -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3)
   local name, over_bound, ok = scan_string(inp, MAX_KEY)
   if not ok then return nil end
-  if over_bound then name = nil end
+  if over_bound then
+    -- §16.2: an arm key past 255 decoded bytes refuses the read
+    inp.bad = true
+    return nil
+  end
   if peek(inp) ~= ":" then
     inp.bad = true
     return nil
@@ -2048,10 +2056,14 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     return true
   elseif s == "enum" then
     -- the variant is matched by the string's DECODED value
-    -- (docs/SPEC-TABLES.md §16.3); a name past the bound names no variant
+    -- (docs/SPEC-TABLES.md §16.3)
     local name, over_bound, ok = scan_string(inp, MAX_KEY)
     if not ok then return false end
-    if over_bound then name = nil end
+    if over_bound then
+      -- §16.2: a variant name past 255 decoded bytes refuses, never None
+      inp.bad = true
+      return false
+    end
     if name == "None" then
       holder[key] = elem and false or nil
       return true
@@ -2098,20 +2110,23 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       else
         local nm, over_bound, ok = scan_string(inp, MAX_KEY)
         if not ok then return false end
+        if over_bound then
+          -- §16.2: an element name past 255 decoded bytes refuses the read
+          inp.bad = true
+          return false
+        end
         local found = false
-        if not over_bound then
-          local names = d.variants or {}
-          for i, v in ipairs(names) do
-            if v == nm then
-              local bit = 1 << (i - 1)
-              if (bits & bit) ~= 0 then
-                inp.bad = true
-                return false
-              end
-              bits = bits | bit
-              found = true
-              break
+        local names = d.variants or {}
+        for i, v in ipairs(names) do
+          if v == nm then
+            local bit = 1 << (i - 1)
+            if (bits & bit) ~= 0 then
+              inp.bad = true
+              return false
             end
+            bits = bits | bit
+            found = true
+            break
           end
         end
         if not found then report.unknown = report.unknown + 1 end
@@ -3050,7 +3065,7 @@ function J.ToJson(T, name, v)
   if desc == nil or v == nil then return nil end
   -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
   -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
-  local refused = D.refuse_write(T, name, v, true)
+  local refused = D.refuse_write(T, name, v)
   if refused ~= nil then return nil, refused end
   local g = count_nodes(T, desc, v)
   if g == nil then return nil end
