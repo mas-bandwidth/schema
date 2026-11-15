@@ -1050,19 +1050,22 @@ int main()
         TrioFirst r_trio_first;
         TrioStraddle r_straddle;
 
+        // One stream holds every shape, so each is read through its per-type
+        // body: the public Read<T> ends the packet after the top-level object
+        // and is the wrong entry here (SPEC §5).
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
-        check( ReadVec2( rs, r_vec2 ) );
-        check( ReadSpanF64( rs, r_span_f64 ) );
-        check( ReadSpanU64( rs, r_span_u64 ) );
-        check( ReadSpanI64( rs, r_span_i64 ) );
-        check( ReadSpanOne( rs, r_span_one ) );
-        check( ReadSpanChunk( rs, r_span_chunk ) );
-        check( ReadSpanTail( rs, r_span_tail ) );
-        check( ReadSpanTwice( rs, r_span_twice ) );
-        check( ReadTrio( rs, r_trio ) );
-        check( ReadTrioSole( rs, r_trio_sole ) );
-        check( ReadTrioFirst( rs, r_trio_first ) );
-        check( ReadTrioStraddle( rs, r_straddle ) );
+        check( ReadVec2Body( rs, r_vec2 ) );
+        check( ReadSpanF64Body( rs, r_span_f64 ) );
+        check( ReadSpanU64Body( rs, r_span_u64 ) );
+        check( ReadSpanI64Body( rs, r_span_i64 ) );
+        check( ReadSpanOneBody( rs, r_span_one ) );
+        check( ReadSpanChunkBody( rs, r_span_chunk ) );
+        check( ReadSpanTailBody( rs, r_span_tail ) );
+        check( ReadSpanTwiceBody( rs, r_span_twice ) );
+        check( ReadTrioBody( rs, r_trio ) );
+        check( ReadTrioSoleBody( rs, r_trio_sole ) );
+        check( ReadTrioFirstBody( rs, r_trio_first ) );
+        check( ReadTrioStraddleBody( rs, r_straddle ) );
 
         check( r_vec2.x == 1.5 && r_vec2.y == -2.25 );
         check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75 );
