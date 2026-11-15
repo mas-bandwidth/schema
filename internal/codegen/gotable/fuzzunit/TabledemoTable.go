@@ -3126,7 +3126,11 @@ func tableNodeWrite(w *TableWriter, e *tableNodeEntry) bool {
 		return e.info.SaveBody(w, e.node)
 	}
 	length := uint64(*(*uint32)(e.node))
-	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+	text := unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))
+	if e.id == tableStringTypeID && !tableUTF8Valid(text) {
+		return false
+	}
+	w.Raw(text)
 	return !w.Overflow
 }
 func tableNodeMeasure(w *TableWriter, ids *TableIds, e *tableNodeEntry) int64 {
@@ -5494,7 +5498,11 @@ func tableNodeWriteRetain(w *TableRetainWriter, e *tableNodeEntry) bool {
 		return ok
 	}
 	length := (*TableBlob)(e.node).Length
-	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+	text := unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))
+	if e.id == tableStringTypeID && !tableUTF8Valid(text) {
+		return false
+	}
+	w.Raw(text)
 	return !w.Overflow
 }
 func tableNodeMeasureRetain(w *TableRetainWriter, ids *TableRetainIds, e *tableNodeEntry) int64 {

@@ -34,6 +34,12 @@ func cppRuntimeNames() []Name {
 			"TableGraphWidth", "kTableGraphBlob", "kTableGraphBodyMask", "kTableGraphLinkMask", "kTableGraphMaxDepth",
 			"kTableGraphQueued", "kTableGraphVisited",
 		}},
+		{what: "the strict form-1 walk, its cursor, its body walk and its bounds (docs/SPEC-TABLES.md §6.5)", names: []string{
+			"TableStrict", "TableStrictArray", "TableStrictArrayElemKind", "TableStrictBody",
+			"TableStrictContent", "TableStrictFailed", "TableStrictKeyed", "TableStrictKeyedElemKind", "TableStrictPayload",
+			"TableStrictScalar", "TableStrictSeen", "TableStrictUnion", "TableStrictWalk",
+			"TableStrictWidth", "kTableStrictMaxDepth", "kTableStrictSeenWords",
+		}},
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
 			"kTableJsonDecimalBand",
 		}},
