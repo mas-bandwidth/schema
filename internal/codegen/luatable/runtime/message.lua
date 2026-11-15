@@ -225,15 +225,6 @@ local function field_by_id(_T, desc, id)
   return nil
 end
 
--- field_pos is the field's place in its declaration's order, which is the
--- order a writer emits (§3.3 (b)).
-local function field_pos(desc, f)
-  for i, x in ipairs(desc.fields) do
-    if x == f then return i end
-  end
-  return 0
-end
-
 -- a retired variant reads the declared default, an element's None
 -- (docs/SPEC-TABLES.md §2.15, READ)
 local function variant_name(_T, f, id)
@@ -811,20 +802,23 @@ load_fields = function(R, T, name, value, ctx)
   -- A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3): its fields follow
   -- the writer's declaration order, and nothing is written at a default the
   -- writer elides. A body that breaks either is damage, so the batch discards.
-  local last = 0
+  -- The announcement is in the writer's projection order (§3.3), so each
+  -- reference's index is its position in that order. Check every reference:
+  -- even a field this reader cannot name occupies a position in the sender's
+  -- body and must not let later fields move ahead of it.
+  local lastRef = 0
   while true do
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
     if ref == 0 then return true end
+    if ref <= lastRef then return false end
+    lastRef = ref
     local e = ctx.vocab[ref]
     if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then return false end
     local f = field_by_id(T, desc, e.id)
     if f == nil then
       if not skip_entry(R, e, ctx) then return false end
     else
-      local pos = field_pos(desc, f)
-      if pos <= last then return false end
-      last = pos
       ctx.field = f.name
       -- The field's union arm is read with the field in hand, so an explicit
       -- None reference is refused here and read_value knows which read it is.
