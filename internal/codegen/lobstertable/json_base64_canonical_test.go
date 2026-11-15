@@ -67,7 +67,7 @@ func base64Rows(t *testing.T) []base64Row {
 	}
 	return append(rows,
 		base64Row{name: "escaped-solidus-read", unit: "streamdemo", root: "Chunk", field: "data", text: []byte(`{ "data": "\/\/\/\/" }`), verdict: "read", want: []byte{0xff, 0xff, 0xff}},
-		base64Row{name: "escaped-letter-read", unit: "streamdemo", root: "Chunk", field: "data", text: []byte(`{ "data": "AQ==" }`), verdict: "read", want: []byte{0x01}},
+		base64Row{name: "escaped-letter-read", unit: "streamdemo", root: "Chunk", field: "data", text: []byte(`{ "data": "\u0041Q==" }`), verdict: "read", want: []byte{0x01}},
 		base64Row{name: "icon-canonical-read", unit: "tabledemo", root: "ProfileConfig", field: "icon", text: []byte(`{"icon":"AQ=="}`), verdict: "read", want: []byte{0x01}},
 		base64Row{name: "icon-pad-bit-set-refused", unit: "tabledemo", root: "ProfileConfig", field: "icon", text: []byte(`{"icon":"AR=="}`), verdict: "refused"},
 		base64Row{name: "icon-unpadded-refused", unit: "tabledemo", root: "ProfileConfig", field: "icon", text: []byte(`{"icon":"AR"}`), verdict: "refused"},
