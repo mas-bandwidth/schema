@@ -1,15 +1,21 @@
 package python
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -110,9 +116,88 @@ func rangedBitsProbe(u *ir.Unit, root, base string, fields []rangedBitsField) st
 	return b.String()
 }
 
-// rangedBitsGoldenPins returns every single-root golden whose kinds the codec
-// carries and whose root closure declares a ranged integer or bits field.
-func rangedBitsGoldenPins(t *testing.T) []packetPin {
+// rangedBitsCardKinds are the field kinds a golden this card reads may use:
+// the packet core's and this card's own (bits; ranged integers are the int
+// kind with a range). A golden that also uses a kind another packet card
+// carries is that card's, and the close card reads every golden.
+var rangedBitsCardKinds = map[string]bool{
+	"bool": true, "int": true, "enum": true, "flags": true, "type": true, "union": true,
+	"bits": true,
+}
+
+// rangedBitsForeignKind names the first kind in a root's closure that is
+// neither the core's nor this card's, or "" when there is none.
+func rangedBitsForeignKind(u *ir.Unit, root string) string {
+	seen := map[string]bool{}
+	var items func([]ir.Item) string
+	var field func(*ir.Field) string
+	field = func(f *ir.Field) string {
+		kind := fieldKind(f)
+		if kind == "" {
+			return blockingKind(f)
+		}
+		if !rangedBitsCardKinds[kind] {
+			return kind
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref != nil && !seen[ref.Name] {
+				seen[ref.Name] = true
+				return items(ref.Items)
+			}
+		case *ir.Union:
+			if ref != nil && !seen[ref.Name] {
+				seen[ref.Name] = true
+				for _, v := range ref.Variants {
+					if v.Void() {
+						continue
+					}
+					if k := field(v.F); k != "" {
+						return k
+					}
+				}
+			}
+		}
+		return ""
+	}
+	items = func(list []ir.Item) string {
+		for _, item := range list {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if k := field(item.F); k != "" {
+					return k
+				}
+			case *ir.Branch:
+				if k := items(item.Then); k != "" {
+					return k
+				}
+				if k := items(item.Else); k != "" {
+					return k
+				}
+			case *ir.ConstItem:
+				return "const"
+			case *ir.ReservedItem:
+				return "reserved"
+			case *ir.AlignItem:
+				return "align"
+			default:
+				return fmt.Sprintf("%T", item)
+			}
+		}
+		return ""
+	}
+	st := u.Structs[root]
+	if st == nil {
+		return "missing root"
+	}
+	seen[root] = true
+	return items(st.Items)
+}
+
+// rangedBitsGoldenPins returns every single-root golden whose closure uses
+// only the core's kinds and this card's and declares a ranged integer or bits
+// field. Every other golden is skipped by the kind that blocks it, named.
+func rangedBitsGoldenPins(t *testing.T) (picked []packetPin, skipped map[string]string) {
 	t.Helper()
 	root := repoRoot(t)
 	units := map[string]*ir.Unit{}
@@ -129,26 +214,28 @@ func rangedBitsGoldenPins(t *testing.T) []packetPin {
 		units[key] = u
 		return u
 	}
-	var picked []packetPin
+	skipped = map[string]string{}
 	for _, pin := range packetPins() {
 		if pin.note != "" {
+			skipped[pin.name] = pin.note
 			continue
 		}
 		u := load(pin.paths)
-		blocker := rootBlocker(u, pin.root)
-		if blocker == "bits" {
+		if rootBlocker(u, pin.root) == "bits" {
 			t.Errorf("%s is still skipped for bits, which the codec now carries (docs/PORT-PYTHON.md, THE PACKET CORE CUT)", pin.name)
 			continue
 		}
-		if blocker != "" {
+		if foreign := rangedBitsForeignKind(u, pin.root); foreign != "" {
+			skipped[pin.name] = foreign
 			continue
 		}
 		if len(rangedBitsFields(u, pin.root)) == 0 {
+			skipped[pin.name] = "no ranged integer or bits field"
 			continue
 		}
 		picked = append(picked, pin)
 	}
-	return picked
+	return picked, skipped
 }
 
 // TestPythonPacketRangedBits reads and writes back every carried golden that
@@ -160,7 +247,7 @@ func TestPythonPacketRangedBits(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	pins := rangedBitsGoldenPins(t)
+	pins, skipped := rangedBitsGoldenPins(t)
 	names := make([]string, 0, len(pins))
 	for _, pin := range pins {
 		names = append(names, pin.name)
@@ -168,9 +255,17 @@ func TestPythonPacketRangedBits(t *testing.T) {
 	sort.Strings(names)
 	want := []string{"bench_bits", "bench_ints", "probebits"}
 	for _, name := range want {
-		if !strings.Contains(strings.Join(names, " "), name) {
+		if !slices.Contains(names, name) {
 			t.Fatalf("the ranged/bits golden set is %v, want %s carried (docs/PORT-PYTHON.md, THE PACKET CORE CUT)", names, name)
 		}
+	}
+	skippedNames := make([]string, 0, len(skipped))
+	for name := range skipped {
+		skippedNames = append(skippedNames, name)
+	}
+	sort.Strings(skippedNames)
+	for _, name := range skippedNames {
+		t.Logf("skip %s: %s", name, skipped[name])
 	}
 
 	units := map[string]*ir.Unit{}
@@ -230,48 +325,7 @@ func TestPythonPacketRangedBits(t *testing.T) {
 	t.Run("synthetic", func(t *testing.T) {
 		t.Parallel()
 		src := t.TempDir()
-		schema := `package rangedbits
-
-type RangeOnly
-{
-    value int8 | min = 0, max = 5
-}
-
-type PadOnly
-{
-    small bits(3)
-}
-
-type BitsOnly
-{
-    small bits(3)
-    wide  bits(64)
-}
-
-type Defaults
-{
-    ranged int16 = -3 | min = -3, max = 4
-    marker bits(9) = 300
-}
-
-type Mixed
-{
-    ri  int16  = -3 | min = -3, max = 4
-    u32 uint32 | min = 0, max = 4294967295
-    u64 uint64 = 1 | min = 1, max = 18446744073709551615
-    b1  bits(1) = 1
-    b9  bits(9) = 300
-    b33 bits(33)
-    b64 bits(64)
-}
-
-type Degenerate
-{
-    pinned int8 = 5 | min = 5, max = 5
-    b      bits(4) = 3
-}
-`
-		if err := os.WriteFile(filepath.Join(src, "RangedBits.schema"), []byte(schema), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(src, "RangedBits.schema"), []byte(rangedBitsFixture), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		u := loadPythonUnit(t, src)
@@ -427,10 +481,249 @@ print("ok")
 			})
 		}
 	})
+
+	t.Run("go-reference", func(t *testing.T) {
+		t.Parallel()
+		src := t.TempDir()
+		if err := os.WriteFile(filepath.Join(src, "RangedBits.schema"), []byte(rangedBitsFixture), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		u := loadPythonUnit(t, src)
+		want := rangedBitsGoReference(t, u, root)
+		for _, c := range rangedBitsCases {
+			if _, ok := want[c.name]; !ok {
+				t.Fatalf("the Go reference wrote no bytes for case %s", c.name)
+			}
+		}
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatalf("generate synthetic unit: %v", err)
+		}
+		var cases strings.Builder
+		for _, c := range rangedBitsCases {
+			fmt.Fprintf(&cases, "%s|%x\n", c.name, want[c.name])
+		}
+		probe := rangedBitsReferenceProbe(u.Package)
+		for _, run := range []struct {
+			name string
+			fn   func(testing.TB, string, string, map[string][]byte) []byte
+		}{{"current", pyrun.Run}, {"floor", pyrun.RunFloor}} {
+			t.Run(run.name, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				writeTree(t, dir, files)
+				got := strings.TrimSpace(string(run.fn(t, dir, "main.py", map[string][]byte{
+					"main.py":   []byte(probe),
+					"cases.txt": []byte(cases.String()),
+				})))
+				if got != "ok" {
+					t.Fatalf("the Go reference cases under %s:\n%s", run.name, got)
+				}
+			})
+		}
+	})
+}
+
+// rangedBitsFixture is the card's own small schema: each kind alone, the two
+// together, and both beside the core's bool, bare integer and nested type.
+const rangedBitsFixture = `package rangedbits
+
+type RangeOnly
+{
+    value int8 | min = 0, max = 5
+}
+
+type PadOnly
+{
+    small bits(3)
+}
+
+type BitsOnly
+{
+    small bits(3)
+    wide  bits(64)
+}
+
+type Defaults
+{
+    ranged int16 = -3 | min = -3, max = 4
+    marker bits(9) = 300
+}
+
+type Mixed
+{
+    ri  int16  = -3 | min = -3, max = 4
+    u32 uint32 | min = 0, max = 4294967295
+    u64 uint64 = 1 | min = 1, max = 18446744073709551615
+    b1  bits(1) = 1
+    b9  bits(9) = 300
+    b33 bits(33)
+    b64 bits(64)
+}
+
+type Degenerate
+{
+    pinned int8 = 5 | min = 5, max = 5
+    b      bits(4) = 3
+}
+
+type Inner
+{
+    level uint8 = 2 | min = 2, max = 9
+    tag   bits(5)
+}
+
+type WithCore
+{
+    alive bool
+    raw   int32
+    inner Inner
+    wide  int64 = -5000000000 | min = -5000000000, max = 5000000000
+    full  uint64 | min = 0, max = 18446744073709551615
+    b64   bits(64)
+    b2    bits(2) = 2
+}
+`
+
+// rangedBitsCase is one value of the fixture: a type born at its defaults,
+// then each dotted field path set to a decimal literal or a bool.
+type rangedBitsCase struct {
+	name string
+	typ  string
+	set  [][2]string
+}
+
+// rangedBitsCases cover every type at its defaults, each range's minimum and
+// maximum, an interior value, every bits width class (1, 2, 3, 5, 9, 33 and
+// 64), the int32 and int64 ranged paths and the full-range uint64 path.
+var rangedBitsCases = []rangedBitsCase{
+	{"rangeonly-default", "RangeOnly", nil},
+	{"rangeonly-max", "RangeOnly", [][2]string{{"value", "5"}}},
+	{"padonly-default", "PadOnly", nil},
+	{"padonly-max", "PadOnly", [][2]string{{"small", "7"}}},
+	{"bitsonly-default", "BitsOnly", nil},
+	{"bitsonly-max", "BitsOnly", [][2]string{{"small", "5"}, {"wide", "18446744073709551615"}}},
+	{"defaults-default", "Defaults", nil},
+	{"defaults-max", "Defaults", [][2]string{{"ranged", "4"}, {"marker", "511"}}},
+	{"mixed-default", "Mixed", nil},
+	{"mixed-min", "Mixed", [][2]string{{"ri", "-3"}, {"u32", "0"}, {"u64", "1"}, {"b1", "0"}, {"b9", "0"}, {"b33", "0"}, {"b64", "0"}}},
+	{"mixed-max", "Mixed", [][2]string{{"ri", "4"}, {"u32", "4294967295"}, {"u64", "18446744073709551615"}, {"b1", "1"}, {"b9", "511"}, {"b33", "8589934591"}, {"b64", "18446744073709551615"}}},
+	{"mixed-mid", "Mixed", [][2]string{{"ri", "0"}, {"u32", "2863311530"}, {"u64", "9223372036854775808"}, {"b1", "1"}, {"b9", "257"}, {"b33", "4294967296"}, {"b64", "12345678901234567890"}}},
+	{"degenerate-default", "Degenerate", nil},
+	{"degenerate-max", "Degenerate", [][2]string{{"b", "15"}}},
+	{"inner-default", "Inner", nil},
+	{"withcore-default", "WithCore", nil},
+	{"withcore-min", "WithCore", [][2]string{{"alive", "false"}, {"raw", "-2147483648"}, {"inner.level", "2"}, {"inner.tag", "0"}, {"wide", "-5000000000"}, {"full", "0"}, {"b64", "0"}, {"b2", "0"}}},
+	{"withcore-max", "WithCore", [][2]string{{"alive", "true"}, {"raw", "2147483647"}, {"inner.level", "9"}, {"inner.tag", "31"}, {"wide", "5000000000"}, {"full", "18446744073709551615"}, {"b64", "18446744073709551615"}, {"b2", "3"}}},
+	{"withcore-mid", "WithCore", [][2]string{{"alive", "true"}, {"raw", "-1"}, {"inner.level", "5"}, {"inner.tag", "17"}, {"wide", "-1"}, {"full", "9223372036854775807"}, {"b64", "1"}, {"b2", "1"}}},
+}
+
+// rangedBitsGoReference generates the fixture with the Go emitter, runs a
+// probe that writes every case with the generated Go writer (and reads it
+// back with the generated Go reader), and returns each case's bytes.
+func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]byte {
+	t.Helper()
+	slowtest.Gate(t, "the generated Go reference")
+	files, err := golang.Generate(u)
+	if err != nil {
+		t.Fatalf("the Go emitter refused the fixture: %v", err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n",
+		u.Package, slowtest.SerializeGo(t, root))
+	var oracle strings.Builder
+	fmt.Fprintf(&oracle, "package %s\n\nimport (\n\t\"fmt\"\n\t\"testing\"\n\n\t\"github.com/mas-bandwidth/serialize.go/v2\"\n)\n\n", u.Package)
+	oracle.WriteString("func TestRangedBitsGoReference(t *testing.T) {\n")
+	for _, c := range rangedBitsCases {
+		fmt.Fprintf(&oracle, "\t{\n\t\tv := New%s()\n", c.typ)
+		for _, s := range c.set {
+			parts := strings.Split(s[0], ".")
+			for i, p := range parts {
+				parts[i] = goname.Member(p)
+			}
+			fmt.Fprintf(&oracle, "\t\tv.%s = %s\n", strings.Join(parts, "."), s[1])
+		}
+		fmt.Fprintf(&oracle, "\t\tw := serialize.NewWriteStream(make([]byte, 64))\n")
+		fmt.Fprintf(&oracle, "\t\tif err := Write%s(w, &v); err != nil {\n\t\t\tt.Fatalf(\"%s: write: %%v\", err)\n\t\t}\n", c.typ, c.name)
+		fmt.Fprintf(&oracle, "\t\tw.Flush()\n")
+		fmt.Fprintf(&oracle, "\t\tvar back %s\n", c.typ)
+		fmt.Fprintf(&oracle, "\t\tif err := Read%s(serialize.NewReadStream(w.Data()), &back); err != nil || back != v {\n\t\t\tt.Fatalf(\"%s: read back: %%v\", err)\n\t\t}\n", c.typ, c.name)
+		fmt.Fprintf(&oracle, "\t\tfmt.Printf(\"CASE|%s|%%x\\n\", w.Data())\n\t}\n", c.name)
+	}
+	oracle.WriteString("}\n")
+	writeTree(t, dir, map[string][]byte{
+		"go.mod":            []byte(mod),
+		"reference_test.go": []byte(oracle.String()),
+	})
+	cmd := exec.Command("go", "test", "-count=1", "-timeout", "300s", "-run", "^TestRangedBitsGoReference$", "-v", ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the generated Go reference: %v\n%s", err, out)
+	}
+	got := map[string][]byte{}
+	for _, line := range strings.Split(string(out), "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "CASE|")
+		if !ok {
+			continue
+		}
+		name, hexText, ok := strings.Cut(rest, "|")
+		if !ok {
+			t.Fatalf("the Go reference line %q is not name|hex", line)
+		}
+		data, err := hex.DecodeString(hexText)
+		if err != nil {
+			t.Fatalf("the Go reference line %q carries no hex: %v", line, err)
+		}
+		got[name] = data
+	}
+	return got
+}
+
+// rangedBitsReferenceProbe builds each case in Python, requires its write to
+// equal the Go reference's bytes and the Go reference's bytes to read back to
+// the same value, which also holds every declared default to the Go New*.
+func rangedBitsReferenceProbe(pkg string) string {
+	var b strings.Builder
+	b.WriteString(pyrun.ImportPrelude)
+	types := map[string]bool{}
+	for _, c := range rangedBitsCases {
+		types[c.typ] = true
+	}
+	names := make([]string, 0, len(types))
+	for name := range types {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	fmt.Fprintf(&b, "import sys\nfrom %s import %s\n\n", pkg, strings.Join(names, ", "))
+	b.WriteString("want = {}\nwith open(\"cases.txt\") as _s_cases:\n    for line in _s_cases:\n        name, _, text = line.strip().partition(\"|\")\n        want[name] = bytes.fromhex(text)\n\n")
+	b.WriteString("def check(name, value, cls):\n")
+	b.WriteString("    got = value.write()\n")
+	b.WriteString("    if got != want[name]:\n        print(\"FAILED: \" + name + \" writes \" + got.hex() + \", the Go reference writes \" + want[name].hex())\n        sys.exit(1)\n")
+	b.WriteString("    back = cls.read(want[name])\n")
+	b.WriteString("    if back != value:\n        print(\"FAILED: \" + name + \" reads the Go reference bytes as \" + repr(back))\n        sys.exit(1)\n\n")
+	for _, c := range rangedBitsCases {
+		fmt.Fprintf(&b, "v = %s()\n", c.typ)
+		for _, s := range c.set {
+			value := s[1]
+			switch value {
+			case "true":
+				value = "True"
+			case "false":
+				value = "False"
+			}
+			fmt.Fprintf(&b, "v.%s = %s\n", s[0], value)
+		}
+		fmt.Fprintf(&b, "check(%q, v, %s)\n", c.name, c.typ)
+	}
+	b.WriteString("print(\"ok\")\n")
+	return b.String()
 }
 
 // TestPythonPacketRangedBitsNegativeControl edits a copy of the generated
-// ProbeBits reader so its first bits field lands one too high, and requires
+// ProbeBits reader so its first bits field lands one too low, and requires
 // TestPythonPacketRangedBits's write-back marker to go red.
 func TestPythonPacketRangedBitsNegativeControl(t *testing.T) {
 	t.Parallel()

@@ -35,6 +35,10 @@ python-packet-core-negative-control: python-toolchain-check
 python-packet-ranged-bits-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketRangedBitsNegativeControl' ./internal/codegen/python/
 
+# TestPythonPacketRangedBits writes its own fixture with the generated Go code
+# as the byte reference, so the leg's package run needs the Go runtime.
+test-python: $(SERIALIZE_GO_RUNTIME)/go.mod
+
 # build/schema-python is the tagged compiler the conformance tree is generated
 # with; the ordinary bin/schema does not carry the target until the packet
 # layer drops the tag.
