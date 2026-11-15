@@ -1646,6 +1646,19 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         x = tie ~= nil and tie or narrow
       end
     end
+    if d.lo ~= nil then
+      -- a compressed float holds its DECLARED range on the value at its own
+      -- width (§16.2 Numbers, §3.3): a finite value past an end is clamped
+      -- and counted, which the plain read refuses, and its -0 lands as +0
+      if x < d.lo then
+        x = d.lo
+        report.clamped = report.clamped + 1
+      elseif x > d.hi then
+        x = d.hi
+        report.clamped = report.clamped + 1
+      end
+      if x == 0 then x = 0 end
+    end
     holder[key] = x
     return true
   elseif s == "int" then
