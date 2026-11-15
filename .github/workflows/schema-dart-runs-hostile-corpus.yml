@@ -11,9 +11,8 @@ name: schema-dart-runs-hostile-corpus
 # corpus's content (the pull-request negative-control row runs it too).
 
 on:
-  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
-  push:
-    branches: [ main, dev, fixed-table-form ]
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: "37 3 * * *"
   workflow_dispatch:

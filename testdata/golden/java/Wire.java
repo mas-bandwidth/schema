@@ -277,6 +277,8 @@ public final class Wire {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_HEADER_MAX_BITS;
+        assert value.version >= 0;
+        assert value.version <= 7;
         return true;
     }
 
@@ -424,6 +426,10 @@ public final class Wire {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_BITS_MAX_BITS;
+        assert value.small >= 0;
+        assert value.small <= 511;
+        assert value.boundary >= 0;
+        assert value.boundary <= 8589934591L;
         assert value.sensor >= 0;
         assert value.sensor <= 4294967295L;
         return true;
@@ -2254,6 +2260,12 @@ public final class Wire {
         assert value.b <= 100;
         assert value.c >= -100;
         assert value.c <= 150;
+        assert value.d >= 0;
+        assert value.d <= 255;
+        assert value.e >= 0;
+        assert value.e <= 255;
+        assert value.f >= 0;
+        assert value.f <= 255;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 16;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {

@@ -526,6 +526,18 @@ static SCHEMA_UNUSED int blockdemo_table_reader_array_header( blockdemo_table_re
     ok = blockdemo_table_reader_leb( &header, count ); sub->offset = header.offset;
     return ok;
 }
+/* THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+   (kind 14) opens with 1-13, 15, 17 or 18-30, and an enum-keyed body (kind
+   16) with 1-11, 13 or 18-30. Any other element kind is damage under any
+   count, a count of 0 included, in a declared field and an unknown one. */
+static SCHEMA_UNUSED int blockdemo_table_array_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+static SCHEMA_UNUSED int blockdemo_table_keyed_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
 static SCHEMA_UNUSED int blockdemo_table_reader_skip( blockdemo_table_reader_t * r, uint8_t kind )
 {
     int width = 0; uint64_t n;
@@ -626,6 +638,7 @@ static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * 
     if ( sub->size < 2 ) { return 0; }
     elem_kind = blockdemo_table_reader_get8( sub );
     if ( !blockdemo_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( keyed ? !blockdemo_table_keyed_element_kind_allowed( elem_kind ) : !blockdemo_table_array_element_kind_allowed( elem_kind ) ) { return 0; }
     if ( count > 2147483647ull ) { return 0; }
     if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
     if ( !keyed )
@@ -3979,6 +3992,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                     if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !blockdemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 7 )
                         {
                             if ( !(blockdemo_table_kind_widens(elem_kind,7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -4029,6 +4043,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                 {
                     uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );
                     if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                    if ( !blockdemo_table_keyed_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                     if ( elem_kind != 6 ) { if ( !(blockdemo_table_kind_widens(elem_kind,6)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
@@ -4763,6 +4778,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
                     if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !blockdemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 13 )
                         {
                             if ( !(blockdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -4805,6 +4821,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
                     if ( !blockdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !blockdemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 6 )
                         {
                             if ( !(blockdemo_table_kind_widens(elem_kind,6)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -5379,6 +5396,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_padded_row_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_row_fixed_layout ) ) ) / ( 8 + 50 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_row_fixed_layout ) + count * ( 8 + 50 );
 }
 
@@ -6915,6 +6933,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_padded_frame_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_frame_fixed_layout ) ) ) / ( 8 + 3229 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_frame_fixed_layout ) + count * ( 8 + 3229 );
 }
 
@@ -7230,7 +7249,9 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_row_body_pack_(struct blockdemo
         blockdemo_table_cook_put(at+52+cook_i2*1,(uint64_t)value->teams[cook_i2],1,order);
     } }
     blockdemo_table_cook_put(at+56+4,value->counter_present ? 1 : 0,1,order);
-    blockdemo_table_cook_put(at+56,(uint64_t)value->counter,4,order);
+    if(value->counter_present) {
+        blockdemo_table_cook_put(at+56,(uint64_t)value->counter,4,order);
+    }
     return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_padded_row_cook_measure(const blockdemo_padded_row_t * value) { (void)value; return 144; }

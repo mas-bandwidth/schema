@@ -203,7 +203,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeHeader( serialize::WriteStream & stream, cons
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHeader & value )
+SCHEMA_READ_INLINE bool ReadProbeHeaderBody( serialize::ReadStream & stream, ProbeHeader & value )
 {
     {
         uint64_t const_value = 0;
@@ -227,6 +227,17 @@ SCHEMA_READ_INLINE bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHe
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHeader & value )
+{
+    if ( !ReadProbeHeaderBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteProbeBits( serialize::WriteStream & stream, const ProbeBits & value )
 {
     write_bits( stream, value.small, 9 );
@@ -237,7 +248,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeBits( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeBits( serialize::ReadStream & stream, ProbeBits & value )
+SCHEMA_READ_INLINE bool ReadProbeBitsBody( serialize::ReadStream & stream, ProbeBits & value )
 {
     read_bits( stream, value.small, 9 );
     read_bits( stream, value.boundary, 33 );
@@ -251,11 +262,23 @@ SCHEMA_READ_INLINE bool ReadProbeBits( serialize::ReadStream & stream, ProbeBits
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadProbeBits( serialize::ReadStream & stream, ProbeBits & value )
+{
+    if ( !ReadProbeBitsBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, const ProbeSample & value )
 {
     write_bool( stream, value.active );
     {
         float compressed_value = value.orientation;
+        serialize_assert( compressed_value >= -180.0f && compressed_value <= 180.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 36000u, 16, 360.0f, -180.0f );
     }
     write_bits( stream, uint32_t( value.raw_delta ), 32 );
@@ -283,7 +306,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSample & value )
+SCHEMA_READ_INLINE bool ReadProbeSampleBody( serialize::ReadStream & stream, ProbeSample & value )
 {
     read_bool( stream, value.active );
     serialize_compressed_float_precomputed( stream, value.orientation, 36000u, 16, 360.0f, -180.0f );
@@ -338,19 +361,41 @@ SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSa
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSample & value )
+{
+    if ( !ReadProbeSampleBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteProbeRing( serialize::WriteStream & stream, const ProbeRing & value )
 {
     write_bits( stream, value.radius, 16 );
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeRing( serialize::ReadStream & stream, ProbeRing & value )
+SCHEMA_READ_INLINE bool ReadProbeRingBody( serialize::ReadStream & stream, ProbeRing & value )
 {
     {
         uint32_t raw_value = 0;
         read_bits( stream, raw_value, 16 );
         value.radius = uint16_t( raw_value );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeRing( serialize::ReadStream & stream, ProbeRing & value )
+{
+    if ( !ReadProbeRingBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -362,7 +407,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSlab( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeSlab( serialize::ReadStream & stream, ProbeSlab & value )
+SCHEMA_READ_INLINE bool ReadProbeSlabBody( serialize::ReadStream & stream, ProbeSlab & value )
 {
     {
         int32_t range_value = 0;
@@ -374,6 +419,17 @@ SCHEMA_READ_INLINE bool ReadProbeSlab( serialize::ReadStream & stream, ProbeSlab
         read_bits( stream, raw_value, 8 );
         value.height = uint8_t( raw_value );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeSlab( serialize::ReadStream & stream, ProbeSlab & value )
+{
+    if ( !ReadProbeSlabBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -397,7 +453,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeShape( serialize::WriteStream & stream, const
     return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
-SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeShape & value )
+SCHEMA_READ_INLINE bool ReadProbeShapeBody( serialize::ReadStream & stream, ProbeShape & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 2 ); // ProbeShapeType::Max — rejects a tag above the count (SPEC §4.8)
@@ -408,12 +464,23 @@ SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeSha
             return true;
         case ProbeShapeType::Ring:
             ::new ( static_cast<void *>( &value.ring ) ) ProbeRing{};
-            return ReadProbeRing( stream, value.ring );
+            return ReadProbeRingBody( stream, value.ring );
         case ProbeShapeType::Slab:
             ::new ( static_cast<void *>( &value.slab ) ) ProbeSlab{};
-            return ReadProbeSlab( stream, value.slab );
+            return ReadProbeSlabBody( stream, value.slab );
     }
     return false;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeShape & value )
+{
+    if ( !ReadProbeShapeBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteProbeCollider( serialize::WriteStream & stream, const ProbeCollider & value )
@@ -430,20 +497,31 @@ SCHEMA_WRITE_INLINE bool WriteProbeCollider( serialize::WriteStream & stream, co
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeCollider( serialize::ReadStream & stream, ProbeCollider & value )
+SCHEMA_READ_INLINE bool ReadProbeColliderBody( serialize::ReadStream & stream, ProbeCollider & value )
 {
     {
         uint32_t raw_value = 0;
         read_bits( stream, raw_value, 8 );
         value.armor = uint8_t( raw_value );
     }
-    schema_read_object( stream, ReadProbeShape, value.shape );
-    schema_read_object( stream, ReadProbeShape, value.backup );
+    schema_read_object( stream, ReadProbeShapeBody, value.shape );
+    schema_read_object( stream, ReadProbeShapeBody, value.backup );
     read_int( stream, value.extras_count, 0, 2 );
     for ( int32_t i = 0; i < value.extras_count; i++ )
     {
-        schema_read_object( stream, ReadProbeShape, value.extras[i] );
+        schema_read_object( stream, ReadProbeShapeBody, value.extras[i] );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeCollider( serialize::ReadStream & stream, ProbeCollider & value )
+{
+    if ( !ReadProbeColliderBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -455,7 +533,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeConfig( serialize::WriteStream & stream, cons
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeConfig & value )
+SCHEMA_READ_INLINE bool ReadProbeConfigBody( serialize::ReadStream & stream, ProbeConfig & value )
 {
     {
         uint32_t raw_value = 0;
@@ -470,6 +548,17 @@ SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeCo
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeConfig & value )
+{
+    if ( !ReadProbeConfigBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteProbeArray( serialize::WriteStream & stream, const ProbeArray & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
@@ -480,13 +569,24 @@ SCHEMA_WRITE_INLINE bool WriteProbeArray( serialize::WriteStream & stream, const
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadProbeArray( serialize::ReadStream & stream, ProbeArray & value )
+SCHEMA_READ_INLINE bool ReadProbeArrayBody( serialize::ReadStream & stream, ProbeArray & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
-        schema_read_object( stream, ReadProbeSample, value.samples[i] );
+        schema_read_object( stream, ReadProbeSampleBody, value.samples[i] );
     }
-    schema_read_object( stream, ReadProbeConfig, value.config );
+    schema_read_object( stream, ReadProbeConfigBody, value.config );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadProbeArray( serialize::ReadStream & stream, ProbeArray & value )
+{
+    if ( !ReadProbeArrayBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -497,10 +597,21 @@ SCHEMA_WRITE_INLINE bool WriteHeartbeat( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadHeartbeat( serialize::ReadStream & stream, Heartbeat & value )
+SCHEMA_READ_INLINE bool ReadHeartbeatBody( serialize::ReadStream & stream, Heartbeat & value )
 {
     (void) stream;
     (void) value;
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadHeartbeat( serialize::ReadStream & stream, Heartbeat & value )
+{
+    if ( !ReadHeartbeatBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -516,7 +627,7 @@ SCHEMA_WRITE_INLINE bool WriteTest( serialize::WriteStream & stream, const Test 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTest( serialize::ReadStream & stream, Test & value )
+SCHEMA_READ_INLINE bool ReadTestBody( serialize::ReadStream & stream, Test & value )
 {
     {
         uint32_t raw_value = 0;
@@ -541,6 +652,17 @@ SCHEMA_READ_INLINE bool ReadTest( serialize::ReadStream & stream, Test & value )
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadTest( serialize::ReadStream & stream, Test & value )
+{
+    if ( !ReadTestBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteBlock( serialize::WriteStream & stream, const Block & value )
 {
     serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( MaxBlockSize ) );
@@ -549,10 +671,21 @@ SCHEMA_WRITE_INLINE bool WriteBlock( serialize::WriteStream & stream, const Bloc
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadBlock( serialize::ReadStream & stream, Block & value )
+SCHEMA_READ_INLINE bool ReadBlockBody( serialize::ReadStream & stream, Block & value )
 {
     read_int( stream, value.data_length, 0, MaxBlockSize );
     read_bytes( stream, value.data, value.data_length );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadBlock( serialize::ReadStream & stream, Block & value )
+{
+    if ( !ReadBlockBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -568,7 +701,7 @@ SCHEMA_WRITE_INLINE bool WriteChat( serialize::WriteStream & stream, const Chat 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadChat( serialize::ReadStream & stream, Chat & value )
+SCHEMA_READ_INLINE bool ReadChatBody( serialize::ReadStream & stream, Chat & value )
 {
     read_int( stream, value.text_length, 0, MaxChatLength );
     read_bytes( stream, value.text, value.text_length );
@@ -584,6 +717,17 @@ SCHEMA_READ_INLINE bool ReadChat( serialize::ReadStream & stream, Chat & value )
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadChat( serialize::ReadStream & stream, Chat & value )
+{
+    if ( !ReadChatBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteProbeReport( serialize::WriteStream & stream, const ProbeReport & value )
 {
     schema_write_object( stream, WriteProbeHeader, value.header );
@@ -593,11 +737,22 @@ SCHEMA_WRITE_INLINE bool WriteProbeReport( serialize::WriteStream & stream, cons
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadProbeReportBody( serialize::ReadStream & stream, ProbeReport & value )
+{
+    schema_read_object( stream, ReadProbeHeaderBody, value.header );
+    read_bits( stream, value.flags, 8 );
+    schema_read_object( stream, ReadTestBody, value.echo );
+    return true;
+}
+
 SCHEMA_READ_INLINE bool ReadProbeReport( serialize::ReadStream & stream, ProbeReport & value )
 {
-    schema_read_object( stream, ReadProbeHeader, value.header );
-    read_bits( stream, value.flags, 8 );
-    schema_read_object( stream, ReadTest, value.echo );
+    if ( !ReadProbeReportBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -623,6 +778,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_float( stream, value.float_value );
     {
         float compressed_value = value.compressed_float_value;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 10.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
     write_double( stream, value.double_value );
@@ -647,7 +803,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTestData( serialize::ReadStream & stream, TestData & value )
+SCHEMA_READ_INLINE bool ReadTestDataBody( serialize::ReadStream & stream, TestData & value )
 {
     read_int( stream, value.a, -100, 100 );
     read_int( stream, value.b, -100, 100 );
@@ -708,23 +864,47 @@ SCHEMA_READ_INLINE bool ReadTestData( serialize::ReadStream & stream, TestData &
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadTestData( serialize::ReadStream & stream, TestData & value )
+{
+    if ( !ReadTestDataBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteCompressedProbe( serialize::WriteStream & stream, const CompressedProbe & value )
 {
     {
         float compressed_value = value.boundary;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 10.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
     {
         float compressed_value = value.offset;
+        serialize_assert( compressed_value >= -5.0f && compressed_value <= 5.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 10000u, 14, 10.0f, -5.0f );
     }
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadCompressedProbe( serialize::ReadStream & stream, CompressedProbe & value )
+SCHEMA_READ_INLINE bool ReadCompressedProbeBody( serialize::ReadStream & stream, CompressedProbe & value )
 {
     serialize_compressed_float_precomputed( stream, value.boundary, 1000u, 10, 10.0f, 0.0f );
     serialize_compressed_float_precomputed( stream, value.offset, 10000u, 14, 10.0f, -5.0f );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadCompressedProbe( serialize::ReadStream & stream, CompressedProbe & value )
+{
+    if ( !ReadCompressedProbeBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
