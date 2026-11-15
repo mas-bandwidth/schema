@@ -84,6 +84,15 @@ func skipProgressFixtures(t *testing.T) (*ir.Unit, []byte, int) {
 				Elem: ir.TableKindBool, Inner: &boolElement,
 			},
 		},
+		{Id: 0x9994},
+		{
+			Id:   0x9995,
+			Kind: ir.TableKindKeyed,
+			Shape: ir.TableMessageShape{
+				Max:  1,
+				Elem: ir.TableKindArray, Inner: &zeroBit,
+			},
+		},
 	}
 	ann := depthBoundaryEncodeAnnouncement(0x0102030405060708, ir.TableVocabularyBytes(entries))
 	return u, ann, ir.TableMessageRefBits(len(entries))
@@ -103,6 +112,13 @@ func skipProgressCases(t *testing.T, refBits int) []skipProgressCase {
 			wire: skipProgressMessage(t, body),
 		})
 	}
+	var fixedZero []uint8
+	ref(&fixedZero, 2)
+	ref(&fixedZero, 0)
+	cases = append(cases, skipProgressCase{
+		name: "fixed_count_zero_bit_element",
+		wire: skipProgressMessage(t, fixedZero),
+	})
 	var fixed []uint8
 	for range 3 {
 		ref(&fixed, 2)
@@ -111,6 +127,15 @@ func skipProgressCases(t *testing.T, refBits int) []skipProgressCase {
 	cases = append(cases, skipProgressCase{
 		name: "fixed_count_referenced_three_times",
 		wire: skipProgressMessage(t, fixed),
+	})
+	var keyed []uint8
+	ref(&keyed, 5)
+	skipProgressPut(&keyed, 1, 1)
+	ref(&keyed, 4)
+	ref(&keyed, 0)
+	cases = append(cases, skipProgressCase{
+		name: "keyed_zero_bit_element",
+		wire: skipProgressMessage(t, keyed),
 	})
 	var empty []uint8
 	ref(&empty, 0)
