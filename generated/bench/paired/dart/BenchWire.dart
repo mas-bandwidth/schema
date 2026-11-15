@@ -6195,7 +6195,8 @@ bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
-      final b = base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
       if (b.length > bound) {
         r.refuse('length_over_bound');
         return def;
@@ -6221,7 +6222,9 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
+      return b;
     } on FormatException {
       r.refuse('kind_mismatch');
       return null;
