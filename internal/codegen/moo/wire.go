@@ -49,6 +49,15 @@ func (g *gen) refuse(ind, cond, comment string) {
 	g.pf("%sif %s then%s\n%s\treturn false\n%send\n", ind, cond, comment, ind, ind)
 }
 
+// refuseRead emits a guard that latches the read refusal through the stream's
+// one latch when cond holds (docs/PORT-MOO.md, THE WIRE).
+func (g *gen) refuseRead(ind, cond, comment string) {
+	if comment != "" {
+		comment = " -- " + comment
+	}
+	g.pf("%sif %s then%s\n%s\tstream:fail(\"value_out_of_range\")\n%s\treturn false\n%send\n", ind, cond, comment, ind, ind, ind)
+}
+
 // ---------------------------------------------------------------------------
 // Write.
 
@@ -566,7 +575,7 @@ func (g *gen) readInt(val string, f *ir.Field, ind string) {
 		}
 		g.call(ind, fmt.Sprintf("stream:serializeBits(NUM, %d)", bits), "")
 		if diff := new(big.Int).Sub(hi, lo); diff.Cmp(mask(int(bits))) != 0 {
-			g.refuse(ind, fmt.Sprintf("NUM.value > %s", diff), "a read rejects out of range (SPEC §4.3)")
+			g.refuseRead(ind, fmt.Sprintf("NUM.value > %s", diff), "a read rejects out of range (SPEC §4.3)")
 		}
 		g.pf("%s%s = NUM.value + %s\n", ind, val, paren(lo))
 	default:
@@ -586,7 +595,7 @@ func (g *gen) readInt(val string, f *ir.Field, ind string) {
 		}
 		g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", bits), "")
 		if diff := new(big.Int).Sub(hi, lo); diff.Cmp(mask(int(bits))) != 0 {
-			g.refuse(ind, fmt.Sprintf("serialize.Uint64.cmp(WIDE.value, %s) > 0", g.k(wideNew("Uint64", diff, 64))), "a read rejects out of range (SPEC §4.3)")
+			g.refuseRead(ind, fmt.Sprintf("serialize.Uint64.cmp(WIDE.value, %s) > 0", g.k(wideNew("Uint64", diff, 64))), "a read rejects out of range (SPEC §4.3)")
 		}
 		g.pf("%s%s = serialize.Uint64.add(WIDE.value, %s)\n", ind, val, g.k(wideNew("Uint64", lo, 64)))
 	}

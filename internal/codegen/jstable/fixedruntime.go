@@ -105,6 +105,13 @@ const TableFixedOpOrdinal = 3; // a variant ordinal, remapped through the plan's
 const TableFixedOpWiden = 4;   // a narrower source into a wider destination
 const TableFixedOpConst = 5;   // a constant this reader's own storage takes: a remapped union tag
 const TableFixedOpWidenF = 6;  // f32 into f64, SPEC-TABLES §4's float rung
+// THE DEAD-BYTE CHECKS (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.5, §5.3 step
+// 11): each reads the source record and refuses wire_damaged for a non-zero
+// dead byte. They write no destination byte.
+const TableFixedOpDeadAbsent = 7;  // an absent optional's whole payload
+const TableFixedOpDeadCounted = 8; // a counted array's slots past its count
+const TableFixedOpDeadText = 9;    // a text or bytes field's capacity past its length
+const TableFixedOpDeadUnion = 10;  // an inactive union arm, or the span past a narrower one
 
 // the flavours an TableFixedOpText entry lands its units under
 const TableFixedTextUtf8 = 1;
@@ -578,6 +585,52 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         }
         break;
       }
+      case TableFixedOpDeadAbsent: {
+        // AN ABSENT OPTIONAL'S WHOLE PAYLOAD IS DEAD (§4.1, §4.5): the present
+        // byte at src says absent, and every payload byte behind it is zero.
+        if (src[s] === 0) {
+          for (let k = 1; k <= size; k++) {
+            if (src[s + k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
+      case TableFixedOpDeadCounted: {
+        // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5): walk the
+        // writer's element span, read its live count, and hold the rest to zero.
+        const v = TableFixedGetU32(src, s) | 0;
+        const stride = e[b + TableFixedLaneAux];
+        if (v >= 0 && v <= size) {
+          const end = s + 4 + size * stride;
+          for (let k = s + 4 + v * stride; k < end; k++) {
+            if (src[k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
+      case TableFixedOpDeadText: {
+        // A TEXT OR BYTES FIELD'S BYTES PAST ITS USED LENGTH ARE DEAD (§4.5).
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v >= 0 && v <= size) {
+          const end = s + 4 + size;
+          for (let k = s + 4 + v; k < end; k++) {
+            if (src[k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
+      case TableFixedOpDeadUnion: {
+        // AN INACTIVE UNION ARM IS DEAD (§4.5): under tag 0 the entry carries a
+        // zero taken span, and past a narrower arm it carries the arm's size
+        // against the widest span. Only the bytes outside the taken arm are read.
+        const widest = e[b + TableFixedLaneAux];
+        if (size < widest) {
+          for (let k = s + size; k < s + widest; k++) {
+            if (src[k] !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }
+          }
+        }
+        break;
+      }
       default: break;
     }
   }
@@ -970,7 +1023,10 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
       if (w === 0) { w = 1; }
       if (guard >= plan.record || guard + w > plan.record) { plan.hostile = true; return; }
     }
-    const reach = src + size + (op === TableFixedOpText ? 4 : 0);
+    let reach = src + size + (op === TableFixedOpText ? 4 : 0);
+    if (op === TableFixedOpDeadText) { reach = src + 4 + size; }
+    if (op === TableFixedOpDeadCounted) { reach = src + 4 + size * aux; }
+    if (op === TableFixedOpDeadUnion) { reach = src + (aux > size ? aux : size); }
     if (reach > plan.record) { plan.hostile = true; return; }
   }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
@@ -1137,6 +1193,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   switch (myKind) {
     case 35: { // the OPTIONAL wrapper: payload ops run only when present
       TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);
+      // THE PAYLOAD UNDER A PRESENT BYTE OF 0 IS DEAD (§4.1, §4.5).
+      if (theirSize > 1) { TableFixedPush(plan, TableFixedOpDeadAbsent, theirAt, 0, theirSize - 1, 0, guard, arg, 0); }
       if (plan.chainLen >= 65) { plan.overflow = true; return; }
       const savedAt = plan.chainAt;
       const savedArgw = plan.argw;
@@ -1175,6 +1233,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
         TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
+        // THE ELEMENT SLOTS PAST THE COUNT ARE DEAD (§4.5).
+        if (theirN > 0 && theirElem > 0) {
+          TableFixedPush(plan, TableFixedOpDeadCounted, theirAt, 0, theirN, theirElem, guard, arg, 0);
+        }
       }
       const theirBase = theirAt + head;
       const n = theirN < myN ? theirN : myN;
@@ -1234,6 +1296,32 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const savedArgw = plan.argw;
       plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
       const theirArms = TableFixedChildren(theirs, ti);
+      // THE DEAD ARM SPANS (§4.5): tag 0 names no arm, so its whole widest span
+      // is dead; a taken arm leaves everything past its own bytes dead. Each
+      // entry answers to its tag, and to every tag outside it through the chain.
+      {
+        const widest = TableFixedUnionArmBytes(theirs, ti);
+        const pushDeadArm = (ordinal, taken) => {
+          if (plan.chainLen >= 65) { plan.overflow = true; return; }
+          const savedAt = plan.chainAt;
+          const l = plan.chainLen * 3;
+          plan.chain[l] = theirAt;
+          plan.chain[l + 1] = ordinal;
+          plan.chain[l + 2] = plan.argw;
+          plan.chainLen++;
+          plan.chainAt = -1;
+          TableFixedPush(plan, TableFixedOpDeadUnion, theirAt + theirTag, 0, taken, widest, theirAt, ordinal, 0);
+          plan.chainLen--;
+          plan.chainAt = savedAt;
+        };
+        pushDeadArm(0, 0);
+        let deadArm = ti + 1;
+        for (let j = 0; j < theirArms; j++) {
+          pushDeadArm(j + 1, TableFixedSize(theirs, deadArm));
+          deadArm += TableFixedSubtree(theirs, deadArm);
+          if (plan.overflow) { return; }
+        }
+      }
       const myArms = TableFixedChildren(mine, mi);
       let myArm = mi + 1;
       for (let k = 0; k < myArms; k++) {
@@ -1300,6 +1388,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // two facts are independent, so they get independent lanes.
       const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
       TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);
+      // THE BYTES PAST THE USED LENGTH, OUT TO THE WRITER'S CAPACITY, ARE DEAD (§4.5).
+      if (theirSize > 4) {
+        TableFixedPush(plan, TableFixedOpDeadText, theirAt, 0, theirSize - 4, 0, guard, arg, 0);
+      }
       break;
     }
     default: {
