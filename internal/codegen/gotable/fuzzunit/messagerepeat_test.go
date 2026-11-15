@@ -148,17 +148,21 @@ func TestGeneratedMessageRefusesRepeatedKeyedSlot(t *testing.T) {
 
 // TestGeneratedMessageRepeatNegativeControl removes each repeat rule from the
 // generated reader (every table's copy of it) and requires its own test red on
-// the generated side.
+// the generated side. A repeat is also out of order (fields in declaration
+// order, keyed slots in ascending variant ordinal, docs/SPEC-TABLES.md §3.2,
+// §3.3), so the order rule is removed with it.
 func TestGeneratedMessageRepeatNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		file, from, to, run string
+		order, unordered    string
 	}{
-		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif slices.Contains(seen, entry.ID) {", "\t\tif false && slices.Contains(seen, entry.ID) {", "^TestGeneratedMessageRefusesRepeatedFieldId$"},
-		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$"},
+		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif slices.Contains(seen, entry.ID) {", "\t\tif false && slices.Contains(seen, entry.ID) {", "^TestGeneratedMessageRefusesRepeatedFieldId$", "if order >= ", "if false && order >= "},
+		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$", "if int(key) <= lastKey {", "if false && int(key) <= lastKey {"},
 	} {
 		out, failed := slowtest.RunSabotaged(t, "../../../..", "./internal/codegen/gotable/fuzzunit", c.run,
-			slowtest.Sabotage{File: c.file, From: c.from, To: c.to, All: true})
+			slowtest.Sabotage{File: c.file, From: c.from, To: c.to, All: true},
+			slowtest.Sabotage{File: c.file, From: c.order, To: c.unordered, All: true})
 		if !failed || !strings.Contains(out, "generated n=1 ok=true") {
 			t.Errorf("negative control %s: the rule is gone and the generated reader was not caught\n%s", c.run, out)
 		}

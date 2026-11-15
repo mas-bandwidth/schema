@@ -385,7 +385,6 @@ func nonCanonicalKindRows(t *testing.T) (rows []string, announcement []byte) {
 	return rows, tablewire.Announce(u.u)
 }
 
-
 // nonCanonicalFirstUseInTheWalk holds the id table's first-use check to the
 // load's own walk: the open runs no walk of its own over the body before the
 // load decodes it, and the reference the load resolves is the one counted.

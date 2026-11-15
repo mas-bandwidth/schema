@@ -36,8 +36,13 @@ func RunSabotaged(t *testing.T, root, pkg, run string, sabotages ...Sabotage) (o
 	dir := t.TempDir()
 	replace := map[string]string{}
 	for i, s := range sabotages {
+		// a second sabotage of one file edits the first one's copy
 		src := filepath.Join(abs, s.File)
-		data, err := os.ReadFile(src)
+		from := src
+		if prev, ok := replace[src]; ok {
+			from = prev
+		}
+		data, err := os.ReadFile(from)
 		if err != nil {
 			t.Fatal(err)
 		}

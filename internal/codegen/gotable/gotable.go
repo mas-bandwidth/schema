@@ -111,7 +111,7 @@ type tableGen struct {
 	retainIndex   string
 	retainArm     bool
 	regional      bool
-	elides        bool // the field read being emitted is one its writer elides at its default
+	elides        bool   // the field read being emitted is one its writer elides at its default
 	sink          string // the element read's not-at-default flag (canonical.go)
 	armOffset     *int64
 	viewPacket    map[string]int
