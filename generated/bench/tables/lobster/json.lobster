@@ -2125,6 +2125,8 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
             var found = false
             for(names) v, bit:
                 if not found and v == name:
+                    if (bits & shl(1, bit)) != 0:
+                        return j_refuse(r, "duplicate_key")
                     bits = bits | shl(1, bit)
                     found = true
             if not found:
