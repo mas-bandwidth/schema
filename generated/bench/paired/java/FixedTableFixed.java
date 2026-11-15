@@ -202,7 +202,8 @@ public final class FixedTableFixed {
     // conforming (§5.9 #3). Nothing on the load path compiles, nothing on it
     // parses a layout, and there is no cache a load can miss.
     private static final class Lineage {
-        static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);
+        static final TableFixed.Plan[] plans =
+                TableFixed.lineagePlans(known, layout, dest, hash, bodyBytes);
     }
 
     /**
@@ -278,6 +279,7 @@ public final class FixedTableFixed {
     // Published by class initialization.
     private static final class Identity {
         static final TableFixed.Entry[] plan = build();
+        static final TableFixed.Prefill prefill = TableFixed.prefill(plan, plan.length, bodyBytes);
 
         private static TableFixed.Entry[] build() {
             TableFixed.Entry[] p = TableFixed.plan(1);
@@ -285,6 +287,12 @@ public final class FixedTableFixed {
             return p;
         }
     }
+
+    /**
+     * THE LOAD PATH'S SCRATCH VALUE, reused per thread: pass 0 lands each record here so a refusal
+     * never touches the caller's values, and a read allocates nothing on its success path (§4.2).
+     */
+    private static final ThreadLocal<Value> loadScratch = ThreadLocal.withInitial(Value::new);
 
     /** the plan a record under THIS build's own hash is read through. */
     public static TableFixed.Entry[] identityPlan() {
@@ -326,7 +334,7 @@ public final class FixedTableFixed {
         // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,
         // and 20 + L is inside the file. The first is framing damage and has no
         // name; the other two refuse by name.
-        final TableFixed.Header head = new TableFixed.Header();
+        final TableFixed.Header head = TableFixed.header();
         if (!TableFixed.readHeader(data, head, report)) {
             return -1;
         }
@@ -368,6 +376,7 @@ public final class FixedTableFixed {
         // LOCK. The census is the plan's own numbers, carried to the bottom.
         TableFixed.Entry[] entries = Identity.plan;
         int made = Identity.plan.length;
+        TableFixed.Prefill pre = Identity.prefill;
         short[] table = remap;
         int censusUnknown = 0;
         if (fileHash != hash) {
@@ -382,6 +391,7 @@ public final class FixedTableFixed {
             }
             entries = lane.entries;
             made = lane.count;
+            pre = lane.prefill;
             table = lane.remap;
             censusUnknown = lane.unknown;
         }
@@ -405,17 +415,16 @@ public final class FixedTableFixed {
         final int bodySize = (int) (recordSize - 8);
 
         // THE PREFILL IS THE BYTES THIS PLAN DOES NOT WRITE, and no more than
-        // those: packed once per call rather than a whole-image copy per record,
-        // and empty when the plan is the identity plan.
-        final byte[] cover = new byte[bodyBytes];
-        final int[] hole = new int[Math.max(2, bodyBytes * 2)];
-        final int holeN = TableFixed.holes(entries, made, cover, hole);
+        // those: the hole list and its cover were computed ONCE beside the
+        // selected plan (§4.3), so this loop reads them and allocates nothing;
+        // the list is empty when the plan is the identity plan.
+        final int holeN = pre.count;
         // STEP 11, TOTAL OVER THE BATCH (§5.3): pass 0 checks EVERY record — its
         // hash first, then its counts, lengths, text, bool and present bytes —
         // by landing it in a scratch value the caller never sees; only then does
         // pass 1 land the records, values already known good. A refusal at
         // record k leaves values[0..k-1] exactly as untouched as values[k].
-        final Value scratch = new Value();
+        final Value scratch = loadScratch.get();
         final int widenedBefore = report.widened;
         for (int pass = 0; pass < 2; pass++) {
             report.widened = widenedBefore;
@@ -427,8 +436,8 @@ public final class FixedTableFixed {
                     return -1;
                 }
                 for (int h = 0; h < holeN; h++) {
-                    final int off = hole[h * 2];
-                    final int hn = hole[h * 2 + 1];
+                    final int off = pre.holes[h * 2];
+                    final int hn = pre.holes[h * 2 + 1];
                     System.arraycopy(defaults, off, image, off, hn);
                 }
                 TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
@@ -437,7 +446,7 @@ public final class FixedTableFixed {
                 if (report.refused || report.damaged) {
                     if (pass == 1) {
                         for (int j = 0; j <= k; j++) {
-                            scatter(defaults, 0, values[j], new TableFixed.Report());
+                            scatter(defaults, 0, values[j], TableFixed.discard());
                         }
                     }
                     report.widened = widenedBefore;

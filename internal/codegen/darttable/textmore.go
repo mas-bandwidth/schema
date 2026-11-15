@@ -118,28 +118,38 @@ bool _jsonName(String name, TableTextReport r) {
   return true;
 }
 
-// _jsonSkipNames walks a value the read skips and holds every object key in it
-// to the same 255-byte cap (§16.2): an unknown key's value is still an object
-// whose keys are schema names, however deep it sits. A skipped string is
-// validated too (docs/rulings.json skipped-value-is-validated): a zero
-// decodes to U+0000 and refuses the read (text_holds_zero, §16.3).
-void _jsonSkipNames(dynamic val, TableTextReport r) {
-  final entries = _jsonEntries(val);
-  if (entries != null) {
-    for (final entry in entries) {
-      _jsonName(entry.key, r);
-      if (entry.key.contains('\u0000')) r.refuse('text_holds_zero');
-      _jsonSkipNames(entry.value, r);
-    }
+// _jsonSkipValue holds a value the read only SKIPS to the grammar and text
+// rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
+// the parser has judged its grammar, and every object key and every string in
+// it goes through the same text check a placed string does, so one that
+// decodes to U+0000 refuses the read as a placed one would. Every object key
+// also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+void _jsonSkipValue(dynamic val, TableTextReport r) {
+  if (val is String) {
+    _jsonText(val);
     return;
   }
-  if (val is String) {
-    if (val.contains('\u0000')) r.refuse('text_holds_zero');
+  if (val is _JObj) {
+    for (final entry in val.entries) {
+      _jsonText(entry.key);
+      _jsonName(entry.key, r);
+      _jsonSkipValue(entry.value, r);
+    }
     return;
   }
   if (val is List) {
     for (final item in val) {
-      _jsonSkipNames(item, r);
+      _jsonSkipValue(item, r);
+    }
+    return;
+  }
+  if (val is Map) {
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonText(key);
+      _jsonName(key, r);
+      _jsonSkipValue(entry.value, r);
     }
   }
 }
@@ -546,9 +556,13 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
     if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
+      // AN UNKNOWN KEY AND ITS VALUE are held to the text and grammar rules a
+      // placed one is held to (docs/SPEC-TABLES.md §16.3, §4): a key or a
+      // string inside the value that decodes to U+0000 refuses the read.
+      _jsonText(entry.key);
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
+      _jsonSkipValue(entry.value, r);
       r.unknown++;
-      _jsonSkipNames(entry.value, r);
       continue;
     }
     if (!seen.add(slot)) r.refuse('text_damaged');
@@ -766,7 +780,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipNames(item, r);\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipValue(item, r);\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")
