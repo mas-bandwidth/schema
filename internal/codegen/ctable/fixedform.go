@@ -773,9 +773,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("       file of the two forms this reader is supposed to name. */\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = 1;\n")
-	g.pf("        report->reason = data[0] == 1 ? (int)SCHEMA_TABLE_PREVIOUS_FORM\n")
-	g.pf("                       : data[0] == 2 ? (int)SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
-	g.pf("                       : (int)SCHEMA_TABLE_NEWER_FORM;\n")
+	g.pf("        report->reason = data[0] == 1 ? SCHEMA_TABLE_PREVIOUS_FORM\n")
+	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
+	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
 	g.pf("        return -1;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")

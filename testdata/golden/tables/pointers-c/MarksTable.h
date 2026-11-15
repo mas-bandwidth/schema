@@ -4318,10 +4318,8 @@ static SCHEMA_UNUSED int graphdemo_table_message_shape_read(const uint8_t * in,i
 }
 static SCHEMA_UNUSED int graphdemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,graphdemo_table_message_entry_t * e)
 {
- graphdemo_table_message_shape_facts_t own,elem;
+ graphdemo_table_message_shape_facts_t own={0},elem={0};
  int i;
- memset(&own,0,sizeof(own));
- memset(&elem,0,sizeof(elem));
  if(*at<0||*at>size-9)return 0;
  memset(e,0,sizeof(*e));
  e->value_bits=e->elem_value_bits=-1;
@@ -4435,9 +4433,8 @@ refused:
 }
 static SCHEMA_UNUSED int graphdemo_announce_read(graphdemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
 {
- graphdemo_table_report_t ignored;
+ graphdemo_table_report_t ignored={0};
  int ok;
- memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  if(v->announced||v->refused){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_SECOND_ANNOUNCEMENT;
@@ -5700,12 +5697,11 @@ static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_messa
 /* tally_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int graphdemo_tally_load_messages(graphdemo_tally_t * values,int64_t * count,const graphdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
 {
- graphdemo_table_report_t ignored;
+ graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
- memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6074,9 +6070,9 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_fixed_load( graphdemo_tally_t * val
     if ( data[0] != GRAPHDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? (int)SCHEMA_GRAPHDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? (int)SCHEMA_GRAPHDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : (int)SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? SCHEMA_GRAPHDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? SCHEMA_GRAPHDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
@@ -6960,7 +6956,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_retain_(graphdemo_ta
 }
 static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_load_retain(uint8_t * region,int64_t region_bytes,const uint8_t * wire,int64_t wire_bytes,graphdemo_table_retain_t * retain,graphdemo_table_report_t * report)
 {
- graphdemo_table_report_t ignored;
+ graphdemo_table_report_t ignored={0};
  graphdemo_table_reader_t reader;
  graphdemo_table_node_map_t nodes;
  graphdemo_table_node_dir_entry_t * directory;
@@ -6970,7 +6966,6 @@ static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_load_retain(uin
  int64_t data,records,total;
  int refused_before,reason_before;
  int32_t non_finite_before;
- memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  refused_before=report->refused;
  reason_before=report->reason;

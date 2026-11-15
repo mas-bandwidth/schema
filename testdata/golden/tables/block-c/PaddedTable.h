@@ -3180,10 +3180,8 @@ static SCHEMA_UNUSED int blockdemo_table_message_shape_read(const uint8_t * in,i
 }
 static SCHEMA_UNUSED int blockdemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,blockdemo_table_message_entry_t * e)
 {
- blockdemo_table_message_shape_facts_t own,elem;
+ blockdemo_table_message_shape_facts_t own={0},elem={0};
  int i;
- memset(&own,0,sizeof(own));
- memset(&elem,0,sizeof(elem));
  if(*at<0||*at>size-9)return 0;
  memset(e,0,sizeof(*e));
  e->value_bits=e->elem_value_bits=-1;
@@ -3297,9 +3295,8 @@ refused:
 }
 static SCHEMA_UNUSED int blockdemo_announce_read(blockdemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
- blockdemo_table_report_t ignored;
+ blockdemo_table_report_t ignored={0};
  int ok;
- memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  if(v->announced||v->refused){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT;
@@ -4438,12 +4435,11 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
 /* padded_row_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int blockdemo_padded_row_load_messages(blockdemo_padded_row_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
- blockdemo_table_report_t ignored;
+ blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
- memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -4974,12 +4970,11 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
 /* padded_frame_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int blockdemo_padded_frame_load_messages(blockdemo_padded_frame_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
- blockdemo_table_report_t ignored;
+ blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
- memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -5413,9 +5408,9 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? (int)SCHEMA_BLOCKDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? (int)SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : (int)SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? SCHEMA_BLOCKDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
@@ -6941,9 +6936,9 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     if ( data[0] != BLOCKDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? (int)SCHEMA_BLOCKDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? (int)SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : (int)SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? SCHEMA_BLOCKDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are

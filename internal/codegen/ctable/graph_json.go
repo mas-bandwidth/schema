@@ -274,9 +274,8 @@ static SCHEMA_UNUSED int table_json_read_graph( TableWorker * worker, void * roo
 {
     TableJsonGraphIn graph;
     TableJsonIn in;
-    TableReport ignored;
+    TableReport ignored = {0};
     int ok;
-    memset(&ignored,0,sizeof(ignored));
     memset(&graph,0,sizeof(graph)); graph.worker = worker; graph.labels.allocator=worker->arena!=NULL ? worker->arena->allocator : table_default_allocator();
     memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
     if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
