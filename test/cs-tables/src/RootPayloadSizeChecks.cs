@@ -83,7 +83,7 @@ static partial class Program
     static byte[] PayloadRootGolden(PayloadRoot value)
     {
         // Independent form-1 bytes. First-use ids are child, items, value,
-        // text, wide, keys, Blue, tail. The empty array element is body [0].
+        // text, keys, Blue, tail. The empty array element is body [0].
         byte[] child = Join(new byte[] { 3,4 }, U32(42), new byte[] { 0 });
         byte[] items = Join(new byte[] { 13,2 }, Var((ulong)child.Length), child, new byte[] { 1,0 });
         byte[] text = value.Text.AsSpan(0, value.TextLength).ToArray();
