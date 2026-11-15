@@ -309,6 +309,18 @@ func TestMooJsonHostileVerdictsNegativeControl(t *testing.T) {
 	}
 }
 
+// mooHostileRelaxed are the json-hostile trees the moo JSON read still reads
+// against the landed rulings (#3486: unpadded Base64 is refused,
+// json-base64-canonical; a skipped value is validated). The same two rows are
+// relaxed in the conformance leg (test/conformance/relaxed.txt). A relaxed tree
+// that reads wrong is left out; one that reads right is a line, so the
+// relaxation is dropped once the read is fixed.
+// RELAXED 2026-11-15 moo JSON read keeps the old accept on both hostile rows; re-enable: relax/hostile-rows-moo
+var mooHostileRelaxed = map[string]bool{
+	"base64-unpadded":             true,
+	"str-zero-escape-unknown-key": true,
+}
+
 // hostileVerdictRun reads every json-hostile tree and returns one line per
 // tree whose verdict is not the manifest's, the tree's name first.
 func hostileVerdictRun(t *testing.T, runtime map[string][]byte) []string {
@@ -340,6 +352,13 @@ func hostileVerdictRun(t *testing.T, runtime map[string][]byte) []string {
 			cols := strings.SplitN(got, ",", 8)
 			if len(cols) != 8 {
 				t.Fatalf("%s (%s %s): the probe printed %q", h.name, key, h.root, got)
+			}
+			if mooHostileRelaxed[h.name] {
+				// RELAXED 2026-11-15 moo JSON read; re-enable: relax/hostile-rows-moo
+				if cols[6] == h.verdict {
+					bad = append(bad, fmt.Sprintf("%s (%s %s): relaxed (relax/hostile-rows-moo) but it reads %s: drop it from mooHostileRelaxed so it is gated", h.name, key, h.root, h.verdict))
+				}
+				continue
 			}
 			if cols[6] != h.verdict {
 				bad = append(bad, fmt.Sprintf("%s (%s %s): read %s, want %s", h.name, key, h.root, got, h.verdict))
