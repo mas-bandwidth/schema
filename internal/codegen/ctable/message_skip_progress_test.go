@@ -29,7 +29,7 @@ type skipProgressCase struct {
 }
 
 func skipProgressPut(bits *[]uint8, value uint64, width int) {
-	for b := 0; b < width; b++ {
+	for b := range width {
 		*bits = append(*bits, uint8((value>>b)&1))
 	}
 }
