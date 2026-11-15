@@ -5790,6 +5790,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive
     (*out_of_range) += (int) ( value->count < 0 ) | (int) ( value->count > 100 );
 }
 
+/* ArchiveConfig's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_archive_config_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    bad |= schema_tabledemo_root_config_fixed_dead_bytes_( b + 0 );
+    return bad;
+}
+
 /* ArchiveConfig's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive_config_fixed_write_check_body_( const tabledemo_archive_config_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -6696,6 +6705,16 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_fixed_load( tabledemo_arch
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_archive_config_fixed_hash && schema_tabledemo_archive_config_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_archive_config_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );

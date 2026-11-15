@@ -176,6 +176,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedClampBodyFn(st)
 	}
+	/* THE DEAD-BYTE CHECK (docs/rulings.json fixed-dead-bytes-are-zero), in the
+	   same post-order: a nested type's check stands before the call to it. */
+	for _, st := range own {
+		g.emitFixedDeadBytesBodyFn(st)
+	}
 	/* THE WRITE CHECK, the same bounds over const storage (docs/SPEC.md §5.1),
 	   in the same post-order. */
 	for _, st := range own {
@@ -874,6 +879,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.fixedBoolDamagePass(st)
+	g.fixedDeadBytesPass(st)
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	runDefaults := "NULL"
 	if presentDefaults {
@@ -1189,6 +1195,249 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }\n")
 	g.pf("    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n")
 	g.pf("    return 0;\n}\n\n")
+}
+
+/* ---- the dead-byte check --------------------------------------------------
+
+THE DEAD BYTES ARE ZERO ON WRITE AND REFUSED ON READ WHEN NOT ZERO
+(docs/rulings.json fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md §5.3
+step 11, §5.4): an absent optional's payload, a counted array's slots past its
+live count, a string(N)'s or bytes(N)'s units past its used length, and an
+inactive union arm (under tag 0, and past a narrower taken arm). A dead range
+is never read as a value, so the check below reads the SOURCE record alone —
+never the storage the run lands — and a non-zero byte refuses the whole load as
+wire_damaged before any destination byte is written. It walks the declared
+layout, which is the identity plan's own record shape; the load runs it only on
+its own hash, where that shape is the one the file holds. */
+
+// emitFixedDeadBytesBodyFn is ONE type's dead-byte check over the SOURCE record
+// (docs/rulings.json fixed-dead-bytes-are-zero): 1 when a dead byte is non-zero.
+func (g *tableGen) emitFixedDeadBytesBodyFn(st *ir.Struct) {
+	if !fixedDeadBytesNeeded(st, map[string]bool{}) {
+		return
+	}
+	g.pf("/* %s's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when\n", st.Name)
+	g.pf("   a dead byte of the record at b is non-zero. */\n")
+	g.pf("static SCHEMA_UNUSED %s int %s( const uint8_t * b )\n{\n",
+		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_dead_bytes"))
+	g.pf("    int bad = 0;\n")
+	g.fixedLoop = 0
+	off := int64(0)
+	for _, f := range st.Fields {
+		g.emitFixedDeadBytesField(f, off, 4)
+		off += ir.TableFixedFieldBytes(f)
+	}
+	g.pf("    return bad;\n}\n\n")
+}
+
+// fixedDeadBytesNeeded reports whether st's closure carries any dead byte, so
+// the load and the recursion emit no check and no call for a type that has none.
+func fixedDeadBytesNeeded(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if f.Type.Optional || f.Array == ir.ArrayCounted ||
+			f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+			return true
+		}
+		if f.Type.Kind == ir.TNamed {
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				if fixedDeadBytesNeeded(r, seen) {
+					return true
+				}
+			case *ir.Union:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fixedDeadBytesElementNeeded reports whether ONE element's type carries a dead
+// byte: a struct whose closure does, or a union (an inactive arm is always dead).
+func fixedDeadBytesElementNeeded(f *ir.Field) bool {
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return fixedDeadBytesNeeded(r, map[string]bool{})
+	case *ir.Union:
+		return true
+	}
+	return false
+}
+
+// emitFixedDeadBytesField is the dead-byte twin of emitFixedClampField, over the
+// SOURCE: an optional's present byte decides whether its whole payload is dead.
+func (g *tableGen) emitFixedDeadBytesField(f *ir.Field, off int64, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		payload := ir.TableFixedFieldBytes(f) - ir.TableFixedPresentBytes
+		g.pf("%sif ( b[%d] == 0 )\n%s{\n", ind, off, ind)
+		g.emitFixedDeadZero(fmt.Sprintf("%d", off+ir.TableFixedPresentBytes),
+			fmt.Sprintf("%d", off+ir.TableFixedPresentBytes+payload), indent+4)
+		g.pf("%s}\n%selse\n%s{\n", ind, ind, ind)
+		g.emitFixedDeadBytesPayload(f, off+ir.TableFixedPresentBytes, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedDeadBytesPayload(f, off, indent)
+}
+
+// emitFixedDeadBytesPayload walks ONE field's payload over the source: a counted
+// array's slots past its count and a string(N)/bytes(N)'s units past its used
+// length are dead, and a scalar or a struct or a union is the element's own walk.
+func (g *tableGen) emitFixedDeadBytesPayload(f *ir.Field, off int64, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		g.emitFixedDeadBytesLoop(f, off, strconv.FormatInt(f.KeyEnumRef.Max, 10), indent)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedDeadBytesLoop(f, off, strconv.FormatInt(f.ArrayBound, 10), indent)
+	case f.Array == ir.ArrayCounted:
+		elem := ir.TableFixedElementBytes(f)
+		count := fixedLocalName(g.fixedLoop, "count")
+		g.fixedLoop++
+		g.pf("%s{\n%s    int32_t %s = (int32_t) table_fixed_get32( b + %d );\n", ind, ind, count, off)
+		g.pf("%s    if ( %s < 0 ) { %s = 0; } else if ( %s > %d ) { %s = %d; }\n", ind, count, count, count, f.ArrayBound, count, f.ArrayBound)
+		g.emitFixedDeadZero(fmt.Sprintf("%d + (uint64_t) %s * %d", off+ir.TableFixedCountBytes, count, elem),
+			fmt.Sprintf("%d + %d * %d", off+ir.TableFixedCountBytes, f.ArrayBound, elem), indent+4)
+		g.emitFixedDeadBytesLoop(f, off+ir.TableFixedCountBytes, count, indent+4)
+		g.pf("%s}\n", ind)
+		g.fixedLoop--
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		cap := f.Type.Size
+		used := fixedLocalName(g.fixedLoop, "used")
+		g.fixedLoop++
+		g.pf("%s{\n%s    int32_t %s = (int32_t) table_fixed_get32( b + %d );\n", ind, ind, used, off)
+		g.pf("%s    if ( %s < 0 ) { %s = 0; } else if ( %s > %d ) { %s = %d; }\n", ind, used, used, used, cap, used, cap)
+		g.emitFixedDeadZero(fmt.Sprintf("%d + (uint64_t) %s", off+ir.TableFixedCountBytes, used),
+			fmt.Sprintf("%d + %d", off+ir.TableFixedCountBytes, cap), indent+4)
+		g.pf("%s}\n", ind)
+		g.fixedLoop--
+	default:
+		g.emitFixedDeadBytesElement(f, off, "b", indent)
+	}
+}
+
+// fixedLocalName is the dead-byte check's own name for a scoped local: the base
+// at the outermost nesting, a numbered twin at every deeper one, so a nested
+// union's tag and a nested array's count never shadow their enclosing locals.
+func fixedLocalName(depth int, base string) string {
+	if depth == 0 {
+		return base
+	}
+	return fmt.Sprintf("%s%d", base, depth)
+}
+
+// emitFixedDeadBytesLoop recurses into an array's LIVE elements, and only when
+// the element type carries a dead byte of its own (a struct that does, a union).
+func (g *tableGen) emitFixedDeadBytesLoop(f *ir.Field, base int64, count string, indent int) {
+	if !fixedDeadBytesElementNeeded(f) {
+		return
+	}
+	elem := ir.TableFixedElementBytes(f)
+	i := fixedLoopVar(g.fixedLoop)
+	g.fixedLoop++
+	ind := strings.Repeat(" ", indent)
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n",
+		ind, ind, i, ind, i, i, count, i, ind)
+	g.emitFixedDeadBytesElement(f, 0, fmt.Sprintf("b + %d + %s * %d", base, i, elem), indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+	g.fixedLoop--
+}
+
+// emitFixedDeadBytesElement is the dead-byte twin of emitFixedClampElement, over
+// the SOURCE: a struct recurses into its own fields, a union checks its inactive
+// arm's span, and every scalar leaf has no dead byte to check.
+func (g *tableGen) emitFixedDeadBytesElement(f *ir.Field, off int64, buf string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if fixedDeadBytesNeeded(r, map[string]bool{}) {
+				g.pf("%sbad |= %s( %s + %d );\n", ind, g.sym(r.Name, "fixed_dead_bytes"), buf, off)
+			}
+			return
+		case *ir.Union:
+			g.emitFixedDeadBytesUnion(r, off, buf, indent)
+			return
+		}
+	}
+}
+
+// emitFixedDeadBytesUnion checks one union's dead span over the source: under tag
+// 0 the whole arm span is dead, and under a taken arm the span past the narrower
+// arm is dead; the taken arm's own payload is walked in turn.
+func (g *tableGen) emitFixedDeadBytesUnion(un *ir.Union, off int64, buf string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	tagBytes := ir.TableFixedUnionTagBytes(un)
+	span := ir.TableFixedUnionBytes(un)
+	tag := fixedLocalName(g.fixedLoop, "tag")
+	g.fixedLoop++
+	g.pf("%s{\n%s    uint64_t %s = table_fixed_get_le( %s + %d, %d );\n", ind, ind, tag, buf, off, tagBytes)
+	g.pf("%s    if ( %s == 0 )\n%s    {\n", ind, tag, ind)
+	g.emitFixedDeadZero(fmt.Sprintf("%d + %d", off, tagBytes), fmt.Sprintf("%d + %d", off, span), indent+4)
+	g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
+	for i, v := range un.Variants {
+		cond := "if"
+		if i > 0 {
+			cond = "else if"
+		}
+		var live int64
+		if !v.Void() {
+			live = ir.TableFixedFieldBytes(v.F)
+		}
+		g.pf("%s        %s ( %s == %d )\n%s        {\n", ind, cond, tag, i+1, ind)
+		if tagBytes+live < span {
+			g.emitFixedDeadZero(fmt.Sprintf("%d + %d + %d", off, tagBytes, live), fmt.Sprintf("%d + %d", off, span), indent+8)
+		}
+		if !v.Void() {
+			if v.Body() {
+				if fixedDeadBytesNeeded(v.Ref, map[string]bool{}) {
+					g.pf("%s            bad |= %s( %s + %d + %d );\n", ind, g.sym(v.Ref.Name, "fixed_dead_bytes"), buf, off, tagBytes)
+				}
+			} else {
+				g.emitFixedDeadBytesPayload(v.F, off+tagBytes, indent+12)
+			}
+		}
+		g.pf("%s        }\n", ind)
+	}
+	g.pf("%s    }\n%s}\n", ind, ind)
+	g.fixedLoop--
+}
+
+// emitFixedDeadZero checks b[lo..hi) is all zero, ORing into `bad` (the enclosing
+// function's accumulator). lo and hi are byte offsets into b, each a string so an
+// array element's loop counter can ride in them.
+func (g *tableGen) emitFixedDeadZero(lo, hi string, indent int) {
+	i := fixedLoopVar(g.fixedLoop)
+	g.fixedLoop++
+	ind := strings.Repeat(" ", indent)
+	g.pf("%s{ uint64_t %s; for ( %s = %s; %s < %s; ++%s ) { if ( b[%s] != 0 ) { bad = 1; break; } } }\n",
+		ind, i, i, lo, i, hi, i, i)
+	g.fixedLoop--
+}
+
+// fixedDeadBytesPass emits the load's dead-byte refusal, gated on the identity
+// hash (the check walks the declared layout, which is this build's own record).
+func (g *tableGen) fixedDeadBytesPass(st *ir.Struct) {
+	if !fixedDeadBytesNeeded(st, map[string]bool{}) {
+		return
+	}
+	n := ir.RustSnake(st.Name)
+	g.pf("        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json\n")
+	g.pf("           fixed-dead-bytes-are-zero): checked before any byte lands, over the\n")
+	g.pf("           record's dead ranges and nothing else. */\n")
+	g.pf("        if ( hash == %s_fixed_hash && %s( at + 8 ) )\n", n, g.sym(st.Name, "fixed_dead_bytes"))
+	g.pf("        {\n")
+	g.pf("            int64_t j;\n            for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
+	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
+	g.pf("            return -1;\n        }\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {

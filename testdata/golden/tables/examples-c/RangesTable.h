@@ -9406,6 +9406,32 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     (*out_of_range) += ( value->b48 > 281474976710655ull );
 }
 
+/* RangedSigned's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_ranged_signed_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t count = (int32_t) tabledemo_table_fixed_get32( b + 60 );
+        if ( count < 0 ) { count = 0; } else if ( count > 4 ) { count = 4; }
+        { uint64_t i1; for ( i1 = 64 + (uint64_t) count * 2; i1 < 64 + 4 * 2; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
+/* RangedUnsigned's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_ranged_unsigned_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t count = (int32_t) tabledemo_table_fixed_get32( b + 60 );
+        if ( count < 0 ) { count = 0; } else if ( count > 4 ) { count = 4; }
+        { uint64_t i1; for ( i1 = 64 + (uint64_t) count * 8; i1 < 64 + 4 * 8; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
 /* RangedSigned's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_signed_fixed_write_check_body_( const tabledemo_ranged_signed_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -9822,6 +9848,16 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_load( tabledemo_range
                 }
             }
         }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_ranged_signed_fixed_hash && schema_tabledemo_ranged_signed_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_ranged_signed_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_signed_reset( values + j ); } return -1; }
@@ -10197,6 +10233,16 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_load( tabledemo_ran
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_ranged_unsigned_fixed_hash && schema_tabledemo_ranged_unsigned_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_ranged_unsigned_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );

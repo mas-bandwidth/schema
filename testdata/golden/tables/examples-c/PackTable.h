@@ -8144,6 +8144,86 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
     }
 }
 
+/* GunnerSettings's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_gunner_settings_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) tabledemo_table_fixed_get32( b + 5 );
+        if ( used < 0 ) { used = 0; } else if ( used > 24 ) { used = 24; }
+        { uint64_t i1; for ( i1 = 9 + (uint64_t) used; i1 < 9 + 24; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
+/* ShipEntry's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_ship_entry_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) tabledemo_table_fixed_get32( b + 0 );
+        if ( used < 0 ) { used = 0; } else if ( used > 32 ) { used = 32; }
+        { uint64_t i1; for ( i1 = 4 + (uint64_t) used; i1 < 4 + 32; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    {
+        int32_t count = (int32_t) tabledemo_table_fixed_get32( b + 44 );
+        if ( count < 0 ) { count = 0; } else if ( count > 4 ) { count = 4; }
+        { uint64_t i1; for ( i1 = 48 + (uint64_t) count * 4; i1 < 48 + 4 * 4; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    if ( b[64] == 0 )
+    {
+        { uint64_t i; for ( i = 65; i < 98; ++i ) { if ( b[i] != 0 ) { bad = 1; break; } } }
+    }
+    else
+    {
+        bad |= schema_tabledemo_gunner_settings_fixed_dead_bytes_( b + 65 );
+    }
+    return bad;
+}
+
+/* GlobalSettings's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_global_settings_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) tabledemo_table_fixed_get32( b + 5 );
+        if ( used < 0 ) { used = 0; } else if ( used > 48 ) { used = 48; }
+        { uint64_t i1; for ( i1 = 9 + (uint64_t) used; i1 < 9 + 48; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
+/* PackConfig's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_pack_config_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    bad |= schema_tabledemo_global_settings_fixed_dead_bytes_( b + 4 );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) 3; ++i )
+        {
+            bad |= schema_tabledemo_ship_entry_fixed_dead_bytes_( b + 73 + i * 98 + 0 );
+        }
+    }
+    {
+        int32_t count = (int32_t) tabledemo_table_fixed_get32( b + 379 );
+        if ( count < 0 ) { count = 0; } else if ( count > 3 ) { count = 3; }
+        { uint64_t i1; for ( i1 = 383 + (uint64_t) count * 98; i1 < 383 + 3 * 98; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+        {
+            int64_t i1;
+            for ( i1 = 0; i1 < (int64_t) count; ++i1 )
+            {
+                bad |= schema_tabledemo_ship_entry_fixed_dead_bytes_( b + 383 + i1 * 98 + 0 );
+            }
+        }
+    }
+    return bad;
+}
+
 /* GunnerSettings's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_gunner_settings_fixed_write_check_body_( const tabledemo_gunner_settings_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -8526,6 +8606,16 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
                 }
             }
         }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_gunner_settings_fixed_hash && schema_tabledemo_gunner_settings_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_gunner_settings_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_gunner_settings_reset( values + j ); } return -1; }
@@ -8891,6 +8981,16 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_ent
                 }
             }
         }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_ship_entry_fixed_hash && schema_tabledemo_ship_entry_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_ship_entry_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ship_entry_reset( values + j ); } return -1; }
@@ -9247,6 +9347,16 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_global_settings_fixed_hash && schema_tabledemo_global_settings_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_global_settings_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
@@ -9771,6 +9881,16 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_co
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_pack_config_fixed_hash && schema_tabledemo_pack_config_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_pack_config_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );

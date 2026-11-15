@@ -9533,6 +9533,55 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
 }
 
+/* TableMixed's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int schema_benchtable_table_mixed_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t count = (int32_t) benchtable_table_fixed_get32( b + 54 );
+        if ( count < 0 ) { count = 0; } else if ( count > 8 ) { count = 8; }
+        { uint64_t i1; for ( i1 = 58 + (uint64_t) count * 51; i1 < 58 + 8 * 51; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    {
+        int32_t count = (int32_t) benchtable_table_fixed_get32( b + 466 );
+        if ( count < 0 ) { count = 0; } else if ( count > 80 ) { count = 80; }
+        { uint64_t i1; for ( i1 = 470 + (uint64_t) count * 8; i1 < 470 + 80 * 8; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    {
+        uint64_t tag = benchtable_table_fixed_get_le( b + 1110, 1 );
+        if ( tag == 0 )
+        {
+        { uint64_t i1; for ( i1 = 1110 + 1; i1 < 1110 + 14; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+        }
+        else
+        {
+            if ( tag == 1 )
+            {
+            }
+            else if ( tag == 2 )
+            {
+            { uint64_t i1; for ( i1 = 1110 + 1 + 8; i1 < 1110 + 14; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+            }
+            else if ( tag == 3 )
+            {
+            { uint64_t i1; for ( i1 = 1110 + 1 + 8; i1 < 1110 + 14; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+            }
+        }
+    }
+    {
+        int32_t used = (int32_t) benchtable_table_fixed_get32( b + 1128 );
+        if ( used < 0 ) { used = 0; } else if ( used > 15 ) { used = 15; }
+        { uint64_t i1; for ( i1 = 1132 + (uint64_t) used; i1 < 1132 + 15; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    {
+        int32_t used = (int32_t) benchtable_table_fixed_get32( b + 1147 );
+        if ( used < 0 ) { used = 0; } else if ( used > 16 ) { used = 16; }
+        { uint64_t i1; for ( i1 = 1151 + (uint64_t) used; i1 < 1151 + 16; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
 /* TableEntity's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_write_check_body_( const benchtable_table_entity_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -11135,6 +11184,16 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == benchtable_table_mixed_fixed_hash && schema_benchtable_table_mixed_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { benchtable_table_mixed_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );

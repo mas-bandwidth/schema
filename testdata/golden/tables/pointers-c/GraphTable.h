@@ -7812,6 +7812,32 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
     }
 }
 
+/* Meta's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int schema_graphdemo_meta_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) graphdemo_table_fixed_get32( b + 4 );
+        if ( used < 0 ) { used = 0; } else if ( used > 8 ) { used = 8; }
+        { uint64_t i1; for ( i1 = 8 + (uint64_t) used; i1 < 8 + 8; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
+/* Settings's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int schema_graphdemo_settings_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) graphdemo_table_fixed_get32( b + 4 );
+        if ( used < 0 ) { used = 0; } else if ( used > 16 ) { used = 16; }
+        { uint64_t i1; for ( i1 = 8 + (uint64_t) used; i1 < 8 + 16; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
 /* Meta's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fixed_write_check_body_( const graphdemo_meta_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -8136,6 +8162,16 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
                 }
             }
         }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == graphdemo_meta_fixed_hash && schema_graphdemo_meta_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { graphdemo_meta_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
+        }
         graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_meta_reset( values + j ); } return -1; }
@@ -8459,6 +8495,16 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == graphdemo_settings_fixed_hash && schema_graphdemo_settings_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { graphdemo_settings_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );

@@ -8225,6 +8225,71 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
     schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, out_of_range, damaged );
 }
 
+/* TeamConfig's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_team_config_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) tabledemo_table_fixed_get32( b + 4 );
+        if ( used < 0 ) { used = 0; } else if ( used > 16 ) { used = 16; }
+        { uint64_t i1; for ( i1 = 8 + (uint64_t) used; i1 < 8 + 16; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
+/* TurretConfig's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_turret_config_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    if ( b[8] == 0 )
+    {
+        { uint64_t i; for ( i = 9; i < 14; ++i ) { if ( b[i] != 0 ) { bad = 1; break; } } }
+    }
+    else
+    {
+    }
+    return bad;
+}
+
+/* HullConfig's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_hull_config_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) 3; ++i )
+        {
+            bad |= schema_tabledemo_turret_config_fixed_dead_bytes_( b + 8 + i * 14 + 0 );
+        }
+    }
+    return bad;
+}
+
+/* KeyedConfig's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int schema_tabledemo_keyed_config_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) 3; ++i )
+        {
+            bad |= schema_tabledemo_team_config_fixed_dead_bytes_( b + 0 + i * 24 + 0 );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) 3; ++i )
+        {
+            bad |= schema_tabledemo_hull_config_fixed_dead_bytes_( b + 72 + i * 50 + 0 );
+        }
+    }
+    return bad;
+}
+
 /* TeamConfig's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_write_check_body_( const tabledemo_team_config_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -8564,6 +8629,16 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_load( tabledemo_team_co
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_team_config_fixed_hash && schema_tabledemo_team_config_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_team_config_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
@@ -9158,6 +9233,16 @@ static SCHEMA_UNUSED int64_t tabledemo_turret_config_fixed_load( tabledemo_turre
                 }
             }
         }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_turret_config_fixed_hash && schema_tabledemo_turret_config_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_turret_config_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
+        }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_turret_config_reset( values + j ); } return -1; }
@@ -9491,6 +9576,16 @@ static SCHEMA_UNUSED int64_t tabledemo_hull_config_fixed_load( tabledemo_hull_co
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_hull_config_fixed_hash && schema_tabledemo_hull_config_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_hull_config_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
@@ -9964,6 +10059,16 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_fixed_load( tabledemo_keyed_
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == tabledemo_keyed_config_fixed_hash && schema_tabledemo_keyed_config_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { tabledemo_keyed_config_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );

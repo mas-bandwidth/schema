@@ -3864,6 +3864,15 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
     schema_bench_bench_mixed_fixed_clamp_body_( &value->value, out_of_range, damaged );
 }
 
+/* FixedTable's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE int schema_bench_fixed_table_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    bad |= schema_bench_bench_mixed_fixed_dead_bytes_( b + 0 );
+    return bad;
+}
+
 /* FixedTable's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_write_check_body_( const bench_fixed_table_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -4646,6 +4655,16 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_fixed_load( bench_fixed_table_t *
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == bench_fixed_table_fixed_hash && schema_bench_fixed_table_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { bench_fixed_table_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         bench_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         bench_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );

@@ -5194,6 +5194,51 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
     }
 }
 
+/* PaddedRow's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int schema_blockdemo_padded_row_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t used = (int32_t) blockdemo_table_fixed_get32( b + 14 );
+        if ( used < 0 ) { used = 0; } else if ( used > 15 ) { used = 15; }
+        { uint64_t i1; for ( i1 = 18 + (uint64_t) used; i1 < 18 + 15; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    if ( b[45] == 0 )
+    {
+        { uint64_t i; for ( i = 46; i < 50; ++i ) { if ( b[i] != 0 ) { bad = 1; break; } } }
+    }
+    else
+    {
+    }
+    return bad;
+}
+
+/* PaddedFrame's dead-byte check (docs/rulings.json fixed-dead-bytes-are-zero): 1 when
+   a dead byte of the record at b is non-zero. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int schema_blockdemo_padded_frame_fixed_dead_bytes_( const uint8_t * b )
+{
+    int bad = 0;
+    {
+        int32_t count = (int32_t) blockdemo_table_fixed_get32( b + 9 );
+        if ( count < 0 ) { count = 0; } else if ( count > 64 ) { count = 64; }
+        { uint64_t i1; for ( i1 = 13 + (uint64_t) count * 50; i1 < 13 + 64 * 50; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+        {
+            int64_t i1;
+            for ( i1 = 0; i1 < (int64_t) count; ++i1 )
+            {
+                bad |= schema_blockdemo_padded_row_fixed_dead_bytes_( b + 13 + i1 * 50 + 0 );
+            }
+        }
+    }
+    {
+        int32_t used = (int32_t) blockdemo_table_fixed_get32( b + 3213 );
+        if ( used < 0 ) { used = 0; } else if ( used > 12 ) { used = 12; }
+        { uint64_t i1; for ( i1 = 3217 + (uint64_t) used; i1 < 3217 + 12; ++i1 ) { if ( b[i1] != 0 ) { bad = 1; break; } } }
+    }
+    return bad;
+}
+
 /* PaddedRow's write check (docs/SPEC.md §5.1). */
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_row_fixed_write_check_body_( const blockdemo_padded_row_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -5564,6 +5609,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == blockdemo_padded_row_fixed_hash && schema_blockdemo_padded_row_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { blockdemo_padded_row_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
@@ -7097,6 +7152,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
                     }
                 }
             }
+        }
+        /* A NON-ZERO DEAD BYTE REFUSES THE WHOLE LOAD (docs/rulings.json
+           fixed-dead-bytes-are-zero): checked before any byte lands, over the
+           record's dead ranges and nothing else. */
+        if ( hash == blockdemo_padded_frame_fixed_hash && schema_blockdemo_padded_frame_fixed_dead_bytes_( at + 8 ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { blockdemo_padded_frame_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
         }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
