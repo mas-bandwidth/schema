@@ -2089,7 +2089,7 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
+	Src, Dst, Size, Aux, Guard, Min uint32
 	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
 	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
 	// enum past 65535 variants holds its ordinal whole in this lane, and the
@@ -2148,8 +2148,8 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux   uint32
-	Counted, Arg, Meta uint8
+	Dst, Stride, Aux, Min uint32
+	Counted, Arg, Meta    uint8
 }
 
 type tableFixedPlan struct {
@@ -2724,7 +2724,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
@@ -3357,7 +3357,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -7734,14 +7734,14 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 52, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Size: 8, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
+	out[n] = TableFixedEntry{Src: src + 52, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Size: 8, Min: 1, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
 	n++
 	for i := range uint32(8) {
 		es := src + 56 + i*51
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
 		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
+	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Min: 0, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := range uint32(80) {
 		es := src + 468 + i*8
@@ -8204,7 +8204,7 @@ func BenchMixedFixedCheckBody(value *BenchMixed) bool {
 	if value.ServerTime < 0 || value.ServerTime > 16776960 {
 		return false
 	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return false
 	}
 	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
@@ -8320,7 +8320,7 @@ func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 	if value.ServerTime < 0 || value.ServerTime > 16776960 {
 		return false
 	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return false
 	}
 	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {

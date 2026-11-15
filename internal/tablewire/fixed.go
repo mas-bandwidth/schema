@@ -156,8 +156,8 @@ func encodeFixedPayload(m *tabletext.Model, b []byte, fv *tabletext.Field) error
 			}
 		}
 	case f.Array == ir.ArrayCounted:
-		if fv.Count < 0 || int64(fv.Count) > f.ArrayBound {
-			return fmt.Errorf("field %s: count %d is outside 0..%d, and save refuses it (docs/SPEC-TABLES.md §3.4)", f.Name, fv.Count, f.ArrayBound)
+		if fv.Count < 0 || int64(fv.Count) < f.ArrayMin || int64(fv.Count) > f.ArrayBound {
+			return fmt.Errorf("field %s: count %d is outside %d..%d, and save refuses it (docs/SPEC-TABLES.md §3.4)", f.Name, fv.Count, f.ArrayMin, f.ArrayBound)
 		}
 		binary.LittleEndian.PutUint32(b, uint32(fv.Count))
 		for i := 0; i < fv.Count; i++ {
@@ -419,7 +419,7 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 		}
 	case f.Array == ir.ArrayCounted:
 		count := int32(binary.LittleEndian.Uint32(b))
-		if count < 0 || int64(count) > f.ArrayBound {
+		if count < 0 || int64(count) < f.ArrayMin || int64(count) > f.ArrayBound {
 			return FixedReasonCountOverBound
 		}
 		if reason := fixedDead(b[ir.TableFixedCountBytes+int64(count)*elem : ir.TableFixedCountBytes+f.ArrayBound*elem]); reason != "" {

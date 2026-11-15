@@ -131,6 +131,7 @@
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
         "packet-finite-go-negative-control",
+        "packet-write-cfloat-c-negative-control",
         "packet-end-c-negative-control"
       ]
     },
@@ -1512,7 +1513,8 @@
         "cards-rust-conformance-hash-negative-control",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
-        "packet-utf8-rust-negative-control"
+        "packet-utf8-rust-negative-control",
+        "packet-end-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -2771,7 +2773,8 @@
       "targets": [
         "packet-finite-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
-        "packet-defaults-squirrel-negative-control"
+        "packet-defaults-squirrel-negative-control",
+        "packet-end-squirrel-negative-control"
       ],
       "squirrel": "3.2"
     },
@@ -2880,9 +2883,10 @@
     {
       "name": "luau-packet",
       "when": "pull-request",
-      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
+      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes, the packet end check and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
       "targets": [
         "packet-defaults-luau-negative-control",
+        "packet-end-luau-negative-control",
         "packet-finite-luau-negative-control",
         "packet-utf8-luau-negative-control"
       ],
@@ -3003,7 +3007,7 @@
     {
       "name": "moo",
       "when": "pull-request",
-      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). The block-lead control also runs the positive 130-placement matrix, removes the runtime alignment check, and requires exactly 126 unaligned cases to wrongly open while the four aligned cases stay unchanged (0.18 seconds of test time on Studio). Each packet control is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
+      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). Every target in the row names the pin's interpreter and analyzer under dist/moo, so the runner's environment cannot select another moo. The block-lead control also runs the positive 130-placement matrix, removes the runtime alignment check, and requires exactly 126 unaligned cases to wrongly open while the four aligned cases stay unchanged (0.18 seconds of test time on Studio). Each packet control is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
       "targets": [
         "tables-moo-block-lead-negative-control",
         "packet-analyze-moo-negative-control",

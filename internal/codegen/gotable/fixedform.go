@@ -147,7 +147,7 @@ func (w *fixedWalk) push(e fixedLayoutEntry, dst string) {
 	w.dst = append(w.dst, dst)
 }
 
-func dstGo(dst, stride, aux string, counted, arg int) string {
+func dstGo(dst, stride, aux string, counted, arg int, minCount ...int64) string {
 	if dst == "" {
 		dst = "0"
 	}
@@ -157,7 +157,11 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 	if aux == "" {
 		aux = "0"
 	}
-	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d}", dst, stride, aux, counted, arg, arg)
+	min := int64(0)
+	if len(minCount) > 0 {
+		min = minCount[0]
+	}
+	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d, %d}", dst, stride, aux, min, counted, arg, arg)
 }
 
 // offGo is a destination over the storage the unit actually holds: in a
@@ -220,7 +224,7 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, off func(string) string, f *ir
 			counted, aux = 1, off("Count")
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(off(""), g.sizeofGo(f), aux, counted, 0))
+			dstGo(off(""), g.sizeofGo(f), aux, counted, 0, f.ArrayMin))
 		g.fixedWalkElement(w, f, 0, "element", "0")
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
@@ -565,8 +569,8 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, fixedElementBytes(f), f.Name)
+		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Min: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.ArrayMin, fixedElementBytes(f), f.Name)
 		g.pf("\tn++\n")
 		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
@@ -688,8 +692,8 @@ func (g *tableGen) emitFixedArmLeaves(un *ir.Union, v ir.UnionVariant, src, dst 
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedArmLoop(f, src, valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, fixedElementBytes(f), v.Name)
+		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Min: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, f.ArrayMin, fixedElementBytes(f), v.Name)
 		g.pf("%sn++\n", ind)
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:
@@ -1547,7 +1551,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass
 		loop(fmt.Sprint(f.ArrayBound), false)
 	case f.Array == ir.ArrayCounted:
 		if chk {
-			g.pf("%sif %s.%sCount < 0 || %s.%sCount > %d { return false }\n", ind, val, member(f), val, member(f), f.ArrayBound)
+			g.pf("%sif %s.%sCount < %d || %s.%sCount > %d { return false }\n", ind, val, member(f), f.ArrayMin, val, member(f), f.ArrayBound)
 		}
 		loop(fmt.Sprintf("int64(%s.%sCount)", val, member(f)), chk)
 	default:
