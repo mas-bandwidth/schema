@@ -23,17 +23,17 @@ func TestCTableArrayElementKindsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"array_elem_kind_32_count_2": false,
-		"array_elem_kind_31_count_1": false,
-		"array_elem_kind_16_count_1": false,
+		"array_elem_kind_32_count_2":    false,
+		"array_elem_kind_31_count_1":    false,
+		"array_elem_kind_16_count_1":    false,
 		"array_elem_unassigned_count_0": false,
-		"array_elem_reserved_count_0": false,
-		"array_elem_zero_count_0": false,
-		"array_elem_kind_17_count_0": true,
-		"array_elem_kind_17_count_1": true,
-		"array_elem_kind_mismatch": false,
-		"array_elem_terminator_early": false,
-		"array_elem_L_past_body": false,
+		"array_elem_reserved_count_0":   false,
+		"array_elem_zero_count_0":       false,
+		"array_elem_kind_17_count_0":    true,
+		"array_elem_kind_17_count_1":    true,
+		"array_elem_kind_mismatch":      false,
+		"array_elem_terminator_early":   false,
+		"array_elem_L_past_body":        false,
 	}
 	wires, err := filepath.Glob(filepath.Join("..", "testdata", "wire", "tables", "framing", "array_elem_*.bin"))
 	if err != nil {
