@@ -625,8 +625,13 @@ public final class TableMessage {
                 return false;
             }
             TableVocabulary.Entry e = r.vocab.entries[(int) ref - 1];
-            // A SKIPPED BODY NAMES NO ID TWICE (§4, §5): the ids this body
-            // has carried take their own region, as a read of it would.
+            // A SKIPPED BODY REFUSES A RESERVED ID (§3.3, §4), as a read of
+            // it does, and names no id twice: the ids this body has carried
+            // take their own region, as a read of it would.
+            if (reservedId(e.id)) {
+                r.err = true;
+                return false;
+            }
             if (!r.seenAdd(seenFieldMark, e.id)) {
                 r.err = true;
                 return false;

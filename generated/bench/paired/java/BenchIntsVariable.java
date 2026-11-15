@@ -1136,7 +1136,10 @@ public final class BenchIntsVariable {
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
-        if (in.bad) {
+        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and
+        // comments, then refuse unless the cursor is at the end of the text.
+        in.space();
+        if (in.bad || in.p != text.length) {
             report.damaged = true;
         }
         if (report.refused) {
@@ -1297,7 +1300,7 @@ public final class BenchIntsVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanString();
+        String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -1377,7 +1380,7 @@ public final class BenchIntsVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanStored();
+            String key = in.scanName();
             if (in.bad) {
                 return;
             }
@@ -1606,7 +1609,7 @@ public final class BenchIntsVariable {
                     }
                 }
             } else {
-                in.skipValue();
+                in.skipValue(depth + 1);
                 in.rep.unknown++;
             }
             c = in.peek();

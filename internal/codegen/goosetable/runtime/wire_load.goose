@@ -193,10 +193,12 @@ struct LoadVal {
 }
 
 // LoadNode is one node record of the flat node table (docs/SPEC-TABLES.md
-// §3.1): wire index i + 2. tab is the record's table, -1 for a record this
-// root cannot place (counted unknown, every pointer naming it reads null);
-// blob is KindString or KindArray for a *string or *bytes record, its bytes a
-// view (off, len); val is the record's LoadVal.
+// §3.1): wire index i + 2. tab is the record's table; -1 for a record of a
+// type this reader does not declare (counted unknown, every pointer naming it
+// reads null), -2 for one of a type it DECLARES but this root cannot place (a
+// pointer naming it is a wrong-type target, §6.5); blob is KindString or
+// KindArray for a *string or *bytes record, its bytes a view (off, len); val is
+// the record's LoadVal.
 struct LoadNode { tab: i64, blob: u8, off: i64, len: i64, val: i64, named: bool }
 
 // Rd is one reader's window over the input: [off, end).
@@ -693,7 +695,7 @@ fn resolve(c: LoadCtx&, v: i64, d: FieldDesc, index: u64) {
     }
     if index - 2 >= c.node_n as! u64 { c.report.body_damaged = true; return; }
     let n = (index - 2) as! i64;
-    if c.nodes[n].tab < 0 && c.nodes[n].blob == 0 { return; }
+    if c.nodes[n].tab == -1 && c.nodes[n].blob == 0 { return; } // a type this reader cannot name reads null
     if blob {
         let want = if d.shape == ShapeSBlob { KindString } else { KindArray };
         if c.nodes[n].blob != want { c.report.mismatch += 1; return; }
@@ -1649,30 +1651,48 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     else if !scanned { c.report.body_damaged = true; }
     else { c.good = true; }
     // PASS ONE: what each record IS, from the framing — the types this root
-    // can place, and the two blob ids where an edge below it names them
+    // can place, the two blob ids where an edge below it names them, and the
+    // types this reader DECLARES but this root cannot place (a pointer naming
+    // one of those is a wrong-type target, not an unknown record, §3.1, §6.5)
     let root = c.root_tab;
     for k in c.node_n {
         let type_id = c.nodes[k].val as! u64;
         c.nodes[k].val = -1;
-        if c.unit.tables[root].place_str && type_id == StringTypeId {
-            if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
-                c.report.body_damaged = true;
+        if type_id == StringTypeId {
+            c.nodes[k].blob = KindString;
+            if c.unit.tables[root].place_str {
+                if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
+                    c.report.body_damaged = true;
+                }
                 continue;
             }
-            c.nodes[k].blob = KindString;
+            // a blob this root reaches no *string edge for is counted unknown,
+            // as before; its type is still known, so a slot naming it is a
+            // wrong-type target rather than a null
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             continue;
         }
-        if c.unit.tables[root].place_bytes && type_id == BytesTypeId {
+        if type_id == BytesTypeId {
             c.nodes[k].blob = KindArray;
+            if c.unit.tables[root].place_bytes { continue; }
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             continue;
         }
         var t: i64 = -1;
+        var declared = false;
         for d, i in c.unit.tables {
-            if d.id == type_id && place_named(c, root, d.name) { t = i; break; }
+            if d.id != type_id { continue; }
+            declared = true;
+            if place_named(c, root, d.name) { t = i; break; }
         }
         if t < 0 {
             c.report.unknown += 1;
             if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
+            // a type this reader declares but this root cannot place: a pointer
+            // that names it is damage, not an unnameable record (§3.1)
+            if declared { c.nodes[k].tab = -2; }
             continue;
         }
         c.nodes[k].tab = t;

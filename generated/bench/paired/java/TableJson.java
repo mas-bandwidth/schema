@@ -47,7 +47,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanString();
+                String name = in.scanName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -741,6 +741,27 @@ public final class TableJson {
             }
         }
 
+        // scanName reads one string that NAMES a schema name — an object key
+        // naming a field, an enum variant, a flags element, a union arm, an
+        // &node name — holds it to a placed string's text rule (§16.3) and to
+        // §16.2's 255-byte cap after decoding. A longer one refuses the read,
+        // and one that decodes to U+0000 refuses too; a map key and a string
+        // value are data and go through scanStored, never this.
+        public String scanName() {
+            String s = scanStored();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
+        }
+
         // loneSurrogate refuses a string whose u-escape is a surrogate half
         // with no partner after it, as damage (strict-only decision 9).
         String loneSurrogate() {
@@ -1041,7 +1062,7 @@ public final class TableJson {
                 if (closing == '}') {
                     // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
                     // (§16.3): one that decodes to U+0000 refuses.
-                    String key = scanStored();
+                    String key = scanName();
                     if (bad) {
                         return;
                     }
