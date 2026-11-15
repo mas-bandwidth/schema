@@ -262,6 +262,17 @@ local function scan_string(inp: Input, cap: number, store: boolean?): (string?, 
   return table.concat(out), clamped, true
 end
 
+-- ONE SCHEMA-NAME string: at most MAX_KEY bytes after decoding. A longer name
+-- refuses the read wherever it is met, an unknown enum name included
+-- (docs/SPEC-TABLES.md §16.2, §16.12). A map key and a string VALUE are data
+-- and are scanned by scan_string directly, never capped here.
+local function scan_name(inp: Input): (string?, boolean)
+  local out, clamped, ok = scan_string(inp, MAX_KEY)
+  if not ok then return nil, false end
+  if clamped then inp.bad = true; return nil, false end
+  return out, true
+end
+
 -- ONE RFC 8259 number; the token kept for conversion
 local function scan_number(inp: Input): string?
   space(inp)
@@ -336,7 +347,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
     if c == nil then inp.bad = true; return false end
     local labelled = false
     if close == '}' then
-      local scanned, _, ok = scan_string(inp, MAX_KEY)
+      local scanned, ok = scan_name(inp)
       if not ok then return false end
       local key = scanned :: string -- an ok scan returns its string
       if keys[key] then inp.bad = true; return false end
@@ -999,7 +1010,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
       if c == '}' then inp.p = inp.p + 1; return required_seen(desc, v, seen, report) end
       if c == nil then inp.bad = true; return false end
       local start = inp.p
-      local _, _, ok = scan_string(inp, MAX_KEY)
+      local _, ok = scan_name(inp)
       if not ok then return false end
       key = inp.t:sub(start + 1, inp.p - 2)
       if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1088,7 +1099,7 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   end
   if c == nil then inp.bad = true; return false end
   local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local _, ok = scan_name(inp)
   if not ok then return false end
   local k = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1276,7 +1287,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if c == nil then inp.bad = true; return false end
     -- a map key is text storage whatever its kind (§16.2, §16.3), and the
     -- key stored is the string's DECODED bytes, escapes included
-    local keytext, clamped, ok = scan_string(inp, MAX_KEY, true)
+    local keytext, clamped, ok = scan_string(inp, -1, true)
     if not ok then return false end
     local kraw = keytext :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1364,7 +1375,7 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
     local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    local _, ok = scan_name(inp)
     if not ok then return false end
     local name = inp.t:sub(start + 1, inp.p - 2)
     if peek(inp) ~= ':' then inp.bad = true; return false end
@@ -1412,7 +1423,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
   local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local _, ok = scan_name(inp)
   if not ok then return nil end
   local name = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ':' then inp.bad = true; return nil end
@@ -1576,7 +1587,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     return true
   elseif s == "enum" then
     local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    local _, ok = scan_name(inp)
     if not ok then return false end
     local name = inp.t:sub(start + 1, inp.p - 2)
     -- §16.2 enum row: "None" and an unknown name read as the enum zero, which
@@ -1606,7 +1617,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         if not skip_value(inp, depth + 1, graph) then return false end
       else
         local st = inp.p
-        local _, _, ok = scan_string(inp, MAX_KEY)
+        local _, ok = scan_name(inp)
         if not ok then return false end
         local nm = inp.t:sub(st + 1, inp.p - 2)
         local found = false
