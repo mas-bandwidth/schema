@@ -786,7 +786,8 @@ local jsonString = function(s) {
   while (i < n) {
     local c = s[i] & 0xff;
     local esc = null;
-    if (c == '"') esc = "\\\"";
+    if (c == 0) return null; // zero is not text for this writer (§16.3, W8)
+    else if (c == '"') esc = "\\\"";
     else if (c == '\\') esc = "\\\\";
     else if (c == 8) esc = "\\b";
     else if (c == 12) esc = "\\f";
