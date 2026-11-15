@@ -87,10 +87,21 @@ SCHEMA_WRITE_INLINE bool WriteVec2( serialize::WriteStream & stream, const Vec2 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadVec2( serialize::ReadStream & stream, Vec2 & value )
+SCHEMA_READ_INLINE bool ReadVec2Body( serialize::ReadStream & stream, Vec2 & value )
 {
     read_double( stream, value.x );
     read_double( stream, value.y );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadVec2( serialize::ReadStream & stream, Vec2 & value )
+{
+    if ( !ReadVec2Body( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -103,12 +114,23 @@ SCHEMA_WRITE_INLINE bool WriteSpanF64( serialize::WriteStream & stream, const Sp
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanF64( serialize::ReadStream & stream, SpanF64 & value )
+SCHEMA_READ_INLINE bool ReadSpanF64Body( serialize::ReadStream & stream, SpanF64 & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
         read_double( stream, value.values[i] );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadSpanF64( serialize::ReadStream & stream, SpanF64 & value )
+{
+    if ( !ReadSpanF64Body( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -121,12 +143,23 @@ SCHEMA_WRITE_INLINE bool WriteSpanU64( serialize::WriteStream & stream, const Sp
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanU64( serialize::ReadStream & stream, SpanU64 & value )
+SCHEMA_READ_INLINE bool ReadSpanU64Body( serialize::ReadStream & stream, SpanU64 & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
         read_bits( stream, value.values[i], 64 );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadSpanU64( serialize::ReadStream & stream, SpanU64 & value )
+{
+    if ( !ReadSpanU64Body( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -139,7 +172,7 @@ SCHEMA_WRITE_INLINE bool WriteSpanI64( serialize::WriteStream & stream, const Sp
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanI64( serialize::ReadStream & stream, SpanI64 & value )
+SCHEMA_READ_INLINE bool ReadSpanI64Body( serialize::ReadStream & stream, SpanI64 & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
@@ -152,6 +185,17 @@ SCHEMA_READ_INLINE bool ReadSpanI64( serialize::ReadStream & stream, SpanI64 & v
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadSpanI64( serialize::ReadStream & stream, SpanI64 & value )
+{
+    if ( !ReadSpanI64Body( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteSpanOne( serialize::WriteStream & stream, const SpanOne & value )
 {
     for ( int32_t i = 0; i < 1; i++ )
@@ -161,12 +205,23 @@ SCHEMA_WRITE_INLINE bool WriteSpanOne( serialize::WriteStream & stream, const Sp
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanOne( serialize::ReadStream & stream, SpanOne & value )
+SCHEMA_READ_INLINE bool ReadSpanOneBody( serialize::ReadStream & stream, SpanOne & value )
 {
     for ( int32_t i = 0; i < 1; i++ )
     {
         read_bits( stream, value.values[i], 64 );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadSpanOne( serialize::ReadStream & stream, SpanOne & value )
+{
+    if ( !ReadSpanOneBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -179,7 +234,7 @@ SCHEMA_WRITE_INLINE bool WriteSpanChunk( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanChunk( serialize::ReadStream & stream, SpanChunk & value )
+SCHEMA_READ_INLINE bool ReadSpanChunkBody( serialize::ReadStream & stream, SpanChunk & value )
 {
     for ( int32_t i = 0; i < 4; i++ )
     {
@@ -189,6 +244,17 @@ SCHEMA_READ_INLINE bool ReadSpanChunk( serialize::ReadStream & stream, SpanChunk
             value.values[i] = uint16_t( raw_value );
         }
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadSpanChunk( serialize::ReadStream & stream, SpanChunk & value )
+{
+    if ( !ReadSpanChunkBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -202,13 +268,24 @@ SCHEMA_WRITE_INLINE bool WriteSpanTail( serialize::WriteStream & stream, const S
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanTail( serialize::ReadStream & stream, SpanTail & value )
+SCHEMA_READ_INLINE bool ReadSpanTailBody( serialize::ReadStream & stream, SpanTail & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
         read_double( stream, value.values[i] );
     }
     read_bits( stream, value.tail, 32 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadSpanTail( serialize::ReadStream & stream, SpanTail & value )
+{
+    if ( !ReadSpanTailBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -225,7 +302,7 @@ SCHEMA_WRITE_INLINE bool WriteSpanTwice( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadSpanTwice( serialize::ReadStream & stream, SpanTwice & value )
+SCHEMA_READ_INLINE bool ReadSpanTwiceBody( serialize::ReadStream & stream, SpanTwice & value )
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
@@ -238,6 +315,17 @@ SCHEMA_READ_INLINE bool ReadSpanTwice( serialize::ReadStream & stream, SpanTwice
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadSpanTwice( serialize::ReadStream & stream, SpanTwice & value )
+{
+    if ( !ReadSpanTwiceBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteTrio( serialize::WriteStream & stream, const Trio & value )
 {
     write_bits( stream, value.a, 20 );
@@ -246,11 +334,22 @@ SCHEMA_WRITE_INLINE bool WriteTrio( serialize::WriteStream & stream, const Trio 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTrio( serialize::ReadStream & stream, Trio & value )
+SCHEMA_READ_INLINE bool ReadTrioBody( serialize::ReadStream & stream, Trio & value )
 {
     read_bits( stream, value.a, 20 );
     read_bits( stream, value.b, 20 );
     read_bits( stream, value.c, 24 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadTrio( serialize::ReadStream & stream, Trio & value )
+{
+    if ( !ReadTrioBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -260,9 +359,20 @@ SCHEMA_WRITE_INLINE bool WriteTrioSole( serialize::WriteStream & stream, const T
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadTrioSoleBody( serialize::ReadStream & stream, TrioSole & value )
+{
+    schema_read_object( stream, ReadTrioBody, value.inner );
+    return true;
+}
+
 SCHEMA_READ_INLINE bool ReadTrioSole( serialize::ReadStream & stream, TrioSole & value )
 {
-    schema_read_object( stream, ReadTrio, value.inner );
+    if ( !ReadTrioSoleBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -272,9 +382,20 @@ SCHEMA_WRITE_INLINE bool WriteVec3Sole( serialize::WriteStream & stream, const V
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadVec3SoleBody( serialize::ReadStream & stream, Vec3Sole & value )
+{
+    schema_read_object( stream, ReadVec3Body, value.v );
+    return true;
+}
+
 SCHEMA_READ_INLINE bool ReadVec3Sole( serialize::ReadStream & stream, Vec3Sole & value )
 {
-    schema_read_object( stream, ReadVec3, value.v );
+    if ( !ReadVec3SoleBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -285,10 +406,21 @@ SCHEMA_WRITE_INLINE bool WriteTrioFirst( serialize::WriteStream & stream, const 
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadTrioFirstBody( serialize::ReadStream & stream, TrioFirst & value )
+{
+    schema_read_object( stream, ReadTrioBody, value.inner );
+    read_bits( stream, value.trailer, 16 );
+    return true;
+}
+
 SCHEMA_READ_INLINE bool ReadTrioFirst( serialize::ReadStream & stream, TrioFirst & value )
 {
-    schema_read_object( stream, ReadTrio, value.inner );
-    read_bits( stream, value.trailer, 16 );
+    if ( !ReadTrioFirstBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -304,7 +436,7 @@ SCHEMA_WRITE_INLINE bool WriteTrioStraddle( serialize::WriteStream & stream, con
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTrioStraddle( serialize::ReadStream & stream, TrioStraddle & value )
+SCHEMA_READ_INLINE bool ReadTrioStraddleBody( serialize::ReadStream & stream, TrioStraddle & value )
 {
     read_bits( stream, value.pad0, 64 );
     read_bits( stream, value.pad1, 64 );
@@ -312,7 +444,18 @@ SCHEMA_READ_INLINE bool ReadTrioStraddle( serialize::ReadStream & stream, TrioSt
     read_bits( stream, value.pad3, 64 );
     read_bits( stream, value.pad4, 64 );
     read_bits( stream, value.pad5, 24 );
-    schema_read_object( stream, ReadTrio, value.inner );
+    schema_read_object( stream, ReadTrioBody, value.inner );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadTrioStraddle( serialize::ReadStream & stream, TrioStraddle & value )
+{
+    if ( !ReadTrioStraddleBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
