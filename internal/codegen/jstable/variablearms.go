@@ -619,6 +619,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
   const arr = v[fd.n];
   let rode = null;
+  let lastSlot = -1;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
@@ -636,11 +637,19 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       continue;
     }
+    // Slots ride in ascending variant ordinal (§3.2): a slot that does not
+    // increase is a spelling no conforming writer produces.
+    if (slot <= lastSlot) { report.damaged = true; break; }
+    lastSlot = slot;
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
+        const unknownBefore = report.unknown;
         const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
-        if (x !== undefined) { arr[slot] = x; }
+        if (x !== undefined) {
+          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
+          arr[slot] = x;
+        }
         break;
       }
       case "tab": {
@@ -650,12 +659,18 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.pop(); }
         if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
+        // A slot whose table body is its terminator alone is the default the
+        // writer elides (§3.2).
+        if (!fd.opt && !fd.req && elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
-        if (x !== undefined) { arr[slot] = x; }
+        if (x !== undefined) {
+          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
+          arr[slot] = x;
+        }
       }
     }
     // Bytes left inside a keyed slot after its element are damage (decode.go keyed).

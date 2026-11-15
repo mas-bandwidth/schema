@@ -671,38 +671,25 @@ function TableVariableIntroduce(st, ref) {
   if (st !== null && st.intro !== undefined && ref > 0) { st.intro.push(ref); }
 }
 
-// First use is known when the walk ends (§3). Two spellings are refused.
-// A table whose new references are exactly slots 1..k and that still has
-// entries past k carries an entry nothing names. A table that names every
-// slot, but whose first new reference is not slot 1, is the swapped table.
-// A hole below the highest named slot, and a table that does not name slot
-// 1 and does not name every slot, still reads: node bodies name a slot
-// before the root's bytes do, and a hand-built table may carry ids no body
-// uses.
+// First use is known when the walk ends (§3). The first new reference of
+// every entry must be the next slot, root body first and then the node table's
+// records in index order: the first new reference is 1, the second 2, and so
+// on to table.length. An entry no reference names leaves the sequence short and
+// is refused, as is a first use out of its place.
 function TableVariableFirstUseOk(table, st) {
   if (table.length === 0) { return true; }
   const seq = st.rootIntro.slice();
   for (const rec of st.recIntro) { for (const ref of rec) { seq.push(ref); } }
   const used = new Array(table.length + 1);
   let next = 1;
-  let strict = true;
-  let usedCount = 0;
-  let firstRef = 0;
   for (const ref of seq) {
     if (ref < 1 || ref > table.length) { return false; }
     if (used[ref]) { continue; }
-    if (usedCount === 0) { firstRef = ref; }
+    if (ref !== next) { return false; }
     used[ref] = true;
-    usedCount++;
-    if (strict) {
-      if (ref !== next) { strict = false; }
-      else { next++; }
-    }
+    next++;
   }
-  if (usedCount === 0) { return false; }
-  if (usedCount === table.length && firstRef !== 1) { return false; }
-  if (strict && next - 1 < table.length) { return false; }
-  return true;
+  return next - 1 === table.length;
 }
 
 // The value a non-optional, non-required field holds when the writer elides it.
@@ -1480,10 +1467,13 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
     }
     case "ptr": case "sblob": case "bblob": {
       // a pointer's payload is a NUMBER: bounds-checked at resolution, never
-      // followed (§3.1). Index 0 is null. A root that names nothing leaves
-      // the node table unreached, and that refusal is the resolve walk's.
+      // followed (§3.1). Index 0 is null. A non-required field holding null
+      // elides, so an explicit null there is a spelling no writer emits; a
+      // required field writes null, and an array element and an arm payload
+      // keep it because position is identity.
       const index = r.leb();
       if (r.bad) { report.damaged = true; return false; }
+      if (atField && index === 0 && !fd.req) { report.damaged = true; return false; }
       st.pending.push([v, fd.n, index, fd]);
       return true;
     }
@@ -1610,8 +1600,26 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
         v[fd.n] = Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e));
       }
       const out = v[fd.n];
+      const pendingBefore = fd.e.s === "ptr" ? st.pending.length : 0;
       for (let i = 0; i < keep; i++) {
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
+      }
+      // A fixed array of tables keeps its elements by position, but any other
+      // fixed array stored at all-default elides as a field (§3): refuse it.
+      // A pointer element is still null here until resolution, so its index is
+      // the default test; every other element already holds its value.
+      if (filled && atField && !fd.opt && !fd.req && fd.e.s !== "tab") {
+        let allDef = true;
+        if (fd.e.s === "ptr") {
+          for (let i = pendingBefore; i < st.pending.length; i++) {
+            if (st.pending[i][2] !== 0) { allDef = false; break; }
+          }
+        } else {
+          for (let i = 0; i < fd.bound; i++) {
+            if (!TableVariableElemIsDefault(fd.e, out[i])) { allDef = false; break; }
+          }
+        }
+        if (allDef) { report.damaged = true; return false; }
       }
     } else {
       const out = [];
