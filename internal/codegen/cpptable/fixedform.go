@@ -1480,8 +1480,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// clamp, and the writers hold row 10 where the table says they do.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
+		g.fixedNegZero(expr, true, ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
+		g.fixedNegZero(expr, false, ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -1522,7 +1524,28 @@ func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
 }
 
-// fixedClampEnd is the one-ended twin: an end the storage's own width already
+// fixedNegZero is a compressed float's -0 (docs/SPEC-TABLES.md §3.3, A
+// COMPRESSED FLOAT'S SPECIAL VALUES; docs/rulings.json fixed-compressed-negzero):
+// it lands as +0, the value 0 itself, refusing nothing and counting nothing, so
+// a read-then-save writes the +0 image. The Go oracle is gotable's
+// compressedFloatBound. The CHECK asks for the sign bit alone, so a record
+// holding +0 still skips the body; the BODY tests the value (neither below nor
+// above zero, which a NaN never reaches: the finite pass refused it first) and
+// stores 0. Neither spells a float `==`, which -Wfloat-equal reds. A plain
+// float carries no range and is never here: its -0 rides bit-exact.
+func (g *tableGen) fixedNegZero(expr string, f32 bool, ind string) {
+	bits, sign, zero := "table_double_to_bits", "0x8000000000000000ull", "0.0"
+	if f32 {
+		bits, sign, zero = "table_float_to_bits", "0x80000000u", "0.0f"
+	}
+	if g.fixedCheck {
+		g.pf("%sbad |= (int) ( %s( %s ) == %s );\n", ind, bits, expr, sign)
+		return
+	}
+	g.pf("%sif ( !( %s < %s ) && !( %s > %s ) ) { %s = %s; }\n", ind, expr, zero, expr, zero, expr, zero)
+}
+
+// fixedClampEnd is the one-ended twin:an end the storage's own width already
 // holds is an end the emitter drops (tableClampEnds), so a great many bounded
 // fields spend one compare and not two.
 func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
