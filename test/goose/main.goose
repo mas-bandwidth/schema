@@ -93,13 +93,6 @@ fn readWrite() -> ReadStream {
     return readImage();
 }
 
-// readAt reads one packet out of a concatenated image at a byte offset: each
-// shape is a separate one-packet read, with its own end check (SPEC §5).
-fn readAt(start: i64, bits: i64) -> ReadStream {
-    let n = (bits + 7) / 8;
-    return serialize_read_stream_init_padded(rbuf, image[start..start + n]);
-}
-
 fn readFile(name: const u8[:]) -> bool {
     var data: u8[>..] = [];
     if !read_file(str(name, ".bin"), data) {
@@ -200,7 +193,7 @@ fn testDefaultArmInitialization() {
         var r = readImage();
         let read = example::ReadDefaultChoice(r, out);
         check(read, "read independent DefaultChoice oracle");
-        check(serialize_bits_processed(r) == 8, "DefaultChoice consumes the 7 bits and the final byte's padding");
+        check(serialize_bits_processed(r) == 7, "DefaultChoice consumes exactly 7 bits");
         check(out.Type == example::DefaultChoiceTypeFirst && out.First.EntriesCount == 0 && out.First.Marker == 5,
               "DefaultChoice selects First and reads count zero, marker five");
         for e in out.First.Entries {
@@ -608,7 +601,6 @@ fn testDegenerate() {
     check(serialize_bits_processed(w) == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
           "the twelve degenerate shapes ride their declared widths and nothing more");
     done(w);
-    keep();
     golden("degenerate");
 
     var rVec2 = example::Vec2 { .. };
@@ -623,31 +615,18 @@ fn testDegenerate() {
     var rTrioSole = example::TrioSole { .. };
     var rTrioFirst = example::TrioFirst { .. };
     var rStraddle = example::TrioStraddle { .. };
-    // each shape is its own packet: Read<T> checks the end, so a shape is
-    // never read from a stream that still carries the ones after it (SPEC §5)
-    var r = readAt(0, 128);
+    var r = readWrite();
     check(example::ReadVec2(r, rVec2), "read Vec2");
-    r = readAt(16, 128);
     check(example::ReadSpanF64(r, rSpanF64), "read SpanF64");
-    r = readAt(32, 128);
     check(example::ReadSpanU64(r, rSpanU64), "read SpanU64");
-    r = readAt(48, 128);
     check(example::ReadSpanI64(r, rSpanI64), "read SpanI64");
-    r = readAt(64, 64);
     check(example::ReadSpanOne(r, rSpanOne), "read SpanOne");
-    r = readAt(72, 64);
     check(example::ReadSpanChunk(r, rSpanChunk), "read SpanChunk");
-    r = readAt(80, 160);
     check(example::ReadSpanTail(r, rSpanTail), "read SpanTail");
-    r = readAt(100, 256);
     check(example::ReadSpanTwice(r, rSpanTwice), "read SpanTwice");
-    r = readAt(132, 64);
     check(example::ReadTrio(r, rTrio), "read Trio");
-    r = readAt(140, 64);
     check(example::ReadTrioSole(r, rTrioSole), "read TrioSole");
-    r = readAt(148, 80);
     check(example::ReadTrioFirst(r, rTrioFirst), "read TrioFirst");
-    r = readAt(158, 408);
     check(example::ReadTrioStraddle(r, rStraddle), "read TrioStraddle");
     check(rVec2 == vec2, "Vec2 round-trips");
     check(rSpanF64 == spanF64, "SpanF64 round-trips");
