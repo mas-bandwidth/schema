@@ -118,7 +118,9 @@ func (w *wgen) emitReadScalar(f *ir.Field, expr, length, ind string) error {
 			raw := w.readRaw(int64(ref.WireBits), ind)
 			w.Pf("%s%s = %s;\n", ind, expr, raw)
 		case *ir.Struct, *ir.Union:
-			w.Pf("%sguard Read%s(s, %s) else { return false; }\n", ind, w.TypeRef(t.Name, false), expr)
+			// a nested type reads through its body, which does not end the
+			// packet: the top-level read owns the one end check (SPEC §5)
+			w.Pf("%sguard _Read%s(s, %s) else { return false; }\n", ind, w.TypeRef(t.Name, false), expr)
 		default:
 			return fmt.Errorf("field %s names %s, which has no packet wire", f.Name, t.Name)
 		}

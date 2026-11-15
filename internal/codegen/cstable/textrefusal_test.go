@@ -39,10 +39,15 @@ for (int i = 0; i < texts.Length; i++) {
  if (!Probe.Schema.RootFromJson(value, System.Text.Encoding.UTF8.GetBytes("{\"name\":\"ok\"}"), report) || report.Refused || report.Reason != null)
   bad += ProbeLog.Fail("prior diagnostic poisoned a clean read");
 }
-foreach (string text in new[] { "{\"unknown\":\"\\u0000\"}", "{\"\\u0000\":\"ignored\"}", "{\"name\":\"\\u0001\"}" }) {
+foreach (string text in new[] { "{\"unknown\":\"\\u0000\"}", "{\"\\u0000\":\"ignored\"}" }) {
  var report = new Probe.TableReport();
- if (!Probe.Schema.RootFromJson(new Probe.Root(), System.Text.Encoding.UTF8.GetBytes(text), report) || report.Damaged)
-  bad += ProbeLog.Fail("valid skipped/control text refused");
+ if (Probe.Schema.RootFromJson(new Probe.Root(), System.Text.Encoding.UTF8.GetBytes(text), report) || !report.Refused)
+  bad += ProbeLog.Fail("a zero in a skipped string or an object key must refuse the read");
+}
+{
+ var report = new Probe.TableReport();
+ if (!Probe.Schema.RootFromJson(new Probe.Root(), System.Text.Encoding.UTF8.GetBytes("{\"name\":\"\\u0001\"}"), report) || report.Damaged || report.Refused)
+  bad += ProbeLog.Fail("valid control text refused");
 }
 foreach (string text in new[] { "{\"name\":\"ab~\"}", "{\"unknown\":\"~\"}", "{\"~\":0}" }) {
  byte[] bytes = System.Text.Encoding.UTF8.GetBytes(text);

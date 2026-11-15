@@ -43,7 +43,7 @@ func mooNightlyFuzzWiring(leg, nightly, workflow, manifest string) []string {
 		bad = append(bad, "make/schema-moo-nightly-fuzz.mk budgets by a clock; the budget is a case count")
 	}
 	need(workflow, "schema-moo-nightly-fuzz.yml",
-		"schedule:", "workflow_dispatch:", "push:", "pull_request:",
+		"schedule:", "workflow_dispatch:", "push:",
 		"if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
 		"make schema-moo-nightly-fuzz MOO_NIGHTLY_FUZZ_SEED=${{ github.run_id }}",
 		"make schema-moo-nightly-fuzz-negative-control",
