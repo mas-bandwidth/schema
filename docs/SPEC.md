@@ -2398,13 +2398,8 @@ active, a writer never produces bytes its own reader refuses.
 | Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
 | Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 and 10 not yet held |
 | MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
-<<<<<<< HEAD
-| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 and 10 not yet held |
-| Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps; 10 debug |
-=======
 | Goose | 1–8 every build | 1–8 every build | 1–7 and 10 every build; 8 not yet held |
-| Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps |
->>>>>>> 9568d746df13b58dfa2fa4d28f585a1f02a7832f
+| Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps; 10 debug |
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
 mechanism above gives it — a debug assert in an assert leg and a refusal in

@@ -335,7 +335,7 @@ end
 -- Q * 2^e, e >= EMIN (the subnormal floor). P is 24 or 53.
 ----------------------------------------------------------------------------
 
-local function roundBinary(A: Big, B: Big, t: number, P: number, EMIN: number): (number, number, number)
+local function roundBinary(A: Big, B: Big, t: number, P: number, EMIN: number, sticky: boolean?): (number, number, number)
 	local e = t + bnBitLen(A) - bnBitLen(B) - P
 	if e < EMIN then
 		e = EMIN
@@ -358,9 +358,12 @@ local function roundBinary(A: Big, B: Big, t: number, P: number, EMIN: number): 
 		ql = ql // 2 + (qh % 2) * HALFBASE
 		qh = qh // 2
 		e += 1
-		up = odd == 1 and (#R > 0 or ql % 2 == 1)
+		up = odd == 1 and (#R > 0 or ql % 2 == 1 or sticky == true)
 	else
 		local c = bnCmp(bnShl(R, 1), D)
+		if c == 0 and sticky == true then
+			c = 1 -- a non-zero digit past the kept ones breaks the exact tie upward
+		end
 		up = c > 0 or (c == 0 and ql % 2 == 1)
 	end
 	if up then
@@ -416,6 +419,16 @@ local function float64Bits(qh: number, ql: number, e: number): (number, number)
 	return biased * 1048576 + qh // 256, (qh % 256) * BASE + ql
 end
 
+-- DECIMAL_KEEP: the significant digits a float conversion needs. Every
+-- binary32/binary64 rounding boundary has a finite decimal expansion of at
+-- most 768 significant digits (the finest half ulp is 2^-1075, and 5^1075 has
+-- 752 digits), so 1024 keeps the truncated value on the same decimal grid as
+-- every boundary: a boundary the kept digits do not spell is at least one
+-- kept digit away, and the dropped run can only break an exact tie, which the
+-- sticky bit records. The scan is linear in the token and the conversion's
+-- cost is constant (§16.12: a number token has no length limit in the verdict).
+local DECIMAL_KEEP = 1024
+
 -- decimalBinary(digits, q, fmt): the value digits * 10^q (digits a nonempty
 -- run with no leading zero) rounded once to the format: 0 and nothing for a
 -- zero, 2 for an infinity, or 1 and (qh, ql, e).
@@ -427,6 +440,12 @@ local function decimalBinary(digits: string, q: number, fmt: Format): (number, n
 	if nd + q <= fmt.zero then
 		return 0, 0, 0, 0
 	end
+	local sticky = false
+	if nd > DECIMAL_KEEP then
+		digits = string.sub(digits, 1, DECIMAL_KEEP)
+		q += nd - DECIMAL_KEEP
+		sticky = true -- the digits carry no trailing zero, so the dropped run is nonzero
+	end
 	local A = bnFromDigits(digits)
 	local B: Big = { 1 }
 	if q >= 0 then
@@ -434,7 +453,7 @@ local function decimalBinary(digits: string, q: number, fmt: Format): (number, n
 	else
 		bnMulPow5(B, -q)
 	end
-	local qh, ql, e = roundBinary(A, B, q, fmt.P, fmt.EMIN)
+	local qh, ql, e = roundBinary(A, B, q, fmt.P, fmt.EMIN, sticky)
 	return 1, qh, ql, e
 end
 
@@ -746,12 +765,12 @@ end
 
 
 ----------------------------------------------------------------------------
--- INTEGERS (docs/SPEC-TABLES.md §16.2 Numbers): JSON has one number type, so
--- an integer field takes any token whose VALUE is integral. A token is a sign
--- and a magnitude (a big integer); the field's reading goes through the
--- nearest double where the spelling has a fraction or an exponent, exactly as
--- internal/tabletext's interpretInteger does, and a map key reads the digits
--- exactly (interpretIntegerExact).
+-- INTEGERS (docs/SPEC-TABLES.md §16.2 Numbers): an integer field takes an
+-- INTEGER TOKEN only — digits with an optional minus, no fraction, no
+-- exponent, not -0 — so a token is its sign and its digits (a big integer),
+-- never a double. A kind wider than 32 bits is written as a string of digits
+-- and reads as a string or a number; a map key reads the same digits exactly
+-- (interpretIntegerExact).
 ----------------------------------------------------------------------------
 
 local MAX64: Big = { 16777215, 16777215, 65535 } -- 2^64 - 1
@@ -794,6 +813,36 @@ local function cmpSigned(an: boolean, am: Big, bn: boolean, bm: Big): number
 	end
 	local c = bnCmp(am, bm)
 	return if an then -c else c
+end
+
+-- integerToken(text): the digits-and-optional-minus spelling of an integer —
+-- an optional `-`, then digits with no leading zero, and not `-0` — the one
+-- spelling an integer field takes (tabletext's integerToken)
+local function integerToken(text: string): boolean
+	local i = 1
+	local negative = false
+	if string.byte(text, i) == 45 then
+		negative = true
+		i += 1
+	end
+	if i > #text then
+		return false
+	end
+	local c = string.byte(text, i) :: number
+	if c == 48 then
+		return not negative and i == #text
+	end
+	if c < 49 or c > 57 then
+		return false
+	end
+	while i <= #text do
+		local d = string.byte(text, i) :: number
+		if d < 48 or d > 57 then
+			return false
+		end
+		i += 1
+	end
+	return true
 end
 
 -- interpretInteger(token, integral): whether the value is finite, fractional
@@ -946,6 +995,13 @@ local function parseWide(token: string, signed: boolean, frac: number): (boolean
 		return true, false, hi, true
 	end
 	if point < -DECIMAL_BAND then
+		return false, false, {}, false
+	end
+	-- A significant digit below the point is a fraction: 10^-q must divide the
+	-- digits times 2^frac, and the digits carry no trailing zero, so more than
+	-- frac of them cannot (§16.2). The verdict is known without the digits, so
+	-- a token's length never drives the conversion's cost.
+	if q < 0 and -q > frac then
 		return false, false, {}, false
 	end
 	local raw = bnShl(bnFromDigits(digits), frac)
@@ -1258,10 +1314,16 @@ local function put(w: Out, s: string)
 end
 
 -- writeString: one JSON string, the seven short escapes, every other control
--- byte as \u00xx; ill-formed UTF-8 is a value no text spells, and the writer
--- refuses it invalid_value rather than replacing it (docs/SPEC-TABLES.md
--- §16.3, §16.14 W0): w.err is set and toJson answers nil
+-- byte except zero as \u00xx; zero and ill-formed UTF-8 are values no text
+-- spells, and the writer refuses them invalid_value rather than replacing
+-- them (docs/SPEC-TABLES.md §16.3, §16.14 W0): w.err is set and toJson answers nil
 local function writeString(w: Out, s: string)
+	if string.find(s, "%z") ~= nil then
+		if w.err == nil then
+			w.err = "invalid_value: zero byte in a text field has no JSON spelling (docs/SPEC-TABLES.md §16.3)"
+		end
+		return
+	end
 	put(w, "\"")
 	local n = #s
 	local i = 1
@@ -1413,6 +1475,7 @@ type Reader = {
 	pos: number,
 	bad: boolean,
 	zero: boolean,
+	table: boolean,
 	report: Report,
 	graph: { [any]: { open: boolean, node: any, t: string? } }?,
 }
@@ -1625,11 +1688,13 @@ local function scanUnit(r: Reader): (string?, boolean)
 	return unit, false
 end
 
--- scanText(r, capacity, store): one JSON string, ONE CODE POINT AT A TIME, so
--- a string longer than capacity (bytes; < 0 unbounded) is bounded at a code
--- point boundary; store says the text lands in text storage, where a zero
--- refuses the read (§16.3). Returns the text, whether it exceeded capacity, and ok.
-local function scanText(r: Reader, capacity: number, store: boolean): (string, boolean, boolean)
+-- scanText(r, capacity, store, skip): one JSON string, ONE CODE POINT AT A
+-- TIME, so a string longer than capacity (bytes; < 0 unbounded) is bounded at
+-- a code point boundary; store says the text lands in text storage, where a
+-- zero refuses the read (§16.3), and skip says it is a key or a skipped value,
+-- which the same text rule refuses (§4, §16.3). Returns the text, whether it
+-- exceeded capacity, and ok.
+local function scanText(r: Reader, capacity: number, store: boolean, skip: boolean): (string, boolean, boolean)
 	if peek(r) ~= 34 then
 		r.bad = true
 		return "", false, false
@@ -1669,8 +1734,10 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 		if unit == nil then
 			return "", false, false
 		end
-		if store and unit == "\0" then
-			r.zero = true -- §16.3: a zero bound for text storage
+		if (store or (skip and r.table)) and unit == "\0" then
+			if store then
+				r.zero = true -- §16.3: a zero bound for text storage
+			end
 			r.bad = true
 			return "", false, false
 		end
@@ -1685,19 +1752,28 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 end
 
 local function scanString(r: Reader, capacity: number): (string, boolean, boolean)
-	return scanText(r, capacity, false)
+	return scanText(r, capacity, false, false)
+end
+
+-- scanKey reads an object key or a string the walk only SKIPS, and holds it to
+-- the U+0000 rule a placed string is held to (§4, §16.3): a skipped value and
+-- every object key are held to the text rules of a placed value.
+local function scanKey(r: Reader, capacity: number): (string, boolean, boolean)
+	return scanText(r, capacity, false, true)
 end
 
 local function scanStored(r: Reader, capacity: number): (string, boolean, boolean)
-	return scanText(r, capacity, true)
+	return scanText(r, capacity, true, false)
 end
 
 -- scanName: ONE schema-name string — a field key, an enum variant name, a
 -- flags element, a union arm key, an `&node` key, or a key inside a skipped
 -- object. §16.2 caps it at 255 bytes after decoding, and a longer one refuses
--- the whole read. Map keys and string values are data and stay on scan.
+-- the whole read. Every one of them is an object key, so it is held to the
+-- U+0000 rule a placed value is held to (§4, §16.3). Map keys and string
+-- values are data and stay on scan.
 local function scanName(r: Reader): (string, boolean)
-	local s, over, ok = scanText(r, MAX_KEY, false)
+	local s, over, ok = scanText(r, MAX_KEY, false, true)
 	if not ok then
 		return "", false
 	end
@@ -1887,7 +1963,7 @@ skipValue = function(r: Reader, depth: number): boolean
 	elseif c == 91 then
 		return skipContainer(r, 93, depth)
 	elseif c == 34 then
-		local _, _, ok = scanString(r, 0)
+		local _, _, ok = scanKey(r, 0)
 		return ok
 	elseif c == 116 then
 		return literal(r, "true")
@@ -1911,7 +1987,7 @@ end
 -- the end, under the reader's caps. JSONTestSuite holds it to the standard.
 function J.jsonLayerAccepts(text: string): boolean
 	local report: any = { reason = nil }
-	local r: Reader = { t = text, n = #text, pos = 1, bad = false, zero = false, report = report, graph = nil }
+	local r: Reader = { t = text, n = #text, pos = 1, bad = false, zero = false, table = false, report = report, graph = nil }
 	if string.sub(text, 1, 3) == "\239\187\191" then
 		r.pos = 4
 	end
@@ -2034,8 +2110,17 @@ local function elementShape(e: any): string
 		return "s"
 	elseif s == "bool" then
 		return "b"
+	elseif s == "int" and e.kw > 4 then
+		-- A WIDE INTEGER READS AS A STRING OR A NUMBER (§16.2)
+		return "N"
 	end
 	return "n"
+end
+
+-- shapeMatches: 'N' is a wide integer, which takes a string or a number; every
+-- other shape is exact (tabletext's shapeMatches)
+local function shapeMatches(want: string, got: string): boolean
+	return want == got or (want == "N" and (got == "s" or got == "n"))
 end
 
 -- shape: the JSON shape a field's declaration takes (tabletext's Shape)
@@ -2317,7 +2402,13 @@ local function storeInteger(fd: any, holder: any, key: any, negative: boolean, m
 end
 
 local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: string, integral: boolean): boolean
-	local finite, fractional, saturated, negative, mag = interpretInteger(token, integral)
+	-- AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2):
+	-- a fraction, an exponent or -0 is the wrong shape, never coerced
+	if not integral or not integerToken(token) then
+		r.report.kindChanged += 1
+		return true
+	end
+	local finite, fractional, saturated, negative, mag = interpretInteger(token, true)
 	if not finite or fractional then
 		r.report.kindChanged += 1
 		return true
@@ -2355,6 +2446,12 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 end
 
 local function placeWide(r: Reader, fd: any, holder: any, key: any, token: string): boolean
+	-- a PURE 128-bit integer holds the integer-token rule inside its string too;
+	-- a fixed-point kind keeps its exact decimal (docs/SPEC-TABLES.md §16.2)
+	if fd.fbits == nil and fd.kw == 16 and not integerToken(token) then
+		r.report.kindChanged += 1
+		return true
+	end
 	local exact, negative, mag, saturated = parseWide(token, fd.signed, fd.fbits or 0)
 	if not exact then
 		r.report.kindChanged += 1
@@ -2457,7 +2554,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 				return false
 			end
 			u.Type = arm.tag
-		elseif s ~= shape(arm) then
+		elseif not shapeMatches(shape(arm), s) then
 			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -2627,6 +2724,18 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 		holder[key] = false
 		return true
 	end
+	if s == "int" and fd.kw > 4 and valueShape(r) == "s" then
+		-- A WIDE INTEGER READS AS A STRING OR A NUMBER (§16.2): the string holds
+		-- the same digits the number does
+		local text, _, ok = scanString(r, -1)
+		if not ok then
+			return false
+		end
+		if fd.fbits == nil and fd.kw == 8 then
+			return placeInteger(r, fd, holder, key, text, true)
+		end
+		return placeWide(r, fd, holder, key, text)
+	end
 	local token, integral, ok = scanNumber(r)
 	if not ok then
 		r.bad = true
@@ -2728,7 +2837,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 			end
 			arr[placed + 1] = if list then false else nil
 			placed += 1
-		elseif s ~= want then
+		elseif not shapeMatches(want, s) then
 			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -2968,7 +3077,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			if not skipValue(r, depth + 1) then
 				return false
 			end
-		elseif valueShape(r) ~= want then
+		elseif not shapeMatches(want, valueShape(r)) then
 			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -3044,7 +3153,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				entry[kd.slot] = name
 			else
 				-- THE KEY IS THE SPELLING AND NOTHING AROUND IT
-				local probe: Reader = { t = name, n = #name, pos = 1, bad = false, zero = false, report = r.report, graph = nil }
+				local probe: Reader = { t = name, n = #name, pos = 1, bad = false, zero = false, table = false, report = r.report, graph = nil }
 				space(probe)
 				local numberOk = false
 				if probe.pos == 1 then
@@ -3053,6 +3162,10 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				end
 				if not numberOk then
 					placed = "damaged"
+				elseif not integerToken(name) then
+					-- a fraction, an exponent or -0 is the wrong shape for an
+					-- integer key (docs/SPEC-TABLES.md §16.2)
+					placed = "mismatch"
 				else
 					local fractional, saturated, negative, mag = interpretIntegerExact(name)
 					if fractional or saturated then
@@ -3266,7 +3379,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 				end
 				resetField(d, fd, rec)
 			else
-				if s ~= shape(fd) then
+				if not shapeMatches(shape(fd), s) then
 					r.report.kindChanged += 1
 					if not skipValue(r, depth + 1) then
 						return false
@@ -3346,7 +3459,7 @@ function J.fromJson(d: any, rec: any, text: any, report: any?): boolean
 	local rep: any = report or {}
 	resetReport(rep)
 	local t: string = if type(text) == "buffer" then buffer.tostring(text) else text
-	local r: Reader = { t = t, n = #t, pos = 1, bad = false, zero = false, report = rep, graph = if d.variable then {} else nil }
+	local r: Reader = { t = t, n = #t, pos = 1, bad = false, zero = false, table = true, report = rep, graph = if d.variable then {} else nil }
 	-- a leading byte-order mark, and nowhere else (§16.12)
 	if string.sub(t, 1, 3) == "\239\187\191" then
 		r.pos = 4
@@ -3488,11 +3601,15 @@ countField = function(w: W, d: any, fd: any, rec: any, open: { [any]: boolean })
 		local n = fd.bound
 		if fd.array == "counted" then
 			n = rec[fd.slot .. "Count"]
+			if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return fail(w, "invalid_value") end
 		elseif fd.array == "list" then
 			n = #v
 		end
 		local e = fd.e
-		if e.buf or textListOf(fd) ~= nil and e.s == "str" then
+		if e.buf then
+			if type(v) ~= "buffer" or n > buffer.len(v) then return fail(w, "invalid_value") end
+			return true
+		elseif textListOf(fd) ~= nil and e.s == "str" then
 			return true
 		end
 		for i = 1, n do
@@ -3651,10 +3768,12 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 		emit(w, "]")
 		return true
 	end
+	if s == "int" and V.toRaw(fd, v) == nil then return fail(w, "invalid_value") end
 	if s == "bool" then
 		emit(w, if v then "true" else "false")
 		return true
 	elseif s == "float" then
+		if not V.floatInRange(fd, v) then return fail(w, "invalid_value") end
 		local text: string? = if fd.f32 then J.formatFloat32(v) else J.formatFloat64(v[2], v[1])
 		if text == nil then
 			return fail(w, "a float that is not finite has no JSON spelling (docs/SPEC-TABLES.md §16.3)")
@@ -3665,7 +3784,13 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 		writeString(w :: any, formatTimestamp(v))
 		return true
 	end
-	emit(w, writeInteger(fd, v))
+	local text = writeInteger(fd, v)
+	if fd.kw > 4 then
+		-- A KIND WIDER THAN 32 BITS IS A STRING OF DIGITS (§16.2, W10/W11)
+		writeString(w :: any, text)
+	else
+		emit(w, text)
+	end
 	return true
 end
 
@@ -3692,10 +3817,12 @@ local function writeArray(w: W, fd: any, rec: any, depth: number): boolean
 		if tl ~= nil then
 			local el = v[i]
 			if not tl.opt then
+				if type(el) ~= "string" or (tl.bound >= 0 and #el > tl.bound) then return fail(w, "invalid_value") end
 				writeString(w :: any, el)
 			elseif not el.ValuePresent then
 				emit(w, "null")
 			else
+				if type(el.Value) ~= "string" or (tl.bound >= 0 and #el.Value > tl.bound) then return fail(w, "invalid_value") end
 				writeString(w :: any, el.Value)
 			end
 		elseif e.buf then
@@ -3799,13 +3926,16 @@ writeField = function(w: W, d: any, fd: any, rec: any, depth: number): boolean
 		writeBase64(w :: any, v, buffer.len(v))
 		return true
 	elseif s == "str" then
+		if type(v) ~= "string" or #v > fd.bound then return fail(w, "invalid_value") end
 		writeString(w :: any, v)
 		return true
 	elseif s == "text" then
 		writeString(w :: any, v or "")
 		return true
 	elseif s == "bytes" then
-		writeBase64(w :: any, v, rec[fd.slot .. "Length"])
+		local n = rec[fd.slot .. "Length"]
+		if type(v) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound or n > buffer.len(v) then return fail(w, "invalid_value") end
+		writeBase64(w :: any, v, n)
 		return true
 	elseif s == "map" then
 		return writeMap(w, fd, rec, depth)

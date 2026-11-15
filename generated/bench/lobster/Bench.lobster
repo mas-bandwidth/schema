@@ -864,58 +864,6 @@ def WriteMixedEvent(s·:serialize_write_stream, v·:MixedEvent) -> bool:
 
 // WriteBenchMixed writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
-<<<<<<< HEAD
-def WriteBenchMixed(s:serialize_write_stream, v:BenchMixed) -> bool:
-    s.serialize_bits(49374, 16) // const(49374, 16) (SPEC §4.3)
-    s.serialize_bits(v.Sequence, 16) // the declared bit width (SPEC §4.3)
-    assert v.AckSequence >= 0 and v.AckSequence <= 65535 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.AckSequence, 16) // the offset from min (SPEC §4.3)
-    s.serialize_bits(v.AckBits, 32) // the declared bit width (SPEC §4.3)
-    s.serialize_bits64(v.SessionId, 64) // the storage width (SPEC §4.3)
-    s.serialize_bits(v.ClientId, 32) // the storage width (SPEC §4.3)
-    s.serialize_bits64(v.Nonce, 64) // the offset from min (SPEC §4.3)
-    assert v.WorldTime >= -1000000000000 and v.WorldTime <= 1000000000000 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits64(v.WorldTime - (-1000000000000), 41) // the offset from min (SPEC §4.3)
-    s.serialize_bits64(v.FrameTick, 48) // the declared bit width (SPEC §4.3)
-    s.serialize_fixed32(v.ServerTime, 24, 8, 0, 65535) // the Q format's raw offset (SPEC §4.3)
-    assert v.EntitiesCount >= 1 and v.EntitiesCount <= 8 // the count is in [1, 8] (SPEC §4.6)
-    s.serialize_bits(v.EntitiesCount - (1), 3) // the count (SPEC §4.6)
-    for(v.EntitiesCount) _i: // the count guards the loop (SPEC §6.3)
-        WriteMixedEntity(s, v.Entities[_i])
-    assert v.StatsCount >= 0 and v.StatsCount <= 80 // the count is in [0, 80] (SPEC §4.6)
-    s.serialize_bits(v.StatsCount, 7) // the count (SPEC §4.6)
-    for(v.StatsCount) _i: // the count guards the loop (SPEC §6.3)
-        WriteMixedStat(s, v.Stats[_i])
-    WriteMixedEvent(s, v.GameEvent)
-    for(4) _i:
-        s.serialize_bits(read_uint8_le(v.Loadout, _i), 8) // the storage width (SPEC §4.3)
-    assert v.PlayerNameLength >= 0 and v.PlayerNameLength <= 15 // the used length is in [0, 15] (SPEC §4.7)
-    assert schema_rt.text_refusal(v.PlayerName, v.PlayerNameLength) == serialize_refusal_none // no interior NUL, well-formed UTF-8 (SPEC §4.7)
-    s.serialize_bits(v.PlayerNameLength, 4) // the used length (SPEC §4.7)
-    s.serialize_bytes(v.PlayerName, v.PlayerNameLength) // aligns, then the used bytes (SPEC §4.7)
-    assert v.PayloadLength >= 0 and v.PayloadLength <= 16 // the used length is in [0, 16] (SPEC §4.7)
-    s.serialize_bits(v.PayloadLength, 5) // the used length (SPEC §4.7)
-    s.serialize_bytes(v.Payload, v.PayloadLength) // aligns, then the used bytes (SPEC §4.7)
-    assert v.AimX - v.AimX != 0.0 or (v.AimX >= -1.0 and v.AimX <= 1.0) // a finite value is in [min, max] (SPEC §5.1 row 10)
-    s.serialize_compressed_float_precomputed(v.AimX, 200, 8, 2.0, -1.0) // the step index; a non-finite value traps (SPEC §4.3)
-    assert v.AimY - v.AimY != 0.0 or (v.AimY >= -1.0 and v.AimY <= 1.0) // a finite value is in [min, max] (SPEC §5.1 row 10)
-    s.serialize_compressed_float_precomputed(v.AimY, 200, 8, 2.0, -1.0) // the step index; a non-finite value traps (SPEC §4.3)
-    assert v.AimZ - v.AimZ != 0.0 or (v.AimZ >= -1.0 and v.AimZ <= 1.0) // a finite value is in [min, max] (SPEC §5.1 row 10)
-    s.serialize_compressed_float_precomputed(v.AimZ, 200, 8, 2.0, -1.0) // the step index; a non-finite value traps (SPEC §4.3)
-    s.serialize_float(v.Recoil) // finite only: NaN and ±inf trap (SPEC §4.3)
-    s.serialize_double(v.Drift) // finite only: NaN and ±inf trap (SPEC §4.3)
-    s.serialize_uint128(serialize_uint128 { lo: v.WideKey.lo, hi: v.WideKey.hi }) // uint128 raw (SPEC §4.3)
-    s.serialize_int128(serialize_int128 { lo: v.Flux.lo, hi: v.Flux.hi }, serialize_int128 { lo: 0x0000000000000000, hi: 0xfffffff000000000 }, serialize_int128 { lo: 0x0000000000000000, hi: 0x0000001000000000 }) // int128, offset from min (SPEC §4.3)
-    s.serialize_fixed32(v.Ping, 24, 8, 0, 250) // the Q format's raw offset (SPEC §4.3)
-    s.serialize_bits(0, 4) // reserved(4) (SPEC §4.3)
-    s.serialize_align() // align (SPEC §4.3)
-    s.serialize_bits(v.CrcHint, 24) // the declared bit width (SPEC §4.3)
-    s.serialize_bool(v.HasExtra) // SPEC §4.3
-    assert v.Extra >= 0 and v.Extra <= 255 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.Extra, 8) // the offset from min (SPEC §4.3)
-    assert v.IdleTicks >= 0 and v.IdleTicks <= 15 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.IdleTicks, 4) // the offset from min (SPEC §4.3)
-=======
 def WriteBenchMixed(s·:serialize_write_stream, v·:BenchMixed) -> bool:
     s·.serialize_bits(49374, 16) // const(49374, 16) (SPEC §4.3)
     s·.serialize_bits(v·.Sequence, 16) // the declared bit width (SPEC §4.3)
@@ -963,5 +911,4 @@ def WriteBenchMixed(s·:serialize_write_stream, v·:BenchMixed) -> bool:
     s·.serialize_bits(v·.Extra, 8) // the offset from min (SPEC §4.3)
     assert v·.IdleTicks >= 0 and v·.IdleTicks <= 15 // the value is in [min, max] (SPEC §4.3)
     s·.serialize_bits(v·.IdleTicks, 4) // the offset from min (SPEC §4.3)
->>>>>>> 9568d746df13b58dfa2fa4d28f585a1f02a7832f
     return true

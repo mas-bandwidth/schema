@@ -48,10 +48,12 @@ func TestCppGraphCheckedOverEveryPointer(t *testing.T) {
 		{"graph_string_blob_zero_byte", "Scene", false},
 		{"graph_unknown_type_unreached", "Scene", false},
 		{"graph_string_blob_unreached", "Scene", false},
+		// element kind 17 is not on the keyed body's closed list (§3), so the
+		// keyed slot is damage rather than a pointer to read.
+		{"graph_reach_unknown_keyed_slot", "Scene", false},
 		{"graph_reach_unknown_field", "Scene", true},
 		{"graph_reach_unknown_nested", "Scene", true},
 		{"graph_reach_unknown_union_arm", "Scene", true},
-		{"graph_reach_unknown_keyed_slot", "Scene", true},
 		{"node_chain_two", "ListNode", true},
 	}
 	u := loadGraphDirUnit(t, filepath.Join(repo, "tables", "pointers"))

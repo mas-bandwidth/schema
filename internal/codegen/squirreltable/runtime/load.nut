@@ -130,6 +130,23 @@ local kindSigned = function(kind) {
   return false;
 };
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+// 14) opens with 1–13, 15, 17, 18–30; an enum-keyed body (kind 16) opens with
+// 1–11, 13, 18–30. Any other element kind is damage under any count, a count
+// of 0 included, in a field the reader cannot name as in one it declares, and
+// it is judged before any comparison with the reader's own element kind.
+local arrayElemKindClosed = function(kind) {
+  if (kind >= 1 && kind <= 13) return true;
+  if (kind == 15 || kind == 17) return true;
+  return kind >= 18 && kind <= 30;
+};
+
+local keyedElemKindClosed = function(kind) {
+  if (kind >= 1 && kind <= 11) return true;
+  if (kind == 13) return true;
+  return kind >= 18 && kind <= 30;
+};
+
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, f32 into
 // f64, and a 64-bit integer into its 128-bit width.
 local widens = function(from, to) {
@@ -589,6 +606,10 @@ local wcOpen = function(c, stack, at, end, kind) {
   }
   local count = wcHeader(c, at, end);
   if (count < 0) return false;
+  // THE ELEMENT KIND IS CLOSED under ANY count, a count of 0 included, in a
+  // declared field and in an unknown one alike (§3, §4)
+  if (kind == 14 && !arrayElemKindClosed(c.ek)) return wcDamage(c);
+  if (kind == 16 && !keyedElemKindClosed(c.ek)) return wcDamage(c);
   local f = { t = kind == 14 ? WC_ARRAY : WC_KEYED, off = c.pos, end = end,
     ek = c.ek, left = count, seen = {}, lvl = true };
   stack.append(f);
@@ -1159,6 +1180,9 @@ readMapField = function(fd, r, T, table, v, report, st) {
   local elemKind = u8(hr);
   local count = leb(hr);
   if (hr.bad) { report.bodyDamaged = true; return false; }
+  // A MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
+  // the array list first, under any count (§3, §4)
+  if (!arrayElemKindClosed(elemKind)) { report.bodyDamaged = true; return false; }
   local sub = newReader(r.b, hr.at, end);
   if (elemKind != 13) {
     // a foreign ELEMENT kind is the ordinary array kind mismatch (§2.8, §4);
@@ -1262,6 +1286,12 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
   local ek = u8(hr);
   local count = leb(hr);
   if (hr.bad) { report.bodyDamaged = true; return false; }
+  // THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+  // with the reader's declaration (§3, §4)
+  if (fd.kind == 16 ? !keyedElemKindClosed(ek) : !arrayElemKindClosed(ek)) {
+    report.bodyDamaged = true;
+    return false;
+  }
   local sub = newReader(r.b, hr.at, end);
   sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st);
   if (sel == ARRAY_SELECTED && sub.at != end) { report.bodyDamaged = true; return false; }

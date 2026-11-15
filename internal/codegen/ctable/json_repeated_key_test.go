@@ -22,7 +22,7 @@ func TestCJsonRepeatedKeyEveryObject(t *testing.T) {
 	const repeatedField = 549 // the 550th field
 	var schema strings.Builder
 	schema.WriteString("package probe\n\nfixed table Small\n{\n    name string(8)\n    count int32\n}\n\nfixed table Wide\n{\n")
-	for i := 0; i < wideFields; i++ {
+	for i := range wideFields {
 		fmt.Fprintf(&schema, "    f%d uint8\n", i)
 	}
 	schema.WriteString("}\n")
@@ -30,7 +30,7 @@ func TestCJsonRepeatedKeyEveryObject(t *testing.T) {
 	wideText := func(repeat int) string {
 		var b strings.Builder
 		b.WriteString("{")
-		for i := 0; i < wideFields; i++ {
+		for i := range wideFields {
 			fmt.Fprintf(&b, "\"f%d\":%d,", i, i%200)
 		}
 		if repeat >= 0 {
