@@ -866,6 +866,15 @@ defmodule Example.Wire do
 
     v = if value_active, do: 1, else: 0
     scratch = v
+
+    if is_number(value_orientation) and value_orientation < -180.0 do
+      raise ArgumentError, "value.orientation is below the compressed float minimum"
+    end
+
+    if is_number(value_orientation) and value_orientation > 180.0 do
+      raise ArgumentError, "value.orientation is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_orientation, -180.0, 360.0, 36000, 36000.0)
     scratch = scratch ||| v <<< 1
     v = value_raw_delta &&& 0xFFFFFFFF
@@ -2694,6 +2703,15 @@ defmodule Example.Wire do
     v = f32_bits(value_float_value)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if is_number(value_compressed_float_value) and value_compressed_float_value < 0.0 do
+      raise ArgumentError, "value.compressed_float_value is below the compressed float minimum"
+    end
+
+    if is_number(value_compressed_float_value) and value_compressed_float_value > 10.0 do
+      raise ArgumentError, "value.compressed_float_value is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_compressed_float_value, 0.0, 10.0, 1000, 1000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
@@ -3055,8 +3073,26 @@ defmodule Example.Wire do
   @spec write_compressed_probe!(Example.CompressedProbe.t()) :: binary()
   def write_compressed_probe!(value) do
     %{boundary: value_boundary, offset: value_offset} = value
+
+    if is_number(value_boundary) and value_boundary < 0.0 do
+      raise ArgumentError, "value.boundary is below the compressed float minimum"
+    end
+
+    if is_number(value_boundary) and value_boundary > 10.0 do
+      raise ArgumentError, "value.boundary is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_boundary, 0.0, 10.0, 1000, 1000.0)
     scratch = v
+
+    if is_number(value_offset) and value_offset < -5.0 do
+      raise ArgumentError, "value.offset is below the compressed float minimum"
+    end
+
+    if is_number(value_offset) and value_offset > 5.0 do
+      raise ArgumentError, "value.offset is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_offset, -5.0, 10.0, 10000, 10000.0)
     scratch = scratch ||| v <<< 10
     <<scratch::little-size(3)-unit(8)>>
@@ -3380,6 +3416,15 @@ defmodule Example.Wire do
     v = if e_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if is_number(e_orientation) and e_orientation < -180.0 do
+      raise ArgumentError, "e.orientation is below the compressed float minimum"
+    end
+
+    if is_number(e_orientation) and e_orientation > 180.0 do
+      raise ArgumentError, "e.orientation is above the compressed float maximum"
+    end
+
     v = cf_quantize(e_orientation, -180.0, 360.0, 36000, 36000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16

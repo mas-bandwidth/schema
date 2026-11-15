@@ -1663,8 +1663,17 @@ func f32lit(v float64) string {
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization
 // with the declaration folded (SPEC §4.3), through the port's own
 // quantizer — every step float32, overflow clamping, the normative integer
-// clamp.
+// clamp. The value is held to the declaration's range before quantizing
+// (SPEC §5.1 row 10); a non-number falls through to the quantizer's own
+// non_finite_float refusal.
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
+	what := g.dsp(name)
+	minLit := f32lit(float64(float32(f.FMin)))
+	maxLit := f32lit(float64(float32(f.FMax)))
+	g.raiseIf(fmt.Sprintf("is_number(%s) and %s < %s", name, name, minLit),
+		fmt.Sprintf("%s is below the compressed float minimum", what), ind)
+	g.raiseIf(fmt.Sprintf("is_number(%s) and %s > %s", name, name, maxLit),
+		fmt.Sprintf("%s is above the compressed float maximum", what), ind)
 	g.use("cf_quantize/5")
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)

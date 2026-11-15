@@ -2559,10 +2559,37 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_payload::binary>>
+
+    if is_number(value_aim_x) and value_aim_x < -1.0 do
+      raise ArgumentError, "value.aim_x is below the compressed float minimum"
+    end
+
+    if is_number(value_aim_x) and value_aim_x > 1.0 do
+      raise ArgumentError, "value.aim_x is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_aim_x, -1.0, 2.0, 200, 200.0)
     scratch = v
+
+    if is_number(value_aim_y) and value_aim_y < -1.0 do
+      raise ArgumentError, "value.aim_y is below the compressed float minimum"
+    end
+
+    if is_number(value_aim_y) and value_aim_y > 1.0 do
+      raise ArgumentError, "value.aim_y is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_aim_y, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< 8
+
+    if is_number(value_aim_z) and value_aim_z < -1.0 do
+      raise ArgumentError, "value.aim_z is below the compressed float minimum"
+    end
+
+    if is_number(value_aim_z) and value_aim_z > 1.0 do
+      raise ArgumentError, "value.aim_z is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_aim_z, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< 16
     v = f32_bits(value_recoil)
