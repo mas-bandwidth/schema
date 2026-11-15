@@ -59,6 +59,15 @@ func TestListCarriers(t *testing.T) {
 		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
 		want = append(want, "squirrel")
 	}
+	python := slices.Contains(listTargets, "python")
+	if python && !gooseLegBuilt && !mooLegBuilt {
+		// The tagged leg's registration (compiler/carries_python_unbounded.go)
+		// sorts before the target files, so python registers first. When another
+		// tagged leg sorts the registry, place it in that order instead.
+		want = append([]string{"python"}, want...)
+	} else if python {
+		want = append(want, "python")
+	}
 	want = withMooLeg(withGooseLeg(want))
 	if !slices.Equal(gooseLegOrdered(listTargets), want) {
 		t.Fatalf("listTargets = %v, want %v", listTargets, want)
