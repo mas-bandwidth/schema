@@ -11783,7 +11783,9 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_body_pack_(struct tabledemo
     } }
     tabledemo_table_cook_put(at+48+16,(uint32_t)value->hardpoints_count,4,order);
     tabledemo_table_cook_put(at+68+36,value->gunner_present ? 1 : 0,1,order);
-    if(!schema_tabledemo_gunner_settings_body_pack_(n,at+68,&value->gunner,order)) { return 0; }
+    if(value->gunner_present) {
+        if(!schema_tabledemo_gunner_settings_body_pack_(n,at+68,&value->gunner,order)) { return 0; }
+    }
     return 1;
 }
 static SCHEMA_UNUSED int64_t tabledemo_ship_entry_cook_measure(const tabledemo_ship_entry_t * value) { (void)value; return 192; }

@@ -14900,7 +14900,7 @@ inline bool NestCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
                         case InnerType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8 + 8, value.outer.inner.leaf, order ) ) { return false; } break;
                         case InnerType::Plain:
                         {
-                table_cook_put( at + 0 + 8 + 8, (uint64_t) value.outer.inner.plain, 4, order );
+                            table_cook_put( at + 0 + 8 + 8, (uint64_t) value.outer.inner.plain, 4, order );
                             break;
                         }
                         default: break; // every byte outside the set arm stays zero

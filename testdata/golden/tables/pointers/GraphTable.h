@@ -25104,7 +25104,10 @@ inline bool DepotCookBody( const Ctx & ctx, const TableCookRegion & region, uint
         if ( !LayerCookBody( ctx, region, at + 24 + i * 16, value.banks.slots[i], order ) ) { return false; }
     }
     table_cook_put( at + 76, (uint64_t) ( value.spare_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( !MetaCookBody( at + 56, value.spare, order ) ) { return false; }
+    if ( value.spare_present )
+    {
+        if ( !MetaCookBody( at + 56, value.spare, order ) ) { return false; }
+    }
     if ( !table_cook_ref( region, at + 80, (const void *) ListNodeAt( ctx, value.head ), order ) ) { return false; } // head
     return true;
 }

@@ -1198,8 +1198,9 @@ each by name:
   only then, so the targets of an absent T get no index and no node record;
 - **measure** — `Measure`, `PackMeasure` and `Lock`'s sizing run that same
   gated numbering, so the targets of an absent T count no bytes, and
-  `Lock`'s pack writes an absent T at its declared defaults, every pointer
-  null, exactly as load leaves it;
+  `Lock`'s pack writes an absent T's payload as zero — the payload of an
+  absent optional is dead, and a dead byte is zero on write
+  (docs/rulings.json `fixed-dead-bytes-are-zero`) — every pointer null;
 - **load** — a field that did not ride leaves T at its declared defaults,
   every pointer null, so a loaded absent value holds no edge, and the
   region measure sizes only the nodes the wire carries;

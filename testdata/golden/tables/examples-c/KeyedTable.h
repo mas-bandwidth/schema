@@ -11952,7 +11952,9 @@ static SCHEMA_UNUSED int schema_tabledemo_turret_config_body_pack_(struct tabled
     { uint32_t bits; memcpy(&bits,&value->damage,4); if(!tabledemo_table_bits_finite32(bits)) { return 0; } tabledemo_table_cook_put(at+0,bits,4,order); }
     { uint32_t bits; memcpy(&bits,&value->cooldown,4); if(!tabledemo_table_bits_finite32(bits)) { return 0; } tabledemo_table_cook_put(at+4,bits,4,order); }
     tabledemo_table_cook_put(at+8+8,value->gunner_present ? 1 : 0,1,order);
-    if(!schema_tabledemo_gunner_config_body_pack_(n,at+8,&value->gunner,order)) { return 0; }
+    if(value->gunner_present) {
+        if(!schema_tabledemo_gunner_config_body_pack_(n,at+8,&value->gunner,order)) { return 0; }
+    }
     return 1;
 }
 static SCHEMA_UNUSED int64_t tabledemo_turret_config_cook_measure(const tabledemo_turret_config_t * value) { (void)value; return 104; }
