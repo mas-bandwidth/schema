@@ -1774,18 +1774,17 @@ local function writer_elides(fd: any, kind: number, b: buffer, at: number, e: nu
 			n = buffer.len(val)
 		end
 		return n == #d and buffer.readstring(val, 0, n) == d
-	elseif s == "map" then
-		return type(val) ~= "table" or #val == 0
+	elseif s == "map" or (s == "arr" and (fd.array == "list" or fd.array == "counted")) then
+		-- an empty map, list or counted array: the count on the wire, L, the
+		-- element kind, then the count
+		local n, p = V.leb(b, at, e)
+		if n == nil or p >= e then
+			return false
+		end
+		return V.leb(b, p + 1, e) == 0
 	elseif s == "arr" then
 		if fd.array == "keyed" then
 			return _keyedAtDefault
-		elseif fd.array == "list" then
-			if type(val) == "buffer" then
-				return buffer.len(val) == 0
-			end
-			return type(val) ~= "table" or #val == 0
-		elseif fd.array == "counted" then
-			return (v[fd.slot .. "Count"] or 0) == 0
 		end
 		-- a fixed array of tables always rides: position is identity there
 		if fd.e.s == "tab" then
@@ -1928,14 +1927,15 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 				end
 			else
 				local at = r.at
-				local unknownBefore = _report.unknown
+				local unknownBefore, changedBefore = _report.unknown, _report.kindChanged
 				local ok, selected = read_field(fd, r, v)
 				if not ok then
 					return false
 				end
 				-- a value this build cannot wholly name (an unknown variant, arm
-				-- or slot) is a newer writer's, and no default rule judges it
-				if selected ~= false and _report.unknown == unknownBefore and writer_elides(fd, kind, r.b, at, r.e, v) then
+				-- or slot, an element of another kind) is a newer writer's, and
+				-- no default rule judges it
+				if selected ~= false and _report.unknown == unknownBefore and _report.kindChanged == changedBefore and writer_elides(fd, kind, r.b, at, r.e, v) then
 					damage(_report)
 					return false
 				end
