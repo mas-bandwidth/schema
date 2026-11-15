@@ -15,7 +15,9 @@ import (
 )
 
 // The second record is damaged so the range pass has already materialized a
-// valid first record. Every failure must reset the complete caller-owned batch.
+// valid first record. A refusal of the check pass, before any record lands,
+// leaves the whole caller-owned batch untouched (FIXED-FORM-ALGORITHM §5.3); a
+// refusal the bounds pass meets after landing resets the complete batch.
 func TestLobsterFixedOneRead(t *testing.T) {
 	t.Parallel()
 	const source = `package strictfixed
@@ -99,11 +101,14 @@ let damaged:[string] = [
     substring(wire, 0, length(wire) - 1),
     ""
 ]
+// 123: refused before landing, untouched; 7: refused after landing, reset.
+let held = [123, 123, 123, 123, 7, 7, 7, 123, 123]
 var case_index = 0
 for(damaged) bad:
     for(back) r: r.Seq = 123
     let n = strictfixed.RowFixedLoad(back, bad, plan, report)
-    if n == -1 and back[0].Seq == 7 and back[1].Seq == 7 and back[2].Seq == 7:
+    let want = held[case_index]
+    if n == -1 and back[0].Seq == want and back[1].Seq == want and back[2].Seq == want:
         passed += 1
     else:
         print("damage case " + string(case_index) + " returned " + string(n) + ": " + report.reason)
@@ -186,7 +191,7 @@ func TestLobsterFixedOneReadEnumWiden(t *testing.T) {
     assert_eq(int(back[0].Tier), 2, "valid ordinal preserved")
     assert_eq(back[0].Seq, 9, "following field preserved")
     assert_eq(enumwide.RowFixedLoad(back, read_in("bad.bin"), plan, report), -1, "forged old ordinal refuses")
-    assert_eq(back[0].Seq, 7, "refusal restores defaults")
+    assert_eq(back[0].Seq, 9, "refusal leaves the destination untouched")
     print "PASS"
 `, map[string][]byte{"good.bin": wire, "bad.bin": forged})
 	if strings.TrimSpace(out) != "PASS" {
