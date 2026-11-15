@@ -1555,7 +1555,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -11972,7 +11972,7 @@ inline int64_t DepthMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( body_one > 1 ) { bytes += TableLebBytes( ref_one ) + 1 + TableLebBytes( (uint64_t) ( body_one ) ) + ( body_one ); } // one
         else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
@@ -12063,7 +12063,7 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         }
         else { ids.truncate( mark_one ); }
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
@@ -15931,7 +15931,7 @@ inline int64_t DepthMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_one > 1 ) { bytes += TableLebBytes( ref_one ) + 1 + TableLebBytes( (uint64_t) ( body_one ) ) + ( body_one ); } // one
         else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
@@ -16023,7 +16023,7 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         }
         else { ids.truncate( mark_one ); }
     }
-    if ( value.many_count < 0 || value.many_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.many_count > 0 )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );

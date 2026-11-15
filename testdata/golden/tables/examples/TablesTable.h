@@ -1512,7 +1512,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -12140,7 +12140,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return -1; }
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
-    if ( value.grades_count < 0 || value.grades_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
@@ -12192,7 +12192,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         }
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
-    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
@@ -12229,7 +12229,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return false; }
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
-    if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
@@ -12329,7 +12329,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
             }
         }
     }
-    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
@@ -13008,7 +13008,7 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         bits += kTableMessageRefBitsHere;
         bits += kTableMessageRefBitsHere;
     }
-    if ( value.grades_count < 0 || value.grades_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13059,7 +13059,7 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
             }
         }
     }
-    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.attachments_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13091,7 +13091,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
             w.put( slot, kTableMessageRefBitsHere );
         }
     }
-    if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count > 0 )
     {
         w.put( 21, kTableMessageRefBitsHere );
@@ -13148,7 +13148,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
             }
         }
     }
-    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.attachments_count > 0 )
     {
         w.put( 26, kTableMessageRefBitsHere );
@@ -13655,9 +13655,9 @@ inline bool LoadoutConfigLoadMessages( LoadoutConfig * values, int64_t * count, 
 inline int64_t ProfileConfigMeasureBody( TableIds & ids, const ProfileConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
-    if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
@@ -13712,14 +13712,14 @@ inline int64_t ProfileConfigMeasure( const ProfileConfig & value )
 
 TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & ids, const ProfileConfig & value )
 {
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
-    if ( value.icon_length < 0 || value.icon_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
@@ -14552,7 +14552,7 @@ inline bool ProfileConfigLoad( ProfileConfig & value, const uint8_t * buffer, in
 inline int64_t ProfileConfigMeasureMessageBody( int64_t at, const ProfileConfig & value )
 {
     int64_t bits = 0;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -14560,7 +14560,7 @@ inline int64_t ProfileConfigMeasureMessageBody( int64_t at, const ProfileConfig 
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.name_length * 8;
     }
-    if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.icon_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -14646,7 +14646,7 @@ inline int64_t ProfileConfigMeasureMessageBody( int64_t at, const ProfileConfig 
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfig & value )
 {
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.put( 32, kTableMessageRefBitsHere );
@@ -14654,7 +14654,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
     }
-    if ( value.icon_length < 0 || value.icon_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.icon_length > 0 )
     {
         w.put( 33, kTableMessageRefBitsHere );
@@ -15559,9 +15559,9 @@ inline bool ProfileConfigLoadMessages( ProfileConfig * values, int64_t * count, 
 inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
-    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
@@ -15575,7 +15575,7 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
         }
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
-    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
@@ -15604,14 +15604,14 @@ inline int64_t RootConfigMeasure( const RootConfig & value )
 
 TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids, const RootConfig & value )
 {
-    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.version_note_length > 0 )
     {
         w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note
         w.putleb( (uint64_t) value.version_note_length );
         w.raw( value.version_note, value.version_note_length );
     }
-    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
@@ -15642,7 +15642,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
             }
         }
     }
-    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
@@ -16091,7 +16091,7 @@ inline bool RootConfigLoad( RootConfig & value, const uint8_t * buffer, int64_t 
 inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & value )
 {
     int64_t bits = 0;
-    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.version_note_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -16099,7 +16099,7 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.version_note_length * 8;
     }
-    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.weapons_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -16111,7 +16111,7 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
             bits += elem;
         }
     }
-    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.profiles_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -16133,7 +16133,7 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & value )
 {
-    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.version_note_length > 0 )
     {
         w.put( 85, kTableMessageRefBitsHere );
@@ -16141,7 +16141,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
     }
-    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.weapons_count > 0 )
     {
         w.put( 86, kTableMessageRefBitsHere );
@@ -16151,7 +16151,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
             if ( !WeaponConfigSaveMessageBody( w, value.weapons[i] ) ) { return false; }
         }
     }
-    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.profiles_count > 0 )
     {
         w.put( 87, kTableMessageRefBitsHere );
@@ -22446,7 +22446,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return -1; }
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
-    if ( value.grades_count < 0 || value.grades_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
@@ -22498,7 +22498,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         }
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
-    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
@@ -22526,7 +22526,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return false; }
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
-    if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
@@ -22621,7 +22621,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
             }
         }
     }
-    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
@@ -23179,9 +23179,9 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
 inline int64_t ProfileConfigMeasureBodyRetain( TableRetainIds & ids, const ProfileConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
-    if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
@@ -23227,14 +23227,14 @@ inline int64_t ProfileConfigMeasureBodyRetain( TableRetainIds & ids, const Profi
 
 TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ProfileConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
-    if ( value.icon_length < 0 || value.icon_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
@@ -23951,9 +23951,9 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBodyRetain( TableReader & r, Profil
 inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
-    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
@@ -23967,7 +23967,7 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
         }
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
-    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
@@ -23987,14 +23987,14 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
 
 TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const RootConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.version_note_length > 0 )
     {
         w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note
         w.putleb( (uint64_t) value.version_note_length );
         w.raw( value.version_note, value.version_note_length );
     }
-    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
@@ -24020,7 +24020,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
             }
         }
     }
-    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );

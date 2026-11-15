@@ -289,11 +289,14 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
+  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
+  `kind_pointer.py`; the directory is the list). A later card adds its module
+  and one registration line in it, never an edit to the body walk; `kinds.py`
+  imports every `kind_*.py` itself, so no other file names a new module.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -307,11 +310,36 @@ generated class per table and per map entry, each with its descriptor
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
-- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+- **Scope.** For both the fixed and the variable class, the runtime carries
+  each construct marked carried below. One marked refused has a descriptor in
+  this cut and refuses by name through `kind_unsupported.py` until its card
+  lands.
+
+  - bool: carried
+
+  - the full-width integers (8 to 128 bits): carried
+
+  - by-value tables: carried
+
+  - `*T` pointers to tables: carried
+
+  - `*bytes`: refused
+
+  - `*string`: refused
+
+  - `?T`: refused
+
+  - `[]T`: refused
+
+  - `[E]T`: refused
+
+  - `map[K]V` for the base key and value kinds: carried
+    ([the table maps](port-python/table-maps.md))
+
+  - `?map[K]V`: refused
+
+  - unions with table arms: refused
+
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
@@ -470,13 +498,47 @@ the core stands against the P4 row; the rules of this page are unchanged.
   declaration is emitted now: module constants, the enum and flags classes
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
-  readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
-  ranged), enums, flags, types by value, unions, and `if`/`else` branches. A
-  field or item of any other kind (`bits`, `fixed`, `float32`, `float64`,
-  `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
-  integer) is refused at generate time by its kind, naming P4 the packet
-  wire. The class surface knows how to birth and compare those kinds already;
-  only their wire emitters are still to come.
+  readable `__repr__`. The codec carries each kind marked carried below. A
+  field or item of a kind marked refused is refused at generate time by its
+  kind, naming P4 the packet wire. The class surface knows how to birth and
+  compare those kinds already; only their wire emitters are still to come.
+
+  - `bool`: carried
+
+  - `int8` to `uint64` (bare or ranged): carried
+
+  - enums: carried
+
+  - flags: carried
+
+  - types by value: carried
+
+  - unions: carried
+
+  - `if`/`else` branches: carried
+
+  - `fixed`: carried ([the packet floats](port-python/packet-floats.md))
+
+  - `float32`: carried ([the packet floats](port-python/packet-floats.md))
+
+  - `float64`: carried ([the packet floats](port-python/packet-floats.md))
+
+  - `bits`: refused
+
+  - `string`: refused
+
+  - `bytes`: refused
+
+  - an array: refused
+
+  - `const`: refused
+
+  - `reserved`: refused
+
+  - `align`: refused
+
+  - raw `uint128` and ranged `int128`: carried
+    ([the packet int128](port-python/packet-int128.md))
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
@@ -518,3 +580,11 @@ The straight-line reader is 3–8% faster and the writer 7–11% faster across
 every sitting on both pins, because attribute load and store on `__slots__`
 avoid `getattr`/`setattr` and loop dispatch, so the generator emits it and no
 descriptor walk ships.
+
+## THE KIND NOTES
+
+Each kind a card adds to the packet or the table leg has its own page under
+[port-python/](port-python/), named for its leg and kind
+(`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
+shape and its measured bench numbers. The first is
+[packet-floats.md](port-python/packet-floats.md).
