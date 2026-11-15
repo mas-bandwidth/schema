@@ -284,7 +284,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return encodeKeyed(e, w, fv, id, kind)
 
 	case f.Type.Kind == ir.TString:
-		if !f.Required && bytes.Equal(fv.Cell.Str, f.DefBytes) {
+		if !f.Required && elides(e, fv, false) {
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindString)
@@ -293,7 +293,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if !f.Required && bytes.Equal(fv.Cell.Str, f.DefBytes) {
+		if !f.Required && elides(e, fv, false) {
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindArray)
@@ -311,7 +311,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): the
 		// same kind 14 body, the same element kind, the same count, and the
 		// same elision of an empty one under §3's by-value elision rule.
-		if !f.Required && fv.Count == 0 {
+		if !f.Required && elides(e, fv, false) {
 			return nil
 		}
 		return encodeArray(e, w, fv, id, kind, fv.Count)
@@ -324,21 +324,14 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 	case f.Array == ir.ArrayFixed:
 		// a fixed array is positional; an all-default array elides entirely,
 		// parity with the reader's prefill
-		allDefault := true
-		for i := 0; i < int(f.ArrayBound); i++ {
-			if !cellIsDefault(e, f, &fv.Elems[i]) {
-				allDefault = false
-				break
-			}
-		}
-		if !f.Required && allDefault {
+		if !f.Required && elides(e, fv, false) {
 			return nil
 		}
 		return encodeArray(e, w, fv, id, kind, int(f.ArrayBound))
 
 	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
-		if fv.Cell.U == 0 {
+		if elides(e, fv, false) {
 			if f.Required {
 				e.header(w, id, ir.TableKindUnion)
 				w.leb(0)
@@ -369,7 +362,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		if err != nil {
 			return err
 		}
-		if !f.Required && len(body) <= 1 {
+		if !f.Required && elides(e, fv, len(body) <= 1) {
 			e.ids.rollback(mark) // an all-default nested table elides
 			return nil
 		}
@@ -380,7 +373,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	default:
-		if !f.Required && cellIsDefault(e, f, &fv.Cell) {
+		if !f.Required && elides(e, fv, false) {
 			return nil
 		}
 		return encodeSimple(e, w, f, id, kind, &fv.Cell)
@@ -486,7 +479,7 @@ func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint64, kind int) e
 		body.raw(elem)
 		pairs++
 	}
-	if pairs == 0 && !f.Required {
+	if !f.Required && elides(e, fv, pairs == 0) {
 		e.ids.rollback(mark)
 		return nil
 	}
@@ -734,6 +727,52 @@ func variantWireId(e *ir.Enum, value uint64, field string, key bool) (id uint64,
 	return ir.TableWireId(e.VariantWireNameOf(name)), false, nil
 }
 
+// elides is THE VARIABLE FORM'S ELISION RULE (docs/SPEC-TABLES.md §3, §22.2):
+// whether a conforming writer leaves out a by-value field holding fv. ONE
+// FUNCTION, TWO CALLERS: the writer elides by it (encodeField, encodeKeyed,
+// encodeMap) and the read refuses a field stored at it (decode.go), so what
+// the writer elides and what the read refuses cannot drift apart. A
+// `| required` field and a present `?T` ride whatever they hold, and a
+// pointer elides at null; the callers judge those before asking.
+//
+// A NESTED TABLE AND AN ENUM-KEYED ARRAY ELIDE BY WHAT THEIR BODY HOLDS, which
+// only the bytes say, so the caller passes it as `empty`: the writer from the
+// body it built, the read from the body it met. A nested body is empty when it
+// is its terminator alone (a retained or unknown field is content), and a
+// keyed array when no slot rides. Every other kind ignores `empty`.
+func elides(e *encoder, fv *tabletext.Field, empty bool) bool {
+	f := fv.Def
+	kind := ir.TableWireScalarKind(f)
+	switch {
+	case f.IsMap():
+		return len(fv.Entries) == 0
+	case f.KeyEnum != "":
+		return empty
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// at its default, empty when none is declared (§3, SPEC §4.2)
+		return bytes.Equal(fv.Cell.Str, f.DefBytes)
+	case f.CountedOnWire():
+		return fv.Count == 0
+	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
+		// a fixed array of tables always rides: position is identity there
+		return false
+	case f.Array == ir.ArrayFixed:
+		// an all-default fixed array elides entirely, parity with the
+		// reader's prefill
+		for i := 0; i < int(f.ArrayBound); i++ {
+			if !cellIsDefault(e, f, &fv.Elems[i]) {
+				return false
+			}
+		}
+		return true
+	case kind == ir.TableKindUnion:
+		return fv.Cell.U == 0 // None elides: the absence of the field is the None
+	case kind == ir.TableKindTable:
+		return empty
+	}
+	return cellIsDefault(e, f, &fv.Cell)
+}
+
 // cellIsDefault is the writer's elision test: a field holding its declared
 // default is not written at all, which is why old readers and new writers meet
 // cleanly (§3).
@@ -795,7 +834,7 @@ func encodeMap(e *encoder, w *buf, fv *tabletext.Field, id uint64) error {
 		if !fv.Present {
 			return nil
 		}
-	} else if len(fv.Entries) == 0 && !f.Required {
+	} else if !f.Required && elides(e, fv, false) {
 		return nil
 	}
 	order := MapEntryOrder(f, fv)

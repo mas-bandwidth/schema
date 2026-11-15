@@ -16,7 +16,6 @@
 package tablewire
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -240,6 +239,10 @@ type wireReader struct {
 	rt *retainState
 	// fail is the first condition this read met, shared by every sub-reader.
 	fail *readFail
+	// empty is set by the field read just made when the field is a nested
+	// table whose body is its terminator alone, or an enum-keyed array with no
+	// slot: what the writer's elision rule needs from the bytes (elides).
+	empty bool
 }
 
 // refuse records the read's refusal, the first one met, and answers false so
@@ -485,9 +488,12 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			}
 			continue
 		}
+		substituted := substitutedCount(r.fail)
+		r.empty = false
 		if !r.field(fv) {
 			return false
 		}
+		empty := r.empty
 		if fv.Def.Type.Optional {
 			// the field rode, so it is PRESENT — content decides nothing here
 			// (docs/SPEC-TABLES.md §2.3)
@@ -495,38 +501,31 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 		}
 		// A FIELD STORED AT THE DEFAULT THE WRITER ELIDES IS REFUSED (§3, §4;
 		// docs/rulings.json reads-refuse-non-canonical), before the value is
-		// used. A `| required` field never elides and a present `?T` rides, so
-		// neither is judged here. A UNION's None and a POINTER's null are their
-		// own spellings and are refused in the arm and pointer reads.
-		if !fv.Def.Required && !fv.Def.Type.Optional && fieldElided(r.m, fv) {
+		// used, judged by the writer's own rule (elides). A `| required` field
+		// never elides and a present `?T` rides, so neither is judged here; a
+		// POINTER's null and a UNION field's arm 0 are their own spellings and
+		// are refused in the pointer and arm reads. A field whose read
+		// substituted a value (an unknown variant or arm, a deprecated variant)
+		// is lawful evolution and is not judged.
+		if fieldElided(r.m, fv, empty, substitutedCount(r.fail) != substituted) {
 			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
 		}
 	}
 }
 
-// fieldElided reports whether a conforming writer elides the field at the value
-// a read just decoded (docs/SPEC-TABLES.md §3, §22.2): a scalar, a `flags` mask
-// or a fixed-point value at its declared default, a string or bytes at its
-// default, an empty counted array or map. The field rode, so an elided value is
-// a spelling no conforming writer produces (docs/rulings.json
-// reads-refuse-non-canonical). An enum, a union and a pointer are not judged
-// here: their defaults are read off the wire's own reference (an unknown
-// variant or arm reads the default but is lawful evolution), and their
-// spellings are refused where they are read.
-func fieldElided(m *tabletext.Model, fv *tabletext.Field) bool {
+// fieldElided reports whether a field a read just decoded is one a conforming
+// writer would have elided (docs/SPEC-TABLES.md §3, §22.2): the writer's own
+// rule (elides) over the value read, `empty` saying whether the nested or
+// keyed body the wire carried held nothing. The field rode, so an elided value
+// is a spelling no conforming writer produces (docs/rulings.json
+// reads-refuse-non-canonical). The message read shares the exclusions, under
+// its own writer's rule (messageElides).
+func fieldElided(m *tabletext.Model, fv *tabletext.Field, empty, substituted bool) bool {
 	f := fv.Def
-	switch {
-	case f.IsMap():
-		return len(fv.Entries) == 0
-	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
-		return bytes.Equal(fv.Cell.Str, f.DefBytes)
-	case f.CountedOnWire():
-		return fv.Count == 0
-	case f.Array == ir.ArrayNone && !f.Type.Pointer && tabletext.EnumOf(f) == nil &&
-		tabletext.UnionOf(f) == nil && tabletext.StructOf(f) == nil:
-		return cellIsDefault(&encoder{m: m}, f, &fv.Cell)
+	if f.Required || f.Type.Optional || substituted || (f.Type.Pointer && f.Array == ir.ArrayNone) {
+		return false
 	}
-	return false
+	return elides(&encoder{m: m}, fv, empty)
 }
 
 func (r *wireReader) field(fv *tabletext.Field) bool {
@@ -576,6 +575,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			return false
 		}
 		r.off += n
+		r.empty = n == 1 // the terminator alone
 		return true
 	}
 	return r.scalarAt(&fv.Cell, f, ir.TableScalarKind(f))
@@ -629,6 +629,7 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 	if v < 0 {
 		cell.U = 0
 		r.report.Unknown++
+		substitute(r.fail)
 		if r.rt != nil {
 			// AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS
 			// (docs/SPEC-TABLES.md §6.6)
@@ -640,6 +641,7 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 		// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an
 		// element as the ELEMENT's default; it is never unknown
 		// (docs/SPEC-TABLES.md §2.15).
+		substitute(r.fail)
 		if element {
 			*cell = tabletext.Cell{}
 		} else {
@@ -984,6 +986,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		// WIDENED at a keyed body's element kind (§4)
 		r.report.Widened++
 	}
+	r.empty = count == 0 // no slot rode
 	sub := r.sub(end - r.off)
 	for range count {
 		key, good := sub.leb()
@@ -1085,6 +1088,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		// an arm this reader cannot name: the value reads EMPTY and the body is
 		// skipped by its length (§4)
 		r.report.Unknown++
+		substitute(r.fail)
 		if r.rt != nil {
 			// AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS (docs/SPEC-TABLES.md
 			// §6.6)

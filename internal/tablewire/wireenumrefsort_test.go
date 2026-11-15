@@ -70,30 +70,30 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 				t.Fatalf("clean sample re-encodes to %x, want %x (%v)", again, base, err)
 			}
 
-		none := bytes.Clone(base)
-		none[3] = 0x00
-		noneBack := m.New(root)
-		var silent tabletext.Report
-		if ok, _ := tablewire.Decode(m, noneBack, none, &silent); ok || !silent.Refused {
-			t.Fatalf("a None reference that leaves the variant's first use later did not refuse: ok=%t report=%+v", ok, silent)
-		}
+			none := bytes.Clone(base)
+			none[3] = 0x00
+			noneBack := m.New(root)
+			var silent tabletext.Report
+			if ok, _ := tablewire.Decode(m, noneBack, none, &silent); ok || !silent.Refused {
+				t.Fatalf("a None reference that leaves the variant's first use later did not refuse: ok=%t report=%+v", ok, silent)
+			}
 
-		other := bytes.Clone(base)
-		other[3] = 0x03
-		otherBack := m.New(root)
-		var unknown tabletext.Report
-		if ok, _ := tablewire.Decode(m, otherBack, other, &unknown); ok || !unknown.Refused {
-			t.Fatalf("a reference that reorders the variant's first use did not refuse: ok=%t report=%+v", ok, unknown)
-		}
+			other := bytes.Clone(base)
+			other[3] = 0x03
+			otherBack := m.New(root)
+			var unknown tabletext.Report
+			if ok, _ := tablewire.Decode(m, otherBack, other, &unknown); ok || !unknown.Refused {
+				t.Fatalf("a reference that reorders the variant's first use did not refuse: ok=%t report=%+v", ok, unknown)
+			}
 
-		over := bytes.Clone(base)
-		count := byte(binary.LittleEndian.Uint64(over[len(over)-8:]))
-		over[3] = count + 1
-		overBack := m.New(root)
-		var damaged tabletext.Report
-		if ok, _ := tablewire.Decode(m, overBack, over, &damaged); ok || !damaged.Refused {
-			t.Fatalf("reference past the table: ok=%v report=%+v, want malformed", ok, damaged)
-		}
-	})
+			over := bytes.Clone(base)
+			count := byte(binary.LittleEndian.Uint64(over[len(over)-8:]))
+			over[3] = count + 1
+			overBack := m.New(root)
+			var damaged tabletext.Report
+			if ok, _ := tablewire.Decode(m, overBack, over, &damaged); ok || !damaged.Refused {
+				t.Fatalf("reference past the table: ok=%v report=%+v, want malformed", ok, damaged)
+			}
+		})
 	}
 }

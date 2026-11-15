@@ -132,10 +132,13 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 		return count, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}
 	}
 	fail := &readFail{}
+	// the reader's own build version, digested once for the batch rather than
+	// once a field (sameBuild)
+	build := ir.BuildVersion(m.Unit)
 	for i := range count {
 		// Omitted fields take declared defaults, including when storage is reused.
 		m.Clear(insts[i])
-		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail}
+		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail, build: build, buildKnown: true}
 		ok := d.body(insts[i])
 		if fail.err != nil {
 			return 0, fail.err
@@ -176,6 +179,26 @@ type bitDecoder struct {
 	// and stops the walk at its limit. It is a test's instrument and nil on
 	// every real read: the skip's work is pinned by a count, never a clock.
 	steps *skipSteps
+	// build is the READER's build version, digested once (buildKnown) and
+	// compared with the announced one by sameBuild
+	build      uint64
+	buildKnown bool
+	// empty is set by the field read just made when the field is a nested
+	// table whose body is its terminator alone, or an enum-keyed array with no
+	// slot: what the writer's elision rule needs from the bits (messageElides).
+	empty bool
+}
+
+// sameBuild reports whether the sender announced this reader's own build
+// version. Every field's default and every record's field order are digested
+// into the build version (§20.1, §20.2), so there, and only there, this
+// reader's declaration IS the sender's: the default a field elides at and the
+// order a body's fields ride in (§3.3 (a), (b)).
+func (d *bitDecoder) sameBuild() bool {
+	if !d.buildKnown {
+		d.build, d.buildKnown = ir.BuildVersion(d.m.Unit), true
+	}
+	return d.v.buildVersion == d.build
 }
 
 // set records the batch's refusal, the first one met. The walk may run on to
@@ -305,12 +328,20 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
 	// name it or not, exactly as on the variable form (§3).
 	seen := map[uint64]bool{}
-	// lastKnown is the declaration index of the last field this body carried:
-	// a body writes its fields in the writer's declaration order (§3.3, §22.2),
-	// so a field at or before one already read is out of order and refused. A
-	// field this reader cannot name still has its place, but its index is not
-	// one the reader holds, so only the fields it names are ordered against
-	// each other.
+	// THE ORDER IS THE SENDER'S DECLARATION ORDER, THE ONE THE ANNOUNCEMENT
+	// GIVES (§3.3 (b), §20.2), and a body out of it is refused. Under the
+	// reader's own build version that order is this reader's declaration
+	// order, field for field, because record field order is digested into the
+	// build version; and there every field the sender's record declares is one
+	// this record declares, so a field this reader cannot name has no place in
+	// that order and is refused too. Under another build version the sender may
+	// have lawfully reordered its fields (docs/VERSIONING.md, "Reorder
+	// freely"), and the announcement does not give one record's order on its
+	// own: its entries are shared across records, each placed once, so slot
+	// order is not any one record's declaration order. There the body's order
+	// is not judged, and an unnamed field is skipped and counted (§4).
+	ordered := d.sameBuild()
+	// lastKnown is the declaration index of the last field this body carried
 	lastKnown := -1
 	for {
 		ref, ok := d.reference()
@@ -327,6 +358,10 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		}
 		i, known := index[entry.Id]
 		if !known {
+			if ordered {
+				d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a field the record does not declare at the reader's own build version"})
+				return false
+			}
 			d.report.Unknown++
 			if !d.skip(entry, 0) {
 				d.damage()
@@ -334,7 +369,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			}
 			continue
 		}
-		if i <= lastKnown {
+		if ordered && i <= lastKnown {
 			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "fields out of the writer's declaration order"})
 			return false
 		}
@@ -368,19 +403,23 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			}
 			continue
 		}
+		substituted := substitutedCount(d.fail)
+		d.empty = false
 		if !d.field(fv, entry) {
 			return false
 		}
+		empty := d.empty
 		if fv.Def.Type.Optional && fv.Def.Array == ir.ArrayNone {
 			fv.Present = true
 		}
 		// THE NON-CANONICAL SPELLINGS (§3.3, §4; docs/rulings.json
 		// reads-refuse-non-canonical): a field stored at the default the writer
-		// elides. A UNION's None and a POINTER's null are their own spellings
-		// and are refused where they are read. The default refusal needs the
-		// sender's default, which the reader knows only at its own build
-		// version.
-		if d.v.buildVersion == ir.BuildVersion(d.m.Unit) && !fv.Def.Required && !fv.Def.Type.Optional && fieldElided(d.m, fv) {
+		// elides, judged by the message writer's own rule (messageElides). A
+		// UNION field's None is its own spelling and is refused where it is
+		// read; a field whose read substituted a value (a deprecated variant)
+		// is not judged. The default refusal needs the sender's default, which
+		// the reader knows only at its own build version.
+		if d.sameBuild() && !fv.Def.Required && !fv.Def.Type.Optional && substitutedCount(d.fail) == substituted && messageElides(d.m, fv, empty) {
 			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
 			return false
 		}
@@ -403,7 +442,12 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		return d.enumCell(&fv.Cell, f, false)
 	case tabletext.StructOf(f) != nil:
 		fv.Cell.Tab = d.m.New(tabletext.StructOf(f))
-		return d.body(fv.Cell.Tab)
+		start := d.r.off
+		if !d.body(fv.Cell.Tab) {
+			return false
+		}
+		d.empty = d.r.off-start == d.refBits // the terminator alone
+		return true
 	}
 	return d.scalar(&fv.Cell, f, entry.Kind, shape)
 }
@@ -639,6 +683,7 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 			return false
 		}
 	}
+	d.empty = n == 0 // no slot rode (set last: an element's own body reads reset it)
 	return true
 }
 
@@ -711,6 +756,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	if tag == 0 {
 		cell.U = 0
 		d.report.Unknown++
+		substitute(d.fail)
 		return d.skip(entry, 0)
 	}
 	arm := un.Variants[tag-1]
@@ -774,11 +820,13 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 	if v < 0 {
 		cell.U = 0
 		d.report.Unknown++
+		substitute(d.fail)
 		return true
 	}
 	if tabletext.VariantDeprecated(en, v) {
 		// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and as
 		// the ELEMENT default for an element; never unknown (§2.15).
+		substitute(d.fail)
 		if element {
 			*cell = tabletext.Cell{}
 		} else {
