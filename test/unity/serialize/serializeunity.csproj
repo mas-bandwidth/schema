@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- serialize.cs as its own netstandard2.1 assembly, the way a Unity project
+       carries it in its own asmdef. The sibling's sources are compiled here, so
+       no build writes into the sibling checkout. It takes the dialect's surface
+       and language version, and keeps serialize.cs's own nullable annotations
+       and arithmetic setting (its src/Serialize.csproj). -->
+  <PropertyGroup>
+    <UnityDialectSerializeAssembly>true</UnityDialectSerializeAssembly>
+  </PropertyGroup>
+
+  <Import Project="../UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>Serialize</AssemblyName>
+    <RootNamespace>Serialize</RootNamespace>
+    <Nullable>enable</Nullable>
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
+  </ItemGroup>
+
+</Project>

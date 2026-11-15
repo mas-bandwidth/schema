@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <Compile Include="$(TextDir)/*.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)../ContentRead.cs" />
   </ItemGroup>
 
 </Project>

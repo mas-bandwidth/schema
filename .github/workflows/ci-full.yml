@@ -2395,8 +2395,8 @@ jobs:
   # per make target the leg's `test-unity` runs, so a row's cost is its own:
   # the wire goldens in Debug and Release, the packet-default construction
   # form, and the packet UTF-8 read against the C++ oracle. The leg's three
-  # negative controls ride the negative-controls matrix (unity-packet,
-  # make/negative-controls.json). It runs on every merge, the nightly and a
+  # negative controls ride the negative-controls matrix (cs-nightly,
+  # make/negative-controls.d/). It runs on every merge, the nightly and a
   # dispatch, and on a pull request labelled full-ci.
   unity:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))

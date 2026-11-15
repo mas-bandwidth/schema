@@ -15,13 +15,13 @@ static class Program
         for (int i = 0; i < 1000; i++)
         {
             warmStream.Reset(warmWire);
-            if (!Schema.ReadNarrowContent(warmStream, ref warmValue)) throw new Exception("warm read");
+            if (!Schema.ReadNarrow(warmStream, ref warmValue)) throw new Exception("warm read");
         }
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10000; i++)
         {
             warmStream.Reset(warmWire);
-            if (!Schema.ReadNarrowContent(warmStream, ref warmValue)) throw new Exception("measured read");
+            if (!Schema.ReadNarrow(warmStream, ref warmValue)) throw new Exception("measured read");
         }
         if (GC.GetAllocatedBytesForCurrentThread() != before) throw new Exception("UTF-8 read allocated");
         string line;
@@ -30,7 +30,7 @@ static class Program
             byte[] wire = line == "-" ? Array.Empty<byte>() : Convert.FromHexString(line);
             ReadStream r = new ReadStream(wire);
             Narrow value = new Narrow();
-            if (!Schema.ReadNarrowContent(r, ref value)) { Console.WriteLine("REFUSE"); continue; }
+            if (!Schema.ReadNarrow(r, ref value)) { Console.WriteLine("REFUSE"); continue; }
             if (!r.Ok) throw new Exception("read accepted with latched error");
             WriteStream w = new WriteStream(new byte[256]);
             if (!Schema.WriteNarrow(w, ref value)) throw new Exception("write refused");

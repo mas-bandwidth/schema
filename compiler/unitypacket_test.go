@@ -33,11 +33,11 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build schema: %v\n%s", err, out)
 	}
-	// The Unity dialect compiles serialize.cs as its own netstandard2.1
-	// assembly (a ProjectReference), which builds obj/bin in place. Copy its
-	// src/ to a writable scratch directory and point the dialect's
-	// SerializeCsRoot at the copy, so the build never writes into the sibling
-	// checkout.
+	// The Unity dialect compiles serialize.cs's sources as its own
+	// netstandard2.1 assembly (test/unity/serialize). Copy its src/ to a
+	// scratch directory and point the dialect's SerializeCsRoot at the copy,
+	// so the run reads the sibling's sources at one fixed moment and never
+	// touches the sibling checkout.
 	serializeSrc := filepath.Join(abs, "..", "serialize.cs", "src")
 	if _, err := os.Stat(filepath.Join(serializeSrc, "Serialize.cs")); err != nil {
 		t.Skip("serialize.cs unavailable")

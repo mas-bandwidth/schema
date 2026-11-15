@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -163,7 +163,7 @@ func (g *gen) assemble() []byte {
 func indent(s string) string {
 	s = strings.TrimRight(s, "\n")
 	var b strings.Builder
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line != "" {
 			b.WriteString("    ")
 			b.WriteString(line)
@@ -232,7 +232,7 @@ func bufferLengths(u *ir.Unit) []int64 {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
@@ -256,10 +256,7 @@ func (g *gen) emitBuffers() {
 		g.tf("public struct %s<T> where T : unmanaged\n{\n", name)
 		g.tf("    public const int Capacity = %d;\n\n", n)
 		for i := int64(0); i < n; i += 16 {
-			end := i + 16
-			if end > n {
-				end = n
-			}
+			end := min(i+16, n)
 			var parts []string
 			for j := i; j < end; j++ {
 				parts = append(parts, fmt.Sprintf("E%d", j))

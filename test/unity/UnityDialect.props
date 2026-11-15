@@ -6,7 +6,9 @@
        compiler accepts (C# 9), warnings as errors, nullable off as a Unity
        project leaves it, and no unsafe code — so anything the editor would
        refuse fails here. serialize.cs rides as its own assembly, the way a
-       Unity project carries it in its own asmdef. -->
+       Unity project carries it in its own asmdef: serialize/serializeunity.csproj
+       compiles the sibling's sources inside this tree, so no build writes into
+       the sibling checkout. -->
   <PropertyGroup>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
@@ -20,8 +22,8 @@
     <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">$(MSBuildThisFileDirectory)../../../serialize.cs</SerializeCsRoot>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="$(SerializeCsRoot)/src/Serialize.csproj" SetTargetFramework="TargetFramework=netstandard2.1" />
+  <ItemGroup Condition="'$(UnityDialectSerializeAssembly)' != 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)serialize/serializeunity.csproj" />
   </ItemGroup>
 
 </Project>
