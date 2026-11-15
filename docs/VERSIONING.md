@@ -1019,11 +1019,9 @@ years, and several of the answers are patterns rather than syntax.
   Roll back freely: the old build reads the new files and counts what it
   cannot use, and under retention it writes the unknown fields back out
   unharmed.
-- **Debug an old file.** `unpack --tolerate` renders a wire file of any
-  version to text and reports what it did not understand; without
-  `--tolerate` it refuses a file whose report is not silent, and a file
-  written before a flags variant was removed is refused either way, because
-  a bit with no name has no text spelling. `uncook` renders a cook written by
+- **Debug an old file.** `unpack` renders a wire file of a newer version to
+  text and reports what it did not understand, and a damaged file is refused,
+  because a bit with no name has no text spelling. `uncook` renders a cook written by
   this build's version and refuses any other. The baseline history says what
   changed and why, by date. The `format` field on the root table says which
   schema wrote a restored backup.
