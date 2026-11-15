@@ -536,7 +536,8 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - `align`: refused
 
-  - a 128-bit integer: refused
+  - raw `uint128` and ranged `int128`: carried
+    ([the packet int128](port-python/packet-int128.md))
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
