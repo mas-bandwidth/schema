@@ -293,9 +293,10 @@ function _M.ZeroArmsAgree(value: any)
   value.Tail = 0
 end
 
--- ReadArmsAgree reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArmsAgreeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArmsAgree(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArmsAgree is the one-packet read (SPEC §5).
+function _M.ReadArmsAgreeBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -324,6 +325,13 @@ function _M.ReadArmsAgree(stream: any, value: any): boolean
   return true
 end
 
+-- ReadArmsAgree reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArmsAgree(stream: any, value: any): boolean
+  if not _M.ReadArmsAgreeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitArmsDisagree resets a value to what NewArmsDisagree builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -344,9 +352,10 @@ function _M.ZeroArmsDisagree(value: any)
   value.Tail = 0
 end
 
--- ReadArmsDisagree reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArmsDisagreeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArmsDisagree(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArmsDisagree is the one-packet read (SPEC §5).
+function _M.ReadArmsDisagreeBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -375,6 +384,13 @@ function _M.ReadArmsDisagree(stream: any, value: any): boolean
   return true
 end
 
+-- ReadArmsDisagree reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArmsDisagree(stream: any, value: any): boolean
+  if not _M.ReadArmsDisagreeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitArmEmpty resets a value to what NewArmEmpty builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -393,9 +409,10 @@ function _M.ZeroArmEmpty(value: any)
   value.Tail = 0
 end
 
--- ReadArmEmpty reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArmEmptyBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArmEmpty(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArmEmpty is the one-packet read (SPEC §5).
+function _M.ReadArmEmptyBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -417,6 +434,13 @@ function _M.ReadArmEmpty(stream: any, value: any): boolean
   end
   value.Tail = BITS.value
   return true
+end
+
+-- ReadArmEmpty reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArmEmpty(stream: any, value: any): boolean
+  if not _M.ReadArmEmptyBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitArmsNested resets a value to what NewArmsNested builds, in place: its declared defaults
@@ -443,9 +467,10 @@ function _M.ZeroArmsNested(value: any)
   value.Tail = 0
 end
 
--- ReadArmsNested reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArmsNestedBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArmsNested(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArmsNested is the one-packet read (SPEC §5).
+function _M.ReadArmsNestedBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 3) then
     return false
   end
@@ -489,6 +514,13 @@ function _M.ReadArmsNested(stream: any, value: any): boolean
   return true
 end
 
+-- ReadArmsNested reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArmsNested(stream: any, value: any): boolean
+  if not _M.ReadArmsNestedBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitArmAlign resets a value to what NewArmAlign builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -511,9 +543,10 @@ function _M.ZeroArmAlign(value: any)
   value.Tail = 0
 end
 
--- ReadArmAlign reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArmAlignBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArmAlign(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArmAlign is the one-packet read (SPEC §5).
+function _M.ReadArmAlignBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -553,6 +586,13 @@ function _M.ReadArmAlign(stream: any, value: any): boolean
   return true
 end
 
+-- ReadArmAlign reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArmAlign(stream: any, value: any): boolean
+  if not _M.ReadArmAlignBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitArmArray resets a value to what NewArmArray builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -575,9 +615,10 @@ function _M.ZeroArmArray(value: any)
   value.Tail = 0
 end
 
--- ReadArmArray reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArmArrayBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArmArray(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArmArray is the one-packet read (SPEC §5).
+function _M.ReadArmArrayBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -613,6 +654,13 @@ function _M.ReadArmArray(stream: any, value: any): boolean
   return true
 end
 
+-- ReadArmArray reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArmArray(stream: any, value: any): boolean
+  if not _M.ReadArmArrayBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitNarrow resets a value to what NewNarrow builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -625,14 +673,22 @@ function _M.ZeroNarrow(value: any)
   value.N = 0
 end
 
--- ReadNarrow reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadNarrowBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadNarrow(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadNarrow is the one-packet read (SPEC §5).
+function _M.ReadNarrowBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 3) then
     return false
   end
   value.N = BITS.value
   return true
+end
+
+-- ReadNarrow reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadNarrow(stream: any, value: any): boolean
+  if not _M.ReadNarrowBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitWide resets a value to what NewWide builds, in place: its declared defaults
@@ -647,14 +703,22 @@ function _M.ZeroWide(value: any)
   value.W = 0i
 end
 
--- ReadWide reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadWideBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadWide(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadWide is the one-packet read (SPEC §5).
+function _M.ReadWideBody(stream: any, value: any): boolean
   if not stream:serializeBits64(BIG, 37) then
     return false
   end
   value.W = BIG.value
   return true
+end
+
+-- ReadWide reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadWide(stream: any, value: any): boolean
+  if not _M.ReadWideBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitUneven resets the union to what NewUneven builds, in place: None, and every
@@ -670,20 +734,28 @@ function _M.ZeroUneven(value: any)
   value.Type = 0
 end
 
-function _M.ReadUneven(stream: any, value: any): boolean
+-- ReadUnevenBody reads the union wire; it does not end the packet (SPEC §5).
+function _M.ReadUnevenBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.UnevenType.Narrow then
     _M.InitNarrow(value.Narrow) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadNarrow(stream, value.Narrow)
+    return _M.ReadNarrowBody(stream, value.Narrow)
   end
   if value.Type == _M.UnevenType.Wide then
     _M.InitWide(value.Wide) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadWide(stream, value.Wide)
+    return _M.ReadWideBody(stream, value.Wide)
   end
   return true -- None
+end
+
+-- ReadUneven reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadUneven(stream: any, value: any): boolean
+  if not _M.ReadUnevenBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitHoldsUneven resets a value to what NewHoldsUneven builds, in place: its declared defaults
@@ -702,14 +774,15 @@ function _M.ZeroHoldsUneven(value: any)
   value.Tail = 0
 end
 
--- ReadHoldsUneven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadHoldsUnevenBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadHoldsUneven(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadHoldsUneven is the one-packet read (SPEC §5).
+function _M.ReadHoldsUnevenBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
   value.Lead = BITS.value
-  if not _M.ReadUneven(stream, value.U) then
+  if not _M.ReadUnevenBody(stream, value.U) then
     return false
   end
   if not stream:serializeBits(BITS, 11) then
@@ -717,6 +790,13 @@ function _M.ReadHoldsUneven(stream: any, value: any): boolean
   end
   value.Tail = BITS.value
   return true
+end
+
+-- ReadHoldsUneven reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadHoldsUneven(stream: any, value: any): boolean
+  if not _M.ReadHoldsUnevenBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitArrUneven resets a value to what NewArrUneven builds, in place: its declared defaults
@@ -737,9 +817,10 @@ function _M.ZeroArrUneven(value: any)
   value.Tail = 0
 end
 
--- ReadArrUneven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadArrUnevenBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadArrUneven(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadArrUneven is the one-packet read (SPEC §5).
+function _M.ReadArrUnevenBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -749,7 +830,7 @@ function _M.ReadArrUneven(stream: any, value: any): boolean
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadUneven(stream, value.Items[i]) then
+    if not _M.ReadUnevenBody(stream, value.Items[i]) then
       return false
     end
   end
@@ -758,6 +839,13 @@ function _M.ReadArrUneven(stream: any, value: any): boolean
   end
   value.Tail = BITS.value
   return true
+end
+
+-- ReadArrUneven reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadArrUneven(stream: any, value: any): boolean
+  if not _M.ReadArrUnevenBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitRegainAfterAlign resets a value to what NewRegainAfterAlign builds, in place: its declared defaults
@@ -788,9 +876,10 @@ function _M.ZeroRegainAfterAlign(value: any)
   value.Tail = 0
 end
 
--- ReadRegainAfterAlign reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadRegainAfterAlignBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadRegainAfterAlign(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadRegainAfterAlign is the one-packet read (SPEC §5).
+function _M.ReadRegainAfterAlignBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 5) then
     return false
   end
@@ -836,6 +925,13 @@ function _M.ReadRegainAfterAlign(stream: any, value: any): boolean
   end
   value.Tail = BITS.value
   return true
+end
+
+-- ReadRegainAfterAlign reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadRegainAfterAlign(stream: any, value: any): boolean
+  if not _M.ReadRegainAfterAlignBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- ArmsAgreeMaxBits is the longest wire path, align padding at its worst case;

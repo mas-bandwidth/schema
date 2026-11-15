@@ -89,6 +89,16 @@ public final class Main {
         if (!ok) throw new AssertionError(msg);
     }
 
+    // an out-of-range record image, stored with the runtime's own stores in
+    // writeBody's order: the writer asserts the write contract under -ea, so
+    // it never stores these values itself (SPEC §5.1)
+    private static void forge(byte[] b, ClampRowFixed.Value v) {
+        TableFixed.put32(b, 0, v.loOnly);
+        TableFixed.put32(b, 4, v.hiOnly);
+        TableFixed.put64(b, 8, v.u64Lo);
+        TableFixed.put8(b, 16, v.u8Hi);
+    }
+
     public static void main(String[] args) {
         // 1. JSON out of range on each one-sided bound (including uint64 | min = 100)
         //    REFUSES the whole load: no value, refused, not damaged (§4)
@@ -118,7 +128,7 @@ public final class Main {
         fv.u64Lo = 50L;
         fv.u8Hi = (byte) 240;
         byte[] fbuf = new byte[ClampRowFixed.bodyBytes];
-        ClampRowFixed.writeBody(fbuf, 0, fv);
+        forge(fbuf, fv);
         TableFixed.Report frep = new TableFixed.Report();
         ClampRowFixed.Value floaded = new ClampRowFixed.Value();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep);
@@ -130,7 +140,7 @@ public final class Main {
             if (i == 1) one.hiOnly = 77;
             if (i == 2) one.u64Lo = 50L;
             if (i == 3) one.u8Hi = (byte) 240;
-            ClampRowFixed.writeBody(fbuf, 0, one);
+            forge(fbuf, one);
             TableFixed.Report r1 = new TableFixed.Report();
             ClampRowFixed.scatter(fbuf, 0, new ClampRowFixed.Value(), r1);
             check(r1.refused && !r1.damaged, "Fixed bound " + i + " not refused");
@@ -142,6 +152,10 @@ public final class Main {
         fv.u64Lo = -1L;
         fv.u8Hi = (byte) 200;
         ClampRowFixed.writeBody(fbuf, 0, fv);
+        // the forge stores what writeBody stores, for a value it admits
+        byte[] forged = new byte[ClampRowFixed.bodyBytes];
+        forge(forged, fv);
+        check(java.util.Arrays.equals(forged, fbuf), "the forge lays writeBody's own bytes");
         TableFixed.Report frep2 = new TableFixed.Report();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep2);
         check(floaded.u64Lo == -1L && !frep2.refused && !frep2.damaged, "Fixed high u64 refused: " + frep2.reason);
