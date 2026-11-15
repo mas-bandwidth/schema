@@ -70,6 +70,13 @@ table Root {
 	if records, whole := tablewire.FileNodeRecords(blobs); !whole || len(records) != 3 {
 		t.Fatalf("the blob fixture must carry three node records: %v %v", records, whole)
 	}
+	// A one-byte *string blob body of U+0000 is not well-formed text (§2.5,
+	// §3.1): the record is raw bytes, but a string blob's content is still
+	// judged by the text rule.
+	nul := encode(`{"value":7,"extra":{"items":[201],"name":"QZQ","flag":true},"title":"~"}`)
+	if records, whole := tablewire.FileNodeRecords(nul); !whole || len(records) != 2 {
+		t.Fatalf("the single-string fixture must carry two node records: %v %v", records, whole)
+	}
 	cases := []struct {
 		name  string
 		wire  []byte
@@ -81,6 +88,7 @@ table Root {
 		{"bool byte 2", damage("bool", clean, []byte{0x01, 0x01, 0x00}, []byte{0x01, 0x02, 0x00}), false},
 		{"clean blob records", blobs, true},
 		{"zero byte in a string blob", damage("blob text", blobs, []byte("RXR"), []byte{0x00, 'R', 'X'}), false},
+		{"one-byte NUL string blob", damage("NUL blob text", nul, []byte("~"), []byte{0x00}), false},
 	}
 	reader := unitFromSource(t, older)
 	rm := tabletext.NewModel(reader)
