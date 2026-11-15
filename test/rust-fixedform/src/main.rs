@@ -2239,15 +2239,24 @@ fn the_text_content_rule(dir: &str) {
         "the content rule: an interior NUL is damage too, and refuses by name to the cleared default",
     );
 
-    // AND THE SLACK CARRIES NO MEANING: the same byte PAST the used length is
-    // not read at all, so it is not damage.
+    // AND THE SLACK IS DEAD, AND DEAD BYTES ARE ZERO (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5): the same byte PAST the used length is
+    // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD, leaving
+    // the caller's rows as they were.
     let mut forged = golden.clone();
     forged[body + 26 + 5] = 0x80; // past `label_length` of 3
+    let before_label = values[0].label;
+    let before_length = values[0].label_length;
     let mut report = tblfx1::TableFixedReport::default();
-    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    let n =
+        tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        !report.damaged && !report.refused && values[0].label[..3] == *b"fx1",
-        "the content rule: a byte past the USED LENGTH means nothing and is not judged",
+        n.is_none() && report.refused,
+        "the content rule: a nonzero byte past the USED LENGTH is a dead byte and refuses the whole load",
+    );
+    check(
+        values[0].label == before_label && values[0].label_length == before_length,
+        "the content rule: and the refused load leaves the caller's row as it was",
     );
 
     // AND `bytes(N)` IS BYTES. FX1's `blob` is a `bytes(6)` whose payload starts
