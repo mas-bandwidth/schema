@@ -2473,7 +2473,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–6 and 8 every build; 7 unrepresentable
 
-  - packet `Write`: 1–7 and 10 every build (`ArgumentError`); 8 not yet held
+  - packet `Write`: 1–8 and 10 every build (`ArgumentError`); 11 every build, held by `packet-write-bareint-elixir`
 
 - **Lua**
 

@@ -91,17 +91,68 @@ defmodule Example.Render do
       team: value_team
     } = value
 
+    if not is_integer(value_sort_key) do
+      raise ArgumentError, "value.sort_key is not an integer"
+    end
+
+    if value_sort_key < 0 do
+      raise ArgumentError, "value.sort_key is below the wire minimum"
+    end
+
+    if value_sort_key > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.sort_key is above the wire maximum"
+    end
+
     v = value_sort_key &&& 0xFFFFFFFF
     scratch = v
     v = value_sort_key >>> 32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_mesh_id) do
+      raise ArgumentError, "value.mesh_id is not an integer"
+    end
+
+    if value_mesh_id < 0 do
+      raise ArgumentError, "value.mesh_id is below the wire minimum"
+    end
+
+    if value_mesh_id > 4_294_967_295 do
+      raise ArgumentError, "value.mesh_id is above the wire maximum"
+    end
+
     v = value_mesh_id &&& 0xFFFFFFFF
     sc1 = scratch
     scratch = v
+
+    if not is_integer(value_material_id) do
+      raise ArgumentError, "value.material_id is not an integer"
+    end
+
+    if value_material_id < 0 do
+      raise ArgumentError, "value.material_id is below the wire minimum"
+    end
+
+    if value_material_id > 4_294_967_295 do
+      raise ArgumentError, "value.material_id is above the wire maximum"
+    end
+
     v = value_material_id &&& 0xFFFFFFFF
     sc2 = scratch
     scratch = v
+
+    if not is_integer(value_layer) do
+      raise ArgumentError, "value.layer is not an integer"
+    end
+
+    if value_layer < 0 do
+      raise ArgumentError, "value.layer is below the wire minimum"
+    end
+
+    if value_layer > 255 do
+      raise ArgumentError, "value.layer is above the wire maximum"
+    end
+
     v = value_layer &&& 0xFF
     scratch = scratch ||| v <<< 32
     v = Example.Team.to_int(value_team)
@@ -235,8 +286,33 @@ defmodule Example.Render do
       sprites: value_sprites
     } = value
 
+    if not is_integer(value_worker_index) do
+      raise ArgumentError, "value.worker_index is not an integer"
+    end
+
+    if value_worker_index < 0 do
+      raise ArgumentError, "value.worker_index is below the wire minimum"
+    end
+
+    if value_worker_index > 4_294_967_295 do
+      raise ArgumentError, "value.worker_index is above the wire maximum"
+    end
+
     v = value_worker_index &&& 0xFFFFFFFF
     scratch = v
+
+    if not is_integer(value_sprite_count_hint) do
+      raise ArgumentError, "value.sprite_count_hint is not an integer"
+    end
+
+    if value_sprite_count_hint < 0 do
+      raise ArgumentError, "value.sprite_count_hint is below the wire minimum"
+    end
+
+    if value_sprite_count_hint > 4_294_967_295 do
+      raise ArgumentError, "value.sprite_count_hint is above the wire maximum"
+    end
+
     v = value_sprite_count_hint &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
@@ -345,6 +421,18 @@ defmodule Example.Render do
       team: e_team
     } = e
 
+    if not is_integer(e_sort_key) do
+      raise ArgumentError, "e.sort_key is not an integer"
+    end
+
+    if e_sort_key < 0 do
+      raise ArgumentError, "e.sort_key is below the wire minimum"
+    end
+
+    if e_sort_key > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "e.sort_key is above the wire maximum"
+    end
+
     v = e_sort_key &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -355,6 +443,19 @@ defmodule Example.Render do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(e_mesh_id) do
+      raise ArgumentError, "e.mesh_id is not an integer"
+    end
+
+    if e_mesh_id < 0 do
+      raise ArgumentError, "e.mesh_id is below the wire minimum"
+    end
+
+    if e_mesh_id > 4_294_967_295 do
+      raise ArgumentError, "e.mesh_id is above the wire maximum"
+    end
+
     v = e_mesh_id &&& 0xFFFFFFFF
     sc1 = scratch
     fl1 = scratch_bits >>> 3
@@ -362,6 +463,19 @@ defmodule Example.Render do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(e_material_id) do
+      raise ArgumentError, "e.material_id is not an integer"
+    end
+
+    if e_material_id < 0 do
+      raise ArgumentError, "e.material_id is below the wire minimum"
+    end
+
+    if e_material_id > 4_294_967_295 do
+      raise ArgumentError, "e.material_id is above the wire maximum"
+    end
+
     v = e_material_id &&& 0xFFFFFFFF
     sc2 = scratch
     fl2 = scratch_bits >>> 3
@@ -369,6 +483,19 @@ defmodule Example.Render do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(e_layer) do
+      raise ArgumentError, "e.layer is not an integer"
+    end
+
+    if e_layer < 0 do
+      raise ArgumentError, "e.layer is below the wire minimum"
+    end
+
+    if e_layer > 255 do
+      raise ArgumentError, "e.layer is above the wire maximum"
+    end
+
     v = e_layer &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
