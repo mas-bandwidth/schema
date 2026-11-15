@@ -2811,7 +2811,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanString();
+                String name = in.scanName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -3502,6 +3502,26 @@ public final class TableJson {
             }
         }
 
+        // scanName reads one string that NAMES a schema name — an object key
+        // naming a field, an enum variant, a flags element, a union arm, an
+        // &node name — and holds it to §16.2's 255-byte cap after decoding.
+        // A longer one refuses the read; a map key and a string value are data
+        // and go through scanString/scanStored, never this.
+        public String scanName() {
+            String s = scanString();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
+        }
+
         // loneSurrogate refuses a string whose u-escape is a surrogate half
         // with no partner after it, as damage (strict-only decision 9).
         String loneSurrogate() {
@@ -3798,7 +3818,7 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    String key = scanString();
+                    String key = scanName();
                     if (bad) {
                         return;
                     }
@@ -4941,7 +4961,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
-		fmt.Fprintf(b, "        if (in.bad) { report.damaged = true; }\n")
+		fmt.Fprintf(b, "        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and\n")
+		fmt.Fprintf(b, "        // comments, then refuse unless the cursor is at the end of the text.\n")
+		fmt.Fprintf(b, "        in.space();\n")
+		fmt.Fprintf(b, "        if (in.bad || in.p != text.length) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
 		fmt.Fprintf(b, "        if (report.damaged) { return null; }\n")
@@ -5016,7 +5039,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
 	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
-	b.WriteString("        String key = in.scanString();\n")
+	b.WriteString("        String key = in.scanName();\n")
 	b.WriteString("        if (in.bad || key == null) return null;\n")
 	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
 	b.WriteString("        if (in.peek() != ':') { in.bad = true; return null; }\n")
@@ -5072,7 +5095,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
 	b.WriteString("            if (c == '}') { in.p++; break; }\n")
-	b.WriteString("            String key = in.scanString();\n")
+	b.WriteString("            String key = in.scanName();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
 	b.WriteString("            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,\n")
 	b.WriteString("            // compared by decoded text (§16.2, §16.12).\n")
@@ -5111,6 +5134,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("            } else ")
 	}
 	b.WriteString("{\n")
+	// A key this reader cannot name is skipped one level deeper than the
+	// object that holds it, the same count as a placed value (§16.2):
+	// 128 containers are read and 129 refuse.
 	b.WriteString("                in.skipValue(depth + 1); in.rep.unknown++;\n")
 	b.WriteString("            }\n")
 	b.WriteString("            c = in.peek();\n")
@@ -5326,7 +5352,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				b.WriteString("                        if (ec == '\"') {\n")
-				b.WriteString("                            String s = in.scanString();\n")
+				b.WriteString("                            String s = in.scanName();\n")
 				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
@@ -5730,7 +5756,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			b.WriteString("                if (in.peek() == '\"') {\n")
-			b.WriteString("                    String s = in.scanString();\n")
+			b.WriteString("                    String s = in.scanName();\n")
 			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
