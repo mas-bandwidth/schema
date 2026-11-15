@@ -1512,6 +1512,8 @@ function _M.WriteBenchMixed(stream: any, v: any): boolean
   end
   if type(v.PlayerNameLength) ~= "number" or v.PlayerNameLength % 1 ~= 0 or v.PlayerNameLength < 0 or v.PlayerNameLength > 15 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.PlayerName) ~= "buffer" or buffer.len(v.PlayerName) < v.PlayerNameLength then return false end
+  if not utf8valid(v.PlayerName, v.PlayerNameLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+  for k = 0, v.PlayerNameLength - 1 do if buffer.readu8(v.PlayerName, k) == 0 then return false end end -- interior null (SPEC §4.7)
   BITS.value = v.PlayerNameLength
   if not stream:serializeBits(BITS, 4) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.PlayerName, 0, v.PlayerNameLength))) then return false end -- align, then the used bytes (SPEC §4.7)

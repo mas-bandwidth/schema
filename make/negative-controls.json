@@ -2887,7 +2887,8 @@
         "packet-defaults-luau-negative-control",
         "packet-end-luau-negative-control",
         "packet-finite-luau-negative-control",
-        "packet-utf8-luau-negative-control"
+        "packet-utf8-luau-negative-control",
+        "packet-write-text-luau-negative-control"
       ],
       "luau": "0.741"
     },

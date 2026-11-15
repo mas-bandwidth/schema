@@ -1503,6 +1503,8 @@ _M.ChatMaxBytes = 264
 function _M.WriteChat(stream: any, v: any): boolean
   if type(v.TextLength) ~= "number" or v.TextLength % 1 ~= 0 or v.TextLength < 0 or v.TextLength > 256 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Text) ~= "buffer" or buffer.len(v.Text) < v.TextLength then return false end
+  if not utf8valid(v.Text, v.TextLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+  for k = 0, v.TextLength - 1 do if buffer.readu8(v.Text, k) == 0 then return false end end -- interior null (SPEC §4.7)
   BITS.value = v.TextLength
   if not stream:serializeBits(BITS, 9) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.Text, 0, v.TextLength))) then return false end -- align, then the used bytes (SPEC §4.7)
@@ -1594,6 +1596,8 @@ function _M.WriteTestData(stream: any, v: any): boolean
   if not stream:serializeBytes(v.FixedBytes) then return false end -- [N]uint8 on a byte boundary: one bulk copy
   if type(v.TextLength) ~= "number" or v.TextLength % 1 ~= 0 or v.TextLength < 0 or v.TextLength > 255 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Text) ~= "buffer" or buffer.len(v.Text) < v.TextLength then return false end
+  if not utf8valid(v.Text, v.TextLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+  for k = 0, v.TextLength - 1 do if buffer.readu8(v.Text, k) == 0 then return false end end -- interior null (SPEC §4.7)
   BITS.value = v.TextLength
   if not stream:serializeBits(BITS, 8) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.Text, 0, v.TextLength))) then return false end -- align, then the used bytes (SPEC §4.7)
