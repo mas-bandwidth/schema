@@ -3487,6 +3487,7 @@ typedef struct tabledemo_table_node_map_t
     int good, arena, refused, cycle_indices;
     tabledemo_table_sink_t * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
+    int ( *declared )( uint64_t type_id ); /* a type this reader declares (§3.1) */
 } tabledemo_table_node_map_t;
 
 static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_node_map_t * nodes, tabledemo_table_ref_t * slot,
@@ -3497,7 +3498,14 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
     if ( index == 0 || nodes == NULL || !nodes->good ) { return; }
     if ( index > nodes->count ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return; }
     entry = &nodes->entries[index-1];
-    if ( entry->offset == UINT64_MAX ) { return; }
+    /* a node this root does not place reads null when its type is one this
+       reader cannot name; naming a type it DOES declare that is not the
+       slot's target is damage (docs/SPEC-TABLES.md §3.1) */
+    if ( entry->offset == UINT64_MAX )
+    {
+        if ( nodes->declared != NULL && nodes->declared( entry->type_id ) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        return;
+    }
     if ( entry->type_id != target ) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return; }
     if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
     {
@@ -6202,6 +6210,33 @@ static SCHEMA_UNUSED const tabledemo_table_node_type_t * schema_tabledemo_patrol
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_tabledemo_patrol_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0x413e7bcf261bc3c7):
+        case UINT64_C(0xffb1dfb1f6ce215b):
+        case UINT64_C(0x5fcbe04615411b64):
+        case UINT64_C(0xb76842b2253337af):
+        case UINT64_C(0x3066b130dfbd7890):
+        case UINT64_C(0xd6633ae4e94deecf):
+        case UINT64_C(0xa6aa0caea28dcca1):
+        case UINT64_C(0xd02d825db114336e):
+        case UINT64_C(0x1c182e1c2529027b):
+        case UINT64_C(0x19fffcb7859da778):
+        case UINT64_C(0xec79751dda28be2e):
+        case UINT64_C(0x031ec0c4b7d28bf1):
+        case UINT64_C(0xbf59694e9e4f5ed7):
+        case UINT64_C(0x5f4843f6def45e87):
+        case UINT64_C(0x1d1a9911da171a29):
+        case UINT64_C(0x1cf8555d11fb113a):
+        case UINT64_C(0x469dba0c16b2ad15):
+        case UINT64_C(0x0577780d86c4b0c3):
+        case UINT64_C(0xab6a6961d3366451):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t tabledemo_patrol_measure_with_allocator(const tabledemo_table_ctx_t * ctx, const tabledemo_patrol_t * root, tabledemo_table_allocator_t allocator)
 {
     return tabledemo_table_graph_save(ctx,root,&schema_tabledemo_patrol_node_type_,NULL,INT64_MAX,allocator);
@@ -6269,13 +6304,13 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_cycle_node_(tabledemo_table_cyc
 static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_reader_t * reader, tabledemo_patrol_t * root, tabledemo_table_node_map_t * nodes, tabledemo_table_node_dir_entry_t * directory, tabledemo_table_sink_t * sink)
 {
     tabledemo_table_node_scan_t scan=tabledemo_table_node_scan_begin(reader); tabledemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    tabledemo_patrol_reset(root);
+    tabledemo_patrol_reset(root); nodes->declared=schema_tabledemo_patrol_node_declared_;
     while (tabledemo_table_node_scan_next(&scan,&id,&body)) {
         const tabledemo_table_node_type_t * type=schema_tabledemo_patrol_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !tabledemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=tabledemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -6388,6 +6423,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     tabledemo_patrol_reset(root);
+    nodes->declared=schema_tabledemo_patrol_node_declared_;
     while (tabledemo_table_node_scan_next(&scan,&id,&body)) {
         const tabledemo_table_node_type_t * type=schema_tabledemo_patrol_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -6399,8 +6435,8 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=tabledemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
