@@ -115,6 +115,10 @@ class Value:
     // second naming and refuses the graph by name, never writing a copy
     // per slot. nil for a blob the caller set.
     blob_node:Node? = nil
+    // at is a writer's number for this blob cell while one save walks the
+    // graph (schema_save.lobster), 0 outside it: the index from cell to node
+    // number, so no lookup scans the nodes collected so far
+    at:int = 0
 
 // A Slot is one field's storage (Go's tabletext.Field): the value, the
 // counted extent and the presence companion beside it.
@@ -146,6 +150,11 @@ class Record:
     held:bool = false
     // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
     walk:int = 0
+    // at is a writer's number for this record while one save or one JSON
+    // write walks the graph, 0 outside it: the index from node to number,
+    // so no lookup scans the nodes collected so far. Each writer clears
+    // every mark it set before it returns.
+    at:int = 0
 
 // Fixed roots share their generated native codec with the generic Record
 // surface. The adapter projects storage only; it owns no wire decoder.
@@ -171,11 +180,16 @@ def fixed_record_codec(name:string) -> FixedRecordCodec:
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
 // cannot name — it keeps its index and every pointer naming it reads null —
-// 1 a table record, 2 a *string blob, 3 a *bytes blob.
+// 1 a table record, 2 a *string blob, 3 a *bytes blob, 4 a record of a type
+// this reader declares but this root cannot place, which no pointer slot
+// may name (§3.1).
 class Node:
     kind:int
     rec:Record?
     blob:string?
+    // at is a writer's mark on a loaded blob node while one save or one JSON
+    // write walks the graph, 0 outside it (Record.at)
+    at:int = 0
 
 // THE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §2.5, §2.8), as the bit
 // patterns the id table carries.
@@ -434,14 +448,6 @@ def text_valid(b:string, at:int, n:int) -> bool:
         i += 1 + need
     return true
 
-def text_boundary(b:string, at:int, n:int, bound:int) -> int:
-    if n <= bound:
-        return n
-    var cut = bound
-    while cut > 0 and (b[at + cut] & 0xC0) == 0x80:
-        cut--
-    return cut
-
 // THE INT128 ORDER (docs/PORT-LOBSTER.md, THE NUMBER MODEL): the high lane
 // first, signed or unsigned, then the low lane unsigned.
 def i128_lt(a:Int128, b:Int128, signed:bool) -> bool:
@@ -621,6 +627,10 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
             return read_refuse(rep, "non_finite_float")
         if declared != 11 and fd.franged and (v < fd.flo or v > fd.fhi):
             return read_refuse(rep, "out_of_range")
+        if declared != 11 and fd.franged and v == 0.0:
+            // a compressed float's -0 lands as +0 (§3.3, the special values)
+            cell.f = 0.0
+            return true
         cell.f = if declared == 11: v else: fround(v)
         return true
     if kind == 11:
@@ -1060,8 +1070,8 @@ class PointerShape : Shape
 
 let pointer_shape = register_shape(PointerShape { key: "ptr" })
 
-// THE STRING (§3): ill-formed text is damage and reads the declared
-// default; a clamp cuts at a code point boundary and counts.
+// THE STRING (§3): ill-formed text or a missing extent is damage; a length
+// past the declared bound refuses as length_over_bound. Nothing is clamped.
 class StringShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
         let rep = r.st.report
@@ -1192,11 +1202,15 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     else:
         if f.array == "list":
             sl.elems = []
-        let es = shape(elem_key(f))
+        let element_shape = elem_key(f)
+        let es = shape(element_shape)
         var i = 0
         while i < count:
             if f.array == "list":
-                push(sl.elems, element_zero(f))
+                if element_shape == "tab":
+                    push(sl.elems, Value {})
+                else:
+                    push(sl.elems, element_zero(f))
             if not es.element(sr, sl, i, ek):
                 return false, false
             i++
@@ -1735,9 +1749,17 @@ def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
         return [], false
     return records, true
 
+// declares is whether the unit of root descriptor d declares the table type tid.
+def declares(d:TableDescriptor, tid:int) -> bool:
+    for(d.declared) id:
+        if id == tid:
+            return true
+    return false
+
 // decode_variable reads a pointered root (§3.1; Go's decodeVariable): the
 // node table first, then pass one fills THE FLAT NODE TABLE from the framing
-// (a record this root cannot place is unknown and keeps its index), pass two
+// (a record of a type the unit does not declare is unknown and keeps its
+// index; one it declares but this root cannot place no slot may name), pass two
 // decodes each record's body, then the root body.
 def decode_variable(st:LoadState, root:Record, hi:int):
     let rep = st.report
@@ -1770,6 +1792,10 @@ def decode_variable(st:LoadState, root:Record, hi:int):
                     d = p
             if d:
                 node = Node { kind: 1, rec: new_record(d), blob: nil }
+            elif rec.tid == string_blob_id or rec.tid == bytes_blob_id or declares(root.d, rec.tid):
+                // a type this reader declares is never evolution: every
+                // pointer slot naming it refuses in resolve_cell (§3.1)
+                node = Node { kind: 4, rec: nil, blob: nil }
             else:
                 rep.unknown++
                 let retain = active_retain_capture()

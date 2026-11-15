@@ -89,7 +89,7 @@ func TestLobsterPacketDefaultsNegativeControl(t *testing.T) {
 	var kept []string
 	removed := 0
 	for line := range strings.SplitSeq(string(files["Defaults.lobster"]), "\n") {
-		if strings.Contains(line, " = schema_rt.put(value.") {
+		if strings.Contains(line, " = schema_rt.put(value·.") {
 			removed++
 			continue
 		}

@@ -392,13 +392,15 @@ func t04E5(t *testing.T) {
 // ---- elixir/W2 --------------------------------------------------------------
 
 // t04W2 holds elixir/W2 to SPEC-TABLES.md §3.4: an absent optional SKIPS its
-// store — the payload is unspecified and nobody wrote it, so the content rule
-// (`text`/`wtext`'s present flag) does not run and a copy is left alone.
+// store — the payload is dead, so the read decodes no value from it and the
+// content rule (`text`/`wtext`'s present flag) does not run; the check pass
+// holds the whole payload to zero.
 func t04W2(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "defp step([{:present, src, inner} | rest], body, writes, report) do", "W2 an absent optional's payload is not walked")
 	t04Has(t, fixedRuntimeBody, "if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}", "W2 the present flag gates the content rule")
 	t04Has(t, fixedRuntimeBody, "def text(used, _default, m, present) do", "W2 the content rule is handed the present flag")
 	t04Has(t, fixedRuntimeBody, "defp present_wrap_entry({:copy, _, _, _} = e, _src), do: e", "W2 an absent optional leaves the copy alone")
+	t04Has(t, fixedRuntimeBody, "defp dead_run([{:dead_present", "W2 an absent optional's payload is held to zero")
 }
 
 // ---- the card's test --------------------------------------------------------

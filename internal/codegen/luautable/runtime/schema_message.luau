@@ -539,6 +539,18 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 			if fd.e ~= nil then ef = named(fd.e, fd.name)
 			elseif fd.s == "map" then ef = { s = "tab", t = fd.t, name = fd.name } end
 		end
+		-- tableMessageEntryRead reads an inner kind and keeps no inner shape.
+		-- A missing element is that zero shape (kind 0, width 0), not a raised index.
+		local element = if e.element ~= nil then e.element else newShape()
+		local ik = element.kind
+		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30 or ik == 31
+		-- A walked element that consumes no bits refuses the read
+		-- (docs/SPEC-TABLES.md §3.3; tableMessageSkip, r.Offset==before).
+		local function walkOne(): boolean
+			local before = r.off
+			if not skipShape(r, st, { shape = element }, ef, dep) then return false end
+			return r.off ~= before
+		end
 		if k == 16 then
 			for _ = 1, n do
 				local key, kok = get(r, st.refBits)
@@ -548,23 +560,26 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 				-- A KEYED ARRAY's key is a slot, not a caller value: the key
 				-- may name a retired variant and the element is what is read
 				-- and written (Go's variantWireId key=true, §2.15).
-				if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
+				if variable then
+					if not walkOne() then return false end
+				elseif not skipShape(r, st, { shape = element }, ef, dep) then
+					return false
+				end
 			end
 			return true
 		end
 		if e.shape.elem == 6 and not align(r) then return false end
-		local ik = e.element.kind
-		if plainFloat(e.element, ef) then
+		if plainFloat(element, ef) then
 			for _ = 1, n do
 				if not floatStep(r, st, ik, ef) then return false end
 			end
 			return true
 		end
-		if ik ~= 12 and ik ~= 13 and ik ~= 14 and ik ~= 15 and ik ~= 16 and ik ~= 17 and ik ~= 30 and ik ~= 31 then
-			return skip(r, n * e.element.bits)
+		if not variable then
+			return skip(r, n * element.bits)
 		end
 		for _ = 1, n do
-			if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
+			if not walkOne() then return false end
 		end
 		return true
 	elseif k == 31 then

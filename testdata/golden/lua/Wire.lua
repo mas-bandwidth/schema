@@ -931,6 +931,15 @@ end
 -- type ProbeSample (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeSample(stream, v)
   if not stream:serializeBool({ value = v.Active }) then return false end -- SPEC §4.3
+  -- compressed-float range (SPEC §5.1 row 10)
+  if
+    type(v.Orientation) ~= "number"
+    or v.Orientation ~= v.Orientation
+    or v.Orientation < -180.0
+    or v.Orientation > 180.0
+  then
+    return false
+  end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end
   if math.type(v.RawDelta) ~= "integer" then return false end
@@ -1089,6 +1098,15 @@ function _M.WriteTestData(stream, v)
     if not stream:serializeBits({ value = v.Items[_i] - 0 }, 8) then return false end -- the offset from min
   end
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
+  -- compressed-float range (SPEC §5.1 row 10)
+  if
+    type(v.CompressedFloatValue) ~= "number"
+    or v.CompressedFloatValue ~= v.CompressedFloatValue
+    or v.CompressedFloatValue < 0.0
+    or v.CompressedFloatValue > 10.0
+  then
+    return false
+  end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
@@ -1125,8 +1143,14 @@ end
 
 -- type CompressedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteCompressedProbe(stream, v)
+  -- compressed-float range (SPEC §5.1 row 10)
+  if type(v.Boundary) ~= "number" or v.Boundary ~= v.Boundary or v.Boundary < 0.0 or v.Boundary > 10.0 then
+    return false
+  end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end
+  -- compressed-float range (SPEC §5.1 row 10)
+  if type(v.Offset) ~= "number" or v.Offset ~= v.Offset or v.Offset < -5.0 or v.Offset > 5.0 then return false end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end
   return true

@@ -25,7 +25,8 @@ var mooControls = []string{
 // toolchain gate, the test reads output (moo-analyze exits 0 on a lint
 // warning) in strict mode over a corpus that names every Makefile corpus
 // directory, the analyzer is held to the pin, every moo control is registered
-// on a row that installs the moo pin, and the workflows run it. Pure text over
+// on a row that installs the moo pin, and the workflows run it (its own
+// workflow nightly and on dispatch only, the owner, 2026-11-15). Pure text over
 // tracked files: it needs no moo, so it rides `go test ./...` anywhere; the
 // make targets are what run the analyzer.
 func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
@@ -168,22 +169,42 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 		}
 	}
 
-	// THE WORKFLOW runs the gate and both of its controls on the pin.
+	// THE WORKFLOW runs the gate and both of its controls on the pin, nightly
+	// and on dispatch only (the owner, 2026-11-15: "I want everything that is not
+	// light moved to nightly test now." "no exceptions.").
 	wf := read(".github", "workflows", "schema-moo-generated-analyze-strict-gate.yml")
 	for _, want := range []string{
-		"push:",
-		"pull_request:",
 		"schedule:",
 		"workflow_dispatch:",
 		"uses: ./.github/actions/moo",
 		"run: make schema-moo-generated-analyze-strict-gate\n",
 		"run: make schema-moo-generated-analyze-strict-gate-negative-control\n",
 		"run: make schema-moo-generated-analyze-strict-gate-pin-negative-control\n",
-		"- 'internal/codegen/moo/**'",
-		"- 'make/moo.mk'",
 	} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("the moo strict-gate workflow does not carry %q", want)
+		}
+	}
+	for _, p := range nightlyOnlyTriggerProblems(wf) {
+		t.Errorf("schema-moo-generated-analyze-strict-gate.yml: %s", p)
+	}
+	if len(nightlyOnlyTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored push trigger was not refused")
+	}
+	for _, ev := range []ciEvent{
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobRunsInWorkflow(wf, "gate", ev); err != nil || !ok {
+			t.Errorf("the moo strict gate job did not run on %+v: ok=%v err=%v", ev, ok, err)
+		}
+	}
+	for _, ev := range []ciEvent{
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+	} {
+		if ok, _ := jobRunsInWorkflow(wf, "gate", ev); ok {
+			t.Errorf("the moo strict gate job ran on %+v; the workflow is nightly and dispatch only", ev)
 		}
 	}
 

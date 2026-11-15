@@ -16,18 +16,11 @@ name: Schema squirrel nightly fuzz
 # in one to two minutes). The pull-request job below is the REPLAY half only:
 # the harness's own structural checks, no fuzzing, no foreign toolchain.
 on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '47 9 * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'make/schema-squirrel-nightly-fuzz.mk'
-      - '.github/workflows/schema-squirrel-nightly-fuzz.yml'
-      - 'internal/codegen/squirreltable/fuzz_test.go'
-      - 'internal/codegen/squirreltable/nightly_fuzz_test.go'
-      - 'internal/codegen/squirreltable/nightly_fuzz_readers_test.go'
-      - 'internal/ci/schema_squirrel_nightly_fuzz_test.go'
-      - 'testdata/conformance/tables/**'
 
 concurrency:
   group: schema-squirrel-nightly-fuzz-${{ github.event_name }}-${{ github.ref }}

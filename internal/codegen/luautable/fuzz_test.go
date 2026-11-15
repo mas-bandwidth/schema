@@ -582,7 +582,7 @@ func TestLuauWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 // The "str" branch is matched exactly once.
 const luauFuzzControlAnchor = `	elseif s == "str" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then _report.malformed = true; return false end`
+		if r.bad or r.at + n > r.e then _report.malformed = true; noteField("malformed", fieldName); return false end`
 
 // TestLuauWireFuzzNegativeControl patches the emitted load in memory — one
 // anchor, matched exactly once — so a string frame length past the body stops
@@ -591,7 +591,7 @@ const luauFuzzControlAnchor = `	elseif s == "str" then
 func TestLuauWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, luauFuzzCost)
-	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; return false", "return false", 1)
+	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; noteField(\"malformed\", fieldName); return false", "return false", 1)
 	const strictTopAnchor = "local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil"
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luauFuzzControlAnchor); n != 1 {

@@ -568,6 +568,17 @@ func rangeFillsBits(diff *big.Int, bits int64) bool {
 	return diff.Cmp(span) == 0
 }
 
+// emitWriteCompressedRangeGuard refuses a compressed float the declaration does
+// not admit before it is quantized (SPEC §5.1 row 10, PACKET-WIRE-ALGORITHM
+// §2.5): a NaN or an infinity, tested on the raw bits as the plain float guard
+// does, then a finite value outside [min, max]. An in-range value normalizes
+// into [0, 1] by itself, so the fold needs no value clamp.
+func (g *gen) emitWriteCompressedRangeGuard(f *ir.Field, name, ind string) {
+	g.emitWriteFiniteGuard("math.Float32bits("+name+")", "0x7f800000", ind)
+	g.pf("%sif %s < %s || %s > %s {\n", ind, name, f32lit(float32(f.FMin)), name, f32lit(float32(f.FMax)))
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+}
+
 // emitWriteCompressedFold quantizes a ranged float onto its step count in a
 // generation-time bit count — serialize_compressed_float's own arithmetic with
 // the declaration folded, the way the ranged-integer folds carry their bounds.
@@ -583,21 +594,20 @@ func rangeFillsBits(diff *big.Int, bits int64) bool {
 // fused line writes different bytes for 0.005 over [0, 10] at resolution 0.01.
 // Do not "simplify" it.
 //
-// uint32() truncates toward zero, which is the runtime's Floor: the clamp leaves
-// normalizedValue in [0, 1] (its !>= form sends NaN to 0), so the product plus
-// 0.5 is always positive, where truncation and floor agree.
+// uint32() truncates toward zero, which is the runtime's Floor: the range guard
+// leaves normalizedValue in [0, 1], so the product plus 0.5 is always positive,
+// where truncation and floor agree.
 func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
+	g.emitWriteCompressedRangeGuard(f, name, ind)
 	g.pf("%s{\n", ind)
 	if min32 == 0 {
 		g.pf("%s\tnormalizedValue := %s / %s\n", ind, name, f32lit(delta))
 	} else {
 		g.pf("%s\tnormalizedValue := (%s) / %s\n", ind, floatMinusMin(name, min32), f32lit(delta))
 	}
-	g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
-	g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
 	g.pf("%s\tintegerValue := uint32(float32(normalizedValue*%s) + 0.5)\n", ind, f32lit(float32(steps)))
 	g.pf("%s\t// the integer clamp is normative\n", ind)
 	g.pf("%s\tif integerValue > %d { integerValue = %d }\n", ind, steps, steps)
