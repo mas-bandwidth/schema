@@ -154,6 +154,12 @@ final class TableMessageShape {
   int base = 0;
   int baseLo = 0;
   int baseHi = 0;
+  /// The quantized triple's derived facts, kept so the SKIP path can hold an
+  /// index to its count and a dequantized value to a finite float, exactly as
+  /// a named read does (docs/SPEC-TABLES.md §3.3, §4).
+  double qMin = 0;
+  double qDelta = 0;
+  int qCount = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -198,7 +204,7 @@ final class TableMessageShape {
         return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
-        final bits = quantizedBits(sig, at, end);
+        final bits = quantizedBits(sig, at, end, s);
         if (bits == null) return null;
         s.bits = bits;
         return (s, at + 12);
@@ -237,7 +243,7 @@ final class TableMessageShape {
   /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
   /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256],
   /// or null where the triple is not conforming.
-  static int? quantizedBits(Uint8List sig, int at, int end) {
+  static int? quantizedBits(Uint8List sig, int at, int end, TableMessageShape s) {
     if (at + 12 > end) return null;
     final view = ByteData.sublistView(sig, at, at + 12);
     final f = Float32List(3);
@@ -257,10 +263,14 @@ final class TableMessageShape {
     }
     var count = values.ceil();
     var width = 0;
+    final kept = count;
     while (count != 0) {
       width++;
       count >>= 1;
     }
+    s.qMin = f[0];
+    s.qDelta = delta;
+    s.qCount = kept;
     return width;
   }
 

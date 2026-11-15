@@ -44,7 +44,10 @@ end
 local function checkRead(name, bytes, bits, initial, want)
   local r = serialize.ReadStream.new(bytes)
   check(d["Read" .. name](r, initial), "Read" .. name)
-  check(r:bitsProcessed() == bits, name .. " consumed bits")
+  -- The one-packet read ends with the runtime's end check, which consumes the
+  -- final byte's unused bits (SPEC §5), so the cursor rests on the byte after
+  -- the object.
+  check(r:bitsProcessed() == math.ceil(bits / 8) * 8, name .. " consumed bits")
   check(deepEqual(initial, want), name .. " decoded value")
 end
 

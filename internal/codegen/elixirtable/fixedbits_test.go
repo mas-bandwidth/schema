@@ -22,9 +22,8 @@ func TestFixedBitsPastWidthRefuses(t *testing.T) {
 	bin := elixirBinary(t)
 	const schema = "package bitsprobe\nfixed table Root { v bits(6)\n w uint8 }"
 	body := `
-    header = Bitsprobe.ProbeFixed.root_fixed_save([])
     wire = Bitsprobe.ProbeFixed.root_fixed_save([%Bitsprobe.Root{v: 63, w: 7}])
-    at = byte_size(header) + 8
+    at = Bitsprobe.ProbeFixed.root_fixed_measure(0) + 8
     <<pre::binary-size(at), 63, 0, 0, 0, rest::binary>> = wire
     {:ok, [value], _} = Bitsprobe.ProbeFixed.root_fixed_load(wire)
     check(value.v == 63, "2^N - 1 did not load")
@@ -67,8 +66,7 @@ func TestFixedAbsentOptionalBoolIsNotRefused(t *testing.T) {
 	bin := elixirBinary(t)
 	const schema = "package boolprobe\nfixed table Root { o ?bool\n w uint8 }"
 	body := `
-    header = Boolprobe.ProbeFixed.root_fixed_save([])
-    at = byte_size(header) + 8
+    at = Boolprobe.ProbeFixed.root_fixed_measure(0) + 8
     absent = Boolprobe.ProbeFixed.root_fixed_save([%Boolprobe.Root{o_present: false, w: 7}])
     <<pre::binary-size(at), 0, 0, rest::binary>> = absent
     result = Boolprobe.ProbeFixed.root_fixed_load(pre <> <<0, 0xAF>> <> rest)

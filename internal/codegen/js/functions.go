@@ -68,10 +68,10 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("  }\n  return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
 	}
 
-	g.pf("export function Read%s(stream, value) {\n", d.Name)
+	g.pf("export function Read%s(stream, value, nested) {\n", d.Name)
 	if d.Max == 0 {
 		g.pf("  value.type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
-		g.pf("  return true;\n}\n\n")
+		g.pf("  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)\n}\n\n")
 		return
 	}
 	scratch := g.numScratch()
@@ -81,14 +81,15 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	for _, v := range d.Variants {
 		g.pf("    case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
 		if v.Void() {
-			g.pf("      return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
+			g.pf("      return nested === true || stream.serializeEnd(); // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 			continue
 		}
 		g.addRef(v.Type, "Init"+v.Type, "Read"+v.Type)
 		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, MemberName(v.Name))
-		g.pf("      return Read%s(stream, value.%s);\n", v.Type, MemberName(v.Name))
+		g.pf("      if (!Read%s(stream, value.%s, true)) {\n        return false;\n      }\n", v.Type, MemberName(v.Name))
+		g.pf("      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)\n")
 	}
-	g.pf("  }\n  return true; // None\n}\n\n")
+	g.pf("  }\n  return nested === true || stream.serializeEnd(); // None\n}\n\n")
 }
 
 // emitStructFunctions emits MaxBits/MaxBytes, the Zero helper, and the split
@@ -118,13 +119,13 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 	g.pf("  return true;\n}\n\n")
 
+	g.pf("export function Read%s(stream, value, nested) {\n", st.Name)
 	if len(st.Items) > 0 {
-		g.pf("export function Read%s(stream, value) {\n", st.Name)
 		g.emitReadItems(st.Items, "  ")
 	} else {
-		g.pf("export function Read%s() {\n", st.Name)
+		g.pf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	}
-	g.pf("  return true;\n}\n\n")
+	g.pf("  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)\n}\n\n")
 }
 
 // emitInitFunction restores construction values while preserving every
@@ -923,10 +924,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			g.emitReadFlags(name, ref.WireBits, ind)
 		case *ir.Struct:
 			g.addRef(f.Type.Name, "Read"+f.Type.Name)
-			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+			g.call(ind, fmt.Sprintf("Read%s(stream, %s, true)", f.Type.Name, name), "")
 		case *ir.Union:
 			g.addRef(f.Type.Name, "Read"+f.Type.Name)
-			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+			g.call(ind, fmt.Sprintf("Read%s(stream, %s, true)", f.Type.Name, name), "")
 		}
 	}
 }
