@@ -162,6 +162,14 @@ function Reader:raw(n)
   return table.concat(parts)
 end
 
+-- skip steps the cursor over n bits without reading them: a fixed-width run is
+-- arithmetic, and a run past the bits the batch carries is damage (§3.3).
+function Reader:skip(n)
+  if n < 0 or self.off + n > self.nbits then return false end
+  self.off = self.off + n
+  return true
+end
+
 -- THE BIT WRITER: pieces are OR-ed into a byte table and joined once at the
 -- end (docs/PORT-LUA.md, BYTE BUFFERS). A measuring writer counts the same
 -- stream without allocating bytes.
@@ -517,6 +525,57 @@ local function read_scalar(R, d, e)
   return 0, false
 end
 
+-- A scalar kind's own storage width, and -1 where its payload is not a
+-- fixed-width value.
+local function fixed_kind_bits(kind)
+  if kind == 2 or kind == 6 or kind == 20 or kind == 25 then return 8 end
+  if kind == 3 or kind == 7 or kind == 21 or kind == 26 then return 16 end
+  if kind == 4 or kind == 8 or kind == 22 or kind == 27 then return 32 end
+  if kind == 5 or kind == 9 or kind == 23 or kind == 28 then return 64 end
+  if kind == 18 or kind == 19 or kind == 24 or kind == 29 then return 128 end
+  return -1
+end
+
+-- element_run_bits is the bits ONE element of an ARRAY occupies where that is
+-- a fixed number this reader can multiply, and -1 where the element has to be
+-- stepped one at a time (docs/SPEC-TABLES.md §3.3). A nested body, a union
+-- arm, an enum's variant and a node index each RESOLVE something, so they are
+-- walked; a float and a ranged or quantized element carry a VALUE CONDITION
+-- and are walked too. A ZERO is a real answer: a ranged element whose `min`
+-- equals its `max` rides no bits at all, and a zero-width run carries no value
+-- condition.
+local function element_run_bits(kind, elem, inner)
+  if kind ~= 14 then return -1 end
+  if elem == 13 or elem == 15 or elem == 30 or elem == 17 then return -1 end
+  if elem == 0 or elem == 32 then return 0 end
+  if elem == 10 or elem == 11 then return -1 end
+  if elem == 1 then return 1 end
+  if elem == 36 then return 64 end
+  local width = fixed_kind_bits(elem)
+  if width < 0 then return -1 end
+  if inner ~= nil then
+    if inner.packing == 1 then
+      local ranged = inner.bits or 0
+      if ranged == 0 then return 0 end
+      return -1
+    elseif inner.packing == 2 then
+      return -1
+    end
+  end
+  return width
+end
+
+-- skip_run steps over n elements of one fixed width in a single arithmetic
+-- step, refusing where the product runs past what a bit position holds. It is
+-- what keeps a wide count from buying a loop: a zero-width element under a
+-- count of 2^31 is six bytes of wire, and nothing in this form is superlinear
+-- in a batch's length (§3.3).
+local function skip_run(R, n, width)
+  if width == 0 then return true end
+  if width < 0 or n < 0 or n > math.maxinteger // width then return false end
+  return R:skip(n * width)
+end
+
 -- THE SKIP WALK IS BOUNDED AT DEPTH 128 (docs/SPEC-TABLES.md §3.3,
 -- message_skip_depth): the root body is depth 0, a nested body, an array or a
 -- keyed body, and a union arm are one level deeper, and past 128 levels the
@@ -627,6 +686,12 @@ skip_entry = function(R, e, ctx, depth)
     end
     if k == 14 and e.elem == 6 and not R:align() then return false end
     local inner = e.inner or { kind = e.elem }
+    -- A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3), and it has to be: a
+    -- ranged element whose `min` equals its `max` rides no bits at all, so a
+    -- count of 2^31 over one would otherwise buy 2^31 loop iterations for six
+    -- bytes of wire.
+    local run = element_run_bits(k, e.elem or inner.kind or 0, inner)
+    if run >= 0 then return skip_run(R, n, run) end
     -- A STRING, A TABLE, A NESTED ARRAY OR KEYED BODY, A UNION AND AN ENUM
     -- ARE WALKED ONE LEVEL DEEPER; a fixed-width scalar element rides at the
     -- array body's level (§3.3, message_skip_depth).
@@ -636,6 +701,7 @@ skip_entry = function(R, e, ctx, depth)
       or inner.kind == 30
       or inner.kind == 31
     for _ = 1, n do
+      local at = R.off
       if k == 16 then
         local kref, kok = R:get(ctx.refBits)
         if not kok or kref == 0 then return false end
@@ -651,6 +717,11 @@ skip_entry = function(R, e, ctx, depth)
         end
       end
       if not skip_entry(R, inner, ctx, walked and depth + 1 or depth) then return false end
+      -- A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3), even when
+      -- the remaining count could fit in the batch's padding. A fixed-width
+      -- arithmetic run was handled above; a walked element must make progress
+      -- on each step.
+      if R.off == at then return false end
     end
     return true
   elseif k == 31 then
