@@ -1593,7 +1593,7 @@ public final class MixedEntityVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanString();
+        String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -1673,7 +1673,7 @@ public final class MixedEntityVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanString();
+            String key = in.scanName();
             if (in.bad) {
                 return;
             }
@@ -1912,7 +1912,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '"') {
-                        String s = in.scanString();
+                        String s = in.scanName();
                         if ("None".equals(s)) {
                             v.weapon = 0;
                         } else if ("Fists".equals(s)) {
