@@ -491,6 +491,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
 
+  defp read_value(vocab, 16, shape, elem, r, depth),
+    do: read_keyed(vocab, shape, elem, r, depth)
+
   defp read_value(vocab, kind, shape, elem, r, _depth),
     do: read_value(vocab, kind, shape, elem, r)
 
@@ -534,7 +537,47 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  # A QUANTIZED INDEX ABOVE ITS COUNT IS DAMAGE (§3.3, SPEC.md §4.3), a
+  # skipped field's too: the width spells such an index whenever the count is
+  # not one less than a power of two, and the value it names is held to the
+  # finite rule a raw payload is held to.
+  defp read_float(%{packing: 2} = shape, r) do
+    {delta, count} = quant_facts(shape)
+
+    case get_bits(r, bit_length(count)) do
+      {:ok, index, rest} when index <= count ->
+        bits = dequantize_bits(index, shape.qmin, delta, count)
+
+        if (bits >>> 23 &&& 0xFF) == 0xFF do
+          :malformed
+        else
+          <<v::little-float-32>> = <<bits::little-32>>
+          {:ok, v, rest}
+        end
+
+      _ ->
+        :malformed
+    end
+  end
+
   defp read_float(_shape, _r), do: :malformed
+
+  # The step count and delta derive from the announced triple exactly as
+  # ir.TableMessageQuantization derives them, in float32.
+  defp quant_facts(%{qmin: lo, qmax: hi, qres: res}) do
+    delta = round_f32(hi - lo)
+    values = round_f32(delta / res)
+
+    values =
+      cond do
+        values == :nonfinite -> 1.0
+        not (values >= 1) -> 1.0
+        values > 4_294_967_040.0 -> 4_294_967_040.0
+        true -> values
+      end
+
+    {delta, trunc(Float.ceil(values))}
+  end
 
   # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
   # number at most the declared max and are well-formed UTF-8 with no NUL, or
@@ -551,11 +594,52 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  # THE COUNT'S BITS CAN SPELL MORE THAN max - min (§3.3), so a count above
+  # the announced maximum is damage, a skipped field's too.
   defp read_array(vocab, shape, elem, r, depth) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
+         n = shape.min + offset,
+         true <- n <= shape.max,
          {:ok, rest2} <- maybe_align(elem, rest) do
       next_depth = elem_depth(elem, depth)
-      read_elements(vocab, shape, elem, shape.min + offset, rest2, [], next_depth)
+      read_elements(vocab, shape, elem, n, rest2, [], next_depth)
+    else
+      _ -> :malformed
+    end
+  end
+
+  # AN ENUM-KEYED ARRAY (§3.2): the number of present slots, then one
+  # (key reference, element) pair per slot. A key that names no declared
+  # no-payload entry, and one that names the same entry twice, is damage
+  # (§3.3), a skipped field's too.
+  defp read_keyed(vocab, shape, elem, r, depth) do
+    case get_bits(r, bit_length(shape.max)) do
+      {:ok, n, rest} when n <= shape.max ->
+        read_keyed_pairs(vocab, elem, n, rest, [], MapSet.new(), elem_depth(elem, depth))
+
+      _ ->
+        :malformed
+    end
+  end
+
+  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth),
+    do: {:ok, Enum.reverse(acc), r}
+
+  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth) do
+    with {:ok, ref, rest} <- get_bits(r, vocab.ref_bits),
+         {:ok, entry} <- entry_at(vocab, ref),
+         true <- entry.kind == 0,
+         true <- entry.id < 0xFFFFFFFFFFFFFFFD,
+         false <- MapSet.member?(seen, entry.id) do
+      seen = MapSet.put(seen, entry.id)
+
+      case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
+        {:ok, value, rest2} ->
+          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, value} | acc], seen, depth)
+
+        :malformed ->
+          :malformed
+      end
     else
       _ -> :malformed
     end
