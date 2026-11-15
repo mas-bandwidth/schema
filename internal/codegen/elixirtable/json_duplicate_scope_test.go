@@ -9,9 +9,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// Field repeats preserve accepted values on a rejected shape. Map values use
-// their direct reader: wrong shapes are malformed, while inexact numbers place
-// a fresh default entry. Keyed duplicates count even before accepted placement.
+// Repeated keys, wrong shapes and inexact numbers refuse the whole read, as
+// the Go oracle does (docs/SPEC-TABLES.md §4, §16.2): the verdict and the
+// canonical value are compared, and the report keeps only unknown and widened.
 func TestJSONDuplicateScopeElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
@@ -59,7 +59,7 @@ defmodule Probe do
     case Duplicatescope.Table.save("Root", value) do
     {:ok, wire} when is_binary(wire) ->
      case Duplicatescope.Table.load("Root", wire) do
-      {:ok, loaded, _report} ->
+      {:ok, loaded, report} ->
        check(true, name <> " plain load report")
        check(Duplicatescope.Table.to_json("Root", loaded) == {:ok, want_json}, name <> " plain load canonical value")
       result -> check(false, name <> " plain load: " <> inspect(result))
@@ -67,7 +67,7 @@ defmodule Probe do
      store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
      zero = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
      case Duplicatescope.Table.load_retain("Root", wire, store, zero) do
-      {:ok, loaded, _report, _store} ->
+      {:ok, loaded, report, _store} ->
        check(true, name <> " retaining load report")
        check(Duplicatescope.Table.to_json("Root", loaded) == {:ok, want_json}, name <> " retaining load canonical value")
       result -> check(false, name <> " retaining load: " <> inspect(result))
@@ -114,7 +114,9 @@ end
 		if err != nil {
 			t.Fatalf("%s oracle writer: %v", row.name, err)
 		}
-		fmt.Fprintf(&probe, "Probe.row(%s, %t, %s, %%{unknown: %d, kind_mismatch: %d, clamped: %d, widened: %d, duplicate: %d}, %s)\n", elixirString(row.text), ok, elixirString(string(json)+"\n"), report.Unknown, 0, 0, report.Widened, 0, elixirString(row.name))
+		// The verdict is the refusal (docs/SPEC-TABLES.md §4): the report keeps
+		// only unknown and widened, and a refused read counts neither.
+		fmt.Fprintf(&probe, "Probe.row(%s, %t, %s, %%{unknown: %d, widened: %d}, %s)\n", elixirString(row.text), ok, elixirString(string(json)+"\n"), report.Unknown, report.Widened, elixirString(row.name))
 	}
 	probe.WriteString(`
 # Present enum None and an absent optional are distinct cook storage states.

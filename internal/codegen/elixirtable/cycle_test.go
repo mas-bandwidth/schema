@@ -16,13 +16,11 @@ import (
 
 // TestCyclicWireIsDamageElixir holds docs/SPEC-TABLES.md §3.1 and §4 at
 // both native entry points. The graph is the FINAL stored slots: a cycle
-// outside the root's reach is damage. A pointer "overwritten" by a second
-// write of its field is no longer a graph question: a field id written twice
-// in one body is damage (the framing row frame_repeat_last_wins), so that
-// fixture refuses as the engine refuses it. The forty-level diamond has 2^40
-// paths over 82 nodes; checking actual BEAM term sharing along one path
-// avoids expanding those paths in the test itself. There is no wall-clock
-// cutoff on the native probe.
+// outside the root's reach is damage, and so is a root that names its next
+// field twice, self then null: the same field id twice in one body refuses
+// the whole read, as the Go reference refuses it. The forty-level diamond
+// has 2^40 paths over 82 nodes; checking actual BEAM term sharing along one
+// path avoids expanding those paths in the test itself. There is no wall-clock cutoff on the native probe.
 func TestCyclicWireIsDamageElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
@@ -97,7 +95,7 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 	overwrittenPath := put("overwritten_self_cycle", overwritten)
 	var overwrittenReport tabletext.Report
 	if ok, err := tablewire.Decode(model, model.New(model.Lookup("ListNode")), overwritten, &overwrittenReport); ok || !tablewire.ReadRefusal(err) || !overwrittenReport.Refused {
-		t.Fatalf("overwritten_self_cycle oracle: a field written twice must refuse: ok=%v err=%v report=%+v", ok, err, overwrittenReport)
+		t.Fatalf("overwritten_self_cycle oracle: ok=%v err=%v report=%+v", ok, err, overwrittenReport)
 	}
 
 	var probe strings.Builder

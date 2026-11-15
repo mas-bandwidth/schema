@@ -27,8 +27,14 @@
 #           of being refused as malformed, so `lua / framing`
 #           (node_cycle_self, node_cycle_to_root, node_cycle_mid) goes red and
 #           nothing else; `wire` and `report` green.
+#   write   descriptor.lua's write-contract walk (D.refuse_invalid, docs/SPEC.md
+#           §5.1) answers nil: a value off its declaration is written instead
+#           of refused, so the three binary writers' surfaces go red
+#           (`lua / write-refusal`, `lua / write-refusal-fixed` and
+#           `lua / write-refusal-message`) and nothing else; `wire`, `report`
+#           and `write-refusal-json` green.
 #
-# usage: test/conformance/lua/negative-control <report|walk|framing|cycle>
+# usage: test/conformance/lua/negative-control <report|walk|framing|cycle|write>
 set -eu
 
 mode=$1
@@ -52,6 +58,10 @@ framing)
 cycle)
     source=internal/codegen/luatable/runtime/load.lua
     sed -e 's/^    if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.damaged = true end$/    if false then report.damaged = true end/' -e 's/^        if mark\[index\] == 1 then return wc_fail(c, "wire_damaged") end$/        if false then return wc_fail(c, "wire_damaged") end/' "$source" > "$out/runtime.lua"
+    ;;
+write)
+    source=internal/codegen/luatable/runtime/descriptor.lua
+    sed 's/^  local hit = invalid_in(T, desc, v, {}, zero_ok)$/  local hit = nil/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -90,14 +100,17 @@ report) want="framing retain retain-save " ; green="wire json-read cook-write" ;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle)  want="framing " ; green="wire report" ;;
+write)  want="write-refusal write-refusal-fixed write-refusal-message " ; green="wire report write-refusal-json" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
     cat "$out/log" >&2
     exit 1
 fi
+# the matrix's surface column is 14 wide, so a longer name (write-refusal-json)
+# runs straight into its verdict with no space between
 for surface in $green; do
-    if ! grep -qE "^$surface +pass" "$out/log"; then
+    if ! grep -qE "^$surface *pass" "$out/log"; then
         echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage did not leave $surface green" >&2
         cat "$out/log" >&2
         exit 1

@@ -76,16 +76,16 @@ Probe.check(function_exported?(T,:cook_from,4)==%t,"unit cook export")
 				}
 				fmt.Fprintf(&probe, `name=%q
 wire=Base.decode16!(%q,case: :lower)
-{:ok,value,_r}=T.load(name,wire)
-Probe.check(true,"declared forms wire")
+{:ok,value,r}=T.load(name,wire)
+Probe.check(r.reason=="","declared forms wire")
 {:ok,^wire}=T.save(name,value)
 `, name, hex.EncodeToString(wire))
 				if mixed {
 					if st.CarriesForm("json") {
 						fmt.Fprintf(&probe, `{:ok,text}=T.to_json(name,value)
 Probe.check(text==%q,"enabled parent JSON includes restricted child")
-{:ok,again,_r}=T.from_json(name,text)
-Probe.check(true,"enabled JSON read")
+{:ok,again,r}=T.from_json(name,text)
+Probe.check(r.reason=="","enabled JSON read")
 {:ok,^wire}=T.save(name,again)
 `, string(text)+"\n")
 					} else {

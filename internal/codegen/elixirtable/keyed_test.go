@@ -482,15 +482,20 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	files := generateElixir(t, u)
 	retainFiles := generateElixir(t, retainUnit)
 	files["RetainTable.ex"] = retainFiles["Table.ex"]
-	// both units compile whole and together: a Table names its unit's fixed
-	// modules (a fixed root's save is the fixed form's), and the retaining
-	// unit's modules sit in their own namespace beside the plain unit's
-	for name, data := range retainFiles {
-		if name != "Table.ex" {
-			files["Retain"+name] = data
+	// The retaining unit keeps Cell a fixed root, so its Table module calls
+	// its own fixed module: load that module and what it stands on beside it,
+	// renamed apart from the V2 unit's files (they sort in load order).
+	for _, name := range []string{BuildVersionModule + ".ex", "FixedRuntime.ex", "PacketRuntime.ex", "Probe.ex", "Probe" + FixedModuleSuffix + ".ex"} {
+		data, ok := retainFiles[name]
+		if !ok {
+			t.Fatalf("the retaining unit emitted no %s", name)
 		}
+		files["Retain"+name] = data
 	}
 
+	// V2's Cfg is a fixed root, so its Table load answers a form-1 file
+	// previous_form; the keyed-slot rule is the variable form's, read through
+	// the strict variable_load.
 	probe := fmt.Sprintf(`
 mutant = Base.decode16!(%q, case: :lower)
 bad_key = Base.decode16!(%q, case: :lower)
@@ -535,7 +540,7 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 		hex.EncodeToString(badKey),
 	)
 
-	out, err := runCompleteFilesProbe(t, files, probe)
+	out, err := runArmProbe(t, elixirBinary(t), files, probe)
 	if err != nil || !strings.Contains(out, "UNKNOWN_KEYED_SLOT_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("unknown keyed slot probe failed: %v\n%s", err, out)
 	}
@@ -554,7 +559,7 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 	badFiles := make(map[string][]byte, len(files))
 	maps.Copy(badFiles, files)
 	badFiles["Table.ex"] = []byte(strings.ReplaceAll(tableEx, target, sabotage))
-	if badOut, badErr := runCompleteFilesProbe(t, badFiles, probe); badErr == nil {
+	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
 		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
 	}
 }

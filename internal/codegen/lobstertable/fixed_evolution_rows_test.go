@@ -478,7 +478,7 @@ func TestLobsterFixedRowText(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
 	t.Parallel()
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n")
-	clean := rowSave(t, u, "T", "r[0].S = \"ab\"\nr[0].SLength = 2\nr[0].W = \"\\x41\\x00\\x42\\x00\"\nr[0].WLength = 2\n", 1)
+	clean := rowSave(t, u, "T", "r[0].S = \"ab\"\nr[0].SLength = 2\n", 1)
 	body := len(clean) - 8
 	if body != rowBody(clean, rowEntry(t, u, "T").Record, 0) {
 		t.Fatalf("the record body is not the last 8 bytes")

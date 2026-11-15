@@ -51,6 +51,12 @@ defmodule Probe do
   def counters(r), do: {r.unknown, r.widened}
 end
 
+# A2's Root is a fixed table, so the Table load answers a form-1 file
+# previous_form, as reports.txt pins; the arm rules are the variable form's,
+# read here through its strict variable_load.
+{tag, reason, _} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_moved_width") + `))
+Probe.check({tag, reason} == {:error, :previous_form}, "a form-1 file at a fixed root: #{inspect({tag, reason})}")
+
 {:ok, v, r} = Tbla2.Table.variable_load("Root", File.read!(` + wire("a1_arm_moved_width") + `))
 Probe.check(v["value"] == {"a", 7}, "the widened arm lands the writer's value: #{inspect(v)}")
 Probe.check(Probe.counters(r) == {0, 1}, "one widened, nothing else: #{inspect(r)}")
@@ -102,9 +108,14 @@ IO.puts("ok")
 			"arm_framing_damaged?(a, inner) ->",
 			"false and arm_framing_damaged?(a, inner) ->",
 		}}, "(FunctionClauseError) no function clause matching in Tbla2.Table.float_of/3"},
+		// The slot's own read and the strict walk's pointer bound both refuse
+		// it, so the witness plants both back.
 		{"slot out of range", stream, slotProbe, [][2]string{{
 			":out_of_range -> {nil, throw(:wire_damaged)}",
 			":out_of_range -> {nil, report}",
+		}, {
+			"if Enum.any?(Map.keys(names), &(&1 > last)), do: throw(:wire_damaged)",
+			"_ = last",
 		}}, ""},
 	}
 	for _, c := range cases {
