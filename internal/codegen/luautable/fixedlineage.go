@@ -207,3 +207,5 @@ func emitLineage(g *luau.Gen, root *ir.Struct, own FixedLineageEntry) {
 	g.Pf("})\n")
 	g.Pf("%s.%sFixedFloor = %d\n\n", g.Self, name, floor)
 }
+
+// throwaway: measuring the PR gate on a one-line Luau diff (do not merge)
