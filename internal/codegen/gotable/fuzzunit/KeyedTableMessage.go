@@ -93,6 +93,12 @@ func TeamConfigMeasureMessages(values []*TeamConfig, report *TableReport) int64 
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableReport) int64 {
@@ -326,6 +332,12 @@ func GunnerConfigMeasureMessages(values []*GunnerConfig, report *TableReport) in
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -570,6 +582,12 @@ func TurretConfigMeasureMessages(values []*TurretConfig, report *TableReport) in
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -879,6 +897,12 @@ func HullConfigMeasureMessages(values []*HullConfig, report *TableReport) int64 
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -1268,6 +1292,12 @@ func KeyedConfigMeasureMessages(values []*KeyedConfig, report *TableReport) int6
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8

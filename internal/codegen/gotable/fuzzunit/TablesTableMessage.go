@@ -118,6 +118,12 @@ func RootConfigMeasureMessages(values []*RootConfig, report *TableReport) int64 
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func RootConfigSaveMessages(values []*RootConfig, buffer []byte, report *TableReport) int64 {
@@ -439,6 +445,12 @@ func WeaponConfigMeasureMessages(values []*WeaponConfig, report *TableReport) in
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -998,6 +1010,12 @@ func LoadoutConfigMeasureMessages(values []*LoadoutConfig, report *TableReport) 
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -1565,6 +1583,12 @@ func ProfileConfigMeasureMessages(values []*ProfileConfig, report *TableReport) 
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
