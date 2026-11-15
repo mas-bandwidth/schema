@@ -328,6 +328,12 @@ func expectedStructBody(t *testing.T, u *ir.Unit, slots map[string]uint64, st *i
 func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, raw any) (string, bool) {
 	t.Helper()
 	switch {
+	case f.KeyEnum != "":
+		obj, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("keyed field %s holds %T, want an object keyed by variant name", f.Name, raw)
+		}
+		return expectedKeyedValue(t, u, slots, f, obj), true
 	case f.Array != ir.ArrayNone:
 		arr, ok := raw.([]any)
 		if !ok {
@@ -344,6 +350,13 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 				return "", false
 			}
 			return expectedEnumSlot(t, slots, e, name), true
+		}
+		if st, ok := f.Type.Ref.(*ir.Struct); ok {
+			obj, ok := raw.(map[string]any)
+			if !ok {
+				t.Fatalf("named type field %s holds %T, want an object", f.Name, raw)
+			}
+			return expectedStructBody(t, u, slots, st, obj), true
 		}
 		t.Fatalf("named field %s refers to %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
 	case f.Type.Kind == ir.TBytes:
@@ -388,6 +401,62 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 	}
 	t.Fatalf("field %s of kind %v is not a kind this card's fixed roots carry", f.Name, f.Type.Kind)
 	return "", false
+}
+
+// expectedKeyedValue renders one enum-keyed array's decoded value: the
+// `{key_slot, element}` pairs for its PRESENT slots in ascending variant
+// ordinal, which is the order the reference's writer emits them and the order
+// LoadMessages returns them. A slot left at its default is elided, so a name
+// the pins omit rides no pair.
+func expectedKeyedValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, obj map[string]any) string {
+	t.Helper()
+	ke := f.KeyEnumRef
+	var parts []string
+	for i := range ke.Variants {
+		name := ke.Variants[i]
+		raw, ok := obj[name]
+		if !ok {
+			continue
+		}
+		keyEntry := ir.TableVocabularyEntry{Id: ir.TableWireId(ke.VariantWireName(i))}
+		keySlot, ok := slots[keyEntry.Key()]
+		if !ok {
+			t.Fatalf("enum %s variant %s has no announced slot", ke.Name, name)
+		}
+		parts = append(parts, fmt.Sprintf("{%d, %s}", keySlot, expectedKeyedElement(t, u, slots, f, raw)))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// expectedKeyedElement renders one keyed slot's element: a table as its body,
+// an integer as its number, and an enum as its variant's reference.
+func expectedKeyedElement(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, raw any) string {
+	t.Helper()
+	if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+		obj, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("keyed field %s element holds %T, want an object", f.Name, raw)
+		}
+		return expectedStructBody(t, u, slots, st, obj)
+	}
+	switch f.Type.Kind {
+	case ir.TInt:
+		n, ok := raw.(json.Number)
+		if !ok {
+			t.Fatalf("keyed field %s element holds %T, want a number", f.Name, raw)
+		}
+		return n.String()
+	case ir.TNamed:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			name, ok := raw.(string)
+			if !ok {
+				t.Fatalf("keyed field %s element holds %T, want a variant name", f.Name, raw)
+			}
+			return expectedEnumSlot(t, slots, e, name)
+		}
+	}
+	t.Fatalf("keyed field %s element of kind %v is not a kind this card's keyed rows carry", f.Name, f.Type.Kind)
+	return ""
 }
 
 // expectedArrayValue renders one fixed array's decoded elements: the element is
