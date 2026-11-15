@@ -1,0 +1,40 @@
+name: python leg nightly
+
+# THE PYTHON LEG ON macOS (docs/PORT-PYTHON.md): the same `make test-python`
+# as python-leg.yml, on a GitHub-hosted macOS runner, nightly and on
+# dispatch. It does not fit a push or pull request's two minutes there, so it
+# is off those events (internal/ci/nightly_test.go); python-leg.yml keeps the
+# fleet's Linux leg on every push and pull request that touches the leg.
+#
+# A GITHUB-HOSTED RUNNER: the job runs the repository's own code against
+# pinned tools and holds no secret.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: make test-python (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/python
+      - name: make test-python
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" test-python
