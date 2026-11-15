@@ -172,10 +172,13 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 		i, named := byID[c.id]
 		switch {
 		case !named:
+			// A FIELD THE READER ADDED, or one the older layout never held:
+			// its declared default stands (§21.2).
 			d.report.Unknown++ // a field the reader no longer declares (§4)
-		case inst.Fields[i].Def.Deprecated:
-			// the reader yields its declared default out of a deprecated slot
 		default:
+			// A DEPRECATED FIELD IS CARRIED LIKE ANY FIELD (docs/SPEC-TABLES.md
+			// §3.4, §22.6; docs/rulings.json fixed-deprecated-field-is-carried):
+			// the older writer supplied it, so the reader lands the stored value.
 			if reason := d.field(c, b[off:off+c.size], &inst.Fields[i]); reason != "" {
 				return reason
 			}

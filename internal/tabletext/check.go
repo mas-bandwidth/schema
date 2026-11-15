@@ -45,9 +45,19 @@ func (m *Model) CheckValue(inst *Instance) error {
 // LOAD DOES NOT JUDGE A MASK AGAINST A RANGE), so a file an older build read
 // writes back byte for byte. A FILE writer also refuses a zero byte or unit
 // (docs/SPEC.md §5.1 row 8): its reader calls that text_ill_formed, so a
-// writer never produces bytes its own reader refuses.
+// writer never produces bytes its own reader refuses. The VARIABLE form never
+// writes a deprecated field, so its walk skips it (§3.4, §22.6).
 func (m *Model) CheckFileValue(inst *Instance) error {
 	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true, binaryText: true})
+}
+
+// CheckFixedValue is CheckFileValue for the FIXED form, which CARRIES a
+// deprecated field: the reader lands the stored value and the writer stores
+// what the value holds, so it is checked like any other field
+// (docs/SPEC-TABLES.md §3.4, §22.6; docs/rulings.json
+// fixed-deprecated-field-is-carried).
+func (m *Model) CheckFixedValue(inst *Instance) error {
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true, binaryText: true, fixedForm: true})
 }
 
 // CheckBinaryValue is CheckValue for the binary writers that do not carry a
@@ -59,12 +69,14 @@ func (m *Model) CheckBinaryValue(inst *Instance) error {
 }
 
 // checkWalk is one CheckValue walk: the instances already asked, whether the
-// writer carries a flags mask whole, and whether a zero byte or unit is
-// ill-formed text for this writer.
+// writer carries a flags mask whole, whether a zero byte or unit is
+// ill-formed text for this writer, and whether this is the FIXED form, whose
+// writer carries a deprecated field and so checks it like any other.
 type checkWalk struct {
 	seen       map[*Instance]bool
 	wholeMasks bool
 	binaryText bool
+	fixedForm  bool
 }
 
 func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
@@ -75,7 +87,10 @@ func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
 	guards := Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
-		if fv.Def.Deprecated {
+		// THE VARIABLE, MESSAGE AND TEXT FORMS NEVER WRITE A DEPRECATED FIELD
+		// (docs/SPEC-TABLES.md §3.4, §22.6): their walks skip it. The fixed
+		// form carries it, so its walk checks it like any other field.
+		if fv.Def.Deprecated && !seen.fixedForm {
 			continue
 		}
 		if terms, guarded := guards[fv.Def.Name]; guarded && !inst.GuardHolds(terms) {

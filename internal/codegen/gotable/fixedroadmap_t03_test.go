@@ -527,10 +527,11 @@ fixed table Lineage
 
 // t03GoR20 holds R20 to SPEC-TABLES §21.2, clause by clause, on the emitted
 // sites: an added field lands the prefill's declared default; a deprecated field
-// is dropped and counted once per plan through the compile census; a narrower
-// integer or float is widened exactly and counts widened; a shorter array or
-// string lands with the reader's slack as the template's zeros; an older enum's
-// ordinals are the reader's, its list a prefix.
+// is carried like any field (§3.4, §22.6), so an older writer's value in its slot
+// is landed rather than counted as unknown; a narrower integer or float is
+// widened exactly and counts widened; a shorter array or string lands with the
+// reader's slack as the template's zeros; an older enum's ordinals are the
+// reader's, its list a prefix.
 func t03GoR20(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")

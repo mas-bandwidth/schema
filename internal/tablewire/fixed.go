@@ -85,7 +85,7 @@ func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	if !ir.TableFixedEmitted(m.Unit, inst.Def) {
 		return nil, &FixedRefusal{Reason: FixedReasonLayoutUnsupported}
 	}
-	if err := m.CheckFileValue(inst); err != nil {
+	if err := m.CheckFixedValue(inst); err != nil {
 		return nil, err
 	}
 	st := inst.Def
@@ -111,25 +111,17 @@ func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	return out, nil
 }
 
-// encodeFixedBody writes one body at its constant offsets. A DEPRECATED
-// FIELD'S SLOT CARRIES ITS DECLARED DEFAULT whatever the value holds (§3.4,
-// DEPRECATED SLOT), so its bytes come from a freshly reset field.
+// encodeFixedBody writes one body at its constant offsets. A DEPRECATED FIELD
+// IS CARRIED LIKE ANY FIELD (docs/SPEC-TABLES.md §3.4, §22.6; docs/rulings.json
+// fixed-deprecated-field-is-carried): the writer stores what the value holds.
 func encodeFixedBody(m *tabletext.Model, b []byte, inst *tabletext.Instance) error {
-	var fresh *tabletext.Instance
 	off := int64(0)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
-		f := fv.Def
-		if f.Deprecated {
-			if fresh == nil {
-				fresh = m.New(inst.Def)
-			}
-			fv = &fresh.Fields[i]
-		}
 		if err := encodeFixedField(m, b[off:], fv); err != nil {
 			return err
 		}
-		off += ir.TableFixedFieldBytes(f)
+		off += ir.TableFixedFieldBytes(fv.Def)
 	}
 	return nil
 }
@@ -367,12 +359,11 @@ func (d *fixedDecoder) body(b []byte, inst *tabletext.Instance) string {
 		fv := &inst.Fields[i]
 		f := fv.Def
 		n := ir.TableFixedFieldBytes(f)
-		// THE READER YIELDS THE DECLARED DEFAULT OUT OF A DEPRECATED SLOT, and
-		// nothing counts (§3.4, DEPRECATED SLOT): the field keeps its reset value
-		if !f.Deprecated {
-			if reason := d.field(b[off:off+n], fv); reason != "" {
-				return reason
-			}
+		// A DEPRECATED FIELD IS CARRIED LIKE ANY FIELD (docs/SPEC-TABLES.md
+		// §3.4, §22.6): the reader lands the stored value and checks it as it
+		// checks any field of its kind.
+		if reason := d.field(b[off:off+n], fv); reason != "" {
+			return reason
 		}
 		off += n
 	}

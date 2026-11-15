@@ -1,14 +1,18 @@
 package gotable
 
-// A DEPRECATED FIELD'S SLOT CARRIES ITS DECLARED DEFAULT ON THE FIXED FORM
-// (docs/SPEC-TABLES.md §3.4, DEPRECATED SLOT), whatever the field's supported
-// fixed shape: scalar, array, optional, text/bytes, or nested record. The
-// writer must not leak live values, and both the identity and compiled reader
-// plans must ignore endpoint bytes and restore the same default image.
+// A DEPRECATED FIELD IN THE FIXED FORM IS CARRIED (docs/SPEC-TABLES.md §3.4,
+// §21.2, §22.6; docs/rulings.json fixed-deprecated-field-is-carried): it reads
+// and writes like any other field, whatever the field's supported fixed shape.
+// The declared default applies only where the record does not supply the field.
 
 import "testing"
 
-func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
+// TestFixedDeprecatedFieldIsCarried covers every fixed shape whose deprecated
+// slot the writer used to fill from the declared default: scalar, array,
+// optional, text, bytes, nested record, and a ranged scalar. Every shape holds
+// a non-default value and the read lands it, the write stores it, and a value
+// the field's kind refuses is refused.
+func TestFixedDeprecatedFieldIsCarried(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
 
@@ -34,55 +38,40 @@ fixed table T
 `, `package probe
 
 import (
-	"encoding/binary"
+	"bytes"
 	"testing"
 	"unsafe"
 )
 
-const wantB int64 = 4294967303 // 0x1_00000007: both four-byte lanes carry bits
-
-func setRemoteBytes(body []byte) {
-	binary.LittleEndian.PutUint64(body[4:], 0x0000000900003039)
-	body[12] = 77
-	binary.LittleEndian.PutUint16(body[13:], 0x1111)
-	binary.LittleEndian.PutUint16(body[15:], 0x2222)
-	body[17] = 1
-	binary.LittleEndian.PutUint16(body[18:], 0xbeef)
-	binary.LittleEndian.PutUint32(body[20:], 2)
-	body[24], body[25] = 0x33, 0x44
-	binary.LittleEndian.PutUint32(body[27:], 1)
-	body[31], body[32], body[33], body[34] = 'z', 0xff, 0xff, 0xff
-	binary.LittleEndian.PutUint32(body[35:], 1)
-	body[39], body[40], body[41], body[42] = 'q', 0xff, 0xff, 0xff
-	body[43] = 0x55
-	binary.LittleEndian.PutUint16(body[44:], 0x4567)
-	body[50] = 99
-}
-
-func assertDeprecatedDefaults(t *testing.T, got T) {
+func assertCarried(t *testing.T, got T) {
 	t.Helper()
-	if got.B != wantB || got.C != 0 || got.Arr != ([2]uint16{}) {
-		t.Fatalf("scalar/array defaults: %+v", got)
+	if got.B != 99 || got.C != 9 || got.Arr != ([2]uint16{0x1111, 0x2222}) {
+		t.Fatalf("carried scalar/array fields: %+v", got)
 	}
-	if got.OptPresent || got.Opt != 0 {
-		t.Fatalf("optional default: present=%v value=%d", got.OptPresent, got.Opt)
+	if !got.OptPresent || got.Opt != 0xbeef {
+		t.Fatalf("carried optional: present=%v value=%d", got.OptPresent, got.Opt)
 	}
-	if got.CountedCount != 0 || got.Counted != ([3]uint8{}) {
-		t.Fatalf("counted-array default: count=%d values=%v", got.CountedCount, got.Counted)
+	if got.CountedCount != 2 || got.Counted[0] != 0x33 || got.Counted[1] != 0x44 {
+		t.Fatalf("carried counted array: count=%d values=%v", got.CountedCount, got.Counted)
 	}
-	if got.TextLength != 2 || string(got.Text[:2]) != "xy" || got.Text[2] != 0 || got.Text[3] != 0 {
-		t.Fatalf("string default: length=%d bytes=%v", got.TextLength, got.Text)
+	if got.TextLength != 1 || got.Text[0] != 'q' {
+		t.Fatalf("carried string: length=%d bytes=%v", got.TextLength, got.Text)
 	}
-	if got.BlobLength != 2 || string(got.Blob[:2]) != "ab" || got.Blob[2] != 0 || got.Blob[3] != 0 {
-		t.Fatalf("bytes default: length=%d bytes=%v", got.BlobLength, got.Blob)
+	if got.BlobLength != 1 || got.Blob[0] != 'r' {
+		t.Fatalf("carried bytes: length=%d bytes=%v", got.BlobLength, got.Blob)
 	}
-	if got.Child.Retired != 7 || got.Child.Value != 9 {
-		t.Fatalf("nested-record default: %+v", got.Child)
+	if got.Child.Retired != 0x88 || got.Child.Value != 0x4567 {
+		t.Fatalf("carried nested record: %+v", got.Child)
+	}
+	if got.RetiredRange != 5 {
+		t.Fatalf("carried ranged field: %d", got.RetiredRange)
+	}
+	if got.A != 1 || got.D != 4 || got.LiveBounded != 6 {
+		t.Fatalf("live fields changed: %+v", got)
 	}
 }
 
-func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
-	t.Parallel()
+func held() T {
 	var v T
 	TReset(&v)
 	v.A = 1
@@ -96,60 +85,53 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	v.BlobLength, v.Blob[0] = 1, 'r'
 	v.Child.Retired, v.Child.Value = 0x88, 0x4567
 	v.D = 4
-	// These retired values violate the old shape's bounds. They must not
-	// refuse a save because the writer emits the declared defaults instead.
-	v.CountedCount = 4
-	v.TextLength = 5
-	v.BlobLength = 5
-	v.RetiredRange = 9
-	v.LiveBounded = 6 // Keeps FixedCheckBody present for this record.
+	v.RetiredRange = 5
+	v.LiveBounded = 6
+	return v
+}
+
+func TestFixedDeprecatedFieldIsCarried(t *testing.T) {
+	t.Parallel()
+	v := held()
 	buf := make([]byte, TFixedMeasure(1))
 	if n := TFixedSave([]T{v}, buf); n != int64(len(buf)) {
 		t.Fatalf("save %d, want %d", n, len(buf))
 	}
-	body := buf[len(buf)-int(TFixedRecordBytes)+8:]
-	if got := int64(binary.LittleEndian.Uint64(body[4:])); got != wantB {
-		t.Fatalf("writer wrote %d in declared-default scalar slot, want %d", got, wantB)
+	var def T
+	TReset(&def)
+	dbuf := make([]byte, TFixedMeasure(1))
+	if n := TFixedSave([]T{def}, dbuf); n != int64(len(dbuf)) {
+		t.Fatalf("default save %d, want %d", n, len(dbuf))
 	}
-	if body[12] != 0 || string(body[13:17]) != "\x00\x00\x00\x00" || string(body[17:20]) != "\x00\x00\x00" || string(body[20:27]) != "\x00\x00\x00\x00\x00\x00\x00" {
-		t.Fatalf("writer leaked deprecated scalar/array/optional/count values: %v", body[12:27])
-	}
-	if binary.LittleEndian.Uint32(body[27:]) != 2 || string(body[31:35]) != "xy\x00\x00" {
-		t.Fatalf("writer did not write deprecated string default: %v", body[27:35])
-	}
-	if binary.LittleEndian.Uint32(body[35:]) != 2 || string(body[39:43]) != "ab\x00\x00" {
-		t.Fatalf("writer did not write deprecated bytes default: %v", body[35:43])
-	}
-	if body[43] != 7 || binary.LittleEndian.Uint16(body[44:]) != 9 {
-		t.Fatalf("writer did not write nested-record defaults: %v", body[43:46])
-	}
-	if got := int32(binary.LittleEndian.Uint32(body[0:])); got != 1 {
-		t.Fatalf("writer changed live field a: %d, want 1", got)
-	}
-	if got := int32(binary.LittleEndian.Uint32(body[46:])); got != 4 {
-		t.Fatalf("writer changed live field d: %d, want 4", got)
-	}
-	if body[50] != 3 || body[51] != 6 {
-		t.Fatalf("writer changed retired/live ranged values: %v %v", body[50], body[51])
+	if bytes.Equal(buf, dbuf) {
+		t.Fatal("the writer stored the declared defaults instead of the held values")
 	}
 
-	setRemoteBytes(body)
 	back := make([]T, 1)
 	plan := make([]TableFixedEntry, TFixedPlanMax)
 	var r TableReport
 	if n := TFixedLoad(back, buf, plan, &r); n != 1 || r != (TableReport{}) {
-		t.Fatalf("identity load %d, report %+v", n, r)
+		t.Fatalf("load %d, report %+v", n, r)
 	}
-	assertDeprecatedDefaults(t, back[0])
-	if back[0].A != 1 || back[0].D != 4 {
-		t.Fatalf("identity plan changed live fields: %+v", back[0])
+	assertCarried(t, back[0])
+
+	again := make([]byte, TFixedMeasure(1))
+	if n := TFixedSave(back, again); n != int64(len(again)) {
+		t.Fatalf("re-save %d, want %d", n, len(again))
+	}
+	if !bytes.Equal(buf, again) {
+		t.Fatalf("the carried fields did not write back byte for byte:\nfirst  %x\nsecond %x", buf, again)
 	}
 
+	// THE COMPILED LINEAGE PLAN carries them too: the identity-shaped plan is
+	// compiled from the layout's own bytes and its uncovered destinations are
+	// the reset image, so a deprecated destination the plan leaves uncovered
+	// would land the declared default here.
 	layout, why := tableFixedParseLayout(TFixedLayout)
 	if why != "" {
 		t.Fatalf("parse layout: %s", why)
 	}
-	compiled := make([]TableFixedEntry, TFixedPlanMax)
+	compiled := make([]TableFixedEntry, 2*len(TFixedDst))
 	var compiledReport TableReport
 	count := tableFixedCompile(layout, TFixedLayout, TFixedDst, compiled, &compiledReport)
 	if count < 0 {
@@ -160,23 +142,38 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 	for _, h := range tableFixedHoles(compiled, count, uint32(len(TFixedResetImage))) {
 		copy(dst[h.Off:h.Off+h.Size], TFixedResetImage[h.Off:h.Off+h.Size])
 	}
-	if why := tableFixedRun(compiled, count, body, dst, &compiledReport); why != "" {
+	if why := tableFixedRun(compiled, count, buf[len(buf)-int(TFixedRecordBytes)+8:], dst, &compiledReport); why != "" {
 		t.Fatalf("compiled plan run: %s", why)
 	}
-	assertDeprecatedDefaults(t, *lineage)
-	if lineage.A != 1 || lineage.D != 4 {
-		t.Fatalf("compiled plan changed live fields: %+v", lineage)
+	assertCarried(t, *lineage)
+}
+
+func TestFixedDeprecatedFieldIsCarriedRefusesLikeAnyField(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name  string
+		spoil func(v *T)
+	}{
+		{"ranged out of range", func(v *T) { v.RetiredRange = 9 }},
+		{"counted count past its bound", func(v *T) { v.CountedCount = 4 }},
+		{"string length past its capacity", func(v *T) { v.TextLength = 5 }},
+		{"bytes length past its capacity", func(v *T) { v.BlobLength = 5 }},
+	} {
+		v := held()
+		c.spoil(&v)
+		buf := make([]byte, TFixedMeasure(1))
+		if n := TFixedSave([]T{v}, buf); n != -1 {
+			t.Errorf("%s: save returned %d, want -1", c.name, n)
+		}
 	}
 }
 `)
 }
 
-// A DEPRECATED NAMED-SHAPE FIELD (enum, flags, keyed array) is the same rule
-// (§3.4 DEPRECATED SLOT): FixedSave writes the declared default, FixedLoad
-// ignores endpoint bytes and yields the declared default. The other scalar and
-// container shapes are covered by TestFixedDeprecatedSlotIsTheDeclaredDefault
-// above; these are the named-shape leaves the const op cannot land.
-func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {
+// A DEPRECATED NAMED-SHAPE FIELD (enum, flags, keyed array) is carried by the
+// same rule (§3.4, §22.6): FixedSave stores the held value, FixedLoad lands it,
+// and a deprecated enum ordinal past its set is refused like any ordinal.
+func TestFixedDeprecatedFieldIsCarriedEnumFlagsKeyed(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
 
@@ -215,7 +212,7 @@ func uBody(buf []byte) []byte {
 	return buf[len(buf)-int(UFixedRecordBytes)+8:]
 }
 
-func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {
+func TestFixedDeprecatedFieldIsCarriedEnumFlagsKeyed(t *testing.T) {
 	t.Parallel()
 	var p, q U
 	UReset(&p)
@@ -233,26 +230,22 @@ func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {
 		t.Fatalf("save q: %d", n)
 	}
 	bp, bq := uBody(bufP), uBody(bufQ)
-	if !bytes.Equal(bp[uEPos:uEPos+uESize], bq[uEPos:uEPos+uESize]) {
-		t.Fatalf("writer leaked enum live value")
+	if bytes.Equal(bp[uEPos:uEPos+uESize], bq[uEPos:uEPos+uESize]) {
+		t.Fatalf("writer stored the default enum instead of the held value")
 	}
-	if !bytes.Equal(bp[uFPos:uFPos+uFSize], bq[uFPos:uFPos+uFSize]) {
-		t.Fatalf("writer leaked flags live value")
+	if bytes.Equal(bp[uFPos:uFPos+uFSize], bq[uFPos:uFPos+uFSize]) {
+		t.Fatalf("writer stored the default flags instead of the held value")
 	}
-	if !bytes.Equal(bp[uKeysPos:uKeysPos+uKeysSize], bq[uKeysPos:uKeysPos+uKeysSize]) {
-		t.Fatalf("writer leaked keyed-array live value")
+	if bytes.Equal(bp[uKeysPos:uKeysPos+uKeysSize], bq[uKeysPos:uKeysPos+uKeysSize]) {
+		t.Fatalf("writer stored the default keyed array instead of the held value")
 	}
-	if bp[uHPos] != 0 || bq[uHPos] != 0 {
-		t.Fatalf("writer leaked deprecated uint8: %d %d", bp[uHPos], bq[uHPos])
+	if bp[uHPos] != 0x77 || bq[uHPos] != 0x99 {
+		t.Fatalf("writer stored the default uint8 instead of the held value: %d %d", bp[uHPos], bq[uHPos])
 	}
 	if int32(binary.LittleEndian.Uint32(bp[uGPos:])) != 3 || int32(binary.LittleEndian.Uint32(bq[uGPos:])) != 5 {
 		t.Fatalf("live field corrupted")
 	}
 
-	copy(bp[uEPos:uEPos+uESize], []byte{7})
-	binary.LittleEndian.PutUint64(bp[uFPos:uFPos+uFSize], 0x5555555555555555)
-	binary.LittleEndian.PutUint16(bp[uKeysPos:], 0x1234)
-	bp[uHPos] = 0xee
 	back := make([]U, 1)
 	plan := make([]TableFixedEntry, UFixedPlanMax)
 	var r TableReport
@@ -260,16 +253,21 @@ func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {
 		t.Fatalf("load %d, report %+v", n, r)
 	}
 	got := back[0]
-	if got.E != ColorGreen || got.F != 0 || got.H != 0 {
-		t.Fatalf("named-shape defaults: e=%v f=%v h=%d", got.E, got.F, got.H)
+	if got.E != ColorRed || got.F != BitsOne || got.H != 0x77 {
+		t.Fatalf("carried named shapes: e=%v f=%v h=%d", got.E, got.F, got.H)
 	}
-	for i := range got.Keys {
-		if got.Keys[i] != 0 {
-			t.Fatalf("keyed-array default: %v", got.Keys)
-		}
+	if got.Keys[0] != 0xaaaa {
+		t.Fatalf("carried keyed array: %v", got.Keys)
 	}
 	if got.G != 3 {
 		t.Fatalf("live field changed: %d", got.G)
+	}
+
+	var bad U
+	UReset(&bad)
+	bad.E = Color(9)
+	if n := UFixedSave([]U{bad}, bufP); n != -1 {
+		t.Fatalf("a deprecated enum ordinal past its set saved: %d", n)
 	}
 }
 `)
