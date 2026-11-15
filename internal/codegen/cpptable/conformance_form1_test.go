@@ -37,7 +37,10 @@ import (
 // the negative control below is held to turning exactly these back into
 // reads when the strict walk is taken out of the driver. The four rows of
 // bytes inside L past a count and after a record terminator (8ad2632bc) are
-// refused by the same walk.
+// refused by the same walk. node_index_null is not here: its null pointer
+// leaves a record no pointer reaches, which the C++ read's own
+// declaration-free graph walk refuses (§3.1, §6.5), so taking the driver's
+// strict walk out does not turn it back into a read.
 var cppFramingStrictRows = []string{
 	"array_L0_inert",
 	"array_L1_inert",
@@ -49,7 +52,6 @@ var cppFramingStrictRows = []string{
 	"keyed_L1_inert",
 	"map_L1_inert",
 	"map_entries_past_count",
-	"node_index_null",
 	"node_record_bytes_after_terminator",
 	"node_table_twice",
 	"node_unknown_to_fixed_reader",

@@ -3253,7 +3253,7 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 		$(HOSTILE_MANIFEST) > $(HOSTILE_GATE_MANIFEST)
 	@grep '^json-hostile ' $(HOSTILE_GATE_MANIFEST) | awk '$$6 != "refused"' | \
 	while read -r kind name unit root tree verdict; do \
-		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
+		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin \
 			$$tree $$(awk -v u=$$unit '$$1 == "unit" && $$2 == u { for ( i = 3; i <= NF; i++ ) printf "%s ", $$i }' $(HOSTILE_MANIFEST)) || exit 1; \
 	done
 	@touch $@
@@ -3285,13 +3285,13 @@ tables-hostile-negative-control: tables-hostile-values
 	@printf '{"Replace":{"%s/internal/tabletext/read.go":"%s/build/read-sabotaged.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/read-overlay.json
 	@go build -overlay=build/read-overlay.json -o build/schema-loose-numbers ./cmd/schema
-	@if ./build/schema-loose-numbers pack --root RootConfig --out build/loose.bin --tolerate \
+	@if ./build/schema-loose-numbers pack --root RootConfig --out build/loose.bin \
 		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1; then \
 		echo "pack hostile-value negative control: a leading + packs once the grammar is relaxed"; \
 	else \
 		echo "NEGATIVE CONTROL FAILED: relaxing the number grammar left num-leading-plus refused"; exit 1; \
 	fi
-	@./bin/schema pack --root RootConfig --out build/loose.bin --tolerate \
+	@./bin/schema pack --root RootConfig --out build/loose.bin \
 		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1 && \
 		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; } || true
 

@@ -594,6 +594,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -632,6 +633,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -671,6 +673,7 @@ namespace Blockhome
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -708,6 +711,7 @@ namespace Blockhome
                 info.RootElemSlots = 36;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x7ca1b7fd9e3a2fb1ul: return PartFrameTableType(); case 0x27c461282640b1f0ul: return PartRowTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {

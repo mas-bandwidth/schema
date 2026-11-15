@@ -10,6 +10,7 @@ package cpptable
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -1098,6 +1099,10 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    const TableAllocator allocator = builder.arena.allocator;\n")
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );\n")
 	g.pf("    if ( directory == NULL )\n    {\n        out->damaged = true;\n        return false;\n    }\n")
+	g.pf("    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )\n    {\n")
+	g.pf("        if ( root != NULL ) { %sReset( *root ); }\n", n)
+	g.pf("        table_release( allocator, directory );\n")
+	g.pf("        return false;\n    }\n")
 	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
 	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    TableNodeMap nodes;\n")
@@ -1107,6 +1112,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    nodes.count = records + 1;\n")
 	g.pf("    nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here\n")
 	g.pf("    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)\n")
+	g.pf("    nodes.declared = %sNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)\n", n)
 	if g.anyExtent {
 		g.pf("    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)\n")
 	}
@@ -1328,6 +1334,27 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		}
 	}
 	g.pf("    return -1;\n}\n\n")
+
+	// THE TYPES THIS READER DECLARES (docs/SPEC-TABLES.md §3.1): every table of
+	// the unit and the two reserved blob ids, reachable from this root or not.
+	// A record of one of them that this root placed no storage for is a
+	// wrong-type target when a pointer names it, never an unknown that reads null.
+	declared := make([]string, 0, len(g.unit.Tables))
+	for name := range g.unit.Tables {
+		declared = append(declared, name)
+	}
+	sort.Strings(declared)
+	g.pf("// %sNodeDeclared: whether this reader DECLARES a record's type id (§3.1).\n", n)
+	g.pf("inline bool %sNodeDeclared( uint64_t type_id )\n{\n", n)
+	g.pf("    switch ( type_id )\n    {\n")
+	for _, name := range declared {
+		g.pf("        case 0x%016xull: // %s\n", ir.TableWireId(g.unit.Tables[name].WireName()), name)
+	}
+	g.pf("        case kTableBytesTypeId:\n")
+	g.pf("        case kTableStringTypeId:\n")
+	g.pf("            return true;\n")
+	g.pf("        default: break;\n    }\n")
+	g.pf("    return false;\n}\n\n")
 
 	g.pf("// %sNodePlace: start one record's node's lifetime in the storage pass one\n", n)
 	g.pf("// reserved for it, holding exactly the declared defaults — a byte buffer's\n")
@@ -1819,6 +1846,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("        const TableAllocator allocator = builder.arena.allocator;\n")
 		g.pf("        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;\n")
 		g.pf("        if ( directory == NULL )\n        {\n            out->damaged = true;\n            return NULL;\n        }\n")
+		g.pf("        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )\n        {\n")
+		g.pf("            table_release( allocator, directory );\n")
+		g.pf("            return NULL;\n        }\n")
 		g.pf("        directory[0].offset = (uint64_t) builder.root_ref.value;\n")
 		g.pf("        directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 		g.pf("        TableNodeMap nodes;\n")
@@ -1828,6 +1858,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("        nodes.entries = directory;\n")
 		g.pf("        nodes.count = records + 1;\n")
 		g.pf("        nodes.once = true;\n")
+		g.pf("        nodes.declared = %sNodeDeclared;\n", n)
 		if g.retain {
 			g.pf("        TableRetainReset( retain, nodes, NULL );\n")
 		}
@@ -1902,7 +1933,15 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    nodes.entries = (TableNodeDirEntry *) ( region + data );\n")
 	g.pf("    nodes.count = records + 1;\n")
 	g.pf("    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)\n")
+	g.pf("    nodes.declared = %sNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)\n", n)
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );\n")
+	g.pf("    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies\n")
+	g.pf("    // are decoded: a cycle, an unreachable record, a shared blob or an\n")
+	g.pf("    // ill-formed string blob refuses the whole load, declared or only skipped\n")
+	g.pf("    // (docs/SPEC-TABLES.md §3.1, §6.5).\n")
+	g.pf("    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )\n    {\n")
+	g.pf("        memset( region, 0, (size_t) region_bytes );\n")
+	g.pf("        return NULL;\n    }\n")
 	g.pf("    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)\n")
 	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    %s * root = new ( region ) %s; // lifetime only: LoadBody's first act is %sReset\n", n, n, n)

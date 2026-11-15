@@ -364,7 +364,9 @@ export function FixedTableFixedMeasure(count) {
 // writer does; nothing here throws.
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
-  if (count < 0 || bytes === null || bytes.length < need) { return -1; }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): an
+  // empty batch is refused before it writes a byte.
+  if (count <= 0 || bytes === null || bytes.length < need) { return -1; }
   // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md
   // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.
   for (let k = 0; k < count; k++) { if (!FixedTableFixedCheckBody(values[k])) { return -1; } }
@@ -467,9 +469,11 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // against this build's; digest is not on the wire, so the header hash is
   // not a hash of the layout bytes alone (§3, bill §13).
   const rest = byteLength - layoutAt - layoutBytes;
-  // BYTES LEFT OVER ARE damaged, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes !== 0) { report.damaged = true; return -1; }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): a
+  // header and a layout with no record behind them is refused, never read
+  // as a batch of none. BYTES LEFT OVER ARE damaged, which is §3's rule for
+  // the same reason: the two ends of the file have met.
+  if (rest === 0 || recordBytes <= 8 || rest % recordBytes !== 0) { report.damaged = true; return -1; }
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;

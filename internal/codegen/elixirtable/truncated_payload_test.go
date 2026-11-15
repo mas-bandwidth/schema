@@ -131,11 +131,23 @@ unless kept.unknown==1 and kept.retain_lost==1 and kept.retained==0,do: raise("r
 
 func runCompleteUnitProbe(t *testing.T, u *ir.Unit, probe string) string {
 	t.Helper()
+	out, e := runCompleteFilesProbe(t, generateElixir(t, u), probe)
+	if e != nil || strings.Contains(out, "warning:") {
+		t.Fatalf("native complete unit: %v\n%s", e, out)
+	}
+	return out
+}
+
+// runCompleteFilesProbe compiles the generated modules together, warnings as
+// errors, and runs the probe over them, returning the probe's output and
+// error rather than failing on them, so a negative control can require red.
+func runCompleteFilesProbe(t *testing.T, files map[string][]byte, probe string) (string, error) {
+	t.Helper()
 
 	// Compile the complete unit together: its fixed structs have cross-file
 	// dependencies, so alphabetic serial requires are not a valid build.
 	dir := t.TempDir()
-	names := writeModuleDir(t, dir, generateElixir(t, u))
+	names := writeModuleDir(t, dir, files)
 	ebin := filepath.Join(dir, "ebin")
 	if e := os.Mkdir(ebin, 0o700); e != nil {
 		t.Fatal(e)
@@ -156,9 +168,5 @@ func runCompleteUnitProbe(t *testing.T, u *ir.Unit, probe string) string {
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	raw, e := cmd.CombinedOutput()
-	out := string(raw)
-	if e != nil || strings.Contains(out, "warning:") {
-		t.Fatalf("native complete unit: %v\n%s", e, out)
-	}
-	return out
+	return string(raw), e
 }

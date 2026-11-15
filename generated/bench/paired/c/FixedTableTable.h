@@ -581,11 +581,11 @@ static SCHEMA_UNUSED int bench_table_skip_framed( bench_table_reader_t sub, uint
         case 12: return bench_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return bench_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && bench_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             bench_table_reader_t rr = sub;
-            return bench_table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && bench_table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -675,14 +675,17 @@ static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8
             if ( !bench_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = bench_table_reader_get8( r );
             if ( !bench_table_reader_span( r, &arm ) ) { return 0; }
-            return bench_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && bench_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return bench_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             bench_table_reader_t sub;
             if ( !bench_table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && bench_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && bench_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return bench_table_skip_framed( sub, kind, nodes, depth );
         }
         default:

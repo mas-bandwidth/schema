@@ -26,6 +26,12 @@
 
 namespace benchtable {
 
+// A repeated key is tracked in a bitmap on the stack, sized to this unit's
+// widest table and widest keyed array: every field index and every slot is
+// counted, and an object allocates nothing (docs/SPEC-TABLES.md §16.2).
+static const int32_t kTableJsonFieldSeenWords = 1;
+static const int32_t kTableJsonSlotSeenWords = 1;
+
 // ---- the pointer adapters (docs/SPEC-TABLES.md §16.7) ----
 //
 // The walk below is ONE walk, byte-identical in every generated .cpp, and a
@@ -47,7 +53,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -94,9 +100,12 @@ static const int32_t kTableJsonMaxDepth = 128;
 // A key longer than this cannot name a field, so it is skipped as unknown.
 static const int32_t kTableJsonMaxKey = 256;
 
-// The longest numeric token the walk will convert. Anything longer is a
-// value no field can hold and counts as a kind mismatch.
-static const int32_t kTableJsonMaxNumber = 512;
+// The conversion's working buffer. A number's value does not depend on how
+// many bytes spell its mantissa (§16.2), so a token of any length is read
+// from the document's own extent; a long mantissa keeps its significant
+// digits and folds the rest into the exponent. This bounds the KEPT digits,
+// never the token.
+static const int32_t kTableJsonMaxNumber = 1024;
 
 // The decimal point the C runtime is CURRENTLY using. Number conversion is
 // the one locale-sensitive corner of the grammar — JSON's point is always
@@ -1531,15 +1540,15 @@ struct TableJsonIn
 // as missing_required, in declaration order, exactly as the binary reader
 // refuses a record that omitted it. A required field inside an if guard is
 // demanded only while its guard holds: with the branch off it is absent and
-// no refusal is owed. The bounded seen bitmap is the repeated tracker; a
-// table with more than 4096 fields keeps its old reading past the window.
+// no refusal is owed. The seen bitmap is the repeated tracker, sized to every
+// field the table declares, so no index is past its window.
 inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
 {
     bool missing = false;
     for ( int32_t i = 0; i < info->num_fields; i++ )
     {
         const TableFieldInfo * f = &info->fields[i];
-        if ( i >= 4096 || !f->required ) { continue; }
+        if ( !f->required ) { continue; }
         if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
         if ( ( seen[i >> 6] & ( uint64_t( 1 ) << ( i & 63 ) ) ) != 0 ) { continue; }
         if ( !missing ) { in.report->missing_required_fields[0] = 0; }
@@ -1877,6 +1886,14 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     return true;
 }
 
+// A NAME MATCHES WHOLE (docs/SPEC-TABLES.md §16.2): a scanned key may hold a
+// U+0000 escape, so the bytes after its first zero are still part of the key.
+// Compare the key's LENGTH and its bytes; strcmp would stop at a zero byte.
+inline bool TableJsonKeyEquals( const char * name, const char * key, int32_t key_length )
+{
+    return name != NULL && (int32_t) strlen( name ) == key_length && memcmp( name, key, (size_t) key_length ) == 0;
+}
+
 // One CHARACTER of a base64 body, after the JSON layer has had its say
 // (docs/SPEC-TABLES.md §16.2): a bytes field is a JSON string whose DECODED
 // value is base64, so an escape is undone first and the character it names
@@ -2064,32 +2081,125 @@ inline bool TableJsonWalkNumber( TableJsonIn & in, bool * integral )
     return true;
 }
 
-// the same production, with the token kept for conversion
-inline bool TableJsonScanNumber( TableJsonIn & in, char * token, int32_t capacity, int32_t * length, bool * integral )
+// the same production, with the token kept for conversion. The token is a
+// VIEW of the document: its length is bounded by the input, never by a
+// conversion buffer (§16.2).
+inline bool TableJsonScanNumber( TableJsonIn & in, const char ** token, int32_t * length, bool * integral )
 {
     TableJsonSpace( in );
     int64_t start = in.pos;
     if ( !TableJsonWalkNumber( in, integral ) ) { return false; }
     int64_t count = in.pos - start;
-    if ( count <= 0 || count >= capacity ) { return false; }
-    memcpy( token, in.text + start, (size_t) count );
-    token[count] = 0;
+    if ( count <= 0 ) { return false; }
+    *token = in.text + start;
     *length = (int32_t) count;
     return true;
 }
 
 // the token's exact double, through the runtime's own converter — which
 // speaks the LOCALE's decimal point, so the token crosses back over that
-// character on its way in
+// character on its way in.
+//
+// A MANTISSA LONGER THAN THE WORKING BUFFER IS NORMALIZED, not refused: the
+// value does not depend on how many bytes spell it (§16.2), so the significant
+// digits are kept and the digits dropped (trailing zeros, and a sticky digit
+// past the limit) fold into the exponent. What reaches strtod is the same
+// value the whole token spells.
 inline double TableJsonTokenDouble( const char * token, int32_t length, bool single )
 {
     char work[kTableJsonMaxNumber];
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
+    int32_t n = 0;
+    if ( length < kTableJsonMaxNumber )
+    {
+        memcpy( work, token, (size_t) length );
+        n = length;
+    }
+    else
+    {
+        const int32_t limit = kTableJsonMaxNumber - 32;
+        char kept[kTableJsonMaxNumber - 32];
+        int32_t kept_len = 0;
+        int32_t i = 0;
+        bool negative = false;
+        if ( i < length && token[i] == '-' ) { negative = true; i++; }
+        int32_t fraction = 0;
+        bool after_point = false;
+        int32_t digits = 0;
+        int32_t trailing = 0;
+        bool nonzero = false;
+        for ( ; i < length; i++ )
+        {
+            char c = token[i];
+            if ( c == '.' ) { after_point = true; continue; }
+            if ( c == 'e' || c == 'E' ) { break; }
+            if ( after_point ) { fraction++; }
+            if ( !nonzero )
+            {
+                if ( c == '0' ) { continue; }
+                nonzero = true;
+            }
+            digits++;
+            if ( c == '0' ) { trailing++; }
+            else { trailing = 0; }
+            if ( kept_len < limit ) { kept[kept_len++] = c; }
+        }
+        int64_t exponent = 0;
+        if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+        {
+            i++;
+            bool exp_negative = false;
+            if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+            {
+                exp_negative = token[i] == '-';
+                i++;
+            }
+            while ( i < length && token[i] >= '0' && token[i] <= '9' )
+            {
+                if ( exponent < 1000000 ) { exponent = exponent * 10 + ( token[i] - '0' ); }
+                i++;
+            }
+            if ( exp_negative ) { exponent = -exponent; }
+        }
+        if ( !nonzero )
+        {
+            work[n++] = '0';
+        }
+        else
+        {
+            const int32_t significant = digits - trailing;
+            int64_t scale = exponent - fraction + trailing;
+            int32_t sig = significant;
+            const bool sticky = significant > limit;
+            if ( sticky )
+            {
+                scale += significant - limit;
+                sig = limit;
+            }
+            if ( negative ) { work[n++] = '-'; }
+            for ( int32_t k = 0; k < sig; k++ ) { work[n++] = kept[k]; }
+            if ( sticky )
+            {
+                work[n++] = '1';
+                scale--;
+            }
+            work[n++] = 'e';
+            if ( scale < 0 ) { work[n++] = '-'; scale = -scale; }
+            char reversed[24];
+            int32_t rn = 0;
+            if ( scale == 0 ) { reversed[rn++] = '0'; }
+            while ( scale > 0 )
+            {
+                reversed[rn++] = (char) ( '0' + (int32_t) ( scale % 10 ) );
+                scale /= 10;
+            }
+            while ( rn > 0 ) { work[n++] = reversed[--rn]; }
+        }
+    }
+    work[n] = 0;
     char point = TableJsonDecimalPoint();
     if ( point != '.' )
     {
-        for ( int32_t i = 0; i < length; i++ )
+        for ( int32_t i = 0; i < n; i++ )
         {
             if ( work[i] == '.' ) { work[i] = point; }
         }
@@ -2464,9 +2574,25 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         char fd[kTableJsonMaxNumber + 48];
         int32_t fn = 0;
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        // A digit below 10^-40 is finer than any F can spell, and cannot carry
+        // into a fraction bit however many doublings follow. Only the digits
+        // inside the band are kept; a nonzero digit past it is the same
+        // kind_mismatch the exact arithmetic would reach, without walking a
+        // token of any length into a fixed buffer.
+        const int64_t first = ( point > 0 ? point : 0 ) + start;
+        const int64_t last = (int64_t) start + point + 39;
+        for ( int64_t k = first; k < end && k <= last; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        }
+        for ( int64_t k = ( last + 1 > first ? last + 1 : first ); k < end; k++ )
+        {
+            if ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) != '0' )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = kind_mismatch;
+                return true;
+            }
         }
         TableJsonWide fraction = { 0, 0 };
         for ( int b = 0; b < frac; b++ )
@@ -2581,7 +2707,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             // — in a pointered unit; a fixed unit skips the value whole.
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' )
             {
@@ -2597,7 +2723,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                if ( !TableJsonSkippedAmpersand( in, key, depth ) ) { return false; }
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth ) ) { return false; }
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -2906,7 +3032,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         char key[kTableJsonMaxKey];
         int32_t key_length = 0;
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
         key[key_length] = 0;
         if ( TableJsonPeek( in ) != ':' )
         {
@@ -2917,7 +3043,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         int64_t tag = 0;
         for ( int64_t t = 1; t <= f->enum_max; t++ )
         {
-            if ( strcmp( f->enum_name( (uint64_t) t ), key ) == 0 )
+            if ( TableJsonKeyEquals( f->enum_name( (uint64_t) t ), key, key_length ) )
             {
                 tag = t;
                 break;
@@ -3033,7 +3159,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         name[name_length] = 0;
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
-            if ( strcmp( f->enum_name( (uint64_t) v ), name ) == 0 )
+            if ( TableJsonKeyEquals( f->enum_name( (uint64_t) v ), name, name_length ) )
             {
                 TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
                 return true;
@@ -3082,8 +3208,15 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 bool found = false;
                 for ( int64_t bit = 0; bit <= f->enum_max; bit++ )
                 {
-                    if ( strcmp( f->enum_name( (uint64_t) bit ), name ) == 0 )
+                    if ( TableJsonKeyEquals( f->enum_name( (uint64_t) bit ), name, name_length ) )
                     {
+                        // A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+                        // repeated name is a repeated key, and refuses malformed
+                        if ( ( bits & ( uint64_t( 1 ) << bit ) ) != 0 )
+                        {
+                            in.report->refused = true;
+                            in.report->refuse_reason = malformed;
+                        }
                         bits |= uint64_t( 1 ) << bit;
                         found = true;
                         break;
@@ -3136,10 +3269,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         TableJsonSetRaw( storage, f->elem_size, (uint64_t) nanos );
         return true;
     }
-    char token[kTableJsonMaxNumber];
+    const char * token = NULL;
     int32_t length = 0;
     bool integral = false;
-    if ( !TableJsonScanNumber( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !TableJsonScanNumber( in, &token, &length, &integral ) )
     {
         in.bad = true;
         return false;
@@ -3484,9 +3617,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         }
         char shape = TableJsonElementShape( f );
         // A variant name is a key: repeating it refuses the whole read as
-        // malformed (§16.2). Track resolved slots in a bounded, allocation-free
-        // bitmask; the key-spelling set below also catches repeats with no slot.
-        uint64_t seen[8] = {};
+        // malformed (§16.2). Track resolved slots in an allocation-free bitmask
+        // sized to every slot the array declares; the key-spelling set below
+        // also catches repeats with no slot.
+        uint64_t seen[kTableJsonSlotSeenWords] = {};
         // A repeated KEY refuses, the resolved slot or none (docs/SPEC-TABLES.md
         // §16.2): a key that names no slot -- an unknown variant, or "None" -- is
         // a repeat the second time it stands here, so the key SPELLINGS are
@@ -3511,7 +3645,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             {
                 bool repeated = false;
@@ -3549,13 +3683,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // nothing is stored for None, so "None" finds no slot and is
                 // an unknown key like any other name this reader cannot place
                 if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
-                if ( strcmp( f->key_name( TableJsonKeyedSlotKey( v ) ), key ) == 0 )
+                if ( TableJsonKeyEquals( f->key_name( TableJsonKeyedSlotKey( v ) ), key, key_length ) )
                 {
                     slot = v;
                     break;
                 }
             }
-            if ( slot >= 0 && slot < 512 )
+            if ( slot >= 0 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
                 if ( ( seen[slot >> 6] & bit ) != 0 )
@@ -3700,12 +3834,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     return TableJsonReadScalar( in, storage, f, depth );
 }
 
-inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length );
 
 // ONE table object: keys are field keys, unknown ones are skipped and
-// counted, a repeated key is last-wins and counted. The instance is already
-// at its declared defaults when this is entered, so a key the text never
-// mentions keeps the default an absent field takes on the wire (§4).
+// counted, and a repeated key refuses the whole read as malformed. The
+// instance is already at its declared defaults when this is entered, so a key
+// the text never mentions keeps the default an absent field takes on the wire
+// (§4).
 inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth )
@@ -3731,7 +3866,7 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
         return false;
     }
     in.pos++;
-    return TableJsonReadTableKeys( in, base, info, depth, NULL );
+    return TableJsonReadTableKeys( in, base, info, depth, NULL, 0 );
 }
 
 // The keys of an object whose brace is already consumed. A pointer's object
@@ -3739,18 +3874,20 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // and the adapter that reads it has to scan the key to know — so it hands the
 // key it scanned in as `first_key`, with the colon consumed, and this places
 // it before scanning the rest.
-inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length )
 {
-    // repeated tracking, bounded and allocation-free: a table with more
-    // fields than this still reads, its repeats simply stop being counted
-    uint64_t seen[64] = {};
+    // repeated tracking, allocation-free: the bitmap is sized to the unit's
+    // widest table, so every field index this table declares is tracked
+    uint64_t seen[kTableJsonFieldSeenWords] = {};
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
+        int32_t key_length = 0;
         char c = 0;
         if ( first_key != NULL )
         {
-            memcpy( key, first_key, strlen( first_key ) + 1 ); // scanned into a buffer this size by the caller
+            key_length = first_key_length;
+            memcpy( key, first_key, (size_t) key_length + 1 ); // scanned into a buffer this size by the caller
             first_key = NULL;
         }
         else
@@ -3766,8 +3903,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 in.bad = true;
                 return false;
             }
-            int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' )
             {
@@ -3779,7 +3915,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         int32_t index = -1;
         for ( int32_t i = 0; i < info->num_fields; i++ )
         {
-            if ( strcmp( info->fields[i].json, key ) == 0 )
+            if ( TableJsonKeyEquals( info->fields[i].json, key, key_length ) )
             {
                 index = i;
                 break;
@@ -3806,16 +3942,13 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         else
         {
             const TableFieldInfo * f = &info->fields[index];
-            if ( index < 4096 )
+            uint64_t bit = uint64_t( 1 ) << ( index & 63 );
+            if ( ( seen[index >> 6] & bit ) != 0 )
             {
-                uint64_t bit = uint64_t( 1 ) << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 )
-                {
-                    in.report->refused = true;
-                    in.report->refuse_reason = malformed;
-                }
-                seen[index >> 6] |= bit;
+                in.report->refused = true;
+                in.report->refuse_reason = malformed;
             }
+            seen[index >> 6] |= bit;
             // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
             // is the key being present, so an optional is set present
             // whatever its value — with one exception the page names: a JSON
@@ -3976,7 +4109,7 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t depth )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth )
 {
     return TableJsonSkipValue( in, depth + 1 );
 }
@@ -4655,6 +4788,84 @@ inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
     return true;
 }
 
+// A FIXED-POINT TOKEN IS EXACT FOR ITS DECLARED FRACTION exactly when its
+// fractional digits, doubled F times, leave nothing behind (docs/SPEC-TABLES.md
+// §16.9.2). The token's own decimal digits decide it, so no binary float and no
+// shift wider than the storage sits in the path. A multiple of 2^-F is a decimal
+// with at most F places after the point, so a token needing more places has no
+// exact spelling.
+inline bool tableTextFormFixedExact( const std::string & token, int frac )
+{
+    const char * s = token.c_str();
+    const int32_t length = (int32_t) token.size();
+    int32_t i = 0;
+    if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { i++; }
+    const int32_t int_start = i;
+    while ( i < length && s[i] >= '0' && s[i] <= '9' ) { i++; }
+    const int32_t int_len = i - int_start;
+    int32_t frac_start = i;
+    int32_t frac_len = 0;
+    if ( i < length && s[i] == '.' )
+    {
+        i++;
+        frac_start = i;
+        while ( i < length && s[i] >= '0' && s[i] <= '9' ) { i++; }
+        frac_len = i - frac_start;
+    }
+    if ( int_len + frac_len == 0 ) { return false; }
+    int64_t exp = 0;
+    if ( i < length && ( s[i] == 'e' || s[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { exp_negative = s[i] == '-'; i++; }
+        int64_t e = 0;
+        while ( i < length && s[i] >= '0' && s[i] <= '9' )
+        {
+            if ( e < 100000 ) { e = e * 10 + ( s[i] - '0' ); }
+            i++;
+        }
+        exp = exp_negative ? -e : e;
+    }
+    if ( i != length ) { return false; }
+    const int32_t total = int_len + frac_len;
+    const auto digit = [&]( int32_t k ) -> int {
+        return k < int_len ? s[int_start + k] - '0' : s[frac_start + ( k - int_len )] - '0';
+    };
+    int32_t start = 0;
+    int64_t point = int_len + exp;
+    while ( start < total && digit( start ) == 0 ) { start++; point--; }
+    int32_t end = total;
+    while ( end > start && digit( end - 1 ) == 0 ) { end--; }
+    if ( start == end ) { return true; }
+    // point is relative to start once the leading zeros are gone: a point at or
+    // past the last digit leaves no fraction, and the fractional digits number
+    // len - point, so a token finer than F decimal places has no exact spelling.
+    const int64_t len = (int64_t) ( end - start );
+    if ( point >= len ) { return true; }
+    const int64_t fractional = len - point;
+    if ( fractional > frac ) { return false; }
+    char fd[256];
+    int32_t fn = 0;
+    for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
+    for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ ) { fd[fn++] = (char) digit( (int32_t) k ); }
+    for ( int b = 0; b < frac; b++ )
+    {
+        int carry = 0;
+        for ( int32_t k = fn - 1; k >= 0; k-- )
+        {
+            const int d = fd[k] * 2 + carry;
+            fd[k] = (char) ( d % 10 );
+            carry = d / 10;
+        }
+    }
+    for ( int32_t k = 0; k < fn; k++ )
+    {
+        if ( fd[k] != 0 ) { return false; }
+    }
+    return true;
+}
+
 inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
     if ( f->text_list != 0 )
@@ -5061,14 +5272,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     // A FIXED-POINT TOKEN IS EXACT (docs/SPEC-TABLES.md §16.9.2, Go
     // internal/codegen/gotable/textform.go integer): scaled by 2^F it must be
     // an integer, so 0.1 is text_kind_mismatch and never a out_of_range raw unit.
-    if ( f->frac_bits != 0 )
+    if ( f->frac_bits != 0 && !tableTextFormFixedExact( n.text, f->frac_bits ) )
     {
-        const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
-        if ( scaled != (double) (int64_t) scaled )
-        {
-            *why = "text_kind_mismatch";
-            return false;
-        }
+        *why = "text_kind_mismatch";
+        return false;
     }
     // THE TYPED CANON (docs/SPEC-TABLES.md §16.9.3, Go
     // internal/codegen/gotable/textform.go float and integer): a float kind

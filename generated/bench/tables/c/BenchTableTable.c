@@ -1122,21 +1122,35 @@ static SCHEMA_UNUSED int benchtable_table_json_hex4( benchtable_table_json_in_t 
    c is the body byte just taken (at in->pos - 1). -1, with in->bad set, when
    it is not JSON: a raw byte below 0x20, a backslash that begins no escape,
    or a byte at or above 0x80 that begins no UTF-8 sequence (string_not_utf8,
-   §16.3). 0 when it begins valid JSON that is never a base64 symbol, an
-   escape or a UTF-8 sequence, consumed whole so an escaped quote cannot end
-   the body. 1 when the byte stands alone for the base64 grammar to judge. */
-static SCHEMA_UNUSED int benchtable_table_json_base64_step( benchtable_table_json_in_t * in, char c )
+   §16.3). 0 when it begins valid JSON whose decoded character is never a
+   base64 symbol, a UTF-8 sequence or an escape of a character at or above
+   U+0080, consumed whole. 1, with *decoded set, when it decodes to one ASCII
+   character, the byte alone or an escape consumed whole (\/ is a solidus, so an
+   escaped quote cannot end the body): the base64 grammar judges the string's
+   DECODED value. */
+static SCHEMA_UNUSED int benchtable_table_json_base64_step( benchtable_table_json_in_t * in, char c, char * decoded )
 {
     if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
     if ( c == '\\' )
     {
         char escape;
+        int code;
         if ( in->pos >= in->size ) { in->bad = 1; return -1; }
         escape = in->text[in->pos++];
         switch ( escape )
         {
-            case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't': return 0;
-            case 'u': if ( benchtable_table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
+            case '"': case '\\': case '/': *decoded = escape; return 1;
+            case 'b': *decoded = '\b'; return 1;
+            case 'f': *decoded = '\f'; return 1;
+            case 'n': *decoded = '\n'; return 1;
+            case 'r': *decoded = '\r'; return 1;
+            case 't': *decoded = '\t'; return 1;
+            case 'u':
+                code = benchtable_table_json_hex4( in );
+                if ( code < 0 ) { in->bad = 1; return -1; }
+                if ( code >= 0x80 ) { return 0; }
+                *decoded = (char) code;
+                return 1;
             default: in->bad = 1; return -1;
         }
     }
@@ -1148,7 +1162,89 @@ static SCHEMA_UNUSED int benchtable_table_json_base64_step( benchtable_table_jso
         in->pos += width - 1;
         return 0;
     }
+    *decoded = c;
     return 1;
+}
+
+/* A base64 body (docs/SPEC-TABLES.md §16.2, §16.8): the JSON string at the
+   cursor, decoded first, then held to CANONICAL base64, the standard alphabet,
+   padded, pad bits zero, exactly the text the writer writes. -1, with in->bad
+   set, when the text is not JSON. 0 when the decoded value is not canonical,
+   with *reason the refusal: the wrong kind when it does not decode at all,
+   base64_not_canonical when it decodes but is another spelling. 1 when it is
+   canonical, with *mark its first body byte and *length its decoded bytes.
+   On 0 and 1 the cursor is past the closing quote. Nothing is stored. */
+static SCHEMA_UNUSED int benchtable_table_json_base64_scan( benchtable_table_json_in_t * in, int64_t * mark, int64_t * length, int * reason )
+{
+    int64_t symbols = 0;
+    int64_t pad = 0;
+    int32_t last = 0;
+    int damaged = 0;
+    if ( benchtable_table_json_peek( in ) != '"' ) { in->bad = 1; return -1; }
+    in->pos++;
+    *mark = in->pos;
+    for ( ;; )
+    {
+        char c;
+        char decoded = 0;
+        int32_t val;
+        int step;
+        if ( in->pos >= in->size ) { in->bad = 1; return -1; }
+        c = in->text[in->pos++];
+        if ( c == '"' ) { break; }
+        step = benchtable_table_json_base64_step( in, c, &decoded );
+        if ( step < 0 ) { return -1; }
+        if ( step == 0 ) { damaged = 1; continue; }
+        if ( damaged ) { continue; }
+        if ( decoded == '=' ) { pad++; continue; }
+        if ( pad > 0 ) { damaged = 1; continue; }
+        val = benchtable_table_json_base64_value( (uint8_t) decoded );
+        if ( val < 0 ) { damaged = 1; continue; }
+        last = val;
+        symbols++;
+    }
+    if ( damaged || symbols % 4 == 1 || ( pad > 0 && ( pad > 2 || ( symbols + pad ) % 4 != 0 ) ) )
+    {
+        *reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
+        return 0;
+    }
+    /* it decodes; the canonical spelling pads the last group whole and
+       leaves the bits its last symbol carries past the last byte zero */
+    if ( ( symbols + pad ) % 4 != 0 || ( symbols % 4 == 2 && ( last & 0x0f ) != 0 ) || ( symbols % 4 == 3 && ( last & 0x03 ) != 0 ) )
+    {
+        *reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_BASE64_NOT_CANONICAL;
+        return 0;
+    }
+    *length = symbols * 6 / 8;
+    return 1;
+}
+
+/* The bytes of a body table_json_base64_scan held canonical, decoded again
+   from mark: at most capacity of them into out. The cursor is left where the
+   scan left it. */
+static SCHEMA_UNUSED void benchtable_table_json_base64_decode( benchtable_table_json_in_t * in, int64_t mark, uint8_t * out, int64_t capacity )
+{
+    int64_t end = in->pos;
+    int64_t placed = 0;
+    uint32_t accumulator = 0;
+    int32_t held = 0;
+    in->pos = mark;
+    for ( ;; )
+    {
+        char c = in->text[in->pos++];
+        char decoded = 0;
+        if ( c == '"' ) { break; }
+        (void) benchtable_table_json_base64_step( in, c, &decoded );
+        if ( decoded == '=' ) { break; }
+        accumulator = ( accumulator << 6 ) | (uint32_t) benchtable_table_json_base64_value( (uint8_t) decoded );
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+        }
+    }
+    in->pos = end;
 }
 
 static SCHEMA_UNUSED int32_t benchtable_table_json_encode_utf8( uint32_t code, char * unit )
@@ -2271,84 +2367,29 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
     }
     if ( benchtable_table_json_is_bytes( f ) )
     {
-        /* The JSON layer decides first (table_json_base64_step): a body that
-           is not a JSON string is damaged, and one that is JSON but carries
-           an escape or a non-ASCII character is simply not base64. Validate the
-           stream and its padding before touching storage, so a body that is not
-           base64 leaves the declared default. */
-        int64_t mark;
-        int64_t symbols = 0;
-        int64_t pad = 0;
-        int damaged = 0;
-        int64_t at;
-        int32_t placed = 0;
-        uint32_t accumulator = 0;
-        int32_t held = 0;
-        int out_of_range = 0;
-        if ( benchtable_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
-        in->pos++;
-        mark = in->pos;
-        for ( ;; )
+        /* The JSON layer decides first (table_json_base64_scan): a body that
+           is not a JSON string is damaged; the string's decoded value is then
+           held to canonical base64 before storage is touched, so a body that
+           is not the canonical spelling leaves the declared default. */
+        int64_t mark = 0;
+        int64_t length = 0;
+        int reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_OK;
+        int scanned = benchtable_table_json_base64_scan( in, &mark, &length, &reason );
+        if ( scanned < 0 ) { return 0; }
+        if ( scanned == 0 )
         {
-            char c;
-            int32_t val;
-            int step;
-            if ( in->pos >= in->size ) { in->bad = 1; return 0; }
-            c = in->text[in->pos++];
-            if ( c == '"' ) { break; }
-            step = benchtable_table_json_base64_step( in, c );
-            if ( step < 0 ) { return 0; }
-            if ( step == 0 ) { damaged = 1; continue; }
-            if ( damaged ) { continue; }
-            if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { damaged = 1; continue; }
-            val = benchtable_table_json_base64_value( (uint8_t) c );
-            if ( val < 0 ) { damaged = 1; continue; }
-            symbols++;
-        }
-        if ( !damaged )
-        {
-            if ( pad > 0 )
-            {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { damaged = 1; }
-            }
-            else if ( symbols % 4 == 1 )
-            {
-                damaged = 1;
-            }
-        }
-        if ( damaged )
-        {
-            /* a body that is not base64 is the wrong shape for the kind: the
-               field keeps its default and the event is counted */
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
+            /* the field keeps its default and the event is counted */
+            in->report->refused=1, in->report->refuse_reason=reason;
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        benchtable_table_json_set_count( base, f, 0 );
-        for ( at = mark; ; at++ )
+        benchtable_table_json_base64_decode( in, mark, storage, f->array_bound );
+        if ( length > f->array_bound )
         {
-            char c = in->text[at];
-            int32_t symbol;
-            if ( c == '"' || c == '=' ) { break; }
-            symbol = benchtable_table_json_base64_value( (uint8_t) c );
-            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
-            held += 6;
-            if ( held >= 8 )
-            {
-                held -= 8;
-                if ( placed < f->array_bound )
-                {
-                    storage[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff );
-                }
-                else
-                {
-                    out_of_range = 1;
-                }
-            }
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
+            length = f->array_bound;
         }
-        if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
-        benchtable_table_json_set_count( base, f, placed );
+        benchtable_table_json_set_count( base, f, (int32_t) length );
         return 1;
     }
     if ( benchtable_table_json_is_keyed( f ) )

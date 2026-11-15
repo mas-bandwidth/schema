@@ -260,7 +260,7 @@ func TestGooseMapsNegativeControl(t *testing.T) {
 	}{
 		{"save-sort", "wire_save.goose", "        body(c, t, c.sorted[mark + k], false);\n", "        body(c, t, c.vals[s].first + k, false); // SABOTAGED\n",
 			[]string{"reversed-wire"}},
-		{"save-numbering", "wire_save.goose", "            let e = c.sorted[mark + k];\n            if c.vals[e].made { edges(c, c.vals[e].tab, e); }\n", "            let e = c.vals[s].first + k; // SABOTAGED\n            if c.vals[e].made { edges(c, c.vals[e].tab, e); }\n",
+		{"save-numbering", "wire_save.goose", "            let e = c.sorted[mark + k];\n            if c.vals[e].made { edges(c, c.vals[e].tab, e, out); }\n", "            let e = c.vals[s].first + k; // SABOTAGED\n            if c.vals[e].made { edges(c, c.vals[e].tab, e, out); }\n",
 			[]string{"reversed-wire"}},
 		{"cook-sort", "cook_write.goose", "        ok = cook_record(c, col.tab, c.sorted[mark + k], array + k * col.stride);\n", "        ok = cook_record(c, col.tab, c.vals[s].first + k, array + k * col.stride); // SABOTAGED\n",
 			[]string{"reversed-cook-little", "reversed-cook-big"}},
