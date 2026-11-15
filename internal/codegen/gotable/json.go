@@ -1671,10 +1671,10 @@ func tableJSONNumberToken(token []byte) []byte {
 			kept = append(kept, c)
 		}
 	}
-	exponent := 0
+	exponent := int64(0)
 	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
 		i++
-		sign := 1
+		sign := int64(1)
 		if i < len(token) && (token[i] == '-' || token[i] == '+') {
 			if token[i] == '-' {
 				sign = -1
@@ -1682,8 +1682,8 @@ func tableJSONNumberToken(token []byte) []byte {
 			i++
 		}
 		for ; i < len(token); i++ {
-			if exponent < 1000000 {
-				exponent = exponent*10 + int(token[i]-'0')
+			if exponent < 100000000000000000 { // the written exponent, accumulated whole so a long mantissa can cancel it
+				exponent = exponent*10 + int64(token[i]-'0')
 			}
 		}
 		exponent *= sign
@@ -1695,13 +1695,13 @@ func tableJSONNumberToken(token []byte) []byte {
 		return []byte("0")
 	}
 	significant := digits - trailing
-	scale := exponent - fraction + trailing
+	scale := exponent - int64(fraction) + int64(trailing)
 	var value []byte
 	if significant <= limit {
 		value = kept[:significant]
 	} else {
 		value = kept[:limit]
-		scale += significant - limit
+		scale += int64(significant - limit)
 		value = append(value, '1')
 		scale--
 	}
@@ -1711,7 +1711,7 @@ func tableJSONNumberToken(token []byte) []byte {
 	}
 	out = append(out, value...)
 	out = append(out, 'e')
-	return strconv.AppendInt(out, int64(scale), 10)
+	return strconv.AppendInt(out, max(-100000, min(scale, 100000)), 10)
 }
 
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
@@ -2177,14 +2177,14 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if f.HasRange {
 			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, the special values):
-			// it is inside the range, so it does not count, and the sign bit
-			// is a spelling the declaration cannot name. A NaN or an infinity
-			// never reaches this line: the text has no spelling for either
-			// and the walk above refused it as kind_mismatch.
-			if value < f.RangeMin {
+			// it is inside the range, so it does not count, and the sign bit is
+			// a spelling the declaration cannot name. A float32 field's ends are
+			// compared at float32; a NaN or an infinity never reaches this line:
+			// the text has no spelling for either and the walk above refused it.
+			if value < f.RangeMin && (!single || float32(value) < float32(f.RangeMin)) {
 				value = f.RangeMin
 				in.report.Refuse(TableRefuseOutOfRange, "")
-			} else if value > f.RangeMax {
+			} else if value > f.RangeMax && (!single || float32(value) > float32(f.RangeMax)) {
 				value = f.RangeMax
 				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value == 0 {
