@@ -400,8 +400,8 @@ func TestPythonVtWideNegativeControl(t *testing.T) {
 		{
 			"nested-id-order",
 			plant("wide/_schema/kind_table.py",
-				"        reference = ctx.idref(fd.field_id)\n        body = bytearray()\n        bw = _body_writer(body)\n        write_body(bw, value, ctx, False)\n        w.varint(reference)",
-				"        body = bytearray()\n        bw = _body_writer(body)\n        write_body(bw, value, ctx, False)\n        w.varint(ctx.idref(fd.field_id))"),
+				"        w.varint(ctx.idref(fd.field_id))\n        w.byte(fd.kind)\n        self.write_element(w, fd, value, ctx)",
+				"        from .save import write_body\n\n        body = bytearray()\n        write_body(_body_writer(body), value, ctx, False)\n        w.varint(ctx.idref(fd.field_id))\n        w.byte(fd.kind)\n        w.varint(len(body))\n        w.raw(body)"),
 			false,
 		},
 	} {
