@@ -145,6 +145,11 @@ func deadByteAcceptedMutant(root *wireRoot, reply legReply, ans oracleAnswer, da
 	if len(reply.saved) != len(data) || bytes.Equal(reply.saved, data) {
 		return false
 	}
+	for i := range data {
+		if reply.saved[i] != data[i] && reply.saved[i] != 0 {
+			return false // a byte the leg changed to anything but zero
+		}
+	}
 	clean, err := root.oracle(reply.saved)
 	if err != nil || !clean.accepted || clean.encFail || !bytes.Equal(clean.encoded, reply.saved) {
 		return false

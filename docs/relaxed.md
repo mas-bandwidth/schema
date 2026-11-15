@@ -30,7 +30,11 @@ relaxed cell whose slug has no entry here.
   `test/conformance/harness/main.go`, `test/conformance/harness/wirefuzz.go`,
   `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
-  then drop the flag. WIP: `fix/main-red/dead-bytes`.
+  then drop the flag. WIP: `fix/main-red/dead-bytes`. Since
+  sm-a1-engine-fixed-dead-bytes-refused-2 the engine refuses those four
+  kinds, so this direction left 0 mutants uncompared on the default seed
+  (227190 mutants); what it could still match is not a dead byte. Owed: a
+  re-check that drops the flag.
 - The other direction, one slug per leg. Since sm-a1-engine-fixed-dead-bytes-refused-2
   the engine refuses a fixed record whose dead bytes are not zero
   (docs/rulings.json fixed-dead-bytes-are-zero), and four legs still read

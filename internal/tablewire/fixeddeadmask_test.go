@@ -50,9 +50,36 @@ func TestFixedDeadBytesMaskIsTheDeadBytes(t *testing.T) {
 			t.Errorf("%s (body offset %d): dead=%v, want %v", r.name, r.at, mask[body+r.at], r.dead)
 		}
 	}
-	for i := 0; i < body; i++ {
+	for i := range body {
 		if mask[i] {
 			t.Fatalf("header byte %d named dead", i)
+		}
+	}
+	// a union under tag 0 and a struct array with no live slot: all of each
+	// past the tag or the count is dead (deadBytesUnit carries no integrity
+	// trailer, so the record body is the wire's last TypeBytes bytes)
+	empty, err := tablewire.Encode(m, place(t, m, "Root", `{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyBody := len(empty) - int(ir.TableFixedTypeBytes(st))
+	emptyMask := tablewire.FixedDeadBytes(m, m.New(st), empty)
+	if emptyMask == nil {
+		t.Fatal("the mask refused the empty record")
+	}
+	for _, r := range []struct {
+		name string
+		at   int
+		dead bool
+	}{
+		{"pick's tag 0", at("pick"), false},
+		{"pick under tag 0", at("pick") + 1, true},
+		{"pick under tag 0, last byte", at("pick") + 1 + 7, true},
+		{"inners' count", at("inners"), false},
+		{"inners' first slot past a count of zero", at("inners") + 4, true},
+	} {
+		if emptyMask[emptyBody+r.at] != r.dead {
+			t.Errorf("%s (body offset %d): dead=%v, want %v", r.name, r.at, emptyMask[emptyBody+r.at], r.dead)
 		}
 	}
 	stained := append([]byte(nil), wire...)
