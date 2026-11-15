@@ -7153,7 +7153,9 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_row_body_pack_(struct blockdemo
         blockdemo_table_cook_put(at+52+cook_i2*1,(uint64_t)value->teams[cook_i2],1,order);
     } }
     blockdemo_table_cook_put(at+56+4,value->counter_present ? 1 : 0,1,order);
-    blockdemo_table_cook_put(at+56,(uint64_t)value->counter,4,order);
+    if(value->counter_present) {
+        blockdemo_table_cook_put(at+56,(uint64_t)value->counter,4,order);
+    }
     return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_padded_row_cook_measure(const blockdemo_padded_row_t * value) { (void)value; return 144; }

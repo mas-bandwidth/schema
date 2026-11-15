@@ -198,6 +198,14 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return
 	} // zero until the extent writer places the array
+	if f.Type.Optional {
+		// an absent optional's payload is DEAD BYTES and stays the zeroed
+		// extent's zero, whatever its storage holds (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero)
+		g.pf("%sif(%s_present) {\n", ind, src)
+		defer g.pf("%s}\n", ind)
+		ind += "    "
+	}
 	if f.Array != ir.ArrayNone {
 		*step++
 		i := fmt.Sprintf("cook_i%d", *step)

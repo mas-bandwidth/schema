@@ -127,6 +127,11 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 			return fmt.Errorf("field %s: the optional's present byte is %d, not 0 or 1", f.Name, p)
 		}
 		fv.Present = p != 0
+		if !fv.Present && !f.IsMap() && !f.Type.TextUnbounded() {
+			// an absent optional's payload is dead bytes (§7.2): the field
+			// reads its declared default, which the fresh instance holds
+			return nil
+		}
 	}
 	switch {
 	case f.IsMap():
