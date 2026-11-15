@@ -20,4 +20,8 @@ func init() {
 		old: `fmt.Sprintf("buffer.writestring(%s, 0, \"%s\")", slot, b.String()),`,
 		new: `fmt.Sprintf("-- SABOTAGED: %s takes no default bytes %q", slot, b.String()),`,
 	}}
+	sabotages["packet-end-luau-read"] = []edit{{
+		old: `g.Pf("  return stream:serializeEnd()\n")`,
+		new: `g.Pf("  return true -- SABOTAGED: no end check\n")`,
+	}}
 }
