@@ -1107,6 +1107,7 @@ end
 local function read_base64(inp: Input, bound: number, report: any): (string | false)?
   if peek(inp) ~= '"' then inp.bad = true; return nil end
   inp.p = inp.p + 1
+  local start = inp.p
   local out = {}
   local acc, held = 0, 0
   local clamped, bad = false, false
@@ -1135,6 +1136,32 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
     end
   end
   if bad then
+    report.kindMismatch = report.kindMismatch + 1
+    return false
+  end
+  -- §16.8: only the canonical spelling the writer writes is accepted — the
+  -- standard alphabet, padded, pad bits zero. A body that decodes in another
+  -- spelling (a pad bit set, missing padding) is refused.
+  local body = inp.t:sub(start, inp.p - 2)
+  local n = #body
+  local pad = 0
+  if n >= 1 and body:sub(n, n) == "=" then pad = 1 end
+  if n >= 2 and body:sub(n - 1, n - 1) == "=" then pad = 2 end
+  local data = n - pad
+  local canonical = n % 4 == 0
+  if canonical then
+    for i = 1, data do
+      if body:sub(i, i) == "=" then canonical = false; break end
+    end
+  end
+  if canonical and pad == 1 then
+    local at = BASE64:find(body:sub(data, data), 1, true)
+    if at == nil or (at - 1) % 4 ~= 0 then canonical = false end
+  elseif canonical and pad == 2 then
+    local at = BASE64:find(body:sub(data, data), 1, true)
+    if at == nil or (at - 1) % 16 ~= 0 then canonical = false end
+  end
+  if not canonical then
     report.kindMismatch = report.kindMismatch + 1
     return false
   end
