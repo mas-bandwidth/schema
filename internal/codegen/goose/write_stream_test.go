@@ -5,12 +5,15 @@ package goose
 // THE PACKET WIRE). The check is the value's real encoded size against the
 // stream's room left: a stream one byte short returns SERIALIZE_ERROR_PAST_END,
 // and a stream of exactly the encoded size succeeds with the same bytes as a
-// roomy one. The negative control removes the emitted check and requires the
-// program to abort instead.
+// roomy one. An out-of-range length slot never wraps i32 in the measure pass
+// and still returns SERIALIZE_ERROR_VALUE_OUT_OF_RANGE when the stream holds
+// every legal value of the type. The negative control removes the emitted check
+// and requires the program to abort instead.
 
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,9 +115,58 @@ fn main() {
 	return b.String()
 }
 
+// lengthBoundsProgram exercises an out-of-range length slot and an i32-wide
+// length slot across short, exact-legal-bound and MaxBits streams.
+func lengthBoundsProgram(ns string) string {
+	return fmt.Sprintf(`import .Wire;
+import .serialize;
+
+var shortBuf: u8[16] = [0; 16];
+var roomyBuf: u8[512] = [0; 512];
+
+fn main() {
+    // 268435456 * 8 exceeds i32: a short stream still refuses upfront without
+    // wrapping in release builds or overflowing in --debug builds, and writes
+    // none of the preceding fields.
+    var td = %[1]s::NewTestData();
+    td.TextLength = 268435456;
+    var sShort = serialize_write_stream_init(shortBuf);
+    let rShort = %[1]s::WriteTestData(sShort, td);
+
+    // Chat is string(256) (9-bit length, align, bytes; ChatMaxBits = 2064). At
+    // bit 7, 9 + 0 + 256*8 = 2057 bits holds every legal Chat while remaining
+    // below ChatMaxBits, so _MeasureChat runs. An out-of-range length must
+    // still answer value_out_of_range, as on a stream holding ChatMaxBits.
+    var over = %[1]s::NewChat();
+    over.TextLength = 257;
+    var sRoomy = serialize_write_stream_init(roomyBuf);
+    let rRoomy = %[1]s::WriteChat(sRoomy, over);
+
+    var sLegal = serialize_write_stream_init(roomyBuf);
+    serialize_bits(sLegal, 0, 7);
+    sLegal.num_bits = 7 + 2057;
+    let rLegal = %[1]s::WriteChat(sLegal, over);
+
+    var huge = %[1]s::NewChat();
+    huge.TextLength = 268435456;
+    var sHuge = serialize_write_stream_init(roomyBuf);
+    serialize_bits(sHuge, 0, 7);
+    sHuge.num_bits = 7 + 2057;
+    let rHuge = %[1]s::WriteChat(sHuge, huge);
+
+    print(
+        serialize_refusal_name(rShort), " ", serialize_bytes_processed(sShort), " ",
+        serialize_refusal_name(rRoomy), " ", serialize_bytes_processed(sRoomy), " ",
+        serialize_refusal_name(rLegal), " ", serialize_bits_processed(sLegal), " ",
+        serialize_refusal_name(rHuge), " ", serialize_bits_processed(sHuge), "\n",
+    );
+}
+`, ns)
+}
+
 // runShortStreamProgram writes the generated module beside the probe and runs
 // it through gooserun, answering its stdout, stderr and whether it exited 0.
-func runShortStreamProgram(t *testing.T, files map[string][]byte, program string) (string, string, bool) {
+func runShortStreamProgram(t *testing.T, files map[string][]byte, program string, debug bool) (string, string, bool) {
 	t.Helper()
 	goose, why := gooserun.Compiler()
 	if goose == "" {
@@ -129,7 +181,12 @@ func runShortStreamProgram(t *testing.T, files map[string][]byte, program string
 	if err := os.WriteFile(filepath.Join(dir, "main.goose"), []byte(program), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := gooserun.Command(&openGate{TB: t}, goose, "run", "main.goose")
+	args := []string{"run"}
+	if debug {
+		args = append(args, "--debug")
+	}
+	args = append(args, "main.goose")
+	cmd := gooserun.Command(&openGate{TB: t}, goose, args...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -182,15 +239,86 @@ func TestGooseWriteIntoShortStreamRefuses(t *testing.T) {
 	t.Parallel()
 	files, ns := shortStreamFiles(t)
 	for _, c := range shortStreamCases {
-		c := c
-		t.Run(c.name, func(t *testing.T) {
+		for _, mode := range []struct {
+			suffix string
+			debug  bool
+		}{
+			{"", false},
+			{"_debug", true},
+		} {
+			t.Run(c.name+mode.suffix, func(t *testing.T) {
+				t.Parallel()
+				stdout, stderr, ok := runShortStreamProgram(t, files, shortStreamProgram(ns, c), mode.debug)
+				if red := shortStreamVerdict(c, stdout, stderr, ok); len(red) > 0 {
+					t.Fatalf("%s", strings.Join(red, "\n"))
+				}
+			})
+		}
+	}
+
+	for _, mode := range []struct {
+		name  string
+		debug bool
+	}{
+		{"length_bounds", false},
+		{"length_bounds_debug", true},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, ok := runShortStreamProgram(t, files, shortStreamProgram(ns, c))
-			if red := shortStreamVerdict(c, stdout, stderr, ok); len(red) > 0 {
-				t.Fatalf("%s", strings.Join(red, "\n"))
+			stdout, stderr, ok := runShortStreamProgram(t, files, lengthBoundsProgram(ns), mode.debug)
+			if !ok {
+				t.Fatalf("%s: the program aborted instead of returning refusals (stderr %q)", mode.name, strings.TrimSpace(stderr))
+			}
+			const want = "past_end 0 value_out_of_range 0 value_out_of_range 7 value_out_of_range 7"
+			if got := strings.TrimSpace(stdout); got != want {
+				t.Fatalf("%s: got %q, want %q", mode.name, got, want)
 			}
 		})
 	}
+
+	t.Run("measure_names_claimed", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			schema string
+			want   string
+		}{
+			{"package p\n\ntype Foo\n{\n    x uint8\n}\n\ntype _MeasureFoo\n{\n    x uint8\n}\n", "declares _MeasureFoo in namespace p"},
+			{"package p\n\ntype Arm\n{\n    x uint8\n}\n\nunion Choice\n{\n    a Arm\n}\n\ntype _MeasureChoice\n{\n    x uint8\n}\n", "declares _MeasureChoice in namespace p"},
+		} {
+			srcDir := t.TempDir()
+			writeFile(t, srcDir, "Claim.schema", tc.schema)
+			_, err := Generate(unitFromDir(t, srcDir))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Generate(%q) = %v, want a refusal naming %q", tc.schema, err, tc.want)
+			}
+		}
+	})
+
+	t.Run("wide_declared_bound", func(t *testing.T) {
+		t.Parallel()
+		goose, why := gooserun.Compiler()
+		if goose == "" {
+			t.Fatalf("gooserun: the Goose compiler does not resolve: %s", why)
+		}
+		srcDir := t.TempDir()
+		writeFile(t, srcDir, "Wide.schema", "package p\n\ntype WideBytes\n{\n    head uint32\n    body bytes(268435456)\n}\n")
+		wideFiles, err := Generate(unitFromDir(t, srcDir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(wideFiles["Wide.goose"])
+		const wantClamp = "let len1: i64 = if value.BodyLength > 268435456 { 268435456 } else if value.BodyLength < 0 { 0 } else { value.BodyLength };\n    total += len1 * 8;"
+		if !strings.Contains(text, wantClamp) {
+			t.Fatalf("Wide.goose missing i64 clamped byte-length scale:\n%s", text)
+		}
+		outDir := t.TempDir()
+		writeAll(t, outDir, wideFiles)
+		cmd := gooserun.Command(&openGate{TB: t}, goose, "check", "Wide.goose")
+		cmd.Dir = outDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("goose check Wide.goose failed: %v\n%s", err, out)
+		}
+	})
 }
 
 // shortStreamCheckBlock is the emitted check the negative control removes,
@@ -207,10 +335,7 @@ func shortStreamCheckBlock(typ string) string {
 
 func withoutShortStreamCheck(t *testing.T, files map[string][]byte, c shortStreamCase) map[string][]byte {
 	t.Helper()
-	out := make(map[string][]byte, len(files))
-	for name, data := range files {
-		out[name] = data
-	}
+	out := maps.Clone(files)
 	name := c.module + ".goose"
 	src := string(out[name])
 	block := shortStreamCheckBlock(c.typ)
@@ -225,11 +350,10 @@ func TestGooseWriteIntoShortStreamRefusesNegativeControl(t *testing.T) {
 	t.Parallel()
 	files, ns := shortStreamFiles(t)
 	for _, c := range shortStreamCases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			patched := withoutShortStreamCheck(t, files, c)
-			stdout, stderr, ok := runShortStreamProgram(t, patched, shortStreamProgram(ns, c))
+			stdout, stderr, ok := runShortStreamProgram(t, patched, shortStreamProgram(ns, c), false)
 			red := shortStreamVerdict(c, stdout, stderr, ok)
 			found := false
 			for _, line := range red {

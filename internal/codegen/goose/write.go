@@ -331,6 +331,7 @@ func (w *wgen) emitWrite128(f *ir.Field, expr, ind string) error {
 // emitMeasureStruct writes _Measure<T>, the value's exact end bit position
 // starting from bits.
 func (w *wgen) emitMeasureStruct(st *ir.Struct) error {
+	w.Declare("_Measure" + st.Name)
 	w.Pf("fn _Measure%s(value: %s&, bits: i64) -> i64 {\n", st.Name, st.Name)
 	w.Pf("    var total = bits;\n")
 	w.n = 0
@@ -343,6 +344,7 @@ func (w *wgen) emitMeasureStruct(st *ir.Struct) error {
 
 // emitMeasureUnion writes _Measure<U>: the tag, then the selected arm.
 func (w *wgen) emitMeasureUnion(d *ir.Union) error {
+	w.Declare("_Measure" + d.Name)
 	tag := d.Name + "Type"
 	w.Pf("fn _Measure%s(value: %s&, bits: i64) -> i64 {\n", d.Name, d.Name)
 	w.Pf("    var total = bits;\n")
@@ -404,7 +406,7 @@ func (w *wgen) emitMeasureField(f *ir.Field, ind string) error {
 	}
 	limit := fmt.Sprint(f.ArrayBound)
 	if f.Array == ir.ArrayCounted {
-		bits := ir.BitsRequired(big.NewInt(int64(f.ArrayMin)), big.NewInt(int64(f.ArrayBound)))
+		bits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
 		if bits > 0 {
 			w.Pf("%stotal += %d; // the count\n", ind, bits)
 		}
@@ -444,11 +446,16 @@ func (w *wgen) emitMeasureScalar(f *ir.Field, expr, length, ind string) error {
 	case ir.TFloat64:
 		w.Pf("%stotal += 64;\n", ind)
 	case ir.TString, ir.TBytes:
-		if bits := ir.BitsRequired(big.NewInt(0), big.NewInt(int64(t.Size))); bits > 0 {
+		if bits := ir.BitsRequired(big.NewInt(0), big.NewInt(t.Size)); bits > 0 {
 			w.Pf("%stotal += %d; // the length\n", ind, bits)
 		}
 		w.Pf("%stotal += (8 - total %% 8) %% 8; // the payload aligns\n", ind)
-		w.Pf("%sif %s > 0 { total += %s * 8; }\n", ind, length, length)
+		// length is an i32 slot: clamp to [0, N] in i64 before scaling to
+		// bits so a large bound cannot wrap i32 and an out-of-range length
+		// cannot mask VALUE_OUT_OF_RANGE when every legal value fits
+		n := w.tmp("len")
+		w.Pf("%slet %s: i64 = if %s > %d { %d } else if %s < 0 { 0 } else { %s };\n", ind, n, length, t.Size, t.Size, length, length)
+		w.Pf("%stotal += %s * 8;\n", ind, n)
 	case ir.TFixed:
 		if f.IntMin == nil || f.IntMax == nil {
 			return fmt.Errorf("fixed field %s has no resolved whole-unit bounds", f.Name)
