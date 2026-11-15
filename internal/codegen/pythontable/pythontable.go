@@ -352,6 +352,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
 		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
+		if f.Type.Optional {
+			fmt.Fprintf(b, "            inner=%s,\n", strconv.Quote(innerCodecOf(f)))
+		}
 		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
 		fmt.Fprintf(b, "            lo=%s,\n", lo)
 		fmt.Fprintf(b, "            hi=%s,\n", hi)
@@ -651,7 +654,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.IsMap() || f.KeyEnum != "" {
+		return "unsupported"
+	}
+	if f.Type.Optional {
+		return "optional"
+	}
+	if f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -665,6 +674,17 @@ func codecOf(f *ir.Field) string {
 		}
 	}
 	return "unsupported"
+}
+
+// innerCodecOf is the codec an optional wraps: ?T rides T's own framing, so
+// the optional kind owns presence and delegates the bytes to it.
+func innerCodecOf(f *ir.Field) string {
+	if !f.Type.Optional {
+		return ""
+	}
+	single := *f
+	single.Type.Optional = false
+	return codecOf(&single)
 }
 
 func targetName(f *ir.Field) string {

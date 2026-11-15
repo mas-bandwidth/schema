@@ -10,7 +10,7 @@ from typing import Any
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_bool, kind_int, kind_optional, kind_pointer, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -103,7 +103,17 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
     for field in desc.fields:
         current = getattr(value, field.name)
         where = _path(path, field.name)
-        if field.codec == "pointer":
+        if field.codec == "optional":
+            if current is None:
+                continue
+            if field.inner == "table":
+                target = descriptor.by_name(field.target)
+                if target is None or not isinstance(current, target):
+                    raise InvalidValue(where, f"not a {field.target}")
+                _validate(current, current.descriptor, where, seen)
+            else:
+                kinds._REGISTRY[field.inner].validate(field, current, where)
+        elif field.codec == "pointer":
             if current is None:
                 continue
             target = descriptor.by_name(field.target)
@@ -123,6 +133,12 @@ def _collect(value: Any, ctx: Ctx) -> None:
     desc: TableDesc = value.descriptor
     for field in desc.fields:
         current = getattr(value, field.name)
+        if field.codec == "optional":
+            if current is None:
+                continue
+            if field.inner == "table":
+                _collect(current, ctx)
+            continue
         if field.codec == "pointer":
             if current is None:
                 continue

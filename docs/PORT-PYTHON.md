@@ -289,16 +289,31 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_table.py`, `kind_pointer.py` and
+  `kind_optional.py` register the kinds this cut carries. A later card adds its
+  module and one registration line, never an edit to the body walk: the walk
+  dispatches through `_schema/kinds.py`, and a kind that wraps another names
+  the wrapped codec in the descriptor's `inner`. `kind_unsupported.py` is the
+  named placeholder for a construct whose descriptor exists but whose codec has
+  not landed; a read or write that reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
-  sink, so measure and save agree by construction.
+  sink, so measure and save agree by construction. A by-value table writes its
+  own field id before its body's ids, so a nested table's id table is the
+  reference's first-use order and a read-then-write is its bytes.
+- **Optional fields are presence.** `?T` is carried over the base kinds (bool,
+  bits, the full-width integers and by-value tables), at every depth: `None` is
+  absent and writes no field, and an absent value owns no node, because the
+  save's numbering follows an optional's edges only when its value is present.
+  A present value ALWAYS rides, its default included, through the inner kind
+  the descriptor names; a read sets the field only when it rode and leaves it
+  `None` otherwise, so "absent" and "present and default" stay two values.
+  Optional arrays (`?[N]T`, `?[..N]T`) are not carried in this cut: the array
+  kind their present framing shares is a later layer, and the target keeps
+  refusing them by name until that layer registers; the optional module already
+  delegates through `inner`, so no second optional path is owed.
 - **The shape is measured.** A table whose fields are all bools and integers
   gets the straight-line generated save/load pair, unrolled with each field
   descriptor bound to a local; every table, and every construct a later card
@@ -308,10 +323,10 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  bits, by-value tables, `*T` pointers to tables and `?T` over those, for both
+  the fixed and the variable class. `*bytes`, `*string`, `[]T`, `[E]T`, maps
+  and unions with table arms have descriptors in this cut and refuse by name
+  through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
