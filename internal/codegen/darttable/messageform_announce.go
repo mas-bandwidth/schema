@@ -226,6 +226,9 @@ final class TableMessageShape {
       s.elem = sig[at];
       at += 1;
       if (!tableMessageKnownKind(s.elem)) return null;
+      // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (docs/SPEC-TABLES.md
+      // §3.3, ir.DecodeShape): no declaration announces a list of lists
+      if (s.elem == 14 || s.elem == 16) return null;
       final inner = decode(sig, at, end, s.elem);
       if (inner == null) return null;
       s.inner = inner.$1;

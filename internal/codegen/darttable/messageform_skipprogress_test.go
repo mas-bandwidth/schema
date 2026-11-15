@@ -8,10 +8,12 @@ package darttable
 // the iterations. The Go reference's walk refuses that shape, and the Dart
 // reader must answer the same verdict for the same bytes.
 //
-// The hostile shape is an array of up to 2^24 elements whose element is an
-// array of exactly one payload-free element. Its inner count has width zero
-// and its inner element rides no bits, so every outer element consumes
-// nothing. A batch carrying a 2^24 outer count is a few bytes.
+// The hostile shape is an array of up to 2^24 elements whose element is a
+// `string(0)`: its length has width zero and it holds no bytes, so once the
+// first element has aligned the walk, every element after it consumes
+// nothing. A batch carrying a 2^24 count is a few bytes. (An array of arrays
+// was the shape here until the element kinds closed, docs/SPEC-TABLES.md §3.3:
+// a list of lists is framing damage at AnnounceRead and never reaches a walk.)
 
 import (
 	"encoding/binary"
@@ -46,15 +48,10 @@ func skipProgressAnnouncement(t *testing.T, u *ir.Unit) (announcement []byte, sl
 		Id:   0x5a5a5a5a00000001,
 		Kind: ir.TableKindArray,
 		Shape: ir.TableMessageShape{
-			Min:  0,
-			Max:  1 << 24,
-			Elem: ir.TableKindArray,
-			Inner: &ir.TableMessageShape{
-				Min:   1,
-				Max:   1,
-				Elem:  ir.TableKindNoPayload,
-				Inner: &ir.TableMessageShape{},
-			},
+			Min:   0,
+			Max:   1 << 24,
+			Elem:  ir.TableKindString,
+			Inner: &ir.TableMessageShape{Max: 0},
 		},
 	}
 	entries := append(tablewire.MessageVocabulary(u), hostile)

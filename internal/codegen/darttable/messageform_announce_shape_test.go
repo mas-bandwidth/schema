@@ -46,16 +46,23 @@ func announceShapeCases() []announceShapeCase {
 	arrayMax = append(arrayMax, ir.TableKindI8, 0)
 	return []announceShapeCase{
 		{
-			// array [0..1] of array [0..1] of int8, the int8's packing byte
-			// missing: DecodeShape refuses the inner int8 shape.
-			name:  "nested_array_truncated",
-			entry: announceShapeEntry(ir.TableKindArray, 0, 1, ir.TableKindArray, 0, 1, ir.TableKindI8),
+			// array [0..1] of array [0..1] of int8: AN ARRAY ELEMENT IS
+			// FRAMING DAMAGE (docs/SPEC-TABLES.md §3.3), so DecodeShape refuses
+			// the list of lists before its inner shape is read.
+			name:  "nested_array_wellformed",
+			entry: announceShapeEntry(ir.TableKindArray, 0, 2, ir.TableKindArray, 0, 2, ir.TableKindI8, 0),
 		},
 		{
-			// The same nested array whole: DecodeShape reads it, so announceRead
-			// must too.
-			name:        "nested_array_wellformed",
-			entry:       announceShapeEntry(ir.TableKindArray, 0, 2, ir.TableKindArray, 0, 2, ir.TableKindI8, 0),
+			// array [0..1] of int8, the int8's packing byte missing:
+			// DecodeShape refuses the inner int8 shape.
+			name:  "array_of_int8_truncated",
+			entry: announceShapeEntry(ir.TableKindArray, 0, 1, ir.TableKindI8),
+		},
+		{
+			// The same array whole: DecodeShape reads the inner shape, so
+			// announceRead must too.
+			name:        "array_of_int8_wellformed",
+			entry:       announceShapeEntry(ir.TableKindArray, 0, 2, ir.TableKindI8, 0),
 			want:        true,
 			payloadBits: 2,
 		},
@@ -67,9 +74,15 @@ func announceShapeCases() []announceShapeCase {
 			payloadBits: 3,
 		},
 		{
-			// keyed array (4) of keyed array (4) of a raw uint8.
-			name:        "keyed_array_of_keyed_array",
-			entry:       announceShapeEntry(ir.TableKindKeyed, 4, ir.TableKindKeyed, 4, ir.TableKindU8, 0),
+			// keyed array (4) of keyed array (4) of a raw uint8: a keyed
+			// element is framing damage as an array element is (§3.3).
+			name:  "keyed_array_of_keyed_array",
+			entry: announceShapeEntry(ir.TableKindKeyed, 4, ir.TableKindKeyed, 4, ir.TableKindU8, 0),
+		},
+		{
+			// keyed array (4) of a raw uint8.
+			name:        "keyed_array_of_u8",
+			entry:       announceShapeEntry(ir.TableKindKeyed, 4, ir.TableKindU8, 0),
 			want:        true,
 			payloadBits: 3,
 		},
