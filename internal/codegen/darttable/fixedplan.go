@@ -23,9 +23,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// the plan's ops, and the whole set. The IDENTITY plan carries the first
-// three; the other four are what a plan compiled from another writer's layout
-// adds.
+// the plan's ops, and the whole set. The IDENTITY plan carries copy, count,
+// text and the two dead-byte checks; the other four move or remap a value from
+// a plan compiled from another writer's layout.
 const (
 	fixedOpCopy    = 0 // move size bytes
 	fixedOpCount   = 1 // a count: clamp it to the reader's own bound
@@ -34,6 +34,14 @@ const (
 	fixedOpWiden   = 4 // a narrower source into a wider destination
 	fixedOpConst   = 5 // a constant this reader's own storage takes: a remapped union tag
 	fixedOpWidenF  = 6 // f32 into f64, §4's float rung
+
+	// THE TWO CHECK OPS. `dead` refuses a non-zero byte in a source range and
+	// lands nothing, which is how an inactive union arm's bytes are held to
+	// zero (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11). `presentCopy`
+	// lands an optional's present byte and, under a clear flag, refuses a
+	// non-zero byte in the dead payload behind it (§3.1, §4.5).
+	fixedOpDead        = 8
+	fixedOpPresentCopy = 9
 )
 
 // fixedNoGuard is the guard an entry that belongs to no union arm carries.
@@ -127,8 +135,8 @@ func fixedIdentityPlan(st *ir.Struct) ([]fixedPlanEntry, int) {
 func fixedPlanField(p *fixedPlanBuild, f *ir.Field, at int64) {
 	base := at
 	if f.Type.Optional {
-		p.push(fixedPlanEntry{op: fixedOpCopy, src: base, dst: base, size: fixedPresentBytes,
-			guard: fixedNoGuard, note: f.Name + " present"})
+		p.push(fixedPlanEntry{op: fixedOpPresentCopy, src: base, dst: base, size: fixedPresentBytes,
+			aux: fixedFieldBytes(f) - fixedPresentBytes, guard: fixedNoGuard, note: f.Name + " present"})
 		base += fixedPresentBytes
 	}
 	switch {
@@ -139,8 +147,10 @@ func fixedPlanField(p *fixedPlanBuild, f *ir.Field, at int64) {
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT IS ITS OWN ENTRY, and clamping it is why: a count the
 		// writer states past this reader's bound is clamped and counted.
+		// `aux` is the element stride, so the run can hold the dead slots
+		// past the live count to zero (§4.5, §5.3 step 11).
 		p.push(fixedPlanEntry{op: fixedOpCount, src: base, dst: base, size: f.ArrayBound,
-			guard: fixedNoGuard, note: f.Name + " count"})
+			aux: fixedElementBytes(f), guard: fixedNoGuard, note: f.Name + " count"})
 		fixedPlanElements(p, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
 		fixedPlanText(p, f, base, f.Type.Size, fixedTextUtf8)
@@ -183,22 +193,42 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			return
 		case *ir.Union:
 			// the tag, then every arm under its own tag value. An arm the tag
-			// does not name is not moved, which is what leaves the slack behind
-			// a narrower arm as the prefill put it.
+			// does not name is not moved, and the DEAD entries below hold its
+			// bytes (and the bytes past a narrower taken arm) to zero
+			// (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
 			tag := fixedUnionTagBytes(r)
+			widest := fixedElementBytes(f) - tag
 			p.push(fixedPlanEntry{op: fixedOpCopy, src: src, dst: dst, size: tag,
 				guard: guard, arg: arg, note: "the tag"})
 			// THE ARMS' GUARD IS THIS UNION'S TAG, AT THIS UNION'S WIDTH.
 			saved := p.argw
 			p.argw = int(tag)
+			if widest > 0 {
+				// TAG 0 NAMES NO ARM: every arm byte under it is dead.
+				p.chain = append(p.chain, fixedLink{guard: src, arg: 0, argw: int(tag)})
+				p.push(fixedPlanEntry{op: fixedOpDead, src: src + tag, dst: src + tag, size: widest,
+					guard: src, note: "tag 0's dead arm"})
+				p.chain = p.chain[:len(p.chain)-1]
+			}
 			for i, v := range r.Variants {
-				if v.F == nil {
-					continue // §3.4: the tag is copied; this arm has no payload to move.
+				armBytes := int64(0)
+				if v.F != nil {
+					armBytes = fixedFieldBytes(v.F)
 				}
 				// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
 				// (§4.1, the guard chain): one link pushed on the way in, popped
 				// on the way out.
 				p.chain = append(p.chain, fixedLink{guard: src, arg: i + 1, argw: int(tag)})
+				if past := widest - armBytes; past > 0 {
+					p.push(fixedPlanEntry{op: fixedOpDead, src: src + tag + armBytes,
+						dst: src + tag + armBytes, size: past,
+						guard: src, note: "dead past the taken arm"})
+				}
+				if v.F == nil {
+					// §3.4: the tag is copied; this arm has no payload to move.
+					p.chain = p.chain[:len(p.chain)-1]
+					continue
+				}
 				if v.F.Array == ir.ArrayNone && v.F.KeyEnum == "" && !v.F.Type.Optional {
 					if _, ok := v.F.Type.Ref.(*ir.Struct); ok {
 						// Nested record arms keep the established storage walk,
@@ -228,8 +258,8 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 	}
 	base := at
 	if f.Type.Optional {
-		p.push(fixedPlanEntry{op: fixedOpCopy, src: base, dst: base, size: fixedPresentBytes,
-			guard: guard, arg: arg, note: f.Name + " present"})
+		p.push(fixedPlanEntry{op: fixedOpPresentCopy, src: base, dst: base, size: fixedPresentBytes,
+			aux: fixedFieldBytes(f) - fixedPresentBytes, guard: guard, arg: arg, note: f.Name + " present"})
 		base += fixedPresentBytes
 	}
 	switch {
@@ -248,9 +278,9 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 			fixedPlanElement(p, f, base+i*elem, base+i*elem, guard, arg)
 		}
 	case f.Array == ir.ArrayCounted:
-		p.push(fixedPlanEntry{op: fixedOpCount, src: base, dst: base, size: f.ArrayBound,
-			guard: guard, arg: arg, note: f.Name + " count"})
 		elem := fixedElementBytes(f)
+		p.push(fixedPlanEntry{op: fixedOpCount, src: base, dst: base, size: f.ArrayBound,
+			aux: elem, guard: guard, arg: arg, note: f.Name + " count"})
 		for i := int64(0); i < f.ArrayBound; i++ {
 			fixedPlanElement(p, f, base+fixedCountBytes+i*elem, base+fixedCountBytes+i*elem, guard, arg)
 		}
@@ -366,6 +396,9 @@ func fixedEntryLands(e fixedPlanEntry) []fixedFill {
 			{dst: e.dst, size: fixedCountBytes},
 			{dst: e.aux, size: e.size},
 		}
+	case fixedOpDead:
+		// a check lands nothing
+		return nil
 	default:
 		return []fixedFill{{dst: e.dst, size: e.size}}
 	}

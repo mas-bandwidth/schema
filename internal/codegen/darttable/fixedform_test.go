@@ -547,9 +547,9 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 			counts++
 		case fixedOpText:
 			texts++
-		case fixedOpCopy:
+		case fixedOpCopy, fixedOpPresentCopy, fixedOpDead:
 		default:
-			t.Fatalf("the identity plan carries op %d; only copy, count and text belong in it", e.op)
+			t.Fatalf("the identity plan carries op %d; only copy, count, text and the dead-byte checks belong in it", e.op)
 		}
 	}
 	// BenchMixed declares two counted arrays (entities, stats) and two text
@@ -576,6 +576,12 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].src < ordered[j].src })
 	var at, widest int64
 	for i, e := range ordered {
+		if e.op == fixedOpDead {
+			// A DEAD-BYTE CHECK LANDS NOTHING: it accounts for no destination
+			// run and does not advance the walk (docs/FIXED-FORM-ALGORITHM.md
+			// §4.5, §5.3 step 11).
+			continue
+		}
 		if e.src != e.dst {
 			t.Fatalf("plan entry %d has src %d and dst %d; the identity plan's source IS its destination in this backend",
 				i, e.src, e.dst)
