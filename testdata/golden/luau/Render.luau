@@ -70,9 +70,10 @@ function _M.ZeroRenderSprite(value: any)
   value.Team = 0
 end
 
--- ReadRenderSprite reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadRenderSpriteBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadRenderSprite(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadRenderSprite is the one-packet read (SPEC §5).
+function _M.ReadRenderSpriteBody(stream: any, value: any): boolean
   if not stream:serializeBits64(BIG, 64) then
     return false
   end
@@ -96,6 +97,13 @@ function _M.ReadRenderSprite(stream: any, value: any): boolean
   return true
 end
 
+-- ReadRenderSprite reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadRenderSprite(stream: any, value: any): boolean
+  if not _M.ReadRenderSpriteBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitRenderBlock resets a value to what NewRenderBlock builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -114,9 +122,10 @@ function _M.ZeroRenderBlock(value: any)
   value.SpritesCount = 0
 end
 
--- ReadRenderBlock reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadRenderBlockBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadRenderBlock(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadRenderBlock is the one-packet read (SPEC §5).
+function _M.ReadRenderBlockBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 32) then
     return false
   end
@@ -130,11 +139,18 @@ function _M.ReadRenderBlock(stream: any, value: any): boolean
   end
   value.SpritesCount = BITS.value
   for i = 1, value.SpritesCount do
-    if not _M.ReadRenderSprite(stream, value.Sprites[i]) then
+    if not _M.ReadRenderSpriteBody(stream, value.Sprites[i]) then
       return false
     end
   end
   return true
+end
+
+-- ReadRenderBlock reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadRenderBlock(stream: any, value: any): boolean
+  if not _M.ReadRenderBlockBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- RenderSpriteMaxBits is the longest wire path, align padding at its worst case;

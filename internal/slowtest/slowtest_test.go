@@ -75,6 +75,8 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 		"internal/codegen/xtable/listed_test.go":     "package xtable\nfunc TestC(t *testing.T) {\n\texec.LookPath(\"node\")\n}\n",
 		"internal/codegen/xtable/nowgated_test.go":   "package xtable\nfunc TestD(t *testing.T) {\n\tslowtest.Gate(t, \"dart\")\n\texec.CommandContext(ctx, \"dart\")\n}\n",
 		"internal/codegen/xtable/plain_test.go":      "package xtable\nfunc TestE(t *testing.T) {}\n",
+		"internal/codegen/xtable/helpers_test.go":    "package xtable\nfunc toolchain(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n}\n",
+		"internal/codegen/xtable/indirect_test.go":   "package xtable\nfunc TestH(t *testing.T) {\n\ttoolchain(t)\n\texec.Command(\"cc\")\n}\n",
 		"internal/codegen/xtable/testdata/x_test.go": "package x\nfunc TestF(t *testing.T) {\n\texec.Command(\"cc\")\n}\n",
 		"compiler/deep/sub/ungated_nested_test.go":   "package sub\nfunc TestG(t *testing.T) {\n\tfindDotnet(t)\n}\n",
 	}
@@ -91,8 +93,8 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scan.scanned != 5 {
-		t.Errorf("scanned %d toolchain sources, want 5 (plain and testdata/ excluded)", scan.scanned)
+	if scan.scanned != 6 {
+		t.Errorf("scanned %d toolchain sources, want 6 (plain, the gating helper and testdata/ excluded)", scan.scanned)
 	}
 	baseline := map[string]bool{
 		"internal/codegen/xtable/listed_test.go":   true,
@@ -127,6 +129,7 @@ type toolchainScan struct {
 
 func scanToolchainTests(root string, scopes []string) (toolchainScan, error) {
 	var scan toolchainScan
+	gatedHelpers := map[string]map[string]bool{}
 	for _, scope := range scopes {
 		err := filepath.WalkDir(filepath.Join(root, scope), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -150,7 +153,19 @@ func scanToolchainTests(root string, scopes []string) (toolchainScan, error) {
 				return nil
 			}
 			scan.scanned++
-			if !strings.Contains(text, "slowtest.Gate(") {
+			dir := filepath.Dir(path)
+			helpers, ok := gatedHelpers[dir]
+			if !ok {
+				helpers, err = gatedToolchainHelpers(dir)
+				if err != nil {
+					return err
+				}
+				gatedHelpers[dir] = helpers
+			}
+			// A test that calls a helper in its own package which calls
+			// slowtest.Gate is gated too: the helper's skip lands before the
+			// test reaches the toolchain it is about.
+			if !strings.Contains(text, "slowtest.Gate(") && !callsAnyToolchainHelper(path, data, helpers) {
 				rel, err := filepath.Rel(root, path)
 				if err != nil {
 					return err
@@ -165,6 +180,86 @@ func scanToolchainTests(root string, scopes []string) (toolchainScan, error) {
 	}
 	slices.Sort(scan.ungated)
 	return scan, nil
+}
+
+// gatedToolchainHelpers is the set of functions in one package whose body
+// calls slowtest.Gate. A test that calls one is behind the gate without
+// spelling the call itself, as javaToolsRequired wraps it for the Java probes.
+func gatedToolchainHelpers(dir string) (map[string]bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	helpers := map[string]bool{}
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		file, err := parser.ParseFile(fset, path, data, 0)
+		if err != nil {
+			continue // a source the parser refuses cannot carry a call this scan trusts
+		}
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			if callsSlowtestGate(fn.Body) {
+				helpers[fn.Name.Name] = true
+			}
+		}
+	}
+	return helpers, nil
+}
+
+// callsSlowtestGate reports whether body calls slowtest.Gate directly.
+func callsSlowtestGate(body *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return !found
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "slowtest" && sel.Sel.Name == "Gate" {
+				found = true
+				return false
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// callsAnyToolchainHelper reports whether the test source calls one of its
+// package's gating helpers by name.
+func callsAnyToolchainHelper(path string, data []byte, helpers map[string]bool) bool {
+	if len(helpers) == 0 {
+		return false
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, data, 0)
+	if err != nil {
+		return false
+	}
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return !found
+		}
+		if id, ok := call.Fun.(*ast.Ident); ok && helpers[id.Name] {
+			found = true
+			return false
+		}
+		return !found
+	})
+	return found
 }
 
 // ratchetUngated splits the scan against the list: fresh is ungated and not
