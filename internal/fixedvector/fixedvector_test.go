@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestRead(t *testing.T) {
@@ -76,4 +78,47 @@ func TestWriterRangeNamesEveryVector(t *testing.T) {
 			t.Errorf("%s is not in WriterRange", f)
 		}
 	}
+}
+
+func TestDeadBytesVectors(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the fixed-form corpus")
+	corpus := fixedCorpus(t)
+	files := map[string]bool{}
+	names := map[string]bool{}
+	for _, vec := range DeadBytes {
+		if vec.File == "" || vec.Name == "" || vec.Root == "" || files[vec.File] || names[vec.Name] {
+			t.Errorf("dead-byte vector %+v is incomplete or repeated", vec)
+		}
+		files[vec.File] = true
+		names[vec.Name] = true
+	}
+	for _, vec := range DeadBytes {
+		vec := vec
+		t.Run(vec.Name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := os.Stat(filepath.Join(corpus, vec.File)); err != nil {
+				t.Fatalf("the corpus does not hold %s: %v", vec.File, err)
+			}
+			want, err := Read(corpus, vec.File)
+			if err != nil {
+				t.Fatalf("%s: %v", vec.File, err)
+			}
+			if want.Refused == vec.Reads {
+				t.Fatalf("%s: the manifest says refused=%v, DeadBytes says reads=%v", vec.File, want.Refused, vec.Reads)
+			}
+		})
+	}
+}
+
+func fixedCorpus(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join("..", "..", "build", "fixedform-corpus")
+	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the fixed-form corpus is not built in %s: %v", dir, err)
+		}
+		t.Skip("the fixed-form corpus is not built: make tables-fixedform-corpus")
+	}
+	return dir
 }
