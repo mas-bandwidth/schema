@@ -845,6 +845,7 @@ func runAllRuntimesJava(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
 		keep := name == "TableFixed.java" ||
 			name == "TableVocabulary.java" ||
 			name == "TableMessage.java" ||
+			name == "TableVariable.java" || // the announcement is read as a form-1 file (messageform.go)
 			strings.HasSuffix(name, "Fixed.java") ||
 			strings.HasSuffix(name, "Message.java")
 		if keep {
