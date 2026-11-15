@@ -264,6 +264,26 @@ green)` and its slug.
   other disagreement is still compared. Real fix: the generated Go fixed read
   refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
   tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
+- `relax/python-leg-shared-gate-claims`: `compiler`, in the
+  `schema_leg_python` build only: TestCountedArrayIsBornAtItsDeclaredMinimum,
+  TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom,
+  TestGuardCommentsSpellTheConditionTheWayDescriptorsDo,
+  TestVoidArmInTypeBodyIsCheckedAndCarried,
+  TestUnionTagEnumExportsMaxNoCountAndItsDebugName,
+  TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet and
+  TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom log, not fail,
+  the python target's missing claim; TestNoVariableTableMessagePath and its
+  negative control hold python out of the fifteen-backend lock. The tag
+  registers python as a builtin while these shared gates have no python
+  claim yet (compiler/target_python.go). Real fix: when the leg joins the
+  builtins (drops the tag), each gate gets its python claim, the lock holds
+  sixteen, and every site carrying the slug goes.
+- `relax/python-table-packet-types`: `compiler`, in the `schema_leg_python`
+  build only: TestEveryTargetHasATableBackend logs, not fails, the python
+  table frame's refusal of a table naming a packet type ("does not carry
+  packet types yet"); any other python refusal still fails. Real fix: Python
+  tables carry packet types by value (docs/PORT-PYTHON.md, P4 in the table
+  frame) and the site goes.
 
 ## Proof cells
 

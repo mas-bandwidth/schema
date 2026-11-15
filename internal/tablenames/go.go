@@ -16,6 +16,8 @@ func init() {
 		Name{Name: "tableCycleEdges", What: "linear stored-graph cycle validation"},
 		Name{Name: "tableCycleType", What: "linear stored-graph cycle validation"},
 		Name{Name: "tableCycleValueEdges", What: "linear stored-graph cycle validation"},
+		Name{Name: "tableDeclaredType", What: "the reader's declared type a pointer's target record resolves against"},
+		Name{Name: "tableDeclaredTypes", What: "the reader's declared type a pointer's target record resolves against"},
 		Name{Name: "TableRefuseReason", What: "typed file and accelerator refusal errors"},
 		Name{Name: "TableBuildVersionMismatch", What: "the typed error a strict build-version refusal carries, with the endpoint's version and this unit's own (§3.3)"},
 		Name{Name: "TableRefuseOk", What: "typed file and accelerator refusal errors"},
