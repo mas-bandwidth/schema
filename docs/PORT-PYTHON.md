@@ -274,7 +274,7 @@ per unit, named for the unit's package:
 |---|---|
 | `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
-| `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec; each field kind, the `if`/`else` branch and each storage-less item (`item_branch.go`, `item_const.go`, `item_reserved.go`, `item_align.go`) is an emitter file registered in the core's table |
+| `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
 | `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
@@ -502,9 +502,6 @@ the core stands against the P4 row; the rules of this page are unchanged.
   field or item of a kind marked refused is refused at generate time by its
   kind, naming P4 the packet wire. The class surface knows how to birth and
   compare those kinds already; only their wire emitters are still to come.
-  The `if`/`else` branch and the storage-less items `const`, `reserved` and
-  `align` are each their own emitter file, registered in the core's item
-  table, so a later layout construct adds a file and one registration line.
 
   - `bool`: carried
 
@@ -534,11 +531,11 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - an array: refused
 
-  - `const`: carried
+  - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `reserved`: carried
+  - `reserved`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `align`: carried
+  - `align`: carried ([the packet layout](port-python/packet-layout.md))
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))
