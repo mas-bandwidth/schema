@@ -30,6 +30,9 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    %sReset( value );\n", st.Name)
 	g.pf("    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};\n")
+	if len(st.Fields) > 0 {
+		g.pf("    int32_t last_field_ord = 0;\n")
+	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t ref = 0;\n")
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
@@ -43,9 +46,11 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("        if ( TableMessageReserved( entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
 	g.pf("        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        } // one field id twice in one body is damage (§3.3)\n")
 	g.pf("        switch ( entry.id )\n        {\n")
-	for _, f := range st.Fields {
+	for fi, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("            case 0x%016xull: // %s\n            {\n", ir.TableFieldWireId(f), f.Name)
+		g.pf("                if ( %d <= last_field_ord )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n", fi+1)
+		g.pf("                last_field_ord = %d;\n", fi+1)
 		g.pf("                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.\n")
 		g.pf("                // A RANGE that moved is not one: the shapes differ and the entry\n")
 		g.pf("                // carries the SENDER's, so the field decodes and clamps (§4).\n")
@@ -75,7 +80,7 @@ func (g *tableGen) emitMessageWidenBranch(f *ir.Field, mine ir.TableVocabularyEn
 	switch {
 	case plainScalar(f):
 		g.pf("%sif ( %s.elem_kind == %d && TableKindWidens( %s.kind, %d ) )\n%s{\n", ind, from, mine.Shape.Elem, from, mine.Kind, ind)
-		g.emitMessageReadScalarFromEntry(f, "value."+f.Name, ind+"    ", from, false, true)
+		g.emitMessageReadScalarFromEntryChecked(f, "value."+f.Name, ind+"    ", from, false, true, !f.Type.Optional)
 		if f.Type.Optional {
 			g.pf("%s    value.%s_present = true; // the field rode, so it is PRESENT (§2.3)\n", ind, f.Name)
 		}
@@ -89,7 +94,7 @@ func (g *tableGen) emitMessageWidenBranch(f *ir.Field, mine ir.TableVocabularyEn
 		// AN ARRAY COUNTS ONE `widened` FOR THE FIELD however many elements
 		// it holds (§4), and every element decodes at the announced width.
 		g.pf("%sif ( %s.kind == %d && TableKindWidens( %s.elem_kind, %d ) )\n%s{\n", ind, from, mine.Kind, from, mine.Shape.Elem, ind)
-		g.emitMessageReadArrayFrom(f, "value."+f.Name, fmt.Sprintf("value.%s_count", f.Name), ind+"    ", from, true)
+		g.emitMessageReadArrayFromChecked(f, "value."+f.Name, fmt.Sprintf("value.%s_count", f.Name), ind+"    ", from, true, !f.Type.Optional)
 		g.pf("%s    report->widened++;\n%s    break;\n%s}\n", ind, ind, ind)
 	}
 }
@@ -104,17 +109,18 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 	case f.KeyEnum != "":
 		g.emitMessageReadKeyed(f, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.emitMessageReadTextFrom(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry")
+		g.emitMessageReadTextFromChecked(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry", true)
 	case f.Array != ir.ArrayNone:
-		g.emitMessageReadArrayFrom(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false)
+		g.emitMessageReadArrayFromChecked(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false, true)
 	case tableScalarKind(f) == tkUnion:
-		g.emitMessageReadUnion(f, "value."+name, ind)
+		g.emitMessageReadUnionChecked(f, "value."+name, ind, true, "")
 	case tableScalarKind(f) == tkTable:
+		g.pf("%s{\n%s    TableBitReader peek_body = r;\n%s    uint64_t peek_ref = 0;\n%s    if ( !peek_body.get( peek_ref, vocabulary.ref_bits ) || peek_ref == 0 )\n%s    {\n%s        report->damaged = true;\n%s        return false;\n%s    }\n%s}\n", ind, ind, ind, ind, ind, ind, ind, ind, ind)
 		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(f.Type.Name, "r", "value."+name))
 	case tableScalarKind(f) == tkEnum:
-		g.emitMessageReadEnum(f, "value."+name, ind)
+		g.emitMessageReadEnumChecked(f, "value."+name, ind, true, "")
 	default:
-		g.emitMessageReadScalarFromEntry(f, "value."+name, ind, "entry", false, false)
+		g.emitMessageReadScalarFromEntryChecked(f, "value."+name, ind, "entry", false, false, true)
 	}
 }
 
@@ -143,6 +149,10 @@ func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 // with: the align left the bytes on a byte boundary, so the payload is one
 // span of the buffer and the two forms reach the same two functions.
 func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from string) {
+	g.emitMessageReadTextFromChecked(f, value, count, ind, from, false)
+}
+
+func (g *tableGen) emitMessageReadTextFromChecked(f *ir.Field, value, count, ind, from string, forbidDefault bool) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	idx := "i" + sfx
@@ -162,6 +172,13 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 		// whatever length the reader would have kept. A bit stream has no
 		// recovery, which is the only thing that differs from §3.
 		g.pf("%[1]s    if ( !TableUtf8Valid( text%[2]s, n%[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx)
+		if forbidDefault {
+			if !hasByteDefault(f) {
+				g.pf("%[1]s    if ( n%[2]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+			} else {
+				g.pf("%[1]s    if ( n%[2]s == %[3]d && memcmp( text%[4]s, %[5]s, %[6]d ) == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, len(f.DefBytes), sfx, cStringLit(f.DefBytes), len(f.DefBytes))
+			}
+		}
 		// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §3.3), and the bound
 		// applies while the LENGTH IS STILL WIDE: TableUtf8Clamp takes the
 		// wire's own sixty-four bit number and answers at or below the bound,
@@ -175,6 +192,14 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 		g.pf("%s    r.offset += (int64_t) n%s * 8;\n", ind, sfx)
 		g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
 		return
+	}
+	if forbidDefault && f.Type.Kind == ir.TBytes {
+		if !hasByteDefault(f) {
+			g.pf("%[1]s    if ( n%[2]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+		} else {
+			g.pf("%s    static const uint8_t def_bytes%s[%d] = %s;\n", ind, sfx, len(f.DefBytes), byteListLit(f.DefBytes))
+			g.pf("%[1]s    if ( n%[2]s == %[3]d && memcmp( r.buffer + ( r.offset >> 3 ), def_bytes%[4]s, %[5]d ) == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, len(f.DefBytes), sfx, len(f.DefBytes))
+		}
 	}
 	// THE BOUND APPLIES WHILE THE COUNT IS WIDE (§3.3), which is M6's
 	// discipline over a count rather than a value: a length at or above 2^31
@@ -200,6 +225,10 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 // a union arm, an enum's variant) is walked, because a resolve
 // that contradicts its position is damage this reader must still find (§3.3).
 func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from string, widened bool) {
+	g.emitMessageReadArrayFromChecked(f, base, count, ind, from, widened, false)
+}
+
+func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind, from string, widened, forbidDefault bool) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	idx := "i" + sfx
@@ -210,6 +239,9 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 	g.pf("%s    if ( count_bits%s > 0 )\n%s    {\n", ind, sfx, ind)
 	g.pf("%s        uint64_t raw%s = 0;\n%s        if ( !r.get( raw%s, count_bits%s ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx, sfx)
 	g.pf("%s        n%s = raw%s + (uint64_t) %s.min;\n%s    }\n", ind, sfx, sfx, from, ind)
+	if forbidDefault && f.CountedOnWire() {
+		g.pf("%[1]s    if ( n%[2]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+	}
 	g.pf("%[1]s    if ( %[2]s.elem_kind == 6 && !r.align() )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, from)
 	// THE BOUND APPLIES WHILE THE COUNT IS WIDE (§3.3), M6's discipline over a
 	// count: a count at or above 2^31 narrowed FIRST is negative, passes a
@@ -249,6 +281,12 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 	} else {
 		g.pf("%s    const uint64_t walk%s = n%s;\n", ind, sfx, sfx)
 	}
+	trackFixedNonDef := forbidDefault && f.Array == ir.ArrayFixed && kind != tkTable
+	nonDefVar := ""
+	if trackFixedNonDef {
+		nonDefVar = "any_non_default" + sfx
+		g.pf("%s    bool %s = false;\n", ind, nonDefVar)
+	}
 	g.pf("%s    for ( uint64_t %s = 0; %s < walk%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	inner := ind + "        "
 	g.pf("%sconst bool in_bounds%s = (int32_t) %s < kept%s;\n", inner, sfx, idx, sfx)
@@ -260,11 +298,11 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
 	case tableScalarKind(f) == tkEnum:
 		g.pf("%s%s slot_value%s = %s::None;\n", inner, f.Type.Name, sfx, f.Type.Name)
-		g.emitMessageReadEnum(f, "slot_value"+sfx, inner)
+		g.emitMessageReadEnumChecked(f, "slot_value"+sfx, inner, false, nonDefVar)
 		g.pf("%sif ( in_bounds%s ) { %s[%s] = slot_value%s; }\n", inner, sfx, base, idx, sfx)
 	case tableScalarKind(f) == tkUnion:
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
-		g.emitMessageReadUnion(f, elem, inner)
+		g.emitMessageReadUnionChecked(f, elem, inner, false, nonDefVar)
 	default:
 		// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. A
 		// fixed-width surplus is stepped over by the arithmetic below and
@@ -273,9 +311,19 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		typ, _ := g.cppFieldType(f.Type)
 		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
 		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, from, true, widened)
+		if trackFixedNonDef {
+			if kind == tkF32 || (widened && kind == tkF64) {
+				g.pf("%sif ( %s.elem_packing == 2 || ( %s ) ) { %s = true; }\n", inner, from, g.fieldDiffers(f, "scratch"+sfx), nonDefVar)
+			} else {
+				g.pf("%sif ( %s ) { %s = true; }\n", inner, g.fieldDiffers(f, "scratch"+sfx), nonDefVar)
+			}
+		}
 		g.pf("%sif ( in_bounds%s ) { %s[%s] = scratch%s; }\n", inner, sfx, base, idx, sfx)
 	}
 	g.pf("%s    }\n", ind)
+	if trackFixedNonDef {
+		g.pf("%[1]s    if ( n%[2]s > 0 && !report->damaged && !report->refused && !%[3]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, nonDefVar)
+	}
 	if fixedSurplus {
 		g.pf("%[1]s    if ( walk%[2]s < n%[3]s && !TableMessageSkipRun( r, n%[4]s - walk%[5]s, surplus_bits%[6]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx, sfx, sfx)
 	}
@@ -294,15 +342,45 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 // REFERENCE NAMING AN ENTRY OF THE WRONG SORT IS MALFORMED, and the
 // reserved-id rule outranks it (§3.3).
 func (g *tableGen) emitMessageReadEnum(f *ir.Field, dst, ind string) {
+	g.emitMessageReadEnumChecked(f, dst, ind, false, "")
+}
+
+func (g *tableGen) emitMessageReadEnumChecked(f *ir.Field, dst, ind string, forbidDefault bool, nonDefVar string) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	e := f.Type.Name
+	defID := enumDefaultWireId(f)
 	g.pf("%s{\n%s    uint64_t variant_ref%s = 0;\n", ind, ind, sfx)
 	g.pf("%[1]s    if ( !r.get( variant_ref%[2]s, vocabulary.ref_bits ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
 	g.pf("%s    TableMessageEntry variant_entry%s;\n", ind, sfx)
-	g.pf("%s    if ( variant_ref%s == 0 ) { %s = %s::None; } // the zero reference is the enum's None\n", ind, sfx, dst, e)
-	g.pf("%[1]s    else if ( !TableMessageNameEntry( vocabulary, variant_ref%[2]s, variant_entry%[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx)
-	g.pf("%[1]s    else if ( !TableEnumValue( variant_entry%[2]s.id, %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s::None;\n%[1]s        report->unknown++;\n%[1]s    }\n", ind, sfx, dst, dst, e)
+	if forbidDefault && defID == 0 {
+		g.pf("%[1]s    if ( variant_ref%[2]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+		g.pf("%[1]s    if ( !TableMessageNameEntry( vocabulary, variant_ref%[2]s, variant_entry%[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx)
+		if nonDefVar != "" {
+			g.pf("%s    %s = true;\n", ind, nonDefVar)
+		}
+		g.pf("%[1]s    if ( !TableEnumValue( variant_entry%[2]s.id, %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s::None;\n%[1]s        report->unknown++;\n%[1]s    }\n", ind, sfx, dst, dst, e)
+	} else {
+		g.pf("%s    if ( variant_ref%s == 0 )\n%s    {\n", ind, sfx, ind)
+		if nonDefVar != "" && defID != 0 {
+			g.pf("%s        %s = true;\n", ind, nonDefVar)
+		}
+		g.pf("%s        %s = %s::None;\n%s    } // the zero reference is the enum's None\n", ind, dst, e, ind)
+		g.pf("%[1]s    else if ( !TableMessageNameEntry( vocabulary, variant_ref%[2]s, variant_entry%[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx)
+		g.pf("%s    else\n%s    {\n", ind, ind)
+		if forbidDefault && defID != 0 {
+			g.pf("%[1]s        if ( variant_entry%[2]s.id == 0x%016[3]xull )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, sfx, defID)
+		}
+		if nonDefVar != "" {
+			if defID == 0 {
+				g.pf("%s        %s = true;\n", ind, nonDefVar)
+			} else {
+				g.pf("%s        if ( variant_entry%s.id != 0x%016xull ) { %s = true; }\n", ind, sfx, defID, nonDefVar)
+			}
+		}
+		g.pf("%[1]s        if ( !TableEnumValue( variant_entry%[2]s.id, %[3]s ) )\n%[1]s        {\n%[1]s            %[4]s = %[5]s::None;\n%[1]s            report->unknown++;\n%[1]s        }\n", ind, sfx, dst, dst, e)
+		g.pf("%s    }\n", ind)
+	}
 	g.pf("%s}\n", ind)
 }
 
@@ -312,6 +390,10 @@ func (g *tableGen) emitMessageReadEnum(f *ir.Field, dst, ind string) {
 // AN ARM REFERENCE NAMING A KIND-0 ENTRY IS MALFORMED: the reader has nothing
 // to frame the payload with (§3.3).
 func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
+	g.emitMessageReadUnionChecked(f, dst, ind, false, "")
+}
+
+func (g *tableGen) emitMessageReadUnionChecked(f *ir.Field, dst, ind string, forbidNone bool, nonDefVar string) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	un := f.Type.Ref.(*ir.Union)
@@ -319,9 +401,18 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 	g.pf("%s{\n%s    uint64_t arm_ref%s = 0;\n", ind, ind, sfx)
 	g.pf("%[1]s    if ( !r.get( arm_ref%[2]s, vocabulary.ref_bits ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
 	g.pf("%s    TableMessageEntry %s;\n", ind, arm)
-	g.pf("%s    if ( arm_ref%s == 0 ) { %s.type = %sType::None; }\n", ind, sfx, dst, un.Name)
-	g.pf("%[1]s    else if ( !TableMessageArmEntry( vocabulary, arm_ref%[2]s, %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, arm)
-	g.pf("%s    else\n%s    {\n", ind, ind)
+	if forbidNone {
+		g.pf("%[1]s    if ( arm_ref%[2]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+		g.pf("%[1]s    if ( !TableMessageArmEntry( vocabulary, arm_ref%[2]s, %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, arm)
+		g.pf("%s    {\n", ind)
+	} else {
+		g.pf("%s    if ( arm_ref%s == 0 ) { %s.type = %sType::None; }\n", ind, sfx, dst, un.Name)
+		g.pf("%[1]s    else if ( !TableMessageArmEntry( vocabulary, arm_ref%[2]s, %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, arm)
+		g.pf("%s    else\n%s    {\n", ind, ind)
+	}
+	if nonDefVar != "" {
+		g.pf("%s        %s = true;\n", ind, nonDefVar)
+	}
 	g.pf("%s        switch ( %s.id )\n%s        {\n", ind, arm, ind)
 	for _, v := range un.Variants {
 		mine := ir.TableArmEntry(v)
@@ -395,32 +486,38 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 	slots := g.keyedSlots("value.", f)
 	g.pf("%s{\n%s    uint64_t n%s = 0;\n", ind, ind, sfx)
 	g.pf("%[1]s    if ( !r.get( n%[2]s, TableBitsRequired( 0, entry.max ) ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+	g.pf("%[1]s    if ( n%[2]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+	g.pf("%s    uint64_t seen_keys%s[(kTableMessageSeenBits + 63) / 64] = {};\n", ind, sfx)
+	g.pf("%s    int32_t last_key_slot%s = 0;\n", ind, sfx)
 	g.pf("%s    for ( uint64_t p%s = 0; p%s < n%s; p%s++ )\n%s    {\n", ind, sfx, sfx, sfx, sfx, ind)
 	inner := ind + "        "
 	g.pf("%suint64_t key_ref%s = 0;\n", inner, sfx)
 	g.pf("%[1]sif ( !r.get( key_ref%[2]s, vocabulary.ref_bits ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx)
 	g.pf("%sTableMessageEntry key_entry%s;\n", inner, sfx)
 	g.pf("%[1]sif ( !TableMessageNameEntry( vocabulary, key_ref%[2]s, key_entry%[3]s ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, sfx)
+	g.pf("%[1]sif ( !TableMessageSeenOnce( seen_keys%[2]s, vocabulary, key_ref%[3]s, key_entry%[4]s.id ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, sfx, sfx)
 	g.pf("%s%s key%s = %s::None;\n", inner, f.KeyEnum, sfx, f.KeyEnum)
 	g.pf("%sconst bool named%s = TableEnumValue( key_entry%s.id, key%s );\n", inner, sfx, sfx, sfx)
 	g.pf("%sif ( !named%s ) { report->unknown++; }\n", inner, sfx)
+	g.pf("%[1]selse\n%[1]s{\n%[1]s    if ( (int32_t) key%[2]s <= last_key_slot%[3]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    last_key_slot%[4]s = (int32_t) key%[5]s;\n%[1]s}\n", inner, sfx, sfx, sfx, sfx)
 	g.pf("%sconst int32_t slot%s = named%s ? (int32_t) key%s - 1 : -1;\n", inner, sfx, sfx, sfx)
 	g.pf("%sconst bool in_bounds%s = slot%s >= 0 && slot%s < %d;\n", inner, sfx, sfx, sfx, f.ArrayBound)
 	elem := fmt.Sprintf("( in_bounds%s ? %s[slot%s] : scratch%s )", sfx, slots, sfx, sfx)
 	switch kind {
 	case tkTable:
+		g.pf("%s{\n%s    TableBitReader peek_elem%s = r;\n%s    uint64_t peek_ref%s = 0;\n%s    if ( !peek_elem%s.get( peek_ref%s, vocabulary.ref_bits ) || peek_ref%s == 0 )\n%s    {\n%s        report->damaged = true;\n%s        return false;\n%s    }\n%s}\n", inner, inner, sfx, inner, sfx, inner, sfx, sfx, sfx, inner, inner, inner, inner, inner)
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.pf("%s%sReset( scratch%s );\n", inner, f.Type.Name, sfx)
 		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
 	case tkEnum:
 		g.pf("%s%s slot_value%s = %s::None;\n", inner, f.Type.Name, sfx, f.Type.Name)
-		g.emitMessageReadEnum(f, "slot_value"+sfx, inner)
+		g.emitMessageReadEnumChecked(f, "slot_value"+sfx, inner, true, "")
 		g.pf("%sif ( in_bounds%s ) { %s[slot%s] = slot_value%s; }\n", inner, sfx, slots, sfx, sfx)
 	default:
 		// an unknown key's element decodes into scratch and lands nowhere
 		typ, _ := g.cppFieldType(f.Type)
 		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
-		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, "entry", true, false)
+		g.emitMessageReadScalarFromEntryChecked(f, "scratch"+sfx, inner, "entry", true, false, true)
 		g.pf("%sif ( in_bounds%s ) { %s[slot%s] = scratch%s; }\n", inner, sfx, slots, sfx, sfx)
 	}
 	g.pf("%s    }\n%s}\n", ind, ind)
@@ -432,6 +529,10 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 // on a file (§4). The sender's width is a run-time fact, because a body from
 // another build is the ordinary case this wire exists for.
 func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from string, element, widened bool) {
+	g.emitMessageReadScalarFromEntryChecked(f, lvalue, ind, from, element, widened, false)
+}
+
+func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, ind, from string, element, widened, forbidDefault bool) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	kind := tableScalarKind(f)
@@ -462,16 +563,34 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		// batch with it: every finite float32 is exactly a float64, so the
 		// ordinary conversion is the widening
 		g.pf("%[1]s        if ( !TableBitsFinite32( (uint32_t) raw%[2]s ) )\n%[1]s        {\n%[1]s            TableNonFiniteFloat( report );\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
-		g.pf("%s        %s = (double) table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
+		if forbidDefault {
+			g.pf("%s        const double decoded_d%s = (double) table_bits_to_float( (uint32_t) raw%s );\n", ind, sfx, sfx)
+			g.pf("%[1]s        if ( %[2]s )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, g.fieldIsDefault(f, "decoded_d"+sfx))
+			g.pf("%s        %s = decoded_d%s;\n%s    }\n", ind, lvalue, sfx, ind)
+		} else {
+			g.pf("%s        %s = (double) table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
+		}
 		g.pf("%s}\n", ind)
 		return
 	}
 	switch kind {
 	case tkBool:
-		g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 1 ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[4]s = raw%[5]s != 0;\n%[1]s}\n", ind, sfx, sfx, lvalue, sfx)
+		if forbidDefault {
+			defBit := 0
+			if f.HasDefault && f.DefBool {
+				defBit = 1
+			}
+			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 1 ) || raw%[4]s == %[5]d )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[6]s = raw%[7]s != 0;\n%[1]s}\n", ind, sfx, sfx, sfx, defBit, lvalue, sfx)
+		} else {
+			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 1 ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[4]s = raw%[5]s != 0;\n%[1]s}\n", ind, sfx, sfx, lvalue, sfx)
+		}
 		return
 	case tkF64:
-		g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    } %[5]s = table_bits_to_double( raw%[6]s );\n%[1]s}\n", ind, sfx, sfx, sfx, lvalue, sfx)
+		if forbidDefault {
+			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    } const double decoded_d%[5]s = table_bits_to_double( raw%[6]s ); if ( %[7]s ) { report->damaged = true; return false; } %[8]s = decoded_d%[9]s;\n%[1]s}\n", ind, sfx, sfx, sfx, sfx, sfx, g.fieldIsDefault(f, "decoded_d"+sfx), lvalue, sfx)
+		} else {
+			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    } %[5]s = table_bits_to_double( raw%[6]s );\n%[1]s}\n", ind, sfx, sfx, sfx, lvalue, sfx)
+		}
 		return
 	case tkF32:
 		g.pf("%s{\n%s    float decoded_f%s = 0.0f;\n", ind, ind, sfx)
@@ -491,6 +610,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		// and before the field is written, and the batch with it (§3.3)
 		g.pf("%[1]s        if ( !TableBitsFinite32( (uint32_t) raw%[2]s ) )\n%[1]s        {\n%[1]s            TableNonFiniteFloat( report );\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
 		g.pf("%s        decoded_f%s = table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, sfx, sfx, ind)
+		if forbidDefault {
+			g.pf("%[1]s    if ( %[2]s != 2 && ( %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, packing, g.fieldIsDefault(f, "decoded_f"+sfx))
+		}
 		if f.HasFloatRange {
 			g.pf("%[1]s    if ( decoded_f%[2]s < %[3]s )\n%[1]s    {\n%[1]s        decoded_f%[4]s = %[5]s;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, formatFloat(f.FMin, true), sfx, formatFloat(f.FMin, true))
 			g.pf("%[1]s    else if ( decoded_f%[2]s > %[3]s )\n%[1]s    {\n%[1]s        decoded_f%[4]s = %[5]s;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, formatFloat(f.FMax, true), sfx, formatFloat(f.FMax, true))
@@ -528,6 +650,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		}
 		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
 		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
+		if forbidDefault {
+			g.pf("%[1]s    if ( %[2]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, g.fieldIsDefault(f, decoded))
+		}
 		g.emitMessageClamp(f, signed, bytesWide, decoded, ind+"    ")
 		g.pf("%s    %s = %s;\n%s}\n", ind, lvalue, decoded, ind)
 		return
@@ -546,6 +671,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( hi_v%s ) << 64 ) | serialize::uint128_t( lo_v%s );\n", ind, sfx, sfx, sfx)
 		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
 		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
+		if forbidDefault {
+			g.pf("%[1]s    if ( %[2]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, g.fieldIsDefault(f, decoded))
+		}
 		g.emitMessageClamp(f, signed, bytesWide, decoded, ind+"    ")
 		g.pf("%s    %s = %s;\n%s}\n", ind, lvalue, decoded, ind)
 		return
@@ -567,8 +695,14 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 	// THE BOUND APPLIES WHILE THE VALUE IS STILL WIDE, and the narrowing
 	// comes after: a reconstructed value past the storage or the declared
 	// range clamps to the reader's own bound and never wraps into it (§3.3)
+	if forbidDefault {
+		g.pf("%s    const int64_t pre_clamp%s = decoded_wide%s;\n", ind, sfx, sfx)
+	}
 	g.emitMessageClampWide(f, signed, bytesWide, "decoded_wide"+sfx, ind+"    ")
 	g.pf("%s    %s %s = (%s) decoded_wide%s;\n", ind, storage, decoded, storage, sfx)
+	if forbidDefault {
+		g.pf("%[1]s    if ( decoded_wide%[2]s == pre_clamp%[3]s && ( %[4]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, g.fieldIsDefault(f, decoded))
+	}
 	g.pf("%s    %s = %s;\n%s}\n", ind, lvalue, decoded, ind)
 }
 
