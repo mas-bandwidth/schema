@@ -475,6 +475,19 @@ impl<'a> Jr<'a> {
         }
         Some(s)
     }
+    /// read_name reads a string that NAMES a schema name — an object key
+    /// naming a field, an enum variant, a flags element, a union arm, an
+    /// &node name — and holds it to §16.2's 255-byte cap after decoding. A
+    /// longer one refuses the read; a map key and a string value are data and
+    /// go through read_text/read_string, never this.
+    pub fn read_name(&mut self) -> Option<String> {
+        let s = self.read_string()?;
+        if s.len() > 255 {
+            self.damaged = true;
+            return None;
+        }
+        Some(s)
+    }
     pub fn read_null(&mut self) -> bool {
         self.space();
         if self.p + 4 <= self.b.len() && &self.b[self.p..self.p + 4] == b"null" {
@@ -833,7 +846,7 @@ impl<'a> Jr<'a> {
                          self.depth -= 1;
                          return;
                      }
-                     let key = self.read_string();
+                     let key = self.read_name();
                      if self.damaged {
                          self.depth -= 1;
                          return;
@@ -1309,7 +1322,7 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	emitRequiredJSONEnd(b, st, "                    ")
 	fmt.Fprintf(b, "                    jr.p += 1; return n;\n")
 	fmt.Fprintf(b, "                }\n")
-	fmt.Fprintf(b, "                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };\n")
+	fmt.Fprintf(b, "                let Some(k) = jr.read_name() else { jr.damaged = true; return n; };\n")
 	fmt.Fprintf(b, "                jr.space();\n")
 	fmt.Fprintf(b, "                if jr.peek() != b':' { jr.damaged = true; return n; }\n")
 	fmt.Fprintf(b, "                jr.p += 1;\n")
@@ -1363,7 +1376,7 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                let _ = %s(jr, &mut v, None);\n", fn(st.Name, "json_fields"))
 	fmt.Fprintf(b, "                return Some(Rc::new(v));\n")
 	fmt.Fprintf(b, "            }\n")
-	fmt.Fprintf(b, "            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };\n")
+	fmt.Fprintf(b, "            let Some(key) = jr.read_name() else { jr.damaged = true; return None; };\n")
 	fmt.Fprintf(b, "            if jr.peek() != b':' { jr.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
 	fmt.Fprintf(b, "            if key != \"&node\" {\n")
@@ -1583,7 +1596,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 	case vEnum:
 		e := f.Type.Ref.(*ir.Enum)
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
-		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() {\n", in)
+		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_name() {\n", in)
 		fmt.Fprintf(b, "%s        %s = match %s(&s) {\n", in, dst, fn(e.Name, "from_json_name"))
 		fmt.Fprintf(b, "%s            Some(x) => x,\n", in)
 		fmt.Fprintf(b, "%s            None => { jr.unknown += 1; %s::None },\n", in, e.Name)
@@ -1601,7 +1614,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s    loop {\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b'\"' {\n", in)
-			fmt.Fprintf(b, "%s            match jr.read_string() {\n", in)
+			fmt.Fprintf(b, "%s            match jr.read_name() {\n", in)
 			fmt.Fprintf(b, "%s                Some(s) => match s.as_str() {\n", in)
 			for i, v := range fl.Variants {
 				fmt.Fprintf(b, "%s                    %q => bits |= 1u64 << %d,\n", in, v, i)

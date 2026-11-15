@@ -2338,6 +2338,19 @@ impl<'a> Jr<'a> {
         }
         Some(s)
     }
+    /// read_name reads a string that NAMES a schema name — an object key
+    /// naming a field, an enum variant, a flags element, a union arm, an
+    /// &node name — and holds it to §16.2's 255-byte cap after decoding. A
+    /// longer one refuses the read; a map key and a string value are data and
+    /// go through read_text/read_string, never this.
+    pub fn read_name(&mut self) -> Option<String> {
+        let s = self.read_string()?;
+        if s.len() > 255 {
+            self.damaged = true;
+            return None;
+        }
+        Some(s)
+    }
     pub fn read_null(&mut self) -> bool {
         self.space();
         if self.p + 4 <= self.b.len() && &self.b[self.p..self.p + 4] == b"null" {
@@ -2696,7 +2709,7 @@ impl<'a> Jr<'a> {
                          self.depth -= 1;
                          return;
                      }
-                     let key = self.read_string();
+                     let key = self.read_name();
                      if self.damaged {
                          self.depth -= 1;
                          return;
