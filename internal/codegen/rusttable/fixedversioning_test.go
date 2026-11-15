@@ -317,6 +317,7 @@ type versionProbe struct {
 	reader string   // the reader's schema, by base name
 	older  []string // the lineage handed it, oldest first
 	retire int      // the first `retire` entries are marked retired
+	root   string   // the reader's fixed root, when the schema carries more than one
 	src    string   // the probe module's Rust source
 }
 
@@ -1237,6 +1238,9 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 	t.Helper()
 	u := versionUnit(t, versionSchema(t, p.reader))
 	table := versionRootName(t, u)
+	if p.root != "" {
+		table = p.root
+	}
 
 	lineage := map[string][]FixedLineageEntry{}
 	for i, base := range p.older {
@@ -1275,6 +1279,7 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 	src := strings.NewReplacer(
 		"ROWTYPE", table+"Row",
 		"LOADFN", ir.RustSnake(table)+"_fixed_load",
+		"SAVEFN", ir.RustSnake(table)+"_fixed_save",
 	).Replace(p.src)
 	files["version_probe.rs"] = []byte(src)
 
