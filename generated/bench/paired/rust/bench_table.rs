@@ -1302,7 +1302,7 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
+                let Some(k) = jr.read_name() else { jr.damaged = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
@@ -1365,7 +1365,7 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
                 let _ = mixed_chat_event_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            let Some(key) = jr.read_name() else { jr.damaged = true; return None; };
             if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
@@ -1427,7 +1427,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
+                let Some(k) = jr.read_name() else { jr.damaged = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
@@ -1534,7 +1534,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 if seen[10] { jr.damaged = true; }
                 seen[10] = true;
                 if jr.peek() == b'"' {
-                    if let Some(s) = jr.read_string() {
+                    if let Some(s) = jr.read_name() {
                         v.weapon = match mixed_weapon_from_json_name(&s) {
                             Some(x) => x,
                             None => { jr.unknown += 1; MixedWeapon::None },
@@ -1551,7 +1551,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                     loop {
                         if jr.peek() == b']' { jr.p += 1; break; }
                         if jr.peek() == b'"' {
-                            match jr.read_string() {
+                            match jr.read_name() {
                                 Some(s) => match s.as_str() {
                                     "Bleeding" => { let bit = 1u64 << 0; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
                                     "Burning" => { let bit = 1u64 << 1; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },
@@ -1619,7 +1619,7 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
                 let _ = mixed_entity_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            let Some(key) = jr.read_name() else { jr.damaged = true; return None; };
             if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
@@ -1681,7 +1681,7 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
+                let Some(k) = jr.read_name() else { jr.damaged = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
@@ -1760,7 +1760,7 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
                 let _ = mixed_hit_event_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            let Some(key) = jr.read_name() else { jr.damaged = true; return None; };
             if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
@@ -1822,7 +1822,7 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
+                let Some(k) = jr.read_name() else { jr.damaged = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
@@ -1885,7 +1885,7 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
                 let _ = mixed_pickup_event_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            let Some(key) = jr.read_name() else { jr.damaged = true; return None; };
             if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
@@ -1947,7 +1947,7 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
+                let Some(k) = jr.read_name() else { jr.damaged = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
@@ -2010,7 +2010,7 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
                 let _ = mixed_stat_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            let Some(key) = jr.read_name() else { jr.damaged = true; return None; };
             if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
