@@ -416,50 +416,56 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C++ turns the format gate (clang-format) RED naming the file"
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A string(N) length past the
-# storage it indexes is refused in EVERY build, so this gate compiles the
-# generated writer -DNDEBUG and requires the message writer to refuse before
-# the first byte. The control strips the generated guard and requires the same
-# release gate to go red.
-STORAGE_RELEASE_CPP := build/storage-release-cpp
-.PHONY: write-refusal-storage-release-cpp write-refusal-storage-release-cpp-negative-control
-write-refusal-storage-release-cpp: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cpp/storage_release.cpp
-	@rm -rf $(STORAGE_RELEASE_CPP) && mkdir -p $(STORAGE_RELEASE_CPP)/generated
-	./bin/schema generate --lang cpp --out $(STORAGE_RELEASE_CPP)/generated $(STORAGE_RELEASE_SCHEMA)
-	$(CXX) $(TABLES_CXXFLAGS_RELEASE) -I$(STORAGE_RELEASE_CPP)/generated \
-		test/conformance/cpp/storage_release.cpp $(STORAGE_RELEASE_CPP)/generated/StorageTable.cpp \
-		-o $(STORAGE_RELEASE_CPP)/gate
-	./$(STORAGE_RELEASE_CPP)/gate
+# THE DEBUG STORAGE GATE (docs/SPEC.md §5.1). C++ is an assert leg: a count
+# or a string(N) length past the storage it indexes is the programmer's error,
+# held by the writer's schema_assert in a debug build and removed by NDEBUG, so
+# a release build carries no write-side check. This gate compiles the generated
+# writer WITHOUT NDEBUG and requires the message writer's Measure and Save each
+# to die on the assert, for an over-long count and an over-long length. It
+# stands alone: it builds only its own small unit. The control strips the
+# generated storage asserts and requires the same debug gate to go red; it runs
+# the gate first, so CI holds both.
+STORAGE_DEBUG_CPP := build/storage-debug-cpp
+.PHONY: write-check-storage-debug-cpp write-check-storage-debug-cpp-negative-control
+write-check-storage-debug-cpp: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cpp/storage_debug.cpp
+	@rm -rf $(STORAGE_DEBUG_CPP) && mkdir -p $(STORAGE_DEBUG_CPP)/generated
+	./bin/schema generate --lang cpp --out $(STORAGE_DEBUG_CPP)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(CXX) $(TABLES_CXXFLAGS) -I$(STORAGE_DEBUG_CPP)/generated \
+		test/conformance/cpp/storage_debug.cpp $(STORAGE_DEBUG_CPP)/generated/StorageTable.cpp \
+		-o $(STORAGE_DEBUG_CPP)/gate
+	./$(STORAGE_DEBUG_CPP)/gate
 
-write-refusal-storage-release-cpp-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cpp/storage_release.cpp
-	@rm -rf $(STORAGE_RELEASE_CPP)-negative && mkdir -p $(STORAGE_RELEASE_CPP)-negative/generated
-	./bin/schema generate --lang cpp --out $(STORAGE_RELEASE_CPP)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak 's/if ( value.wide_length < 0 || value.wide_length > 8 ) { return false; } \/\/ storage invariant/if ( false ) { return false; } \/\/ SABOTAGED/g' \
-		$(STORAGE_RELEASE_CPP)-negative/generated/StorageTable.h
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_CPP)-negative/generated/StorageTable.h || \
-		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	$(CXX) $(TABLES_CXXFLAGS_RELEASE) -I$(STORAGE_RELEASE_CPP)-negative/generated \
-		test/conformance/cpp/storage_release.cpp $(STORAGE_RELEASE_CPP)-negative/generated/StorageTable.cpp \
-		-o $(STORAGE_RELEASE_CPP)-negative/gate
-	@if ./$(STORAGE_RELEASE_CPP)-negative/gate > $(STORAGE_RELEASE_CPP)-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
-		cat $(STORAGE_RELEASE_CPP)-negative/log; exit 1; \
+write-check-storage-debug-cpp-negative-control: write-check-storage-debug-cpp
+	@rm -rf $(STORAGE_DEBUG_CPP)-negative && mkdir -p $(STORAGE_DEBUG_CPP)-negative/generated
+	./bin/schema generate --lang cpp --out $(STORAGE_DEBUG_CPP)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak -E 's/schema_assert\( value\.(items_count|wide_length) >= 0 && value\.(items_count|wide_length) <= 8 \); \/\/ storage invariant/(void)0; \/* SABOTAGED *\/ \/\/ storage invariant/g' \
+		$(STORAGE_DEBUG_CPP)-negative/generated/StorageTable.h
+	@grep -q 'SABOTAGED' $(STORAGE_DEBUG_CPP)-negative/generated/StorageTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -I$(STORAGE_DEBUG_CPP)-negative/generated \
+		test/conformance/cpp/storage_debug.cpp $(STORAGE_DEBUG_CPP)-negative/generated/StorageTable.cpp \
+		-o $(STORAGE_DEBUG_CPP)-negative/gate
+	@if ./$(STORAGE_DEBUG_CPP)-negative/gate > $(STORAGE_DEBUG_CPP)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the debug storage gate passed with the asserts removed"; \
+		cat $(STORAGE_DEBUG_CPP)-negative/log; exit 1; \
 	fi
-	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_CPP)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
-		  cat $(STORAGE_RELEASE_CPP)-negative/log; exit 1; }
-	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_CPP)-negative/log
-	@echo "negative control: removing the C++ storage guard turns the release gate RED"
+	@grep -q 'FAIL storage debug' $(STORAGE_DEBUG_CPP)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage assert"; \
+		  cat $(STORAGE_DEBUG_CPP)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage debug' $(STORAGE_DEBUG_CPP)-negative/log
+	@echo "negative control: removing the C++ storage asserts turns the debug gate RED"
 
 # THE WRITE CONTRACT'S NEGATIVE CONTROLS (docs/SPEC.md §5.1): one check is
 # removed from a copy of the generated C++ tree, the leg's driver is rebuilt
 # against the copy, and the surface that writer serves must go red while the
-# surface beside it stays green. Nothing tracked is written to. The
-# write-refusal surface drives a FIXED root, so its control removes that
-# root's value write check (rows 1, 2, 5, 6, 8) from the fixed save; a check
-# in the variable save would be one the surface never reaches. The check is
-# matched by its prefix (a bracket would be a sed class), held in variables
-# because its parentheses do not balance inside a $(call) argument.
+# surface beside it stays green. Nothing tracked is written to. The storage
+# checks (a length past its storage) are debug asserts only, and the driver is
+# built without NDEBUG. The write-refusal surface drives a FIXED root, so its
+# control removes that root's value write check (rows 1, 2, 5, 6, 8) from the
+# fixed save; a check in the variable save would be one the surface never
+# reaches. The check is matched by its prefix (a bracket would be a sed
+# class), held in variables because its parentheses do not balance inside a
+# $(call) argument.
 CPP_WREF_VALUE_CHECK := schema_assert( RootConfigFixedWriteAdmits(
 CPP_WREF_VALUE_SABOTAGE := (void) ( /* SABOTAGED: no value write check */ 1 || RootConfigFixedWriteAdmits(
 define conformance-negative-control-cpp-wref
@@ -500,62 +506,11 @@ conformance-negative-control-cpp-write-refusal: build/conformance-harness build/
 
 .PHONY: conformance-negative-control-cpp-write-refusal-fixed
 conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-fixed,schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 );,(void)0; /* SABOTAGED: no fixed length check */,SABOTAGED: no fixed length check,write-refusal-fixed,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal-fixed,schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // the declared,(void)0; /* SABOTAGED: no fixed length check */ // the declared,SABOTAGED: no fixed length check,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
-
-# THE PACKET WRITE TEXT CONTRACT (docs/SPEC.md §5.1 row 8). The shared cases
-# under test/packet-write-text/ are each written in a debug child, so an abort
-# is the refusal; a written twin is written, read back and written again, byte
-# exact. The schema beside the driver is the shared shape under a type name no
-# target's name check refuses.
-PACKET_WRITE_TEXT_CPP := build/packet-write-text/cpp
-PACKET_WRITE_TEXT_CPP_NEGATIVE := build/packet-write-text/cpp-negative
-PACKET_WRITE_TEXT_CPP_SCHEMA := test/packet-write-text/cpp/TextPacket.schema
-PACKET_WRITE_TEXT_CPP_CASES := test/packet-write-text/cases.txt
-
-$(PACKET_WRITE_TEXT_CPP)/.stamp: bin/schema $(PACKET_WRITE_TEXT_CPP_SCHEMA) make/cpp.mk
-	@mkdir -p $(PACKET_WRITE_TEXT_CPP)
-	./bin/schema generate --lang cpp --out $(PACKET_WRITE_TEXT_CPP) $(PACKET_WRITE_TEXT_CPP_SCHEMA)
-	@touch $@
-
-$(PACKET_WRITE_TEXT_CPP)/driver: $(PACKET_WRITE_TEXT_CPP)/.stamp test/packet-write-text/cpp/main.cpp make/cpp.mk
-	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_TEXT_CPP) test/packet-write-text/cpp/main.cpp -o $@
-
-.PHONY: packet-write-text-cpp
-packet-write-text-cpp: $(PACKET_WRITE_TEXT_CPP)/driver
-	./$(PACKET_WRITE_TEXT_CPP)/driver $(PACKET_WRITE_TEXT_CPP_CASES)
-
-test: packet-write-text-cpp
-
-# ITS CONTROL removes the emitted UTF-8 write assert through tools/sabotage,
-# builds the same driver against that copy, and requires exactly the UTF-8
-# cases to go red while the zero-byte case and the written twins stay green.
-.PHONY: packet-write-text-cpp-negative-control
-packet-write-text-cpp-negative-control: packet-write-text-cpp
-	@rm -rf $(PACKET_WRITE_TEXT_CPP_NEGATIVE) && mkdir -p $(PACKET_WRITE_TEXT_CPP_NEGATIVE)
-	go run ./tools/sabotage -name packet-write-text-cpp-utf8 \
-		-out $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/functions.gotext internal/codegen/cpp/functions.go
-	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/%s/functions.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_TEXT_CPP_NEGATIVE)" > $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/overlay.json
-	go run -overlay=$(PACKET_WRITE_TEXT_CPP_NEGATIVE)/overlay.json ./cmd/schema generate --lang cpp \
-		--out $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated $(PACKET_WRITE_TEXT_CPP_SCHEMA)
-	@grep -q 'SABOTAGED: no string UTF-8 write check' $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated/TextPacketWire.h || \
-		{ echo "NEGATIVE CONTROL FAILED: the UTF-8 write check sabotage did not apply"; exit 1; }
-	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated test/packet-write-text/cpp/main.cpp \
-		-o $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/driver
-	@if ./$(PACKET_WRITE_TEXT_CPP_NEGATIVE)/driver $(PACKET_WRITE_TEXT_CPP_CASES) > $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the packet write text gate stayed green without the UTF-8 write assert"; \
-		cat $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/log; exit 1; \
-	fi
-	@sed -n 's/^FAILED: packet-write-text-cpp: \([^:]*\):.*/\1/p' $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/log | LC_ALL=C sort > $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/failed
-	@printf '%s\n' above-unicode bare-continuation invalid-byte overlong surrogate truncated > $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/expected
-	@diff -u $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/expected $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/failed || \
-		{ echo "NEGATIVE CONTROL FAILED: removing the UTF-8 write assert did not fail exactly the UTF-8 cases"; cat $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/log; exit 1; }
-	@grep -m1 '^FAILED: packet-write-text-cpp:' $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/log
-	@echo "negative control: removing the string UTF-8 write assert turns the C++ packet text write gate RED on exactly the UTF-8 cases"
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,schema_assert( value.sku_length >= 0 && value.sku_length <= 32 ); // storage invariant,(void)0; /* SABOTAGED: no message length check */ // storage invariant,SABOTAGED: no message length check,write-refusal-message,message)
 
 # SPEC §5.1 row 10 on the packet Write: a compressed float is checked finite and
 # inside [min, max] before quantizing, by this leg's debug assert. The shared
@@ -598,3 +553,44 @@ packet-write-cfloat-cpp-negative-control: packet-write-cfloat-cpp
 	@echo "negative control: removing the compressed-float range assert turns the C++ packet write RED"
 
 test: packet-write-cfloat-cpp
+
+# THE PACKET-END CONFORMANCE GATE (docs/SPEC.md §5, "Read termination";
+# docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET). The generated public Read<T>
+# reads one packet: the top-level object, then the runtime's end check. The
+# shared cases under testdata/wire/packet-end hold the exact packet (accepted
+# as 3), the same packet plus one whole byte (refused), and the same value with
+# the final byte's unused bits set (refused). The negative control removes the
+# generated end call and requires the trailing byte to be accepted, which turns
+# this gate red by name.
+PACKET_END_CPP_SCHEMA := test/packet-end/End.schema
+
+build/packet-end/cpp/.stamp: bin/schema $(PACKET_END_CPP_SCHEMA) make/cpp.mk
+	@mkdir -p build/packet-end/cpp
+	./bin/schema generate --lang cpp --out build/packet-end/cpp $(PACKET_END_CPP_SCHEMA)
+	@touch $@
+
+build/schema_test_packet_end_cpp: build/packet-end/cpp/.stamp test/packet-end/cpp/main.cpp $(SERIALIZE)/serialize.h make/cpp.mk
+	$(CXX) $(CXXFLAGS) -Ibuild/packet-end/cpp test/packet-end/cpp/main.cpp -o $@
+
+.PHONY: packet-end-cpp
+packet-end-cpp: build/schema_test_packet_end_cpp
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS ./build/schema_test_packet_end_cpp testdata/wire/packet-end
+
+.PHONY: packet-end-cpp-negative-control
+packet-end-cpp-negative-control: packet-end-cpp
+	@mkdir -p build/packet-end/cpp-negative
+	go run ./tools/sabotage -name packet-end-cpp-read \
+		-out build/packet-end/cpp-negative/functions.gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/build/packet-end/cpp-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/cpp-negative/overlay.json
+	go build -overlay=build/packet-end/cpp-negative/overlay.json -o build/packet-end/cpp-negative/schema ./cmd/schema
+	./build/packet-end/cpp-negative/schema generate --lang cpp --out build/packet-end/cpp-negative/generated $(PACKET_END_CPP_SCHEMA)
+	$(CXX) $(CXXFLAGS) -Ibuild/packet-end/cpp-negative/generated test/packet-end/cpp/main.cpp -o build/packet-end/cpp-negative/checker
+	@if env -u SCHEMA_UPDATE_WIRE_GOLDENS ./build/packet-end/cpp-negative/checker testdata/wire/packet-end > build/packet-end/cpp-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the packet end check removal passed'; cat build/packet-end/cpp-negative/log; exit 1; fi
+	@grep -Fxq 'FAILED: packet end trailing: a packet with one whole trailing byte was accepted' build/packet-end/cpp-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the driver went red for another reason'; cat build/packet-end/cpp-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: packet end trailing: a packet with one whole trailing byte was accepted' build/packet-end/cpp-negative/log
+	@echo 'packet end C++ negative control: without the end call a packet with a trailing byte is accepted'
+
+test: packet-end-cpp
