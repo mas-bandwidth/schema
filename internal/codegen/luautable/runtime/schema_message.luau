@@ -192,6 +192,34 @@ local function rLeb(r: any): number
 end
 
 
+-- f32n narrows a double to float32 (round to nearest, ties to even), the
+-- same step the quantized triple uses (docs/SPEC-TABLES.md §3.3, SPEC.md §4.3).
+local function f32n(x: number): number
+	local b = buffer.create(4)
+	buffer.writef32(b, 0, x)
+	return buffer.readf32(b, 0)
+end
+
+local function finite32(x: number): boolean
+	return x == x and x ~= math.huge and x ~= -math.huge
+end
+
+-- quantCount is the step count a packing-2 float32 announces. nil is a
+-- triple SPEC.md calls non-conforming, which refuses the announcement.
+local function quantCount(qmin: number, qmax: number, qres: number): number?
+	if not finite32(qmin) or not finite32(qmax) or not finite32(qres) then return nil end
+	if not (qmin < qmax) or not (qres > 0) then return nil end
+	local delta = f32n(qmax - qmin)
+	local values = f32n(delta / qres)
+	if not finite32(delta) or not finite32(values) then return nil end
+	if not (values >= 1) then
+		values = 1
+	elseif values > 4294967040 then
+		values = 4294967040
+	end
+	return math.ceil(values)
+end
+
 local function kindBits(k: number): number
 	if k == 1 then return 1 end
 	if k == 2 or k == 6 or k == 20 or k == 25 then return 8 end
@@ -228,8 +256,18 @@ local function shapeRead(r: any, k: number): any
 			end
 			return s
 		elseif packing == 2 and k == 10 then
+			-- THE STEP INDEX'S WIDTH IS bits_required(0, count), derived from
+			-- the announced triple. Leaving kindBits(10) here skips 32 bits
+			-- and the rest of the batch reads as damage.
 			if r.at + 12 > r.e then r.bad = true; return s end
+			local qmin = buffer.readf32(r.b, r.at)
+			local qmax = buffer.readf32(r.b, r.at + 4)
+			local qres = buffer.readf32(r.b, r.at + 8)
 			r.at = r.at + 12
+			local count = quantCount(qmin, qmax, qres)
+			if count == nil then r.bad = true; return s end
+			s.count = count
+			s.bits = bitsReq(0, count)
 			return s
 		else
 			r.bad = true
@@ -571,6 +609,15 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		if not align(r) then return false end
 		local n, ok = get(r, 32)
 		return ok and skip(r, n * 8)
+	end
+	-- A quantized float32 rides its step index, not 32 raw bits. An index
+	-- above the derived count is damage (docs/SPEC-TABLES.md §3.3). A
+	-- non-finite dequantized value is not damage on this copy walk: the
+	-- index itself cannot spell one.
+	if k == 10 and e.shape.packing == 2 then
+		local index, ok = get(r, e.shape.bits)
+		if not ok or index > (e.shape.count or 0) then return false end
+		return true
 	end
 	if plainFloat(e.shape, fd) then return floatStep(r, st, k, fd) end
 	return skip(r, e.shape.bits)

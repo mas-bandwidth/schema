@@ -341,8 +341,11 @@ local function elem_rides(T, d, v)
       end
       return false
     end
+    -- A hole is not the end of the array: slots past it still ride
+    -- (docs/SPEC-TABLES.md §3.2). #v stops at the first hole.
     if d.keyed then
-      for i = 1, #v do
+      local n = d.bound or #d.keyed
+      for i = 1, n do
         if elem_rides(T, d.elem, v[i]) then return true end
       end
       return false
@@ -966,23 +969,20 @@ write_value = function(W, T, f, holder, key, ctx)
     if not write_body(W, T, f.target, v, ctx) then return false end
   elseif s == "array" then
     local d = f
-    local n
-    if d.fixed then
-      n = d.bound
-    elseif d.keyed then
-      n = 0
-      for i = 1, #v do
-        if elem_rides(T, d.elem, v[i]) then n = n + 1 end
-      end
-      W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
-    else
-      n = #v
-      W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
-    end
-    if d.elem_kind == 6 and d.elem.shape ~= "bytes" then W:align() end
+    -- AN ENUM-KEYED ARRAY IS FIXED STORAGE AND A COUNTED PAYLOAD
+    -- (docs/SPEC-TABLES.md §3.2, §3.3): the wire carries the number of PRESENT
+    -- slots at bits_required(0, slots), then one (key reference, element) pair
+    -- per slot that rides, in variant order. The fixed-array path writes every
+    -- slot and no count, so a keyed array must not take it.
     if d.keyed then
       local keys = d.keyed
-      for i = 1, #v do
+      local bound = d.bound or #keys
+      local present = 0
+      for i = 1, bound do
+        if elem_rides(T, d.elem, v[i]) then present = present + 1 end
+      end
+      W:put(present, bits_range(0, bound))
+      for i = 1, bound do
         if elem_rides(T, d.elem, v[i]) then
           W:put(slot(T, keys[i][2]), ctx.refBits)
           local ev = { v = v[i] }
@@ -990,6 +990,14 @@ write_value = function(W, T, f, holder, key, ctx)
         end
       end
     else
+      local n
+      if d.fixed then
+        n = d.bound
+      else
+        n = #v
+        W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
+      end
+      if d.elem_kind == 6 and d.elem.shape ~= "bytes" then W:align() end
       for i = 1, n do
         local ev = { v = v[i] }
         if not write_value(W, T, d.elem, ev, "v", ctx) then return false end

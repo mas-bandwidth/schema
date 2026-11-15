@@ -255,6 +255,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_value(vocab, 14, shape, elem, value, acc),
     do: encode_array(vocab, shape, elem, value, acc)
 
+  defp encode_value(vocab, 16, shape, elem, value, acc),
+    do: encode_keyed(vocab, shape, elem, value, acc)
+
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
   defp encode_value(vocab, 30, _shape, _elem, value, acc) do
@@ -302,6 +305,17 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp enum_ref?(_vocab, _ref), do: false
 
+  # A quantized float32 rides its step index at bits_required(0, count), the
+  # width the announced triple derives (docs/SPEC-TABLES.md §3.3, SPEC.md §4.3).
+  # The index clamps to count. A non-finite value is refused, never written.
+  defp encode_float(%{packing: 2, bits: bits, qmin: qmin, qmax: qmax, qres: qres}, value, acc)
+       when is_number(value) and is_integer(bits) do
+    case quantize_index(qmin, qmax, qres, value) do
+      {:ok, index} -> {:ok, put_bits(acc, index, bits)}
+      :error -> :error
+    end
+  end
+
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
 
@@ -329,6 +343,50 @@ const messageBatchRuntimeBody = `  @batch_max 256
     acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
     acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
     encode_elements(vocab, elem, value, acc3)
+  end
+
+  # An enum-keyed array (kind 16) writes the number of PRESENT slots at
+  # bits_required(0, slots), then one (key reference, element) pair per slot,
+  # in the order the caller gives (docs/SPEC-TABLES.md §3.2, §3.3). Key 0 is
+  # None and is refused. A duplicate key id is refused. There is no min and
+  # no byte alignment: alignment is for text and for an array of u8.
+  defp encode_keyed(vocab, shape, elem, value, acc) when is_list(value) do
+    if keyed_keys_ok?(vocab, value) and length(value) <= shape.max do
+      acc2 = put_bits(acc, length(value), bit_length(shape.max))
+      encode_keyed_pairs(vocab, elem, value, acc2)
+    else
+      :error
+    end
+  end
+
+  defp encode_keyed(_vocab, _shape, _elem, _value, _acc), do: :error
+
+  defp keyed_keys_ok?(vocab, pairs), do: keyed_keys_ok?(vocab, pairs, %{})
+  defp keyed_keys_ok?(_vocab, [], _seen), do: true
+
+  defp keyed_keys_ok?(vocab, [{key, _v} | rest], seen) when is_integer(key) and key > 0 do
+    case entry_at(vocab, key) do
+      {:ok, %{kind: 0, id: id}} when id < 0xFFFFFFFFFFFFFFFD ->
+        if Map.has_key?(seen, id),
+          do: false,
+          else: keyed_keys_ok?(vocab, rest, Map.put(seen, id, true))
+
+      _ ->
+        false
+    end
+  end
+
+  defp keyed_keys_ok?(_vocab, _pairs, _seen), do: false
+
+  defp encode_keyed_pairs(_vocab, _elem, [], acc), do: {:ok, acc}
+
+  defp encode_keyed_pairs(vocab, elem, [{key, v} | rest], acc) do
+    acc2 = put_bits(acc, key, vocab.ref_bits)
+
+    case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc2) do
+      {:ok, acc3} -> encode_keyed_pairs(vocab, elem, rest, acc3)
+      :error -> :error
+    end
   end
 
   defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
@@ -489,6 +547,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_value(vocab, 14, shape, elem, r, depth),
     do: read_array(vocab, shape, elem, r, depth)
 
+  defp read_value(vocab, 16, shape, elem, r, depth),
+    do: read_keyed(vocab, shape, elem, r, depth)
+
   defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
 
   defp read_value(vocab, kind, shape, elem, r, _depth),
@@ -527,6 +588,26 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  defp read_float(%{packing: 2, bits: bits, count: count, qmin: qmin, qmax: qmax, qres: qres}, r)
+       when is_integer(bits) and is_integer(count) do
+    case get_bits(r, bits) do
+      {:ok, index, rest} when index <= count ->
+        case quant_facts(qmin, qmax, qres) do
+          {:ok, ^count, delta, mn} ->
+            case dequant_value(index, mn, delta, count) do
+              :nonfinite -> throw(:non_finite_float)
+              value -> {:ok, value, rest}
+            end
+
+          _ ->
+            :malformed
+        end
+
+      _ ->
+        :malformed
+    end
+  end
+
   defp read_float(%{packing: 0}, r) do
     case get_bits(r, 32) do
       {:ok, v, rest} -> {:ok, f32_from_bits(v), rest}
@@ -535,6 +616,24 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   defp read_float(_shape, _r), do: :malformed
+
+  # float32 at every step, matching the reference quantizer's dequantization.
+  # An index above count is refused by the caller before this runs.
+  defp dequant_value(index, qmin, delta, count) do
+    normalized = round_f32(index / count)
+
+    if normalized == :nonfinite do
+      :nonfinite
+    else
+      scaled = round_f32(normalized * delta)
+
+      if scaled == :nonfinite do
+        :nonfinite
+      else
+        round_f32(scaled + qmin)
+      end
+    end
+  end
 
   # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
   # number at most the declared max and are well-formed UTF-8 with no NUL, or
@@ -550,6 +649,57 @@ const messageBatchRuntimeBody = `  @batch_max 256
       _ -> :malformed
     end
   end
+
+  # Kind 16: the count is the number of present slots, not count - min, and a
+  # count above the announced slot maximum is damage. A key must name a
+  # variant, key 0 is refused, and the same key id twice is damage.
+  defp read_keyed(vocab, shape, elem, r, depth) do
+    case get_bits(r, bit_length(shape.max)) do
+      {:ok, n, rest} when n <= shape.max ->
+        read_keyed_pairs(vocab, elem, n, rest, [], %{}, elem_depth(elem, depth))
+
+      _ ->
+        :malformed
+    end
+  end
+
+  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth), do: {:ok, Enum.reverse(acc), r}
+
+  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth) when n > 0 do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, key, rest} when key > 0 ->
+        case entry_at(vocab, key) do
+          {:ok, %{kind: 0, id: id}} when id < 0xFFFFFFFFFFFFFFFD ->
+            if Map.has_key?(seen, id) do
+              :malformed
+            else
+              case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
+                {:ok, v, rest2} ->
+                  read_keyed_pairs(
+                    vocab,
+                    elem,
+                    n - 1,
+                    rest2,
+                    [{key, v} | acc],
+                    Map.put(seen, id, true),
+                    depth
+                  )
+
+                :malformed ->
+                  :malformed
+              end
+            end
+
+          _ ->
+            :malformed
+        end
+
+      _ ->
+        :malformed
+    end
+  end
+
+  defp read_keyed_pairs(_vocab, _elem, _n, _r, _acc, _seen, _depth), do: :malformed
 
   defp read_array(vocab, shape, elem, r, depth) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
@@ -1309,16 +1459,21 @@ const messageRuntimeBody = `  defstruct announced: false,
 
                 # A quantized triple whose delta or delta/res is not finite in
                 # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
-                if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
-                  delta = round_f32(hif - lof)
+                case quant_facts(lof, hif, resf) do
+                  {:ok, count, _delta, _mn} ->
+                    {:ok,
+                     %{
+                       kind: kind,
+                       packing: 2,
+                       qmin: lof,
+                       qmax: hif,
+                       qres: resf,
+                       count: count,
+                       bits: bit_length(count)
+                     }, rest2}
 
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
-                  else
+                  :error ->
                     :error
-                  end
-                else
-                  :error
                 end
 
               _ ->
@@ -1443,6 +1598,99 @@ const messageRuntimeBody = `  defstruct announced: false,
   # A finite float rounded to float32, or :nonfinite where it overflows the
   # width: the page's "not finite in float32" (docs/SPEC-TABLES.md §3.3), which
   # a ranged float's delta or delta/res reaches by overflow alone.
+  # quant_facts is the triple's derivation: the step count and delta, or
+  # :error for a triple SPEC.md calls non-conforming. The count is what
+  # bits_required(0, count) is taken from, so a reader that does not declare
+  # the field still skips the announced width.
+  defp quant_facts(qmin, qmax, qres)
+       when is_float(qmin) and is_float(qmax) and is_float(qres) and qmin < qmax and qres > 0.0 do
+    delta = round_f32(qmax - qmin)
+
+    values =
+      if delta == :nonfinite do
+        :nonfinite
+      else
+        round_f32(delta / qres)
+      end
+
+    cond do
+      delta == :nonfinite or values == :nonfinite ->
+        :error
+
+      true ->
+        values =
+          cond do
+            values < 1 -> 1.0
+            values > 4_294_967_040.0 -> 4_294_967_040.0
+            true -> values
+          end
+
+        {:ok, ceil_pos(values), delta, qmin}
+    end
+  end
+
+  defp quant_facts(_qmin, _qmax, _qres), do: :error
+
+  defp ceil_pos(x) do
+    whole = trunc(x)
+    if x > whole, do: whole + 1, else: whole
+  end
+
+  # The writer's half: the step index, held to the count. A non-finite value
+  # throws :non_finite_float, the same refusal a raw float32 write throws.
+  defp quantize_index(qmin, qmax, qres, value) do
+    case quant_facts(qmin, qmax, qres) do
+      {:ok, count, delta, mn} ->
+        narrowed = round_f32(value)
+
+        if narrowed == :nonfinite do
+          throw(:non_finite_float)
+        else
+          diff = round_f32(narrowed - mn)
+
+          normalized =
+            if diff == :nonfinite do
+              :nonfinite
+            else
+              round_f32(diff / delta)
+            end
+
+          cond do
+            normalized == :nonfinite ->
+              throw(:non_finite_float)
+
+            true ->
+              normalized =
+                cond do
+                  normalized < 0 -> 0.0
+                  normalized > 1 -> 1.0
+                  true -> normalized
+                end
+
+              scaled = round_f32(normalized * round_f32(count * 1.0))
+
+              if scaled == :nonfinite do
+                throw(:non_finite_float)
+              else
+                bumped = round_f32(scaled + 0.5)
+
+                if bumped == :nonfinite do
+                  throw(:non_finite_float)
+                else
+                  index = trunc(bumped)
+                  index = if index < 0, do: 0, else: index
+                  index = if index > count, do: count, else: index
+                  {:ok, index}
+                end
+              end
+          end
+        end
+
+      :error ->
+        :error
+    end
+  end
+
   defp round_f32(x) do
     <<bits::little-32>> = <<x::little-float-32>>
 
