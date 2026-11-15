@@ -1,0 +1,26 @@
+# The non-canonical spelling vectors (docs/SPEC-TABLES.md §3, §3.1,
+# §3.3, §4; docs/rulings.json reads-refuse-non-canonical). The variable cases
+# are form-1 files of test/non-canonical/NonCanonical.schema's Root: the
+# canonical spelling of one value, and one file per non-canonical spelling the
+# rule names. The message cases are form-2 batches of its fixed table Batch:
+# the canonical spelling, one body that omits a declared field, and the
+# message-one-encoding corpus's three cases, read there under
+# test/message-one-encoding/One.schema.
+#
+# Columns, tab-separated: file, form, case, verdict.
+#
+variable-canonical.bin	variable	canonical	read
+fields-out-of-order.bin	variable	fields-out-of-order	refused
+default-written.bin	variable	default-written	refused
+explicit-null-pointer.bin	variable	explicit-null-pointer	refused
+unused-id-entry.bin	variable	unused-id-entry	refused
+id-table-reordered.bin	variable	id-table-reordered	refused
+empty-node-table.bin	variable	empty-node-table	refused
+node-table-misplaced.bin	variable	node-table-misplaced	refused
+union-arm-zero.bin	variable	union-arm-zero	refused
+announcement.bin	message	announcement	read
+message-canonical.bin	message	canonical	read
+message-omits-field.bin	message	omits-declared-field	refused
+../message-one-encoding/fields-reordered.bin	message	fields-out-of-order	refused
+../message-one-encoding/explicit-default.bin	message	default-written	refused
+../message-one-encoding/union-none.bin	message	union-arm-zero	refused
