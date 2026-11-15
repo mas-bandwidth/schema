@@ -115,6 +115,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -174,6 +175,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -237,6 +239,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
