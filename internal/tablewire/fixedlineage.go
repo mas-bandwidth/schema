@@ -192,7 +192,8 @@ func (d *lineageDecoder) field(w *fixedNode, b []byte, fv *tabletext.Field) stri
 		}
 		present := b[0] != 0
 		if !present {
-			return "" // absent: the reader's declared default stands
+			// absent: the reader's declared default stands, and the payload is dead
+			return fixedDead(b[ir.TableFixedPresentBytes:])
 		}
 		fv.Present = true
 		return d.payload(w.children[0], b[ir.TableFixedPresentBytes:], fv)
@@ -241,6 +242,9 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 			if count < 0 || int64(count) > theirs || int64(count) > f.ArrayBound {
 				return FixedReasonCountOverBound
 			}
+			if reason := fixedDead(b[head+int64(count)*elem.size : w.size]); reason != "" {
+				return reason // a slot past the writer's count is dead
+			}
 			n = int64(count)
 			fv.Count = int(count)
 		} else if n > f.ArrayBound {
@@ -264,6 +268,9 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 		used := int32(binary.LittleEndian.Uint32(b))
 		if used < 0 || int64(used) > w.size-4 || int64(used) > f.Type.Size {
 			return FixedReasonLengthOverBound
+		}
+		if reason := fixedDead(b[4+int64(used) : w.size]); reason != "" {
+			return reason // the units past the used length are dead
 		}
 		text := b[4 : 4+used]
 		if f.Type.Kind == ir.TString && (!textValid(text) || containsZero(text)) {
@@ -382,12 +389,19 @@ func (d *lineageDecoder) union(w *fixedNode, b []byte, un *ir.Union, cell *table
 	*cell = tabletext.Cell{}
 	tag := getFixedUint(b, tagBytes)
 	if tag == 0 {
-		return ""
+		return fixedDead(b[tagBytes:w.size]) // tag 0 names no arm: all of it is dead
 	}
 	if tag > uint64(len(w.children)) {
 		return FixedReasonOutOfRange // a forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4)
 	}
 	arm := w.children[tag-1]
+	live := tagBytes
+	if arm.kind != ir.TableKindNoPayload {
+		live += arm.size
+	}
+	if reason := fixedDead(b[live:w.size]); reason != "" {
+		return reason // the bytes past the writer's narrower taken arm are dead
+	}
 	for i, v := range un.Variants {
 		if ir.TableWireId(v.WireName()) != arm.id {
 			continue

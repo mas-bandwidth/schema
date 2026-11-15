@@ -577,11 +577,11 @@ static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t s
         case 12: return blockdemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return blockdemo_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && blockdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             blockdemo_table_reader_t rr = sub;
-            return blockdemo_table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && blockdemo_table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -671,14 +671,17 @@ static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * 
             if ( !blockdemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = blockdemo_table_reader_get8( r );
             if ( !blockdemo_table_reader_span( r, &arm ) ) { return 0; }
-            return blockdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && blockdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return blockdemo_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             blockdemo_table_reader_t sub;
             if ( !blockdemo_table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && blockdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && blockdemo_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return blockdemo_table_skip_framed( sub, kind, nodes, depth );
         }
         default:
@@ -3362,10 +3365,20 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int blockdemo_table_message_skip_body(blockdemo_table_message_reader_t * r)
 {
+ uint8_t seen[512];
+ /* one bit a reference, as the file form's body skip keeps */
  if(r->skip_depth>128)return 0;
+ memset(seen,0,sizeof(seen));
  for(;;) {const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
+     reference is bounded where the file form bounds it, so the bitset fits. */
+  ref=entry-r->vocabulary->entries+1;
+  if(ref<1||ref>4096)return 0;
+  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
   if(!blockdemo_table_message_skip(r,entry))return 0;
  }
 }
@@ -3381,6 +3394,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
 {
  uint64_t n,i;
  const blockdemo_table_message_entry_t * entry;
+ const uint8_t * text;
  int saved,ok;
  if(r->skip_depth>128)return 0;
  switch(e->kind) {
@@ -3397,23 +3411,70 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && blockdemo_table_message_skip_deeper(r,entry));
  case 12:
+  /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
+     is inside the announced bound and its bytes are well-formed UTF-8 with no
+     zero byte. table_wire_utf8 is the check a named read applies. */
   if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(0,e->max))||!blockdemo_table_bit_align_read(&r->bits))return 0;
-  return blockdemo_table_message_skip_run(r,n,8);
+  if(n>(uint64_t)e->max || n>INT64_MAX/8 || !blockdemo_table_bit_has(&r->bits,(int64_t)n*8))return 0;
+  text=r->bits.buffer+(r->bits.offset>>3);
+  if(!blockdemo_table_wire_utf8(text,n))return 0;
+  r->bits.offset+=(int64_t)n*8;
+  return 1;
  case 31:
   if(!blockdemo_table_bit_align_read(&r->bits)||!blockdemo_table_bit_get(&r->bits,&n,32))return 0;
   return blockdemo_table_message_skip_run(r,n,8);
+ case 10:
+  /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+     (§3.3): the same raw-bits rule a named float read applies. */
+  if(!blockdemo_table_bit_get(&r->bits,&n,e->value_bits))return 0;
+  if(e->packing==2)return n<=(uint64_t)e->qcount;
+  return blockdemo_table_bits_finite32((uint32_t)n);
+ case 11:
+  if(!blockdemo_table_bit_get(&r->bits,&n,64))return 0;
+  return blockdemo_table_bits_finite64(n);
  case 14:case 16: {
   blockdemo_table_message_entry_t elem=blockdemo_table_message_element(e);
   if(!blockdemo_table_message_count(r,e,&n))return 0;
-  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
-   int64_t width=elem.value_bits>0?elem.value_bits:0;
-   if(e->kind==16)width+=r->vocabulary->ref_bits;
-   return blockdemo_table_message_skip_run(r,n,width);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
+  if(n>(uint64_t)e->max)return 0;
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
+     a quantized element carries a value condition, so it is walked; a keyed
+     entry carries a key reference, so it is walked too. */
+  if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
+   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
+    return blockdemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
-  for(i=0;i<n;i++) {
-   if(e->kind==16 && !blockdemo_table_message_ref(r,&entry,1))return 0;
-   if(!blockdemo_table_message_skip_deeper(r,&elem))return 0;
-  }return 1;
+  {
+   uint8_t seen[512];
+   int64_t before;
+   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
+   if(e->kind==16)memset(seen,0,sizeof(seen));
+   for(i=0;i<n;i++) {
+    if(e->kind==16) {
+     int64_t key;
+     if(!blockdemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
+     key=entry-r->vocabulary->entries+1;
+     if(key<1||key>4096)return 0;
+     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
+     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+    }
+    before=r->bits.offset;
+    /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
+       its own value conditions at the array body's level; only a string, a
+       table, a nested array or keyed body, a union or an enum is walked one
+       level deeper. */
+    if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
+     if(!blockdemo_table_message_skip(r,&elem))return 0;
+    } else if(!blockdemo_table_message_skip_deeper(r,&elem))return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). A keyed
+       scalar or no-payload element rides no element bits; its key reference
+       is the payload, and the reference reader's arithmetic run counts it. */
+    if(r->bits.offset==before && elem.value_bits<0 && elem.kind!=0 && elem.kind!=32)return 0;
+   }
+   return 1;
+  }
  }
  default:return e->value_bits>=0 && blockdemo_table_bit_skip(&r->bits,e->value_bits);
  }
@@ -5324,6 +5385,10 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_save( const blockdemo_pa
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
     for ( k = 0; k < count; ++k )
     {
         schema_assert( schema_blockdemo_padded_row_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
@@ -5439,10 +5504,11 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = blockdemo_padded_row_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -6852,6 +6918,10 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_save( const blockdemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
     for ( k = 0; k < count; ++k )
     {
         schema_assert( schema_blockdemo_padded_frame_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
@@ -6967,10 +7037,11 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = blockdemo_padded_frame_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before

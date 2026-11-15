@@ -415,15 +415,14 @@ func (g *gen) emitConst(d *ir.Const) error {
 	var lit, note string
 	switch {
 	case d.IsFloat:
-		// a float constant is a moo number: the nearest Q48.16 value, ties to
-		// even (moo's boundary rule), written exactly
-		if math.IsNaN(d.Float) || math.IsInf(d.Float, 0) || math.Abs(d.Float) >= 1<<47 {
-			return fmt.Errorf("const %s = %v has no moo number (moo holds |x| < 2^47, finite)", d.Name, d.Float)
-		}
-		raw := roundHalfEven(d.Float * 65536)
-		lit = fixedNumberLit(raw)
-		if new(big.Float).SetFloat64(d.Float).Cmp(new(big.Float).Quo(new(big.Float).SetInt(raw), big.NewFloat(65536))) != 0 {
-			note = fmt.Sprintf(" -- %s %s, the nearest Q48.16 value", d.Storage, strconv.FormatFloat(d.Float, 'g', -1, 64))
+		// a float constant rides the same boundary a float field does, so it
+		// holds the one value every language holds (SPEC §4.3): a float32 is
+		// its exact binary32 pattern in a serialize.Float32, a float64 its
+		// exact binary64 pattern in a serialize.Uint64
+		if d.Storage == "float32" {
+			lit = g.k(fmt.Sprintf("serialize.Float32.fromBits(0x%08x)", float32Bits(d.Float)))
+		} else {
+			lit = g.k(wideNew("Uint64", new(big.Int).SetUint64(math.Float64bits(d.Float)), 64))
 		}
 	case d.Storage == "int128":
 		lit = g.k(wideNew("Int128", d.Int, 128))
@@ -443,12 +442,6 @@ func (g *gen) emitConst(d *ir.Const) error {
 	}
 	g.pf("M.%s = %s%s\n\n", d.Name, lit, note)
 	return nil
-}
-
-func roundHalfEven(x float64) *big.Int {
-	r := math.RoundToEven(x)
-	b, _ := new(big.Float).SetFloat64(r).Int(nil)
-	return b
 }
 
 func (g *gen) emitEnum(d *ir.Enum) {

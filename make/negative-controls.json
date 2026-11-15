@@ -228,11 +228,12 @@
     {
       "name": "lua-packet",
       "when": "pull-request",
-      "why": "the Lua port's four packet families (constructor defaults, finite-float, UTF-8 read validation and wide pairing) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls.",
+      "why": "the Lua port's five packet families (constructor defaults, finite-float, UTF-8 read validation, wide pairing and the packet end check) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls before the packet-end control joined.",
       "targets": [
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
-        "packet-defaults-lua-negative-control"
+        "packet-defaults-lua-negative-control",
+        "packet-end-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1200,6 +1201,15 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-packet-end",
+      "when": "pull-request",
+      "why": "the C# packet read-termination rule (docs/SPEC.md §5): one overlay rebuild of the emitter without the public read's end call, one regenerated End unit, and the shared packet-end vectors required to refuse the trailing byte and the final-byte padding while the exact packet stays accepted.",
+      "targets": [
+        "packet-end-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-packet-clean",
       "when": "pull-request",
       "why": "the C# packet-clean gate's planted misindented block and unused private field (issue #547). It runs dotnet format and the SDK analyzers over generated units. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42599851908, that pair was cancelled at 322 s wall (job 2026-11-09T10:26:56Z-10:32:18Z, the make step canceled, no assertion failure). This row is one target of that split. There is no per-target wall, so this is not a claim that the row fits.",
@@ -1633,6 +1643,7 @@
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
+        "packet-end-js-negative-control",
         "packet-utf8-js-negative-control"
       ],
       "node": "26"
@@ -1863,7 +1874,8 @@
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
-        "packet-defaults-dart-negative-control"
+        "packet-defaults-dart-negative-control",
+        "packet-end-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -1951,6 +1963,7 @@
       "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
+        "packet-end-java-negative-control",
         "packet-utf8-java-negative-control"
       ],
       "java": "21"
@@ -2413,9 +2426,10 @@
     {
       "name": "goose-packet",
       "when": "pull-request",
-      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control and the finite-float control per direction. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction and the end-check control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
       "targets": [
         "packet-defaults-goose-negative-control",
+        "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
         "packet-utf8-goose-negative-control"
       ]
@@ -2672,10 +2686,24 @@
     {
       "name": "go-proof-2",
       "when": "pull-request",
-      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md M14, I4, J6): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision), the card renderer check (8 s on hulk, 24 s on vision), and the &node graph-label check (5 s on hulk, 13 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (52 s warm on vision).",
+      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md I4): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739), then from go-proof-4 and go-proof-5: the three run one after another under `make -k` and hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2: the cards generations alone took about 3 minutes), so each now has its own row.",
       "targets": [
-        "conformance-negative-control-go-absent",
-        "cards-conformance-go-negative-control",
+        "conformance-negative-control-go-absent"
+      ]
+    },
+    {
+      "name": "go-proof-4",
+      "when": "pull-request",
+      "why": "the Go leg's card renderer proof-cell control (docs/PORTING.md J6, 8 s on hulk, 24 s on vision). Split from go-proof-2, whose three serial controls hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2).",
+      "targets": [
+        "cards-conformance-go-negative-control"
+      ]
+    },
+    {
+      "name": "go-proof-5",
+      "when": "pull-request",
+      "why": "the Go leg's &node graph-label proof-cell control (docs/PORTING.md M14, 5 s on hulk, 13 s on vision). Split from go-proof-2, whose three serial controls hit the 5-minute job cap on a loaded runner (CI full 43665903270, hulk-2).",
+      "targets": [
         "tables-go-graph-label-negative-control"
       ]
     },
@@ -3043,13 +3071,12 @@
       ]
     },
     {
-      "name": "write-refusal-storage-release-cs",
+      "name": "write-refusal-storage-debug-cs",
       "when": "pull-request",
-      "why": "the C# release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in -c Release, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small .NET build.",
+      "why": "The C# debug storage gate (docs/SPEC.md §5.1) requires assertions for an overlong counted array and string. Its control removes the generated assertions and requires both probes to turn red.",
       "targets": [
-        "write-refusal-storage-release-cs-negative-control"
-      ],
-      "dotnet": "pin"
+        "write-refusal-storage-debug-cs-negative-control"
+      ]
     },
     {
       "name": "write-refusal-storage-release-rust",

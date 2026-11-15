@@ -1134,7 +1134,7 @@
       "row": "surface json-hostile",
       "lang": "dart",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/base64-unpadded",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-dart (docs/relaxed.md)"
     },
     {
@@ -1176,7 +1176,7 @@
       "row": "surface json-hostile",
       "lang": "lobster",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lobster (docs/relaxed.md)"
     },
     {
@@ -7259,7 +7259,7 @@
       "status": "proven",
       "gate": "TestRegionGraphs",
       "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
-      "control": "tables-go-graph-label-negative-control (CI full / negative controls (go-proof-2))"
+      "control": "tables-go-graph-label-negative-control (CI full / negative controls (go-proof-5))"
     },
     {
       "row": "porting M14",
@@ -9650,7 +9650,7 @@
       "status": "proven",
       "gate": "cards-conformance-go",
       "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
-      "control": "cards-conformance-go-negative-control (CI full / negative controls (go-proof-2))"
+      "control": "cards-conformance-go-negative-control (CI full / negative controls (go-proof-4))"
     },
     {
       "row": "porting J6",
