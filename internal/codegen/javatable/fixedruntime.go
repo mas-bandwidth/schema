@@ -54,9 +54,9 @@ public final class TableFixed {
     private TableFixed() {}
 
     /**
-     * Scatter checks dead bytes after the selected plan has rebuilt the record image. The identity
-     * plan copies the writer's body; a compiled plan places its known fields at their writer offsets
-     * and prefills fields the writer did not carry. This is false only while rollback lands defaults.
+     * Scatter checks dead field bytes in the selected plan's image. Compiled plans check union slack
+     * directly on the writer record with opDead because remapping omits inactive arm bytes. This is
+     * false only while rollback lands defaults.
      */
     static boolean checkDead;
 
@@ -92,6 +92,9 @@ public final class TableFixed {
 
     /** f32 into f64, §4's float rung and the only one. */
     public static final byte opWidenF = 6;
+
+    /** check a writer-layout dead span whose live arm is selected by its tag. */
+    public static final byte opDead = 7;
 
     /** a text entry's flavour: UTF-8 bytes. */
     public static final byte textUtf8 = 1;
@@ -437,6 +440,11 @@ public final class TableFixed {
         public int gcount;
         public long[] gpool;
 
+        /** an opDead's source tag offset, expected ordinal and width. */
+        public int deadTagAt;
+        public long deadTag;
+        public byte deadTagWidth;
+
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0;
@@ -456,6 +464,9 @@ public final class TableFixed {
             gindex = 0;
             gcount = 0;
             gpool = null;
+            deadTagAt = 0;
+            deadTag = 0;
+            deadTagWidth = 0;
         }
     }
 
@@ -836,6 +847,25 @@ public final class TableFixed {
                         }
                         put32(image, p.dst, v);
                         System.arraycopy(src, srcAt + p.src + 4, image, p.aux, p.size);
+                        break;
+                    }
+                case opDead:
+                    {
+                        final int tagWidth = guardWidth(p.deadTagWidth);
+                        if (p.deadTagAt < 0 || p.deadTagAt + tagWidth > srcLength
+                                || p.src < 0 || p.src + p.size > srcLength) {
+                            report.damaged = true;
+                            return;
+                        }
+                        if (tagAt(src, srcAt + p.deadTagAt, tagWidth) != p.deadTag) {
+                            break;
+                        }
+                        for (int j = 0; j < p.size; j++) {
+                            if (src[srcAt + p.src + j] != 0) {
+                                report.refuse(Reason.wireDamaged);
+                                return;
+                            }
+                        }
                         break;
                     }
                 case opOrdinal:
@@ -1579,6 +1609,22 @@ public final class TableFixed {
             count++;
         }
 
+        void pushDeadSpan(int src, int size, int tagAt, long tag, byte tagWidth, int guard, long arg) {
+            final int width = guardWidth(tagWidth);
+            if (tagAt < 0 || tagAt + width > theirBytes) {
+                recordTooLarge = true;
+                return;
+            }
+            final int before = count;
+            push(src, 0, size, 0, guard, opDead, arg, (byte) 0, (byte) 0);
+            if (count == before + 1) {
+                final Entry e = plan[before];
+                e.deadTagAt = tagAt;
+                e.deadTag = tag;
+                e.deadTagWidth = tagWidth;
+            }
+        }
+
         /**
          * HOW FAR INTO THE WRITER'S RECORD ONE OP REACHES, in bytes from src. The run loop's own
          * bound checks are the same arithmetic, record by record; this is that arithmetic ONCE, at
@@ -1866,6 +1912,26 @@ public final class TableFixed {
                     final int myTag = mine.tagBytes(mi);
                     final long theirArms = theirs.children(ti);
                     final long myArms = mine.children(mi);
+                    final int widest = (int) theirs.widestArm(ti);
+                    // The compiled image omits inactive writer arm bytes and
+                    // fills them from this reader's defaults. Check the two
+                    // union dead regions against the writer record itself.
+                    c.pushDeadSpan(theirAt + theirTag, widest, theirAt, 0, (byte) theirTag, guard, arg);
+                    int deadArm = ti + 1;
+                    for (long k = 0; k < theirArms; k++) {
+                        final int armSize = (int) theirs.size(deadArm);
+                        if (armSize < widest) {
+                            c.pushDeadSpan(
+                                    theirAt + theirTag + armSize,
+                                    widest - armSize,
+                                    theirAt,
+                                    k + 1,
+                                    (byte) theirTag,
+                                    guard,
+                                    arg);
+                        }
+                        deadArm += theirs.subtree(deadArm);
+                    }
                     // THE TAG'S "None" GOES DOWN FIRST AND UNGUARDED, and it is
                     // pushed HERE, before c.argw is retuned to this union's tag
                     // width, so it is stamped at the OUTER width: None answers to
@@ -2159,6 +2225,9 @@ public final class TableFixed {
                 dst.dstsize = e.dstsize;
                 dst.sign = e.sign;
                 dst.meta = e.meta;
+                dst.deadTagAt = e.deadTagAt;
+                dst.deadTag = e.deadTag;
+                dst.deadTagWidth = e.deadTagWidth;
             }
             out++;
         }
@@ -2183,6 +2252,8 @@ public final class TableFixed {
                 return p.dstsize & 0xff;
             case opWidenF:
                 return 8;
+            case opDead:
+                return 0;
             default:
                 return p.size;
         }

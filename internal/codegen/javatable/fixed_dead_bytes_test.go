@@ -16,10 +16,10 @@ import (
 // §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4, §13.10; docs/rulings.json
 // fixed-dead-bytes-are-zero). The shared vectors are fixedvector.DeadBytes.
 // Each vector is read by both the identity reader and a newer reader carrying
-// the writer's layout in its lineage. A file the list marks refused is refused
-// by the generated load — the verdict only, never the reason — and the caller's
-// destination is the value it was handed. Identity controls save back byte for
-// byte.
+// the writer's layout in its lineage, with wider array, string and bytes
+// capacities. A file the list marks refused is refused by the generated load —
+// the verdict only, never the reason — and the caller's destination is the value
+// it was handed. Identity controls save back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it runs the generated reader over the dead-byte corpus)")
@@ -106,9 +106,18 @@ func buildDeadBytesLineageReader(t *testing.T, javac string) (classes, pkg, root
 	if err != nil {
 		t.Fatal(err)
 	}
-	newerSrc := strings.Replace(string(src), "    pick DeadPick\n}", "    pick DeadPick\n    newer int32 = 0\n}", 1)
-	if newerSrc == string(src) {
-		t.Fatal("could not append a field to DeadRoot for the lineage reader")
+	newerSrc := string(src)
+	for _, change := range [][2]string{
+		{"    arr  [..3]int16", "    arr  [..4]int16"},
+		{"    text string(8)", "    text string(12)"},
+		{"    blob bytes(4)", "    blob bytes(8)"},
+		{"    pick DeadPick\n}", "    pick DeadPick\n    newer int32 = 0\n}"},
+	} {
+		updated := strings.Replace(newerSrc, change[0], change[1], 1)
+		if updated == newerSrc {
+			t.Fatalf("could not apply lineage schema change %q", change[0])
+		}
+		newerSrc = updated
 	}
 	newer := unitFrom(t, newerSrc)
 	oldEntry, ok := FixedLineageOf(old, "DeadRoot")
