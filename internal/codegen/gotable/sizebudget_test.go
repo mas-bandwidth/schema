@@ -63,7 +63,8 @@ const (
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +71: a wide integer is a JSON string of digits, and every integer takes an integer token (SPEC-TABLES §16.2)
-	goOneTableLineBudget = 10185
+	// -9: a fixed-form deprecated field is carried (§3.4): the deprecated destination mark and its plan skip are gone
+	goOneTableLineBudget = 10176
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -109,7 +110,8 @@ const (
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +71: a wide integer is a JSON string of digits, and every integer takes an integer token (SPEC-TABLES §16.2)
-	goExamplesLineBudget = 60176
+	// -9: a fixed-form deprecated field is carried (§3.4): the deprecated destination mark and its plan skip are gone
+	goExamplesLineBudget = 60167
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
