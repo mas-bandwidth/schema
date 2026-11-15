@@ -1062,6 +1062,12 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_MAX_BITS;
+        assert value.a >= 0;
+        assert value.a <= 1048575;
+        assert value.b >= 0;
+        assert value.b <= 1048575;
+        assert value.c >= 0;
+        assert value.c <= 16777215;
         return true;
     }
 
@@ -1350,6 +1356,8 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_FIRST_MAX_BITS;
+        assert value.trailer >= 0;
+        assert value.trailer <= 65535;
         return true;
     }
 
@@ -1470,6 +1478,8 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_STRADDLE_MAX_BITS;
+        assert value.pad5 >= 0;
+        assert value.pad5 <= 16777215;
         return true;
     }
 

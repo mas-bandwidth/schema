@@ -1368,7 +1368,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
-	g.pf("\tfor k := range n {\n")
+	g.pf("\tfor k := range values[:n] {\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
@@ -1386,16 +1386,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// and a NaN or an infinity refuses the whole batch as
 		// non_finite_float. Nothing of the batch is kept: every record this
 		// call wrote goes back to its defaults.
-		g.pf("\t\tif why := %sFixedFiniteBody(&values[k]); why != \"\" {\n", st.Name)
-		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\tif why := %sFixedFiniteBody(&values[k : k+1][0]); why != \"\" {\n", st.Name)
+		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\ttableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())\n\t\t\treport.Field = why\n\t\t\treturn -1\n\t\t}\n")
 	}
 	if len(writerBounds) > 0 {
 		g.pf("\t\tswitch pick {\n")
 		for _, i := range writerBounds {
 			g.pf("\t\tcase %d:\n", i)
-			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k]) {\n", st.Name, i)
-			g.pf("\t\t\t\tfor j := range k + 1 { %sReset(&values[j]) }\n", st.Name)
+			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k : k+1][0]) {\n", st.Name, i)
+			g.pf("\t\t\t\tfor j := range values[:k+1] { %sReset(&values[j]) }\n", st.Name)
 			g.pf("\t\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t\t}\n")
 		}
 		g.pf("\t\t}\n")
@@ -1403,8 +1403,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4, §4.6).\n")
-		g.pf("\t\tif !%sFixedBounds(&values[k]) {\n", st.Name)
-		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\tif !%sFixedBounds(&values[k : k+1][0]) {\n", st.Name)
+		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t}\n")
 	}
 	g.pf("\t\tat = at[recordBytes:]\n")

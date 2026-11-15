@@ -988,14 +988,19 @@ tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp 
 # and the read half that once consulted the lane (the wide flavour) was retired
 # with wstring (9e5e56bb5), so the sabotage also keeps the flavour through the
 # chain's write: the read then compares the writer's tag against a flavour.
+# Each half is asserted WHERE IT LANDS, so a text-op push or chain write that
+# moves or changes shape says which plant stopped applying instead of quietly
+# leaving the control green.
 .PHONY: tables-js-union-arm-text-negative-control
 tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
 	@sed -e 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
 		-e 's|^    e\[b + TableFixedLaneArg\] = c\[inner + 1\];$$|    e[b + TableFixedLaneArg] = op === TableFixedOpText ? arg : c[inner + 1]; // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
-	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not put the flavour in the guard's lane (both halves)"; exit 1; }
+	@grep -Fq 'TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED' build/js-armtext-sabotage/fixedruntime.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the text-op push moved or changed shape (plant applied zero times)"; exit 1; }
+	@grep -Fq 'e[b + TableFixedLaneArg] = op === TableFixedOpText ? arg : c[inner + 1]; // SABOTAGED' build/js-armtext-sabotage/fixedruntime.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the guard-chain write moved or changed shape (plant applied zero times)"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
 	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
@@ -1825,3 +1830,49 @@ packet-end-js-negative-control: packet-end-js
 	@grep -Fq 'FAILED: packet end flat trailing.bin' build/packet-end/js-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-end/js-negative/log; exit 1; }
 	@echo 'packet end JavaScript negative control: the flat end check removal reds the trailing-byte vector'
+
+# THE PACKET-WRITE COMPRESSED-FLOAT CHECK (docs/SPEC.md §5.1 row 10,
+# docs/PACKET-WIRE-ALGORITHM.md §2.5): every shared case in
+# test/packet-write-cfloat is written through the flat tier and the runtime
+# tier, checked and production, and every refused case must be refused and
+# every lawful one read back to its quantized value.
+build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/js.mk
+	./bin/schema generate --lang js --out build/packet-write-cfloat/js test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+.PHONY: packet-write-cfloat-js packet-write-cfloat-js-negative-control
+packet-write-cfloat-js: build/packet-write-cfloat/js/.stamp
+	$(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+	NODE_ENV=production $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+
+packet-write-cfloat-js-negative-control: packet-write-cfloat-js
+	@mkdir -p build/packet-write-cfloat/js-negative-flat
+	go run ./tools/sabotage -name packet-write-cfloat-js-flat-range \
+		-out build/packet-write-cfloat/js-negative-flat/flat.gotext internal/codegen/js/flat.go
+	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/packet-write-cfloat/js-negative-flat/flat.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/js-negative-flat/overlay.json
+	go build -overlay=build/packet-write-cfloat/js-negative-flat/overlay.json -o build/packet-write-cfloat/js-negative-flat/schema ./cmd/schema
+	./build/packet-write-cfloat/js-negative-flat/schema generate --lang js --out build/packet-write-cfloat/js-negative-flat/generated test/packet-write-cfloat/CFloat.schema
+	$(NODE) --check build/packet-write-cfloat/js-negative-flat/generated/CFloat.js
+	$(NODE) --check build/packet-write-cfloat/js-negative-flat/generated/CFloatFlat.js
+	@if $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt "$(CURDIR)/build/packet-write-cfloat/js-negative-flat/generated" > build/packet-write-cfloat/js-negative-flat/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing compressed-float range check passed in the flat tier'; exit 1; fi
+	@grep -Fq 'FAILED: cfloat checked/flat above-max: wrote a value the range refuses' build/packet-write-cfloat/js-negative-flat/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-write-cfloat/js-negative-flat/log; exit 1; }
+	@echo 'packet write compressed float JavaScript negative control: the flat range check removal reds above-max'
+	@mkdir -p build/packet-write-cfloat/js-negative-runtime
+	go run ./tools/sabotage -name packet-write-cfloat-js-runtime-range \
+		-out build/packet-write-cfloat/js-negative-runtime/functions.gotext internal/codegen/js/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/js/functions.go":"%s/build/packet-write-cfloat/js-negative-runtime/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/js-negative-runtime/overlay.json
+	go build -overlay=build/packet-write-cfloat/js-negative-runtime/overlay.json -o build/packet-write-cfloat/js-negative-runtime/schema ./cmd/schema
+	./build/packet-write-cfloat/js-negative-runtime/schema generate --lang js --out build/packet-write-cfloat/js-negative-runtime/generated test/packet-write-cfloat/CFloat.schema
+	$(NODE) --check build/packet-write-cfloat/js-negative-runtime/generated/CFloat.js
+	$(NODE) --check build/packet-write-cfloat/js-negative-runtime/generated/CFloatFlat.js
+	@if $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt "$(CURDIR)/build/packet-write-cfloat/js-negative-runtime/generated" > build/packet-write-cfloat/js-negative-runtime/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing compressed-float range check passed in the runtime tier'; exit 1; fi
+	@grep -Fq 'FAILED: cfloat checked/runtime above-max: wrote a value the range refuses' build/packet-write-cfloat/js-negative-runtime/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-write-cfloat/js-negative-runtime/log; exit 1; }
+	@echo 'packet write compressed float JavaScript negative control: the runtime range check removal reds above-max'
+
+test-js: packet-write-cfloat-js packet-write-cfloat-js-negative-control

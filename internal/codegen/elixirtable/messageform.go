@@ -309,11 +309,13 @@ const messageBatchRuntimeBody = `  @batch_max 256
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
 
   # A QUANTIZED FLOAT RIDES ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
-  # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width,
-  # then quantize by the packet wire's rule, in float32 at every step.
+  # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width
+  # and a finite value outside [min, max] (invalid_value, never clamped), then
+  # quantize by the packet wire's rule, in float32 at every step.
   defp encode_float(%{packing: 2} = shape, value, acc) do
     case round_f32(value) do
       :nonfinite -> throw(:non_finite_float)
+      v32 when v32 < shape.qmin or v32 > shape.qmax -> throw(:invalid_value)
       v32 -> {:ok, put_bits(acc, quantize(shape, v32), shape.bits)}
     end
   end
@@ -484,33 +486,42 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
 
   defp read_bodies(vocab, r, n, acc) do
-    case read_body(vocab, r, [], 0) do
+    case read_body(vocab, r, [], MapSet.new(), 0) do
       {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
 
-  defp read_body(_vocab, _r, _acc, depth) when depth > 128, do: :malformed
+  defp read_body(_vocab, _r, _acc, _seen, depth) when depth > 128, do: :malformed
 
-  defp read_body(vocab, r, acc, depth) do
+  defp read_body(vocab, r, acc, seen, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
-        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not
+        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not: the
+        # ENTRY's id, not the position that named it, is the field's identity
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
 
-            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
-              {:ok, value, rest2} ->
-                if List.keymember?(acc, ref, 0),
-                  do: :malformed,
-                  else: read_body(vocab, rest2, [{ref, value} | acc], depth)
+            if MapSet.member?(seen, entry.id) do
+              :malformed
+            else
+              case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+                {:ok, value, rest2} ->
+                  read_body(
+                    vocab,
+                    rest2,
+                    [{ref, value} | acc],
+                    MapSet.put(seen, entry.id),
+                    depth
+                  )
 
-              :malformed ->
-                :malformed
+                :malformed ->
+                  :malformed
+              end
             end
 
           _ ->
@@ -524,15 +535,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp read_value(_vocab, _kind, _shape, _elem, _r, depth) when depth > 128, do: :malformed
 
-  defp read_value(vocab, 13, _shape, _elem, r, depth), do: read_body(vocab, r, [], depth + 1)
+  defp read_value(vocab, 13, _shape, _elem, r, depth),
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1)
 
   defp read_value(vocab, 14, shape, elem, r, depth),
     do: read_array(vocab, shape, elem, r, depth)
 
+  defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
+
   defp read_value(vocab, 16, shape, elem, r, depth),
     do: read_keyed(vocab, shape, elem, r, depth)
-
-  defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
 
   defp read_value(vocab, kind, shape, elem, r, _depth),
     do: read_value(vocab, kind, shape, elem, r)
@@ -565,8 +577,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
     n = scalar_bits(kind, shape)
 
     case get_bits(r, n) do
-      {:ok, raw, rest} -> {:ok, scalar_value(kind, shape, raw), rest}
-      :error -> :malformed
+      {:ok, raw, rest} ->
+        case scalar_value(kind, shape, raw) do
+          :malformed -> :malformed
+          value -> {:ok, value, rest}
+        end
+
+      :error ->
+        :malformed
     end
   end
 
@@ -577,18 +595,47 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  # A quantized float's index is read at its announced width and held to the
-  # step count; an index above the count is damage (§3.3), and a value that
-  # rounds past float32 is refused as non_finite_float.
+  # A QUANTIZED INDEX ABOVE ITS COUNT IS DAMAGE (§3.3, SPEC.md §4.3), a
+  # skipped field's too: the width spells such an index whenever the count is
+  # not one less than a power of two, and the value it names is held to the
+  # finite rule a raw payload is held to.
   defp read_float(%{packing: 2} = shape, r) do
-    case get_bits(r, shape.bits) do
-      {:ok, index, rest} when index <= shape.count -> {:ok, dequantize(shape, index), rest}
-      {:ok, _index, _rest} -> :malformed
-      :error -> :malformed
+    {delta, count} = quant_facts(shape)
+
+    case get_bits(r, bit_length(count)) do
+      {:ok, index, rest} when index <= count ->
+        bits = dequantize_bits(index, shape.qmin, delta, count)
+
+        if (bits >>> 23 &&& 0xFF) == 0xFF do
+          :malformed
+        else
+          <<v::little-float-32>> = <<bits::little-32>>
+          {:ok, v, rest}
+        end
+
+      _ ->
+        :malformed
     end
   end
 
   defp read_float(_shape, _r), do: :malformed
+
+  # The step count and delta derive from the announced triple exactly as
+  # ir.TableMessageQuantization derives them, in float32.
+  defp quant_facts(%{qmin: lo, qmax: hi, qres: res}) do
+    delta = round_f32(hi - lo)
+    values = round_f32(delta / res)
+
+    values =
+      cond do
+        values == :nonfinite -> 1.0
+        not (values >= 1) -> 1.0
+        values > 4_294_967_040.0 -> 4_294_967_040.0
+        true -> values
+      end
+
+    {delta, trunc(Float.ceil(values))}
+  end
 
   # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
   # number at most the declared max and are well-formed UTF-8 with no NUL, or
@@ -605,51 +652,54 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  # THE COUNT'S BITS CAN SPELL MORE THAN max - min (§3.3), so a count above
+  # the announced maximum is damage, a skipped field's too.
   defp read_array(vocab, shape, elem, r, depth) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
+         n = shape.min + offset,
+         true <- n <= shape.max,
          {:ok, rest2} <- maybe_align(elem, rest) do
       next_depth = elem_depth(elem, depth)
-      read_elements(vocab, shape, elem, shape.min + offset, rest2, [], next_depth)
+      read_elements(vocab, shape, elem, n, rest2, [], next_depth)
     else
       _ -> :malformed
     end
   end
 
-  # An enum-keyed array reads the number of present slots, then one
-  # (key reference, element) pair per slot. A key that names no kind-0 entry
-  # is damage, and the same key twice in one array is damage (§3.2, §3.3).
+  # AN ENUM-KEYED ARRAY (§3.2): the number of present slots, then one
+  # (key reference, element) pair per slot. A key that names no declared
+  # no-payload entry, and one that names the same entry twice, is damage
+  # (§3.3), a skipped field's too.
   defp read_keyed(vocab, shape, elem, r, depth) do
-    with {:ok, count, rest} <- get_bits(r, bit_length(shape.max)) do
-      next_depth = elem_depth(elem, depth)
-      read_keyed_entries(vocab, elem, count, rest, [], %{}, next_depth)
-    else
-      _ -> :malformed
+    case get_bits(r, bit_length(shape.max)) do
+      {:ok, n, rest} when n <= shape.max ->
+        read_keyed_pairs(vocab, elem, n, rest, [], MapSet.new(), elem_depth(elem, depth))
+
+      _ ->
+        :malformed
     end
   end
 
-  defp read_keyed_entries(_vocab, _elem, 0, r, acc, _seen, _depth),
+  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth),
     do: {:ok, Enum.reverse(acc), r}
 
-  defp read_keyed_entries(vocab, elem, n, r, acc, seen, depth) do
+  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth) do
     with {:ok, ref, rest} <- get_bits(r, vocab.ref_bits),
-         {:ok, entry} <- key_entry(vocab, ref),
-         false <- Map.has_key?(seen, entry.id) do
+         {:ok, entry} <- entry_at(vocab, ref),
+         true <- entry.kind == 0,
+         true <- entry.id < 0xFFFFFFFFFFFFFFFD,
+         false <- MapSet.member?(seen, entry.id) do
+      seen = MapSet.put(seen, entry.id)
+
       case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
-        {:ok, v, rest2} ->
-          read_keyed_entries(vocab, elem, n - 1, rest2, [{ref, v} | acc], Map.put(seen, entry.id, true), depth)
+        {:ok, value, rest2} ->
+          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, value} | acc], seen, depth)
 
         :malformed ->
           :malformed
       end
     else
       _ -> :malformed
-    end
-  end
-
-  defp key_entry(vocab, ref) do
-    case entry_at(vocab, ref) do
-      {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD -> {:ok, entry}
-      _ -> :error
     end
   end
 
@@ -665,12 +715,18 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
   # the count would allocate a list in proportion to the announcement and
   # consume no input. This reader returns the list, so zero_width_run holds
-  # every zero-width run to the bits the batch still holds
-  # (internal/tablewire/messagedecode.go) before any cell is allocated.
+  # every fixed-width zero run to the bits the batch still holds
+  # (internal/tablewire/messagedecode.go) before any cell is allocated. A
+  # WALKED element that consumes no bits is damage, even where the remaining
+  # count could fit in the batch's padding.
   defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
     case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
       {:ok, v, ^r} ->
-        zero_width_run(vocab, shape, n, r, acc, v)
+        if element_run_bits(elem) < 0 do
+          :malformed
+        else
+          zero_width_run(vocab, shape, n, r, acc, v)
+        end
 
       {:ok, v, rest} ->
         read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)
@@ -685,14 +741,35 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp zero_width_run(_vocab, _shape, n, r, acc, v) do
     # The shape is the writer's announcement, whatever its minimum and maximum:
     # a run the batch's bits cannot back is damage
-    # (internal/tablewire/messagedecode.go). An element costs at least one bit
-    # (floor 1), so a count the batch cannot back is refused before any cell is
-    # allocated. A run the bits back is materialized, and the uint32 ceiling on
-    # the announced shape is untouched.
+    # (internal/tablewire/messagedecode.go). A run the bits back is
+    # materialized, and the uint32 ceiling on the announced shape is untouched.
     if n > bits_left(r) do
       :malformed
     else
       {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
+    end
+  end
+
+  # THE ELEMENT'S FIXED WIDTH WHERE IT IS ONE THIS READER CAN MULTIPLY, and -1
+  # where it must be walked (§3.3): a table, union, enum, pointer or nested
+  # array resolves something, a string finds a length, and a float or a
+  # ranged/quantized scalar carries a value condition the wire decides. A fixed
+  # width is stepped by its width, including zero, and is not walked; a walked
+  # element must move the cursor on every step.
+  defp element_run_bits(%{kind: kind, shape: shape}) do
+    cond do
+      kind in [0, 32] ->
+        0
+
+      kind in [10, 11, 12, 13, 14, 15, 16, 17, 30] ->
+        -1
+
+      kind in [1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36] ->
+        width = scalar_bits(kind, shape)
+        if width > 0 and shape.packing in [1, 2], do: -1, else: width
+
+      true ->
+        -1
     end
   end
 
@@ -750,12 +827,27 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp scalar_bits(kind, _shape), do: kind_bits(kind)
 
-  defp scalar_value(_kind, %{packing: 1, base: base}, raw), do: base + raw
+  # A RANGED VALUE'S OFFSET CAN SPELL A VALUE PAST ITS KIND (§3.3), a skipped
+  # field's too: base + offset must land in the domain the kind declares.
+  defp scalar_value(kind, %{packing: 1, base: base}, raw) do
+    value = base + raw
+    if kind_holds?(kind, value), do: value, else: :malformed
+  end
 
   defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw
+
+  defp kind_holds?(kind, value) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] do
+    bits = kind_bits(kind)
+    value >= -(1 <<< (bits - 1)) and value <= (1 <<< (bits - 1)) - 1
+  end
+
+  defp kind_holds?(kind, value) do
+    bits = kind_bits(kind)
+    bits > 0 and value >= 0 and value <= (1 <<< bits) - 1
+  end
 
   defp sign_extend(raw, bits) do
     if (raw >>> (bits - 1) &&& 1) == 1 do
@@ -1569,10 +1661,10 @@ const messageRuntimeBody = `  defstruct announced: false,
   end
 
   # The compressed float's step-index arithmetic (docs/SPEC-TABLES.md §3.3,
-  # SPEC.md §4.3): the index a value takes, and the float an index names, in
-  # float32 at every step, never fused, never widened. The announcement already
-  # held the triple to the packet wire's own rule, so a finite value quantizes
-  # without overflow; the reader refuses a value that rounds past float32.
+  # SPEC.md §4.3): the index a value takes, in float32 at every step, never
+  # fused, never widened. The announcement already held the triple to the
+  # packet wire's own rule, so an in-range value quantizes without overflow;
+  # the clamp to [0, 1] absorbs only the float32 rounding at the ends.
   defp quantize(%{qmin: qmin, qmax: qmax, count: count}, value) do
     delta = round_f32(qmax - qmin)
     count32 = round_f32(count * 1.0)
@@ -1580,17 +1672,6 @@ const messageRuntimeBody = `  defstruct announced: false,
     normalized = if normalized < 0.0, do: 0.0, else: normalized
     normalized = if normalized > 1.0, do: 1.0, else: normalized
     min(floor(round_f32(round_f32(normalized * count32) + 0.5)), count)
-  end
-
-  defp dequantize(%{qmin: qmin, qmax: qmax, count: count}, index) do
-    delta = round_f32(qmax - qmin)
-    count32 = round_f32(count * 1.0)
-    normalized = round_f32(round_f32(index * 1.0) / count32)
-
-    case round_f32(round_f32(normalized * delta) + qmin) do
-      :nonfinite -> throw(:non_finite_float)
-      value -> value
-    end
   end
 
 `

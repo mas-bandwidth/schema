@@ -84,7 +84,7 @@ func TestFixedByteArrayAfterUnionWireC(t *testing.T) {
 		t.Errorf("write_t must encode data one byte at a time:\n%s", writeBody)
 	}
 
-	readBody := body("read_t")
+	readBody := body("schema_read_t_body_")
 	if strings.Contains(readBody, "serialize_read_bytes( stream, value->data") {
 		t.Errorf("read_t bulk-copied data after a union field, which moves its bytes:\n%s", readBody)
 	}

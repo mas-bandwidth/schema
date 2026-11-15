@@ -120,7 +120,15 @@ fixed table Root
 
       other -> check(false, "load_messages refused: #{inspect(other)}")
     end
-`, input, expected)
+
+    # a finite value outside [min, max] is refused, never clamped
+    for bad <- [10.5, -0.5] do
+      check(
+        M.save_messages(vocab, [[{%d, bad}]]) == {:error, :invalid_value},
+        "save_messages did not refuse #{bad} outside [0, 10]"
+      )
+    end
+`, input, expected, cfSlot)
 
 	out, err := runMessageProbe(t, u, ann, body)
 	if err != nil {

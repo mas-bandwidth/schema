@@ -59,22 +59,20 @@ func TestFixedVersioningSecondArmText(t *testing.T) {
 			body = strings.ReplaceAll(body, "WIDENED", widened) + extra
 			if reader == "FU2" {
 				body += `
-  // Corrupt the arm guard on the compiled copy covering the text and
-  // its neighbours. Identical text bounds coalesce this span into a copy.
+  // Corrupt the arm guard on the compiled text entry. Every text takes the
+  // text op, same bounds or not, so the second arm's string is its own entry.
   var changed = 0;
   for (final locked in t.fuRootFixedLineagePlans) {
     for (var i = 0; i < locked.count; i++) {
       final b = i * t.TableFixedLane.lanes;
-      if (locked.entries[b + t.TableFixedLane.op] == t.TableFixedOp.copy &&
+      if (locked.entries[b + t.TableFixedLane.op] == t.TableFixedOp.text &&
           locked.entries[b + t.TableFixedLane.arg] == 2) {
-        locked.entries[b + t.TableFixedLane.arg] =
-            1;
-        locked.entries[b + t.TableFixedLane.meta] = 0;
+        locked.entries[b + t.TableFixedLane.arg] = 1;
         changed++;
       }
     }
   }
-  check(changed == 1, 'guard control touched exactly one second-arm copy');
+  check(changed == 1, 'guard control touched exactly one second-arm text');
   final broken = <t.FuRoot>[for (var i = 0; i < 3; i++) t.FuRoot()];
   for (final v in broken) { t.initFuRoot(v); }
   final brokenReport = t.TableFixedReport();
