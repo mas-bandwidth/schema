@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -15,8 +16,11 @@ import (
 // TestGeneratedFixedOneVerdictEveryByte substitutes every value of every byte
 // past the header of each fixed root's record, one at a time, and holds the
 // generated fixed read to the engine's verdict on each (docs/SPEC-TABLES.md
-// §4, §6.5; the slack rule of §3.4 included).
+// §4, §6.5; the dead-byte rule of §3.4 included).
 func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
+	// every value of every byte of every fixed root: 126 s alone on a loaded
+	// bench, past what a two-minute fast-lane job can hold, so it runs nightly
+	slowtest.Gate(t, "every byte value of every fixed root")
 	t.Parallel()
 	c := compiler.New()
 	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})

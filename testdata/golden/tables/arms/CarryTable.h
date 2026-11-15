@@ -1530,7 +1530,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -10987,7 +10987,7 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -11036,7 +11036,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     (void) ctx;
     (void) numbering;
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -17972,7 +17972,7 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
@@ -18022,7 +18022,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     (void) ctx;
     (void) numbering;
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.entries_count > 0 )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );

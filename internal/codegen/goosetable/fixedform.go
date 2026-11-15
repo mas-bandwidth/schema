@@ -558,7 +558,7 @@ func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
 		e.p(ind, "if b[%s] == 1 {", off)
 		e.scanValue(ind+1, f, off+" + 1")
 		e.p(ind, "} else {")
-		e.p(ind+1, "r = schema_rt::fixed_scan_zero(b, %s, %d);", off, payloadBytes(f))
+		e.p(ind+1, "r = schema_rt::fixed_scan_zero(b, %s + 1, %d);", off, payloadBytes(f))
 		e.p(ind+1, "if r != 0 { return r; }")
 		e.p(ind, "}")
 		return
@@ -941,10 +941,12 @@ func elemNeedsScan(f *ir.Field) bool {
 }
 
 // needs walks an element through structs and union arms: leaf answers a
-// scalar or text element; a counted array always needs its count asked;
-// a union's tag is a bound of its own when unionTag says so.
+// scalar or text element, and is asked of a record or union field too, so an
+// optional's absent payload is scanned whatever its type
+// (docs/FIXED-FORM-ALGORITHM.md §4.5); a counted array always needs its count
+// asked; a union's tag is a bound of its own when unionTag says so.
 func needs(f *ir.Field, seen map[string]bool, leaf func(*ir.Field) bool, unionTag bool) bool {
-	if f.Array == ir.ArrayCounted {
+	if f.Array == ir.ArrayCounted || leaf(f) {
 		return true
 	}
 	if f.Type.Kind == ir.TNamed {
@@ -969,7 +971,7 @@ func needs(f *ir.Field, seen map[string]bool, leaf func(*ir.Field) bool, unionTa
 			return ir.TableFixedUnionBytes(r) > ir.TableFixedUnionTagBytes(r)
 		}
 	}
-	return leaf(f)
+	return false
 }
 
 // ---------------------------------------------------------------------------

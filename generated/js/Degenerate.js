@@ -126,6 +126,9 @@ export function ZeroSpanU64(value) {
 
 export function WriteSpanU64(stream, value) {
   for (let i = 0; i < 2; i++) {
+    if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
+      return false;
+    }
     BIGINT_SCRATCH.value = value.values[i];
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
@@ -168,6 +171,9 @@ export function ZeroSpanI64(value) {
 
 export function WriteSpanI64(stream, value) {
   for (let i = 0; i < 2; i++) {
+    if (typeof value.values[i] !== "bigint" || value.values[i] < -9223372036854775808n || value.values[i] > 9223372036854775807n) { // a bare integer must fit its width
+      return false;
+    }
     BIGINT_SCRATCH.value = BigInt.asUintN(64, value.values[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
@@ -210,6 +216,9 @@ export function ZeroSpanOne(value) {
 
 export function WriteSpanOne(stream, value) {
   for (let i = 0; i < 1; i++) {
+    if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
+      return false;
+    }
     BIGINT_SCRATCH.value = value.values[i];
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
@@ -252,6 +261,9 @@ export function ZeroSpanChunk(value) {
 
 export function WriteSpanChunk(stream, value) {
   for (let i = 0; i < 4; i++) {
+    if (!Number.isInteger(value.values[i]) || value.values[i] < 0 || value.values[i] > 65535) { // a bare integer must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.values[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
@@ -301,6 +313,9 @@ export function WriteSpanTail(stream, value) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 4294967295) { // a bare integer must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {

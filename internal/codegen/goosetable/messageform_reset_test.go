@@ -223,7 +223,7 @@ func resetProbe(t *testing.T, u *ir.Unit, override map[string][]byte) map[string
 	files["damaged.bin"] = damagedBatch(t, m)
 	out := strings.TrimSpace(string(gooserun.Run(t, t.TempDir(), "main.goose", files)))
 	lines := map[string][]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) > 0 {
 			lines[fields[0]] = fields
@@ -312,7 +312,7 @@ func patchBatchValue(t *testing.T, valid, other []byte, width int, v uint64) []b
 	var pos []int
 	for i := range valid {
 		x := valid[i] ^ other[i]
-		for bit := 0; bit < 8; bit++ {
+		for bit := range 8 {
 			if x&(1<<uint(bit)) != 0 {
 				pos = append(pos, i*8+bit)
 			}
@@ -328,7 +328,7 @@ func patchBatchValue(t *testing.T, valid, other []byte, width int, v uint64) []b
 		}
 	}
 	out := append([]byte(nil), valid...)
-	for i := 0; i < width; i++ {
+	for i := range width {
 		setBatchBit(out, lo+i, v>>uint(i)&1 == 1)
 	}
 	return out

@@ -8,16 +8,11 @@ package gotable
 // are the one read, and a refusal by either is the whole load's
 // (tla/ReadOrder.tla, OneVerdict; tla/Framing.tla).
 //
-// The walk is one function of the bytes, the id table and the node table. A
+// The walk is one function of the bytes, the id table and the node count. A
 // body is walked twice: its headers first, for the repeated-id check against
-// a stamp per id-table entry, then each payload. The pointer graph is every
-// kind 17 payload in the input, and it is checked without recursion over the
-// graph: a first pass counts each record's in-degree, a record no pointer
-// names is unreachable and a blob record named twice is shared, and Kahn's
-// algorithm from the root then visits every record unless a cycle holds one
-// back. The per-record state is two words in the caller's scratch: the
-// in-degree with the visit stack's link, and the record's offset in the node
-// table.
+// a stamp per id-table entry, then each payload. A kind 17 payload is bounded
+// by the node count here; the pointer graph itself is judged over the decoded
+// nodes (cycle.go).
 const tableWireCheckSource = `
 // tableBinaryMaxDepth is the binary nesting bound (docs/SPEC-TABLES.md §4,
 // binary_max_depth): a root body or a node record is level 0, each table,
@@ -26,12 +21,8 @@ const tableBinaryMaxDepth = 128
 
 type tableWireCheck struct {
  depth int32
- ids int
+ ids uint64
  nodes uint64
- records TableReader
- graph []uint64
- release bool
- head uint64
  gen uint32
  reason TableRefuseReason
  mark func(uint64)
@@ -49,12 +40,6 @@ func (c *tableWireCheck) failed() TableRefuseReason { if c.reason==TableRefuseOk
 func (c *tableWireCheck) edge(index uint64) bool {
  if index==0 { return true }
  if index==1 || index>c.nodes+1 { return c.fail(TableRefuseWireDamaged) }
- if c.graph==nil { return true }
- at:=&c.graph[2*(index-1)]
- if !c.release { if uint32(*at)==^uint32(0) { return c.fail(TableRefuseWireDamaged) }; *at++; return true }
- if uint32(*at)==0 { return c.fail(TableRefuseWireDamaged) }
- *at--
- if uint32(*at)==0 { *at|=c.head<<32; c.head=index+1 }
  return true
 }
 
@@ -73,7 +58,7 @@ func (c *tableWireCheck) body(r TableReader, root bool) (int64, bool) {
   ref,ok:=probe.Leb()
   if !ok { return 0,c.fail(TableRefuseWireDamaged) }
   if ref==0 { break }
-  if ref>uint64(c.ids) || !probe.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
+  if ref>c.ids || !probe.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
   if c.stamp[ref]==gen { return 0,c.fail(TableRefuseWireDamaged) }
   c.stamp[ref]=gen
   if !probe.Skip(probe.Get8()) { return 0,c.fail(TableRefuseWireDamaged) }
@@ -114,7 +99,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
   if c.mark!=nil { c.mark(index) }
  case 30:
   ref,ok:=r.Leb()
-  if !ok || ref>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
+  if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
  case 15:
   return c.union(r)
  case 12, 13, 14, 16, 31, 32:
@@ -169,7 +154,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
  // a count past the int32 storage cap refuses by its own name (§2.9), and one
  // the body cannot cover (an element is a byte at least) is damage
  if count>math.MaxInt32 { return 0,c.fail(TableRefuseCountOverExtentCap) }
- if count>uint64(len(sub.Buffer))-uint64(sub.Offset) { return 0,c.fail(TableRefuseWireDamaged) }
+ if sub.Offset<0 || count>uint64(len(sub.Buffer))-uint64(sub.Offset) { return 0,c.fail(TableRefuseWireDamaged) }
  if !keyed {
   for range count {
    at,ok:=c.value(sub,kind)
@@ -183,7 +168,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
  probe:=sub
  for range count {
   key,ok:=probe.Leb()
-  if !ok || key==0 || key>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
+  if !ok || key==0 || key>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
   if c.stamp[key]==gen { return 0,c.fail(TableRefuseWireDamaged) }
   c.stamp[key]=gen
   if _,ok:=probe.Body(); !ok { return 0,c.fail(TableRefuseWireDamaged) }
@@ -200,7 +185,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 // arm's kind and its L-framed payload.
 func (c *tableWireCheck) union(r TableReader) (int64, bool) {
  ref,ok:=r.Leb()
- if !ok || ref>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
+ if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
  if ref==0 { return r.Offset,true }
  if !r.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
  kind:=r.Get8()
@@ -216,107 +201,12 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
  return r.Offset,true
 }
 
-// record walks the node record at offset in the node table: a blob's bytes, or
-// a table body of any type, named or not.
-func (c *tableWireCheck) record(at int64) bool {
- r:=c.records
- r.Offset=at
- ref,_:=r.Leb()
- id,_:=r.Resolve(ref)
- body,_:=r.Body()
- switch id {
- case tableWireBytesID:
-  return true
- case tableWireStringID:
-  return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
- }
- return c.framed(body,13)
-}
-
-// tableWireVerify holds every wire-alone condition over an opened file
-// (docs/SPEC-TABLES.md §4, §6.5): the root body, the node table and every
-// record in it, and the pointer graph. scratch holds two words per node,
-// at the node index less one (record i of the table is node i+1); a nil or
-// short scratch is allocated here, which only a file with a node table needs.
-func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
- var c tableWireCheck
- c.ids=len(r.Ids)/8
- // the node table, found by the root's headers: a declared count, then that
- // many records, each a type reference and an L-framed body, filling the field
- probe:=r
- probe.Offset=0
- for {
-  ref,ok:=probe.Leb()
-  if !ok || ref==0 { break }
-  id,ok:=probe.Resolve(ref)
-  if !ok || !probe.Has(1) { break }
-  kind:=probe.Get8()
-  if id==0xffffffffffffffff && kind==12 {
-   payload,ok:=probe.Body()
-   if !ok { break }
-   count,ok:=payload.Leb()
-   if !ok || count>uint64(len(payload.Buffer)) { return TableRefuseWireDamaged }
-   c.records=payload
-   c.nodes=count
-   break
-  }
-  if !probe.Skip(kind) { break }
- }
- if c.nodes>0 {
-  if uint64(len(scratch))<2*(c.nodes+1) { scratch=make([]uint64,2*(c.nodes+1)) }
-  c.graph=scratch[:2*(c.nodes+1)]
-  clear(c.graph)
-  rec:=c.records
-  for i:=uint64(2); i<=c.nodes+1; i++ {
-   c.graph[2*(i-1)+1]=uint64(rec.Offset&0x7fffffffffffffff)
-   ref,ok:=rec.Leb()
-   if !ok { return TableRefuseWireDamaged }
-   if _,ok:=rec.Resolve(ref); !ok { return TableRefuseWireDamaged }
-   if _,ok:=rec.Body(); !ok { return TableRefuseWireDamaged }
-  }
-  if rec.Offset!=int64(len(rec.Buffer)) { return TableRefuseWireDamaged }
- }
- // the first pass: every check, and each record's in-degree
- root:=r
- root.Offset=0
- if end,ok:=c.body(root,true); !ok || end!=int64(len(root.Buffer)) { return c.failed() }
- for i:=uint64(2); i<=c.nodes+1; i++ {
-  if !c.record(int64(c.graph[2*(i-1)+1])) { return c.failed() }
- }
- if c.nodes==0 { return TableRefuseOk }
- // a blob named twice is shared, and a record no pointer names is unreachable
- for i:=uint64(2); i<=c.nodes+1; i++ {
-  if uint32(c.graph[2*(i-1)]&0xffffffff)>1 {
-   rec:=c.records
-   rec.Offset=int64(c.graph[2*(i-1)+1]&0x7fffffffffffffff)
-   ref,_:=rec.Leb()
-   if id,_:=rec.Resolve(ref); id==tableWireBytesID || id==tableWireStringID { return TableRefuseBlobShared }
-  }
- }
- for i:=uint64(2); i<=c.nodes+1; i++ {
-  if uint32(c.graph[2*(i-1)]&0xffffffff)==0 { return TableRefuseWireDamaged }
- }
- // Kahn's algorithm from the root: a record a cycle holds is never released
- c.release=true
- if _,ok:=c.body(root,true); !ok { return c.failed() }
- visited:=uint64(0)
- for c.head!=0 {
-  i:=c.head-1
-  c.head=c.graph[2*(i-1)]>>32
-  c.graph[2*(i-1)]&=0xffffffff
-  visited++
-  if !c.record(int64(c.graph[2*(i-1)+1])) { return c.failed() }
- }
- if visited!=c.nodes { return TableRefuseWireDamaged }
- return TableRefuseOk
-}
-
 // tableWireSkipValue walks one unknown payload with the wire-alone rules while
 // the body read skips it, so a field this reader cannot name is still held to
 // every condition the wire alone decides (docs/SPEC-TABLES.md §4, §6.5).
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
  var c tableWireCheck
- c.ids=len(r.Ids)/8
+ c.ids=uint64(len(r.Ids))/8
  c.depth=r.Depth
  c.nodes=0 // tableWireSkipNodes
  at,ok:=c.value(*r,kind)
@@ -326,7 +216,7 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 }
 func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
  var c tableWireCheck
- c.ids=len(r.Ids)/8
+ c.ids=uint64(len(r.Ids))/8
  c.depth=r.Depth; if arm && (kind==13||kind==14||kind==16) { c.depth-- }
  c.nodes=0 // tableWireSkipNodes
  if !c.framed(*r,kind) { r.Report.Refuse(c.failed(),""); return false }; return true
@@ -337,7 +227,7 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 // applies to a record it does name (docs/SPEC-TABLES.md §4, §6.5). nodes is the
 // table's record count, which bounds every pointer index; mark, when not nil,
 // names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
+func tableWireRecordCheck(body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
  var c tableWireCheck
  c.ids=ids
  c.nodes=nodes

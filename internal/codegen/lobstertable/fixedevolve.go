@@ -583,9 +583,8 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 			scatterUnion(g, r, expr, at, off, ind)
 			return
 		case *ir.Enum:
-			g.TypeRef(r.Name, false)
 			w := r.StorageBits / 8
-			g.Pf("%s%s = %s(%s(data, %s))\n", ind, expr, r.Name, readInt(w, false), at)
+			g.Pf("%s%s = %s(%s(data, %s))\n", ind, expr, enumConversion(g, r.Name), readInt(w, false), at)
 			return
 		case *ir.Flags:
 			g.TypeRef(r.Name, false)
@@ -932,11 +931,18 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 	if chk {
 		switch f.Type.Kind {
 		case ir.TFloat32:
-			// the writer's finite rule (docs/SPEC-TABLES.md §3.3): a NaN or an
-			// infinity, at the width it is written, is invalid_value
+			// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity,
+			// at the width it is written, is invalid_value on a write and
+			// non_finite_float on a read.
 			g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
 			if f.HasFloatRange {
 				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat32(f.FMin), expr, lobster.FormatFloat32(f.FMax), ind)
+				if pass == fixedPassRead {
+					// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3,
+					// docs/rulings.json fixed-compressed-negzero): inside the
+					// range it lands as the value 0 itself, uncounted.
+					g.Pf("%sif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
+				}
 			}
 			return true
 		case ir.TFloat64:
@@ -1429,7 +1435,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    return schema_rt.TableFixedHeaderBytes + 4 + %d + count * (8 + %d)%s\n\n",
 		len(layout), bodyBytes, trailer)
 
-	// Checked writer: <Name>FixedSaveChecked(values, buffer) -> int, string, string
+	// Caller-buffer form of the checked writer <Name>FixedSave:
+	// <Name>FixedSaveChecked(values, buffer) -> int, string, string
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md
 	// §22.6): an empty batch is refused in every build, as every other
 	// table write refusal is (docs/SPEC.md §5.1).
@@ -1439,12 +1446,11 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    let need = %sMeasure(length(values))\n", name)
 	g.Pf("    if length(buffer) < need:\n")
 	g.Pf("        return -1, buffer, schema_rt.TableRefuseTruncated\n")
-	if fixedCheckNeededStruct(st, map[string]bool{}) {
-		g.Pf("    for(values) v:\n")
-		g.Pf("        if not %sFixedCheckBody(v):\n", st.Name)
-		g.Pf("            return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
-	}
+	// <Name>FixedSave is the checked writer: its "" is the refusal of a
+	// value <Name>FixedCheckBody refuses, and the buffer is left unwritten.
 	g.Pf("    let wire = %sSave(values)\n", name)
+	g.Pf("    if wire == \"\":\n")
+	g.Pf("        return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
 	g.Pf("    let out = write_substring(buffer, 0, wire, false)\n")
 	if st.Integrity != "" {
 		g.Pf("    let sealed, out2 = schema_rt.fixed_integrity_seal(out, need - 4)\n")
@@ -1454,6 +1460,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	}
 
 	// The fixed form has one read: a whole batch or refusal (SPEC-TABLES §6.5).
+	// REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.3): every refusal met
+	// before a record lands leaves the caller's values exactly as they were.
 	g.Pf("def %sLoad(values:[%s], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:\n", name, st.Name)
 	g.Pf("    let report = if report_in: report_in else: schema_rt.TableReport {}\n")
 	g.Pf("    schema_rt.fixed_reset_report(report)\n")
@@ -1465,59 +1473,47 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    if length(data) < 1:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return -1\n")
 	g.Pf("    let form = read_uint8_le(data, 0)\n")
 	g.Pf("    if form != schema_rt.TableFixedForm:\n")
 	g.Pf("        if form == 1:\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)\n")
 	g.Pf("        if form == 2:\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)\n")
 	if st.Integrity != "" {
 		g.Pf("    if not schema_rt.fixed_integrity_holds(data):\n")
 		g.Pf("        report.verdict = schema_rt.TableOpenDamaged\n")
 		g.Pf("        report.malformed = true\n")
 		g.Pf("        report.reason = schema_rt.TableRefuseIntegrityMismatch\n")
-		g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 		g.Pf("        return -1\n")
 		g.Pf("    data = substring(data, 0, length(data) - 4)\n")
 	}
 	g.Pf("    if length(data) < schema_rt.TableFixedHeaderBytes + 4:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return -1\n")
 	g.Pf("    var r_idx = 1\n")
 	g.Pf("    while r_idx < schema_rt.TableFixedHashAt:\n")
 	g.Pf("        if read_uint8_le(data, r_idx) != 0:\n")
 	g.Pf("            report.malformed = true\n")
 	g.Pf("            report.reason = schema_rt.TableRefuseReservedNotZero\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return -1\n")
 	g.Pf("        r_idx += 1\n")
 	g.Pf("    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)\n")
 	g.Pf("    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)\n")
 	g.Pf("    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)\n")
 	g.Pf("    let pick = schema_rt.fixed_select(%sKnown, hash)\n", name)
 	g.Pf("    if pick < 0:\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)\n")
 	g.Pf("    if pick < %sFloor:\n", name)
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)\n")
 	g.Pf("    let known = %sKnown[pick]\n", name)
 	g.Pf("    if layout_bytes != known.layout_bytes:\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)\n")
 	g.Pf("    for(layout_bytes) l_i:\n")
 	g.Pf("        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)\n")
 	g.Pf("    var entries = %sPlan.entries\n", name)
 	g.Pf("    var entry_count = %sPlan.count\n", name)
@@ -1528,7 +1524,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    if hash != %sHash:\n", name)
 	g.Pf("        let lane = %sLineagePlans[pick]\n", name)
 	g.Pf("        if lane.why != \"\":\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, lane.why)\n")
 	g.Pf("        entries = lane.entries\n")
 	g.Pf("        entry_count = lane.count\n")
@@ -1536,10 +1531,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        census_unknown = lane.unknown\n")
 	g.Pf("        census_kind = lane.kind_mismatch\n")
 	g.Pf("    if census_kind != 0:\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)\n")
 	g.Pf("    if entry_count > length(plan):\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
 	g.Pf("    let rest = length(data) - records_start\n")
@@ -1549,20 +1542,16 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    if rest == 0 or record_bytes <= 8 or (rest %% record_bytes) != 0:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return -1\n")
 	g.Pf("    let n = rest / record_bytes\n")
 	g.Pf("    if n > length(values):\n")
-	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)\n")
 	g.Pf("    for(n) k:\n")
 	g.Pf("        let rec_at = records_start + k * record_bytes\n")
 	g.Pf("        if read_uint64_le(data, rec_at) != hash:\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)\n")
 	g.Pf("        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)\n")
 	g.Pf("        if why != \"\":\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, why)\n")
 	g.Pf("    for(n) k:\n")
 	g.Pf("        let rec_at = records_start + k * record_bytes\n")

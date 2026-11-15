@@ -444,8 +444,22 @@ func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
 	if strings.Contains(cond, "full-ci") {
 		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
 	}
-	if !strings.Contains(body, "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@") {
+	// the fast lane runs the fleet's installed v0.23.0 binary (a `go run` build
+	// of the tool ran past the two-minute cap); ci-full.yml's pin is the same
+	// version, and a runner without the binary is a loud red, never a skip
+	lint := yamlJobs(body)["lint-fast"]
+	if !strings.Contains(lint, "- name: modernize") || !strings.Contains(lint, "modernize ./...") {
 		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
+	}
+	if !strings.Contains(lint, `modernize-0\.23\.0/`) || !strings.Contains(lint, "tool missing: modernize 0.23.0") {
+		t.Error("ci-fast.yml's modernize step must refuse, by name, a runner whose modernize is not the pinned v0.23.0")
+	}
+	full, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(full), "modernize/cmd/modernize@v0.23.0") {
+		t.Error("ci-full.yml's modernize pin is not v0.23.0, the version ci-fast.yml's fleet binary is held to: bump both together")
 	}
 }
 
@@ -1341,6 +1355,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
 		"ci-full.yml:cpp-lock",
@@ -1371,6 +1386,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"promotion-tag.yml:tag",
 		"python-leg.yml:test",
 		"release.yml:release",
+		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",

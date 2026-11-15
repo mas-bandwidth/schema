@@ -94,7 +94,7 @@ end
 `
 	out := jsonRun(t, []string{filepath.Join(repo, "tables", "examples")}, ModuleName(u), root, probe, texts, nil)
 	lua := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		cols := strings.SplitN(line, "\t", 2)
 		if len(cols) != 2 {
 			t.Fatalf("bad probe line %q in %q", line, out)
