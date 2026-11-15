@@ -336,7 +336,11 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     if (rec.bad || tref === 0 || tref > table.length) { report.damaged = true; return null; }
     const tlen = rec.leb();
     if (rec.bad || rec.at + tlen > rec.end) { report.damaged = true; return null; }
-    raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
+    // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+    // anywhere but its own transport. The two blob ids are lawful types.
+    const tid = table[tref - 1];
+    if (tid === TableNodeTableId || tid === TableBuildVersionId || tid === TableMessageVocabularyId) { report.damaged = true; return null; }
+    raw.push({ tid, body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
   if (count !== raw.length) { report.damaged = true; return null; }
@@ -425,7 +429,7 @@ function tableRetainReserved(id) { return id === 0n || id === TableNodeTableId |
 // string copy verbatim. Kind 17 (a node index) is an excluded class and returns
 // false, as does any framing the walk cannot take.
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   // THE BODY IS ITS OWN CURSOR: a reference or length must not read past the
   // bytes its framing gave it, exactly as the reference's sub-cursor bounds it
   // (internal/tablewire retain.go walkBody).
@@ -440,7 +444,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
     out.u64(id);
     if (rd.at >= end) { return false; }
     const k = rd.u8(); out.u8(k);
-    if (!TableVariableRetainResolve(rd, table, k, out, depth + 1)) { return false; }
+    if (!TableVariableRetainResolve(rd, table, k, out, depth)) { return false; }
     if (rd.at > end) { return false; }
   }
 }
@@ -452,7 +456,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
 // array, 15 and 30 carry a resolved reference, and every other kind copies the
 // framed bytes as they stand.
 function TableVariableRetainResolveContent(r, table, kind, out, depth, end) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   const rd = new TableVariableReader(r.b, r.at, end);
   let ok = false;
   switch (kind) {
@@ -491,11 +495,13 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
       const eend = rd.at + elen;
       const mark = out.len;
       out.u32(0);
-      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + 1, eend)) { return false; }
+      // a framed table, array or keyed element is one level deeper (§4)
+      const framedLevel = ek === 13 || ek === 14 || ek === 16 ? 1 : 0;
+      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + framedLevel, eend)) { return false; }
       if (rd.at !== eend) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
-    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth + 1)) {
+    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth)) {
       return false;
     }
     if (rd.at > end) { return false; }
@@ -506,7 +512,7 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
 }
 
 function TableVariableRetainResolve(r, table, kind, out, depth) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
@@ -553,7 +559,11 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
       const end = r.at + L;
       const mark = out.len;
       out.u32(0);
-      if (!TableVariableRetainResolveContent(r, table, k, out, depth + 1, end)) { return false; }
+      // a union is a level when its arm is structural, and the arm's framed
+      // table, array or keyed body is one more; a union's frame adds none (§4)
+      const structural = k === 13 || k === 14 || k === 15 || k === 16;
+      const framedLevel = k === 13 || k === 14 || k === 16 ? 1 : 0;
+      if (!TableVariableRetainResolveContent(r, table, k, out, depth + (structural ? 1 : 0) + framedLevel, end)) { return false; }
       if (r.at !== end) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
@@ -570,7 +580,10 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // is one retainLost and never 'damaged' (§6.6).
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
+  // The resolving walk shares §4's binary nesting bound.
+  const depthLimit = 128;
   const out = new TableVariableWriter();
+  out.depthLimit = depthLimit;
   if (!TableVariableRetainResolve(src, table, kind, out, 0) || src.at !== end) { report.retainLost++; return; }
   const depth = path.length;
   const total = 4 + 1 + 8 * depth + 8 + 1 + 1 + 4 + out.len;
@@ -808,9 +821,11 @@ function TableVariableRefuseNonFinite() {
 }
 
 // a float's payload at its kind's width; false (refused) for a non-finite one
-function TableVariableWriteFloat(w, f32, v) {
-  if (!TableVariableFiniteFloat(f32, v)) { return TableVariableRefuseNonFinite(); }
-  if (f32) { w.f32(v); } else { w.f64(v); }
+// or one outside the range its declaration admits (§5.1 row 10)
+function TableVariableWriteFloat(w, d, v) {
+  if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
+  if (!TableVariableFloatValid(d, v)) { return false; }
+  if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
 
@@ -843,11 +858,39 @@ function TableVariableWidens(kind, declared) {
   return false;
 }
 
-function TableVariableUnboundedTextValid(value) {
+// THE WRITE CONTRACT'S VALUE TESTS (docs/SPEC.md §5.1): JavaScript storage is
+// untyped, so a value is checked for the representation its declaration gives
+// it as well as its range before any byte is written. A value the declaration
+// does not admit is refused, never wrapped or coerced.
+function TableVariableTextValid(value, bound) {
   if (typeof value !== "string") { return false; }
   const bytes = TableVariableUtf8Encode(value), decoded = TableVariableUtf8Decode(bytes);
-  return bytes.length <= 0xffffffff && decoded.ok && decoded.s === value;
+  return bytes.length <= (bound >= 0 ? bound : 0xffffffff) && decoded.ok && decoded.s === value;
 }
+function TableVariableBlobValid(fd, val) {
+  if (fd.s === "sblob") { return (typeof val === "string" || val instanceof String) && TableVariableTextValid(String(val), -1); }
+  return val instanceof Uint8Array;
+}
+function TableVariableIntegerValid(d, x) {
+  if (d.big ? typeof x !== "bigint" : typeof x !== "number" || !Number.isInteger(x)) { return false; }
+  if (d.lo !== null && (x < d.lo || x > d.hi)) { return false; }
+  if (d.bits > 0 && d.bits < 64 && x > d.bmax) { return false; }
+  if (d.dlo !== undefined) { return x >= d.dlo && x <= d.dhi; }
+  const hi = d.big ? (1n << BigInt(d.kw * 8)) - 1n : (2 ** (d.kw * 8)) - 1;
+  return x >= (d.big ? 0n : 0) && x <= hi;
+}
+function TableVariableArrayValid(fd, val) {
+  if (!Array.isArray(val)) { return false; }
+  if (fd.fixed) { return val.length === fd.bound; }
+  if (fd.list) { return true; }
+  return val.length >= (fd.min || 0) && val.length <= fd.bound;
+}
+function TableVariableFloatValid(d, v) {
+  if (d.lo === null) { return true; }
+  const x = d.f32 ? Math.fround(v) : v;
+  return x >= d.lo && x <= d.hi;
+}
+function TableVariableUnboundedTextValid(value) { return TableVariableTextValid(value, -1); }
 function TableVariableTextExtent(r, at) {
   const size = r.leb();
   if (r.bad || size > r.end - r.at) { r.at = r.end; return at; }
@@ -902,8 +945,9 @@ function TableVariableFreeze(x) {
   return x;
 }
 
-// the live count of an array: a bounded array never writes past its bound
-function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return fd.list ? val.length : Math.min(val.length, fd.bound); }
+// the live count of an array (its length; the write contract refuses one past
+// its bound rather than writing it short)
+function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return val.length; }
 
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
@@ -970,6 +1014,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       TableVariableEdges(fd.c, val, out, everyGuard);
       break;
     case "map":
+      if (!(val instanceof Map)) { out.push({ invalid: true }); return; }
       if (everyGuard) {
         const e = fd.c.make();
         for (const [k, mv] of val) { e.key = k; e.value = mv; TableVariableEdges(fd.c, e, out, true); }
@@ -984,6 +1029,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); } }
       break;
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { out.push({ invalid: true }); return; }
       const n = TableVariableCount(fd, val);
       if (fd.e.s === "ptr") {
         for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
@@ -1010,6 +1056,7 @@ function TableVariableNumber(c, root, refuseShared, why) {
     const top = stack[stack.length - 1];
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
+    if (e.invalid) { return null; }
     if (e.blob) {
       if (!TableVariableBlobNode(nodes, e.holder, e.fd, e.val) && refuseShared) {
         if (why) { why.reason = "blob_shared"; }
@@ -1106,20 +1153,22 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       w.u8(15);
       return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
     case "bool":
+      if (typeof val !== "boolean") { return false; }
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); }
       return true;
     case "int": case "flags":
+      if (!TableVariableIntegerValid(fd, val)) { return false; }
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); }
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
-        TableVariableWriteFloat(w, fd.f32, val);
+        return TableVariableWriteFloat(w, fd, val);
       }
       return true;
     case "str":
-      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
+      if (!TableVariableTextValid(val, fd.bound)) { return false; }
       if (val !== fd.def) {
         const b = TableVariableUtf8Encode(val);
         TableVariableHeader(w, ids, fd, 12);
@@ -1128,6 +1177,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "bytes":
+      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       if (!TableVariableSameBytes(val, fd.def)) {
         // bytes ride as an array of u8 (§2.5): the body is the element kind,
         // the count and the bytes, and L is that body's length — the count's
@@ -1155,6 +1205,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "sblob": case "bblob":
       if (val !== null) {
+        if (!TableVariableBlobValid(fd, val)) { return false; }
         const index = fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val);
         TableVariableHeader(w, ids, fd, 17);
         w.leb(index);
@@ -1173,6 +1224,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { return true; }
@@ -1206,9 +1258,15 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   if (fd.plain) { const b = TableVariableUtf8Encode(val.value); w.leb(b.length); w.raw(b); return true; }
   const e = fd.e;
   switch (e.s) {
-    case "bool": w.u8(val ? 1 : 0); return true;
-    case "int": case "flags": TableVariableWriteInt(w, e.kw, val); return true;
-    case "float": return TableVariableWriteFloat(w, e.f32, val);
+    case "bool":
+      if (typeof val !== "boolean") { return false; }
+      w.u8(val ? 1 : 0);
+      return true;
+    case "int": case "flags":
+      if (!TableVariableIntegerValid(e, val)) { return false; }
+      TableVariableWriteInt(w, e.kw, val);
+      return true;
+    case "float": return TableVariableWriteFloat(w, e, val);
     case "enum": {
       const vref = TableVariableEnumRef(e, ids, val);
       if (vref < 0) { return false; }
@@ -1391,11 +1449,13 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = TableVariableNodeTableScan(bytes, table, open.end, report);
-  const st = { missingBefore, good: raw !== null, nodes: [], reached: new Set(), root: v, rootCodec: c, pending: [], maps: [], report: report };
+  const st = { missingBefore, good: raw !== null, nodes: [], nodeTypes: [], unknownBlobNamed: new Set(), reached: new Set(), graphFrom: [], graphTo: [], owner: 0, root: v, rootCodec: c, pending: [], maps: [], report: report };
   if (raw !== null) {
     const place = c.variable ? c.place : { str: false, bytes: false, byType: new Map() };
     const unplaced = [];
-    for (const rec of raw) {
+    for (let recordIndex = 0; recordIndex < raw.length; recordIndex++) {
+      const rec = raw[recordIndex];
+      st.nodeTypes.push(rec.tid);
       if (rec.tid === TableStringBlobId && place.str) {
         // a text blob's content is refused on the terms a kind 12 payload is:
         // the record is damaged, and every slot naming it reads null
@@ -1416,21 +1476,24 @@ function TableVariableLoad(c, bytes, report, retain) {
         // A blob this root does not place is raw bytes, not a field body.
         // Only an unplaced table record contributes pointer edges.
         if (rec.tid === TableStringBlobId && !TableVariableUtf8Decode(rec.body).ok) { report.damaged = true; }
-        if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push(rec.body); }
+        if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push({ body: rec.body, owner: recordIndex + 1 }); }
         continue;
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
     }
     // Edges are noted after every record is pushed: a pointer names a later
     // record by index, and that index is not in the list until the scan ends.
-    for (const body of unplaced) {
-      if (!TableVariableNoteEdges(body, table, st, report, 0)) {
+    for (const record of unplaced) {
+      st.owner = record.owner;
+      if (!TableVariableNoteEdges(record.body, table, st, report, 0)) {
         if (!TableVariableCountRefused(report)) { report.damaged = true; }
         break;
       }
     }
-    for (const n of st.nodes) {
+    for (let i = 0; i < st.nodes.length; i++) {
+      const n = st.nodes[i];
       if (n === null || n.kind !== "t") { continue; }
+      st.owner = i + 1;
       // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
       // the node's own identity, so its unknown fields ride back into the same
       // record's tail on the save.
@@ -1438,6 +1501,7 @@ function TableVariableLoad(c, bytes, report, retain) {
       if (TableVariableCountRefused(report)) { break; }
     }
   }
+  st.owner = 0;
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
   // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks
   // any damage the walk met after it (§3.3): nothing lands.
@@ -1486,14 +1550,16 @@ function TableVariableStrictMark(report) {
 
 // RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
 // (checked against the reader's own root type), k + 1 is record k. A record of
-// another kind than the slot declares is a kind mismatch, an index past the
-// numbering is damaged, and a numbering that could not be read resolves
-// nothing. A *string record named by two or more slots lands as ONE String
+// another kind than the slot declares is a kind mismatch, a record of a
+// declared type the root does not place is a wrong-type target and damaged, an
+// index past the numbering is damaged, and a numbering that could not be read
+// resolves nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
   for (const [holder, key, index, d] of st.pending) {
     let value = null, str = null;
+    if (st.good) { TableVariableNoteBlobReference(index, st); }
     if (st.good && index !== 0) {
       if (index === 1) {
         if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; } else { report.mismatch++; }
@@ -1502,7 +1568,17 @@ function TableVariableResolve(st, report) {
       } else {
         if (st.reached !== undefined) { st.reached.add(index - 2); }
         const n = st.nodes[index - 2];
-        if (n !== null) {
+        if (n === null) {
+          // A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the reader
+          // cannot name at all it reads null, counted unknown once; of a type
+          // the reader DECLARES, or a blob, that is not the slot's target it
+          // is a wrong-type pointer target, damage (§6.5).
+          const tid = st.nodeTypes[index - 2];
+          const want = d.s === "sblob" ? TableStringBlobId : (d.s === "bblob" ? TableBytesBlobId : d.c.typeId);
+          if (tid !== want && (TableVariableDeclaredTypes.has(tid) || tid === TableStringBlobId || tid === TableBytesBlobId)) {
+            report.damaged = true;
+          }
+        } else {
           if (d.s === "sblob") {
             if (n.kind === "s") { str = n; } else { report.mismatch++; }
           } else if (d.s === "bblob") {
@@ -1511,12 +1587,6 @@ function TableVariableResolve(st, report) {
             value = n.v;
           } else {
             report.mismatch++;
-          }
-          // Count every extra valid naming, including repeated field events.
-          // The mark belongs to this load's node, so reused reports accumulate
-          // while distinct equal blobs and rejected kinds never become shares.
-          if ((d.s === "sblob" && n.kind === "s") || (d.s === "bblob" && n.kind === "b")) {
-            if (n.named) { report.sharedBlob++; } else { n.named = true; }
           }
         }
       }
@@ -1558,7 +1628,7 @@ function TableVariableResolve(st, report) {
       const n = st.nodes[i];
       if (n !== null && n.kind === "t") { nodeAt.set(n.v, i + 1); }
     }
-    const from = [], to = [];
+    const from = st.graphFrom.slice(), to = st.graphTo.slice();
     for (const e of TableVariableEdges(st.rootCodec, st.root, [], true)) {
       if (!e.blob) { from.push(0); to.push(nodeAt.get(e.val)); }
     }
@@ -1634,17 +1704,34 @@ function TableVariableCyclic(count, from, to) {
 // kind-17 index in the record body still reaches its target. A placed record
 // named only from here is not damage.
 function TableVariableNoteIndex(idx, st) {
-  if (idx === 0 || idx === 1) { return true; }
+  if (idx === 0) { return true; }
+  if (idx === 1) {
+    st.graphFrom.push(st.owner);
+    st.graphTo.push(0);
+    return true;
+  }
   if (!Number.isSafeInteger(idx) || !st.good || idx - 2 < 0 || idx - 2 >= st.nodes.length) { return false; }
   if (st.reached !== undefined) { st.reached.add(idx - 2); }
+  st.graphFrom.push(st.owner);
+  st.graphTo.push(idx - 1);
+  TableVariableNoteBlobReference(idx, st);
+  return true;
+}
+
+// Sharing belongs to the wire record type, including a blob this declaration
+// cannot place. Keep unknown records null for evolution, but still count every
+// kind-17 slot that names the same blob (§3.1).
+function TableVariableNoteBlobReference(idx, st) {
+  if (!Number.isSafeInteger(idx) || idx < 2 || idx - 2 >= st.nodeTypes.length) { return; }
+  const tid = st.nodeTypes[idx - 2];
+  if (tid !== TableStringBlobId && tid !== TableBytesBlobId) { return; }
   const n = st.nodes[idx - 2];
-  // A kind-17 index names its record wherever it sits: an unknown field, a
-  // map entry, an array element (internal/tablewire/wirecheck.go graph). A
-  // blob record named from two slots is the blob_shared refusal.
   if (n !== null && (n.kind === "b" || n.kind === "s")) {
     if (n.named) { st.report.sharedBlob++; } else { n.named = true; }
+    return;
   }
-  return true;
+  if (st.unknownBlobNamed.has(idx - 2)) { st.report.sharedBlob++; }
+  else { st.unknownBlobNamed.add(idx - 2); }
 }
 
 function TableVariableNoteEdges(body, table, st, report, depth) {
@@ -1688,8 +1775,12 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
     const from = sub.at;
     sub.at += L;
     const structural = ak === 13 || ak === 14 || ak === 15 || ak === 16;
-    if (structural && depth >= 128) { return false; }
-    return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, structural ? depth + 1 : depth);
+    // This arm-content path enters NoteContent directly, so a table, array or
+    // keyed arm needs its own structural payload level after the union level.
+    // A nested union enters NotePayload below, which accounts for its level.
+    const levels = structural ? (ak === 15 ? 1 : 2) : 0;
+    if (depth + levels > 128) { return false; }
+    return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, depth + levels);
   }
   if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32) {
     const L = sub.leb();
@@ -1775,7 +1866,11 @@ function TableVariableNoteKeyed(inner, table, st, report, depth) {
     if (inner.bad || inner.at + L > inner.end) { return false; }
     const from = inner.at;
     inner.at += L;
-    if (!TableVariableNoteContent(inner.b, from, inner.at, ek, table, st, report, depth)) { return false; }
+    // Key framing is free; the structural payload it frames is one level.
+    // Unlike arrays, keyed entries enter NoteContent directly.
+    const structural = ek === 13 || ek === 14 || ek === 16;
+    if (structural && depth >= 128) { return false; }
+    if (!TableVariableNoteContent(inner.b, from, inner.at, ek, table, st, report, structural ? depth + 1 : depth)) { return false; }
   }
   return inner.at === inner.end;
 }
@@ -2624,18 +2719,27 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "ptr":
       TableVariableHeader(w, ids, fd, 17); w.leb(val === null ? 0 : nodes.index.get(val)); return true;
     case "sblob": case "bblob": {
+      if (val !== null && !TableVariableBlobValid(fd, val)) { return false; }
       const index = val === null ? 0 : (fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val));
       TableVariableHeader(w, ids, fd, 17); w.leb(index); return true;
     }
     case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
-    case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
-    case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
+    case "bool":
+      if (typeof val !== "boolean") { return false; }
+      TableVariableHeader(w, ids, fd, 1);
+      w.u8(val ? 1 : 0);
+      return true;
+    case "int": case "flags":
+      if (!TableVariableIntegerValid(fd, val)) { return false; }
+      TableVariableHeader(w, ids, fd, fd.k);
+      TableVariableWriteInt(w, fd.kw, val);
+      return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
-      return TableVariableWriteFloat(w, fd.f32, val);
+      return TableVariableWriteFloat(w, fd, val);
     case "str": {
-      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
+      if (!TableVariableTextValid(val, fd.bound)) { return false; }
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
@@ -2643,6 +2747,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "bytes": {
+      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       TableVariableHeader(w, ids, fd, 14);
       const body = new TableVariableWriter();
       body.u8(6);
@@ -2670,6 +2775,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       w.leb(ids.ref(fd.id));
@@ -2692,6 +2798,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 // order, each entry ALWAYS riding (identity is the key); only a non-optional
 // empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
+  if (!(val instanceof Map)) { return false; }
   if (val.size === 0 && !fd.opt && !fd.req) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
@@ -2781,11 +2888,23 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   }
   const f = arm.f, x = val.value;
   switch (f.s) {
-    case "bool": w.u8(x ? 1 : 0); return true;
-    case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
-    case "float": return TableVariableWriteFloat(w, f.f32, x);
-    case "str": w.raw(TableVariableUtf8Encode(x)); return true;
-    case "bytes": w.u8(6); w.leb(x.length); w.raw(x); return true;
+    case "bool":
+      if (typeof x !== "boolean") { return false; }
+      w.u8(x ? 1 : 0);
+      return true;
+    case "int": case "flags":
+      if (!TableVariableIntegerValid(f, x)) { return false; }
+      TableVariableWriteInt(w, f.kw, x);
+      return true;
+    case "float": return TableVariableWriteFloat(w, f, x);
+    case "str":
+      if (!TableVariableTextValid(x, f.bound)) { return false; }
+      w.raw(TableVariableUtf8Encode(x));
+      return true;
+    case "bytes":
+      if (!(x instanceof Uint8Array) || (f.bound >= 0 && x.length > f.bound)) { return false; }
+      w.u8(6); w.leb(x.length); w.raw(x);
+      return true;
     case "enum": {
       const vref = TableVariableEnumRef(f, ids, x);
       if (vref < 0) { return false; }
@@ -2795,9 +2914,11 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
     case "ptr": w.leb(x === null ? 0 : nodes.index.get(x)); return true;
     case "sblob": case "bblob":
       if (x === null) { w.leb(0); return true; }
+      if (!TableVariableBlobValid(f, x)) { return false; }
       w.leb(f.s === "sblob" && typeof x === "string" ? nodes.slot(val, "value") : nodes.index.get(x));
       return true;
     case "arr": {
+      if (!TableVariableArrayValid(f, x)) { return false; }
       const n = TableVariableCount(f, x);
       w.u8(f.ek);
       w.leb(n);
@@ -3311,6 +3432,7 @@ function TableVariableTextCount(c, root, g) {
     const top = stack[stack.length - 1];
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
+    if (e.invalid) { return null; }
     if (e.blob) {
       if (typeof e.val === "object") { g.blobs.set(e.val, (g.blobs.get(e.val) || 0) + 1); }
       continue;
@@ -3412,6 +3534,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { out.push("[]"); return true; }
@@ -3630,6 +3753,16 @@ class TableVariableTextIn {
       this.p++;
     }
   }
+  // A schema name is at most 255 bytes after decoding (§16.2): a field key,
+  // an enum name, a flags element, a union arm, an &node key, and a key inside
+  // a skipped object. A longer one refuses the read. Map keys and string
+  // values are not schema names and stay on str().
+  name() {
+    const s = this.str();
+    if (s === null) { return null; }
+    if (TableVariableUtf8Encode(s).length > 255) { this.bad = true; return null; }
+    return s;
+  }
   // ONE RFC 8259 number, and whether it was integral in FORM
   number() {
     this.space();
@@ -3701,7 +3834,7 @@ class TableVariableTextIn {
       if (ch === close) { this.p++; return true; }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
-        const key = this.str();
+        const key = this.name();
         if (key === null) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
         this.p++;
@@ -3729,6 +3862,24 @@ class TableVariableTextIn {
       return false;
     }
   }
+}
+
+// ONE TEXT HANDED AS BYTES (docs/SPEC-TABLES.md §16.2): the read validates
+// UTF-8 itself — well-formed, no overlong form, no surrogate code point and
+// nothing above U+10FFFF — before a byte reaches the text walk. A caller's
+// error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
+function TableVariableFromJsonBytes(c, bytes, report) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+  }
+  const decoded = TableVariableUtf8Decode(bytes);
+  if (!decoded.ok) {
+    report.damaged = true;
+    report.refused = 1;
+    report.reason = "string_not_utf8";
+    return null;
+  }
+  return TableVariableFromJson(c, decoded.s, report);
 }
 
 // ONE TEXT: the root's object and nothing after it. The instance holds what
@@ -3790,7 +3941,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       const ch = inp.peek();
       if (ch === "}") { inp.p++; return TableVariableRequireSeen(c, v, seen, report); }
       if (ch === "") { inp.bad = true; return false; }
-      key = inp.str();
+      key = inp.name();
       if (key === null) { return false; }
       if (inp.peek() !== ":") { inp.bad = true; return false; }
       inp.p++;
@@ -3992,7 +4143,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   let ch = inp.peek();
   if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new Set(), report); }
   if (ch === "") { inp.bad = true; return false; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
@@ -4037,7 +4188,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       return TableVariableReadTable(d.c, inp, inst, depth + 1, graph, report);
     }
     case "enum": {
-      const s = inp.str();
+      const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
       for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
@@ -4058,7 +4209,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           report.mismatch++;
           if (!inp.skip(depth + 1, graph)) { return false; }
         } else {
-          const s = inp.str();
+          const s = inp.name();
           if (s === null) { return false; }
           const bit = d.vs.indexOf(s);
           if (bit >= 0) {
@@ -4381,7 +4532,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; return true; }
     if (ch === "") { inp.bad = true; return false; }
-    const key = inp.str();
+    const key = inp.name();
     if (key === null) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
@@ -4415,7 +4566,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   inp.p++;
   holder[key] = null;
   if (inp.peek() === "}") { inp.p++; return true; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
@@ -4636,7 +4787,7 @@ export class BenchMixed {
     this.world_time = 0n;
     this.frame_tick = 0n;
     this.server_time = 0;
-    this.entities = [];
+    this.entities = Array.from({ length: 1 }, () => new MixedEntity());
     this.stats = [];
     this.game_event = null;
     this.loadout = Array.from({ length: 4 }, () => 0);
@@ -4771,7 +4922,7 @@ const TableVariableCodecs = {
       { n: "world_time", key: "world_time", id: 0x3eee6b51be54fc85n, o: 6, s: "int", js: "n", k: 5, big: true, kw: 8, lo: -1000000000000n, hi: 1000000000000n, bits: 0, bmax: 0, frac: 0, tlo: -1000000000000n, thi: 1000000000000n, dlo: -9223372036854775808n, dhi: 9223372036854775807n, def: 0n },
       { n: "frame_tick", key: "frame_tick", id: 0x7bbc035f7b6d0112n, o: 7, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 48, bmax: 281474976710655n, frac: 0, tlo: 0n, thi: 281474976710655n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
       { n: "server_time", key: "server_time", id: 0x3c460475f9be69c6n, o: 8, s: "int", js: "n", k: 22, big: false, kw: 4, lo: 0, hi: 16776960, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 16776960n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, ek: 13, esz: 64, eal: 8, e: { s: "tab", js: "o", t: "MixedEntity" } },
+      { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, min: 1, ek: 13, esz: 64, eal: 8, e: { s: "tab", js: "o", t: "MixedEntity" } },
       { n: "stats", key: "stats", id: 0xee639cad45b1994cn, o: 10, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 80, ek: 13, esz: 8, eal: 4, e: { s: "tab", js: "o", t: "MixedStat" } },
       { n: "game_event", key: "game_event", id: 0x2e35dc5321aa5790n, o: 11, k: 15, s: "union", js: "o", un: "MixedEvent" },
       { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, esz: 1, eal: 1, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
@@ -4805,6 +4956,7 @@ const TableVariableCodecs = {
     place: { tables: [], str: false, bytes: false },
   },
 };
+const TableVariableDeclaredTypes = new Set([0x85df369cdca746b3n]);
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 TableVariableFreeze(TableVariableCodecs);
 TableVariableFreeze(TableVariableUnions);
@@ -5409,6 +5561,10 @@ export function FixedTableToJson(v) {
 
 export function FixedTableFromJson(text, report) {
   return TableVariableFromJson(TableVariableCodecs.FixedTable, text, report);
+}
+
+export function FixedTableFromJsonBytes(bytes, report) {
+  return TableVariableFromJsonBytes(TableVariableCodecs.FixedTable, bytes, report);
 }
 
 export function FixedTableLoadMeasure(bytes) {

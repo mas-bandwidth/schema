@@ -12,6 +12,14 @@
 
 #include <string.h>
 
+/* THE WRITER HERE IS BUILT THE WAY A RELEASE BUILD IS. The fixed writer's
+   value checks (docs/SPEC.md §5.1: range, bits width, enum, union tag,
+   ill-formed text) are debug asserts, the programmer's job, and in a release
+   build a caller CAN put a value past them on the wire. This unit writes such
+   values on purpose so the READER can be made to answer for them, so it
+   compiles the write assert out, exactly as a release build does. */
+#define schema_assert( x ) ( (void) 0 )
+
 #include "UT1Table.h"
 #include "fixedform.h"
 
@@ -42,10 +50,18 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
 {
     tblut1_ut_root_t back;
     tblut1_table_report_t r;
+    int32_t i, text = -1, texts = 0;
 
-    fixed_check( tblut1_ut_root_fixed_plan[3].op == TBLUT1_K_TABLE_FIXED_TEXT, "C two lanes: the plan's fourth entry is the text" );
-    fixed_check( tblut1_ut_root_fixed_plan[3].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
-    fixed_check( tblut1_ut_root_fixed_plan[3].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
+    /* Found by op, not by index, as UT2 does: the plan's copy entries are split
+       by width (the big-endian plan), so the text's position is not fixed. */
+    for ( i = 0; i < tblut1_ut_root_fixed_plan_count; i++ )
+    {
+        if ( tblut1_ut_root_fixed_plan[i].op == TBLUT1_K_TABLE_FIXED_TEXT ) { text = i; texts++; }
+    }
+    fixed_check( texts == 1, "C two lanes: the plan carries one text entry" );
+    if ( text < 0 ) { return; }
+    fixed_check( tblut1_ut_root_fixed_plan[text].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
+    fixed_check( tblut1_ut_root_fixed_plan[text].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
 
     memset( &r, 0, sizeof( r ) );
     fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,

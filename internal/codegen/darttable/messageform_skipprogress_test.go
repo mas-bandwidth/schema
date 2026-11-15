@@ -81,7 +81,7 @@ func skipProgressBatch(slot uint64, refBits int, width int, count uint64) []byte
 	var acc uint64
 	var at int
 	put := func(v uint64, bits int) {
-		for i := 0; i < bits; i++ {
+		for i := range bits {
 			if (v>>i)&1 != 0 {
 				acc |= 1 << at
 			}
@@ -207,9 +207,9 @@ func TestDartMessageSkipMakesProgressNegativeControl(t *testing.T) {
 
 	out, err := runSkipProgressProbe(t, u, "Root", body, func(files map[string][]byte) {
 		const from = "        final before = r.bits.offset;\n" +
-			"        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;\n" +
+			"        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;\n" +
 			"        if (r.bits.offset == before) return false;\n"
-		const to = "        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;\n"
+		const to = "        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;\n"
 		removed := 0
 		for name, src := range files {
 			text := string(src)

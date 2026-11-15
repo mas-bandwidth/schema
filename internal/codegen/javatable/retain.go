@@ -126,7 +126,8 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		// container whose count its framing cannot cover is refused whole here
 		// too, never retained around (§6.6).
 		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
-		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
+		b.WriteString("        // open proved the id table distinct over these bytes: measure once (§3)\n")
+		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure, false) < 0) {\n", st.Name)
 		b.WriteString("            report.refused = true;\n")
 		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
 		b.WriteString("            retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
@@ -557,6 +558,16 @@ public final class TableRetain {
     // every retaining load.
     final java.util.IdentityHashMap<Object, Integer> nodeKeys = new java.util.IdentityHashMap<>();
 
+    // §4's ONE NESTING BOUND, which the resolving walk shares (§6.6): the root
+    // body is depth 0, a framed table, array or keyed body is one level deeper,
+    // and a union adds a level when its arm is structural. 128 levels pass and
+    // 129 refuse.
+    static final int WALK_DEPTH = 128;
+
+    static boolean structural(int kind) {
+        return kind == 13 || kind == 14 || kind == 15 || kind == 16;
+    }
+
     // §6.6: an accepted replacement discards the old body's retained tail,
     // including descendants, without moving either cumulative report counter.
     void discardField(int[] path, int depth, int field) {
@@ -791,7 +802,7 @@ public final class TableRetain {
     }
 
     static boolean resolvePayload(Resolver r, int kind, byte[] out, int[] o, int depth) {
-        if (depth > 64 || r.bad) {
+        if (depth > WALK_DEPTH || r.bad) {
             r.bad = true;
             return false;
         }
@@ -835,6 +846,9 @@ public final class TableRetain {
                         return false;
                     }
                     out8(out, o, armKind);
+                    if (structural(armKind)) {
+                        depth++;
+                    }
                     return resolveFramed(r, armKind, out, o, depth);
                 }
             case 13:
@@ -869,7 +883,10 @@ public final class TableRetain {
         out64(out, o, 0L);
         Resolver sub = new Resolver(r.buf, r.ids, r.off, r.off + (int) n);
         r.off += (int) n;
-        if (!resolveContent(sub, kind, out, o, depth + 1)) {
+        if (kind == 13 || kind == 14 || kind == 16) {
+            depth++;
+        }
+        if (!resolveContent(sub, kind, out, o, depth)) {
             return false;
         }
         if (sub.off != sub.limit || sub.bad) {
@@ -881,7 +898,7 @@ public final class TableRetain {
     }
 
     static boolean resolveContent(Resolver c, int kind, byte[] out, int[] o, int depth) {
-        if (depth > 64 || c.bad) {
+        if (depth > WALK_DEPTH || c.bad) {
             c.bad = true;
             return false;
         }

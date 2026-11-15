@@ -725,6 +725,36 @@ public final class TableVariable {
         report.wireNonFinite = false;
         WireCheck wc = WIRE_CHECK.get();
         wc.reset(data, ids);
+        return openChecked(data, base, ids, report, wc, false);
+    }
+
+    // openAnnouncement is the same form-1 open for the one body whose transport
+    // the announcement's two reserved ids are (docs/SPEC-TABLES.md §3.3). The
+    // announcement is an ordinary form-1 file, so it takes the same trailer,
+    // distinctness and wire-alone checks a file takes; only the two reserved
+    // ids in the root body are admitted where a file refuses them.
+    static Reader openAnnouncement(byte[] data, Report report) {
+        if (report == null) {
+            report = new Report();
+        }
+        int base = trailerBase(data, report);
+        if (base < 0) {
+            return null;
+        }
+        int count = (data.length - 8 - base) / 8;
+        long[] ids = new long[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = u64(data, base + i * 8);
+        }
+        report.wireNonFinite = false;
+        WireCheck wc = WIRE_CHECK.get();
+        wc.reset(data, ids);
+        return openChecked(data, base, ids, report, wc, true);
+    }
+
+    private static Reader openChecked(
+            byte[] data, int base, long[] ids, Report report, WireCheck wc, boolean announcement) {
+        wc.announcement = announcement;
         switch (wc.file(base)) {
             case WireCheck.DAMAGED:
                 report.damaged = true;
@@ -742,8 +772,14 @@ public final class TableVariable {
                 }
                 return null;
             case WireCheck.NON_FINITE:
-                // the decode names the field where this reader declares it;
-                // settleNonFinite refuses for one it does not
+                // AN ANNOUNCEMENT IS A FILE'S WIRE CHECK, and a float it cannot
+                // name is damage there (§3.3); a file's decode names the field
+                // where this reader declares it and settleNonFinite refuses for
+                // one it does not
+                if (announcement) {
+                    report.damaged = true;
+                    return null;
+                }
                 report.wireNonFinite = true;
                 break;
             default:
@@ -802,6 +838,9 @@ public final class TableVariable {
         int depth;
         int fail;
         boolean nonFinite;
+        // announcement admits the two reserved announcement ids in the root body,
+        // the one body whose transport they are (docs/SPEC-TABLES.md §3.3)
+        boolean announcement;
         // edges are the kind 17 payloads met, in wire order; edgeStart[k] is
         // where node k's begin (node 0 the root, node k record k - 1)
         long[] edges = new long[64];
@@ -827,7 +866,14 @@ public final class TableVariable {
             if (stamp.length <= ids.length) {
                 stamp = new int[Math.max(ids.length + 1, stamp.length * 2)];
                 gen = 0;
-            } else if (gen > Integer.MAX_VALUE - (1 << 20)) {
+            } else if (gen < 0 || gen > Integer.MAX_VALUE - buf.length) {
+                // A body and a keyed array each spend at least one byte, so
+                // this file stamps at most buf.length generations. Clear the
+                // stamps before the walk whenever those generations would
+                // carry the counter past Integer.MAX_VALUE, and whenever a
+                // counter from an older reset has already wrapped, so the
+                // counter never wraps between resets and a valid body never
+                // meets a stale generation.
                 java.util.Arrays.fill(stamp, 0);
                 gen = 0;
             }
@@ -950,6 +996,13 @@ public final class TableVariable {
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
                 long typeId = ids[(int) ref - 1];
+                // A RESERVED ID IN A RECORD'S TYPE POSITION IS DAMAGE
+                // (docs/SPEC-TABLES.md §3.1): the node table, build-version
+                // and message-vocabulary ids belong to their own transports,
+                // never to a record's type.
+                if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
+                    return DAMAGED;
+                }
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
@@ -998,7 +1051,7 @@ public final class TableVariable {
                     continue;
                 }
                 if (index - 1 >= n || index < 0) {
-                    return damage();
+                    return damage(); // a reference above the entry count is damage
                 }
                 names[(int) index - 1]++;
             }
@@ -1084,7 +1137,9 @@ public final class TableVariable {
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
                 if (id == BUILD_ID || id == VOCAB_ID) {
-                    return damage();
+                    if (!root || !announcement) {
+                        return damage();
+                    }
                 }
                 if (id == NODE_ID) {
                     if (!root || kind != 12) {
@@ -1402,11 +1457,29 @@ public final class TableVariable {
         }
     }
 
+    // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
+    // twice the 4096-entry bound so it is never more than half full (§3): the
+    // walk allocates nothing per call and every slot compares the stored id.
+    private static final ThreadLocal<IdProbe> ID_PROBE =
+            ThreadLocal.withInitial(IdProbe::new);
+
+    static final class IdProbe {
+        final long[] seen = new long[8192];
+        final byte[] used = new byte[8192];
+    }
+
     // trailerBase is open's every check, made IN PLACE on the caller's bytes:
     // the form byte, the id table's count and its repeated ids, and the
     // body's extent (§3). It answers the offset of the table's first entry, or
     // -1 with the report moved exactly as open moves it, and allocates nothing.
     public static int trailerBase(byte[] data, Report report) {
+        return trailerBase(data, report, true);
+    }
+
+    // trailerBase with the distinctness proof already made: a load's measure
+    // passes distinct false after its open proved the same bytes, so the
+    // bounded walk runs ONCE per load and never once per open and measure (§3).
+    private static int trailerBase(byte[] data, Report report, boolean distinct) {
         if (data.length < 1) {
             report.damaged = true;
             return -1;
@@ -1436,14 +1509,9 @@ public final class TableVariable {
             return -1;
         }
         int base = data.length - 8 - (int) count * 8;
-        for (int i = 0; i < count; i++) {
-            long id = u64(data, base + i * 8);
-            for (int j = 0; j < i; j++) {
-                if (u64(data, base + j * 8) == id) {
-                    report.damaged = true;
-                    return -1;
-                }
-            }
+        if (distinct && count > 1 && !idsDistinct(data, base, (int) count)) {
+            report.damaged = true;
+            return -1;
         }
         int end = bodyExtent(data, (int) count, 1, base);
         if (end >= 0 && end != base) {
@@ -1451,6 +1519,38 @@ public final class TableVariable {
             return -1;
         }
         return base;
+    }
+
+    // idsDistinct proves the entries distinct with ONE open-addressing probe
+    // over the fixed 8192-slot table (§3): the count bound above caps the walk
+    // at a fixed 8,386,560 slot-id comparisons, and there is no pairwise arm.
+    // A slot occupied by a different id compares the stored id, not the hash;
+    // the mix is the reference leg's tableOpen.
+    static boolean idsDistinct(byte[] data, int base, int count) {
+        IdProbe probe = ID_PROBE.get();
+        long[] seen = probe.seen;
+        byte[] used = probe.used;
+        java.util.Arrays.fill(used, (byte) 0);
+        for (int i = 0; i < count; i++) {
+            long id = u64(data, base + i * 8);
+            long hash = id;
+            hash ^= hash >>> 33;
+            hash *= 0xff51afd7ed558ccdL;
+            hash ^= hash >>> 33;
+            int slot = (int) hash & 8191;
+            while (true) {
+                if (used[slot] == 0) {
+                    used[slot] = 1;
+                    seen[slot] = id;
+                    break;
+                }
+                if (seen[slot] == id) {
+                    return false;
+                }
+                slot = (slot + 1) & 8191;
+            }
+        }
+        return true;
     }
 
     // u64 reads one little-endian u64 at at.
@@ -1840,6 +1940,12 @@ public final class TableVariable {
                 r.report.damaged = true;
                 return null;
             }
+            // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+            // anywhere but its own transport. The two blob ids are lawful types.
+            if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
+                r.report.damaged = true;
+                return null;
+            }
             long size = r.leb();
             if (r.fail || size < 0 || !r.has((int) size)) {
                 r.report.damaged = true;
@@ -1908,11 +2014,17 @@ public final class TableVariable {
         // open is TableVariable.open over the caller's bytes into the one
         // reader: the same checks (trailerBase), the id table read in place.
         public Reader open(byte[] data) {
+            return open(data, true);
+        }
+
+        // open with the distinctness proof already made by the caller's open,
+        // so a load proves the entries distinct once and not again here (§3).
+        Reader open(byte[] data, boolean distinct) {
             report.reset();
             nodeRecords = -1;
             nodeBlobBytes = 0;
             nodeTableBytes = 0;
-            int base = trailerBase(data, report);
+            int base = trailerBase(data, report, distinct);
             if (base < 0) {
                 return null;
             }
@@ -2231,7 +2343,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -2260,7 +2372,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -2350,7 +2462,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];
@@ -2381,6 +2493,15 @@ public final class TableVariable {
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
+        // The graph walk's work list: one frame per field to visit, plus the
+        // close marker that ends a descended node. It is grow-only and reused
+        // like the arrays above, so numbering a graph recurses nowhere.
+        private Object[] workValue = new Object[16];
+        private int[] workKind = new int[16];
+        private int[] workField = new int[16];
+        private int[] workIndex = new int[16];
+        private Object[] workClose = new Object[16];
+        private int workSize;
         public final java.util.IdentityHashMap<Object, Long> labels =
                 new java.util.IdentityHashMap<>();
 
@@ -2393,9 +2514,61 @@ public final class TableVariable {
                 java.util.Arrays.fill(nodeValue, 0, nodeCount, null);
                 nodeCount = 0;
             }
+            if (workSize > 0) {
+                java.util.Arrays.fill(workValue, 0, workSize, null);
+                java.util.Arrays.fill(workClose, 0, workSize, null);
+                workSize = 0;
+            }
             if (!labels.isEmpty()) {
                 labels.clear();
             }
+        }
+
+        public void push(Object value, int kind, int field, int index, Object close) {
+            if (workSize == workValue.length) {
+                int cap = workSize * 2;
+                workValue = java.util.Arrays.copyOf(workValue, cap);
+                workKind = java.util.Arrays.copyOf(workKind, cap);
+                workField = java.util.Arrays.copyOf(workField, cap);
+                workIndex = java.util.Arrays.copyOf(workIndex, cap);
+                workClose = java.util.Arrays.copyOf(workClose, cap);
+            }
+            workValue[workSize] = value;
+            workKind[workSize] = kind;
+            workField[workSize] = field;
+            workIndex[workSize] = index;
+            workClose[workSize] = close;
+            workSize++;
+        }
+
+        public int workCount() {
+            return workSize;
+        }
+
+        public Object workValue(int i) {
+            return workValue[i];
+        }
+
+        public int workKind(int i) {
+            return workKind[i];
+        }
+
+        public int workField(int i) {
+            return workField[i];
+        }
+
+        public int workIndex(int i) {
+            return workIndex[i];
+        }
+
+        public Object workClose(int i) {
+            return workClose[i];
+        }
+
+        public void pop() {
+            workSize--;
+            workValue[workSize] = null;
+            workClose[workSize] = null;
         }
 
         private int slot(Object obj) {

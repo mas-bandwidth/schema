@@ -38,7 +38,8 @@ function checkRead(tier, type, bytes, bits, initial, want) {
   if (tier === "runtime") {
     const stream = new ReadStream(bytes);
     assert(d["Read" + type](stream, initial), "runtime read");
-    assert.equal(stream.bitsProcessed(), bits, "read consumed bits");
+    // the accepted end consumes the final byte's zero padding
+    assert.equal(stream.bitsProcessed(), (bits + 7) & ~7, "read consumed bits");
   } else {
     const buffer = new Uint8Array(bytes.length + 8); buffer.set(bytes);
     assert(flat["Read" + flatType(type) + "Flat"](new DataView(buffer.buffer), bits, flatValue(type, initial)), "flat exact-bit read");

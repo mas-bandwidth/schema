@@ -121,7 +121,16 @@ func t14ElixirFiles(t *testing.T, schema string, older []string) map[string][]by
 
 func t14ElixirRun(t *testing.T, bin, schema string, older []string, body string) {
 	t.Helper()
-	files := t14ElixirFiles(t, schema, older)
+	if out, err := t14ElixirRunFiles(t, bin, t14ElixirFiles(t, schema, older), body); err != nil {
+		t.Fatalf("probe: %v\n%s", err, out)
+	}
+}
+
+// t14ElixirRunFiles runs the probe body over the given generated files (a
+// reversed witness patches them first) and returns its output; the error is
+// non-nil when the probe did not print ok.
+func t14ElixirRunFiles(t *testing.T, bin string, files map[string][]byte, body string) (string, error) {
+	t.Helper()
 	dir := t.TempDir()
 	var names []string
 	for name, data := range files {
@@ -157,9 +166,11 @@ T14Probe.run()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "ok") {
-		t.Fatalf("probe: %v\n%s", err, out)
+	out, err := cmd.CombinedOutput()
+	if err == nil && !strings.Contains(string(out), "ok") {
+		err = fmt.Errorf("the probe did not print ok")
 	}
+	return string(out), err
 }
 
 func t14ElixirWrite(file string) string {

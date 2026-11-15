@@ -62,57 +62,33 @@ fixed table Root { x int32 }
 		compileOmitted(t, u, `package probe
 import "testing"
 
-func rootForm1(value *Root, data []byte, report *TableReport) bool {
-	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
-	var gate TableReport
-	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
-		if report != nil {
-			*report = gate
-		}
-		return false
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
 	}
-	out := report
-	if out == nil {
-		out = &TableReport{}
-	} else {
-		*out = TableReport{}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
 	}
-	r, verdict := tableOpenChecked(data, out)
-	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
-		tableRefused(out)
-		RootReset(value)
-		if report != nil {
-			*report = *out
-		}
-		return false
-	}
-	return true
+	return w.Offset
 }
-func TestCoreStillLives(t *testing.T){
-	var r Root; r.X=9
-	b:=make([]byte,RootMeasure(&r));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
-	var got Root;var rep TableReport
-	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
-}`, FormCook)
-	})
-	t.Run("GenerateOmitting_nothing_is_omitted", func(t *testing.T) {
-		t.Parallel()
-		u := unitFrom(t, `package probe
-fixed table Root { x int32 }
-`)
-		full, err := Generate(u)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out, err := GenerateOmitting(u, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(full, out) {
-			t.Fatalf("omitting no form changed the output: %d files vs %d", len(full), len(out))
-		}
-		compileOmitted(t, u, `package probe
-import "testing"
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
 
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
@@ -142,7 +118,87 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 }
 func TestCoreStillLives(t *testing.T){
 	var r Root; r.X=9
-	b:=make([]byte,RootMeasure(&r));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
+	b:=make([]byte,rootForm1Measure(&r));if rootForm1Save(&r,b)!=int64(len(b)){t.Fatal("save")}
+	var got Root;var rep TableReport
+	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
+}`, FormCook)
+	})
+	t.Run("GenerateOmitting_nothing_is_omitted", func(t *testing.T) {
+		t.Parallel()
+		u := unitFrom(t, `package probe
+fixed table Root { x int32 }
+`)
+		full, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := GenerateOmitting(u, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(full, out) {
+			t.Fatalf("omitting no form changed the output: %d files vs %d", len(full), len(out))
+		}
+		compileOmitted(t, u, `package probe
+import "testing"
+
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
+func TestCoreStillLives(t *testing.T){
+	var r Root; r.X=9
+	b:=make([]byte,rootForm1Measure(&r));if rootForm1Save(&r,b)!=int64(len(b)){t.Fatal("save")}
 	var got Root;var rep TableReport
 	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
 }`, 0)

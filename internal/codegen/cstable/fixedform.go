@@ -1470,6 +1470,10 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE WRITE CHECK, the same walk with the text content rule (§5.1).
+	for _, st := range bodies {
+		g.emitFixedWriteCheckBodyFn(st)
+	}
 	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
 	// runs it before the bounds pass and the writer before its first byte.
 	for _, st := range bodies {
@@ -1477,6 +1481,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
+		g.emitFixedWriteAdmits(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -1979,12 +1984,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes + %d;\n}\n\n", name, name, integrityTrailerBytes(st))
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// the writer refuses an empty batch, a debug-only assert as every write
+	// contract on this leg is (docs/SPEC.md §5.1).
+	g.pf("    System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+	}
+	if g.fixedWriteAdmits(st) != "" {
+		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
+		g.emitFixedWriteAssert(st, "values[k]", "        ")
+		g.pf("    }\n")
 	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
@@ -2122,7 +2136,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6,
+	// docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout followed
+	// by no record is truncated, whatever capacity the caller offered.
+	g.pf("    if (record_bytes <= 8 || rest == 0 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
@@ -2409,6 +2426,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Const:\n                {\n")
+	// THE UNION'S None CONST HOLDS THE WRITER'S ARM SET (§4.6), the twin of
+	// TableFixedWire.Run's Const case.
+	g.pf("                    if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return \"out_of_range\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")

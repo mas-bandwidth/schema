@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,7 +31,6 @@ func TestJavaRetainNamesEveryOwnId(t *testing.T) {
 		{"maps", filepath.Join("..", "..", "..", "tables", "maps")},
 	}
 	for _, unit := range units {
-		unit := unit
 		t.Run(unit.name, func(t *testing.T) {
 			t.Parallel()
 			u := unitFromDir(t, unit.dir)
@@ -87,10 +87,8 @@ func absentIds(known []uint64, inTable map[uint64]bool) []uint64 {
 		if inTable[id] {
 			return false
 		}
-		for _, have := range absent {
-			if have == id {
-				return false
-			}
+		if slices.Contains(absent, id) {
+			return false
 		}
 		absent = append(absent, id)
 		if id < 1<<63 {

@@ -583,11 +583,21 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		w.put(']')
 		return nil
 	}
-	if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {
-		w.raw(FormatWide(WideValue(cell), kind, f.Type.FracBits))
+	kind := ir.TableScalarKind(f)
+	if ir.TableKindWide(kind) {
+		// the wide kinds (kinds 18-29): the 128-bit integers and the
+		// fixed-point family. A wide INTEGER's JSON form is a STRING of
+		// decimal digits; a fixed-point kind whose storage is 32 bits or
+		// narrower is still a JSON number (docs/SPEC-TABLES.md §16.2).
+		text := FormatWide(WideValue(cell), kind, f.Type.FracBits)
+		if TableKindWideInteger(kind) {
+			writeString(w, []byte(text))
+		} else {
+			w.raw(text)
+		}
 		return nil
 	}
-	switch ir.TableScalarKind(f) {
+	switch kind {
 	case ir.TableKindBool:
 		if cell.B {
 			w.raw("true")
@@ -606,8 +616,15 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		var scratch [48]byte
 		writeString(w, time.Unix(0, cell.I).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
 		return nil
-	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
+	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
 		w.raw(strconv.FormatInt(cell.I, 10))
+		return nil
+	case ir.TableKindI64:
+		// int64 is wider than 32 bits: written as a string of digits (§16.2)
+		writeString(w, []byte(strconv.FormatInt(cell.I, 10)))
+		return nil
+	case ir.TableKindU64:
+		writeString(w, []byte(strconv.FormatUint(cell.U, 10)))
 		return nil
 	default:
 		w.raw(strconv.FormatUint(cell.U, 10))
@@ -616,9 +633,10 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 }
 
 // writeString emits one JSON string. Every string that reaches it is text:
-// the writers ask CheckValue first and refuse ill-formed UTF-8 invalid_value
-// (docs/SPEC-TABLES.md §16.3), and a key or a name is the declaration's. So a
-// byte at or past 0x80 is written raw, and the text is valid UTF-8.
+// the writers ask CheckValue first and refuse ill-formed UTF-8 or a zero byte
+// invalid_value (docs/SPEC-TABLES.md §16.3), and a key or a name is the
+// declaration's. So a byte at or past 0x80 is written raw, and the text is
+// valid UTF-8.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
 	w.put('"')
@@ -766,7 +784,7 @@ func (m *Model) WriteValue(fv *Field) ([]byte, error) {
 	if err := ValidateRequiredValue(fv); err != nil {
 		return nil, err
 	}
-	if err := m.checkField("", fv, &checkWalk{seen: map[*Instance]bool{}}); err != nil {
+	if err := m.checkField("", fv, &checkWalk{seen: map[*Instance]bool{}, binaryText: true}); err != nil {
 		return nil, err
 	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
@@ -785,7 +803,7 @@ func (m *Model) WriteElement(fv *Field, slot int) ([]byte, error) {
 	bad := func(format string, a ...any) error {
 		return &InvalidValue{Field: fv.Def.Name, Detail: fmt.Sprintf(format, a...)}
 	}
-	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, &checkWalk{seen: map[*Instance]bool{}}, bad); err != nil {
+	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, &checkWalk{seen: map[*Instance]bool{}, binaryText: true}, bad); err != nil {
 		return nil, err
 	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
