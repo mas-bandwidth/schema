@@ -152,7 +152,6 @@ cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs
 dart json-hostile base64-unpadded relax/hostile-rows-dart
 dart json-hostile str-zero-escape-unknown-key relax/hostile-rows-dart
 elixir json-hostile base64-unpadded relax/hostile-rows-elixir
-elixir json-hostile str-zero-escape-unknown-key relax/hostile-rows-elixir
 goose json-hostile base64-unpadded relax/hostile-rows-goose
 goose json-hostile str-zero-escape-unknown-key relax/hostile-rows-goose
 java json-hostile base64-unpadded relax/hostile-rows-java

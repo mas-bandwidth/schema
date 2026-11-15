@@ -1141,7 +1141,7 @@
       "row": "surface json-hostile",
       "lang": "elixir",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/base64-unpadded",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-elixir (docs/relaxed.md)"
     },
     {
@@ -2853,7 +2853,7 @@
       "row": "cases tabledemo",
       "lang": "elixir",
       "status": "relaxed",
-      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
