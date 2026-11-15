@@ -166,10 +166,11 @@ def NewFixedQuat() -> FixedQuat:
     }
     return value
 
-// ReadFixedProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadFixedProbe(stream:serialize_read_stream, value:FixedProbe) -> bool:
+// read_body_FixedProbe decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_FixedProbe(stream:serialize_read_stream, value:FixedProbe) -> bool:
     var rv = 0
     var rok = true
     var rw = serialize_int128 { lo: 0, hi: 0 }
@@ -191,10 +192,19 @@ def ReadFixedProbe(stream:serialize_read_stream, value:FixedProbe) -> bool:
         value.Samples[i] = rv
     return true
 
-// ReadUnsignedProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadUnsignedProbe(stream:serialize_read_stream, value:UnsignedProbe) -> bool:
+// ReadFixedProbe reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadFixedProbe(stream:serialize_read_stream, value:FixedProbe) -> bool:
+    if not read_body_FixedProbe(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_UnsignedProbe decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_UnsignedProbe(stream:serialize_read_stream, value:UnsignedProbe) -> bool:
     var rv = 0
     var rok = true
     var rw = serialize_int128 { lo: 0, hi: 0 }
@@ -220,10 +230,19 @@ def ReadUnsignedProbe(stream:serialize_read_stream, value:UnsignedProbe) -> bool
     value.Tail = rv
     return true
 
-// ReadWideProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadWideProbe(stream:serialize_read_stream, value:WideProbe) -> bool:
+// ReadUnsignedProbe reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadUnsignedProbe(stream:serialize_read_stream, value:UnsignedProbe) -> bool:
+    if not read_body_UnsignedProbe(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_WideProbe decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_WideProbe(stream:serialize_read_stream, value:WideProbe) -> bool:
     var rok = true
     var rw = serialize_int128 { lo: 0, hi: 0 }
     var ru = serialize_uint128 { lo: 0, hi: 0 }
@@ -244,10 +263,19 @@ def ReadWideProbe(stream:serialize_read_stream, value:WideProbe) -> bool:
     value.Seed = schema_rt.Int128 { lo: ru.lo, hi: ru.hi }
     return true
 
-// ReadLudicrousState decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadLudicrousState(stream:serialize_read_stream, value:LudicrousState) -> bool:
+// ReadWideProbe reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadWideProbe(stream:serialize_read_stream, value:WideProbe) -> bool:
+    if not read_body_WideProbe(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_LudicrousState decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_LudicrousState(stream:serialize_read_stream, value:LudicrousState) -> bool:
     var rv = 0
     var rok = true
     var rb = false
@@ -255,8 +283,8 @@ def ReadLudicrousState(stream:serialize_read_stream, value:LudicrousState) -> bo
     rv, rok = stream.serialize_int(rv, 0, 3) // refuses a value past DriveModeMax (SPEC §4.2)
     if not rok: return false
     value.Mode = DriveMode(rv)
-    if not ReadFixedProbe(stream, value.Probe): return false
-    if not ReadWideProbe(stream, value.Wide): return false
+    if not read_body_FixedProbe(stream, value.Probe): return false
+    if not read_body_WideProbe(stream, value.Wide): return false
     rv, rok = stream.serialize_int(rv, 0, 4) // the count, in [0, 4], guards the loop (SPEC §4.6, §6.3)
     if not rok: return false
     value.KeysCount = rv
@@ -275,10 +303,19 @@ def ReadLudicrousState(stream:serialize_read_stream, value:LudicrousState) -> bo
         value.TargetId = schema_rt.Int128 { lo: 0, hi: 0 }
     return true
 
-// ReadDegenerateProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadDegenerateProbe(stream:serialize_read_stream, value:DegenerateProbe) -> bool:
+// ReadLudicrousState reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadLudicrousState(stream:serialize_read_stream, value:LudicrousState) -> bool:
+    if not read_body_LudicrousState(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_DegenerateProbe decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_DegenerateProbe(stream:serialize_read_stream, value:DegenerateProbe) -> bool:
     var rv = 0
     var rok = true
     value.LockedFixed = -196608 // a degenerate range: zero wire bits (SPEC §4.6)
@@ -289,10 +326,19 @@ def ReadDegenerateProbe(stream:serialize_read_stream, value:DegenerateProbe) -> 
     value.Tail = rv
     return true
 
-// ReadFixedVec decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadFixedVec(stream:serialize_read_stream, value:FixedVec) -> bool:
+// ReadDegenerateProbe reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadDegenerateProbe(stream:serialize_read_stream, value:DegenerateProbe) -> bool:
+    if not read_body_DegenerateProbe(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_FixedVec decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_FixedVec(stream:serialize_read_stream, value:FixedVec) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_fixed64(rv, 48, 16, -100000, 100000) // the Q format's raw offset (SPEC §4.3)
@@ -306,10 +352,19 @@ def ReadFixedVec(stream:serialize_read_stream, value:FixedVec) -> bool:
     value.Z = rv
     return true
 
-// ReadFixedQuat decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadFixedQuat(stream:serialize_read_stream, value:FixedQuat) -> bool:
+// ReadFixedVec reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadFixedVec(stream:serialize_read_stream, value:FixedVec) -> bool:
+    if not read_body_FixedVec(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_FixedQuat decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_FixedQuat(stream:serialize_read_stream, value:FixedQuat) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_fixed32(rv, 2, 30, -1, 1) // the Q format's raw offset (SPEC §4.3)
@@ -325,6 +380,14 @@ def ReadFixedQuat(stream:serialize_read_stream, value:FixedQuat) -> bool:
     if not rok: return false
     value.W = rv
     return true
+
+// ReadFixedQuat reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadFixedQuat(stream:serialize_read_stream, value:FixedQuat) -> bool:
+    if not read_body_FixedQuat(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // WriteFixedProbe writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.

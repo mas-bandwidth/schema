@@ -365,10 +365,11 @@ def NewBenchMixed() -> BenchMixed:
     for(80): push(value.Stats, NewMixedStat())
     return value
 
-// ReadBenchPacket decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadBenchPacket(stream:serialize_read_stream, value:BenchPacket) -> bool:
+// read_body_BenchPacket decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_BenchPacket(stream:serialize_read_stream, value:BenchPacket) -> bool:
     var rv = 0
     var rok = true
     var rf = 0.0
@@ -412,10 +413,19 @@ def ReadBenchPacket(stream:serialize_read_stream, value:BenchPacket) -> bool:
     if not rok: return false
     return true
 
-// ReadBenchInts decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadBenchInts(stream:serialize_read_stream, value:BenchInts) -> bool:
+// ReadBenchPacket reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadBenchPacket(stream:serialize_read_stream, value:BenchPacket) -> bool:
+    if not read_body_BenchPacket(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_BenchInts decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_BenchInts(stream:serialize_read_stream, value:BenchInts) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_int(rv, -100, 100) // the offset from min; past max is refused (SPEC §4.3)
@@ -450,10 +460,19 @@ def ReadBenchInts(stream:serialize_read_stream, value:BenchInts) -> bool:
     value.F9 = rv
     return true
 
-// ReadBenchBits decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadBenchBits(stream:serialize_read_stream, value:BenchBits) -> bool:
+// ReadBenchInts reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadBenchInts(stream:serialize_read_stream, value:BenchInts) -> bool:
+    if not read_body_BenchInts(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_BenchBits decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_BenchBits(stream:serialize_read_stream, value:BenchBits) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_bits(rv, 7)
@@ -482,10 +501,19 @@ def ReadBenchBits(stream:serialize_read_stream, value:BenchBits) -> bool:
     value.B48 = rv
     return true
 
-// ReadMixedEntity decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadMixedEntity(stream:serialize_read_stream, value:MixedEntity) -> bool:
+// ReadBenchBits reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadBenchBits(stream:serialize_read_stream, value:BenchBits) -> bool:
+    if not read_body_BenchBits(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_MixedEntity decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_MixedEntity(stream:serialize_read_stream, value:MixedEntity) -> bool:
     var rv = 0
     var rok = true
     var rb = false
@@ -533,10 +561,19 @@ def ReadMixedEntity(stream:serialize_read_stream, value:MixedEntity) -> bool:
     value.Firing = rb
     return true
 
-// ReadMixedStat decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadMixedStat(stream:serialize_read_stream, value:MixedStat) -> bool:
+// ReadMixedEntity reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadMixedEntity(stream:serialize_read_stream, value:MixedEntity) -> bool:
+    if not read_body_MixedEntity(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_MixedStat decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_MixedStat(stream:serialize_read_stream, value:MixedStat) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_bits(rv, 8)
@@ -547,10 +584,19 @@ def ReadMixedStat(stream:serialize_read_stream, value:MixedStat) -> bool:
     value.Delta = rv
     return true
 
-// ReadMixedHitEvent decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadMixedHitEvent(stream:serialize_read_stream, value:MixedHitEvent) -> bool:
+// ReadMixedStat reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadMixedStat(stream:serialize_read_stream, value:MixedStat) -> bool:
+    if not read_body_MixedStat(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_MixedHitEvent decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_MixedHitEvent(stream:serialize_read_stream, value:MixedHitEvent) -> bool:
     var rv = 0
     var rok = true
     var rb = false
@@ -568,10 +614,19 @@ def ReadMixedHitEvent(stream:serialize_read_stream, value:MixedHitEvent) -> bool
     value.Crit = rb
     return true
 
-// ReadMixedChatEvent decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadMixedChatEvent(stream:serialize_read_stream, value:MixedChatEvent) -> bool:
+// ReadMixedHitEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadMixedHitEvent(stream:serialize_read_stream, value:MixedHitEvent) -> bool:
+    if not read_body_MixedHitEvent(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_MixedChatEvent decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_MixedChatEvent(stream:serialize_read_stream, value:MixedChatEvent) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_int(rv, 0, 3) // the offset from min; past max is refused (SPEC §4.3)
@@ -582,10 +637,19 @@ def ReadMixedChatEvent(stream:serialize_read_stream, value:MixedChatEvent) -> bo
     value.Speaker = rv
     return true
 
-// ReadMixedPickupEvent decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadMixedPickupEvent(stream:serialize_read_stream, value:MixedPickupEvent) -> bool:
+// ReadMixedChatEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadMixedChatEvent(stream:serialize_read_stream, value:MixedChatEvent) -> bool:
+    if not read_body_MixedChatEvent(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_MixedPickupEvent decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_MixedPickupEvent(stream:serialize_read_stream, value:MixedPickupEvent) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_bits(rv, 10)
@@ -596,9 +660,18 @@ def ReadMixedPickupEvent(stream:serialize_read_stream, value:MixedPickupEvent) -
     value.Amount = rv
     return true
 
-// ReadMixedEvent decodes the MixedEventType tag and its selected arm (SPEC §4.8); a tag
-// past the arms is refused, and the selected arm is constructed fresh.
-def ReadMixedEvent(stream:serialize_read_stream, value:MixedEvent) -> bool:
+// ReadMixedPickupEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadMixedPickupEvent(stream:serialize_read_stream, value:MixedPickupEvent) -> bool:
+    if not read_body_MixedPickupEvent(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_MixedEvent decodes the MixedEventType tag and its selected arm (SPEC §4.8); a
+// tag past the arms is refused, and the selected arm is constructed fresh.
+// It does not end the packet.
+def read_body_MixedEvent(stream:serialize_read_stream, value:MixedEvent) -> bool:
     var rv = 0
     var rok = true
     rv, rok = stream.serialize_int(rv, 0, 3) // refuses a tag above the arms (SPEC §4.8)
@@ -606,19 +679,28 @@ def ReadMixedEvent(stream:serialize_read_stream, value:MixedEvent) -> bool:
     value.Type = MixedEventType(rv)
     if value.Type == MixedEventTypeHit:
         value.Hit = NewMixedHitEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not ReadMixedHitEvent(stream, value.Hit): return false
+        if not read_body_MixedHitEvent(stream, value.Hit): return false
     if value.Type == MixedEventTypeChat:
         value.Chat = NewMixedChatEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not ReadMixedChatEvent(stream, value.Chat): return false
+        if not read_body_MixedChatEvent(stream, value.Chat): return false
     if value.Type == MixedEventTypePickup:
         value.Pickup = NewMixedPickupEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not ReadMixedPickupEvent(stream, value.Pickup): return false
+        if not read_body_MixedPickupEvent(stream, value.Pickup): return false
     return true
 
-// ReadBenchMixed decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadBenchMixed(stream:serialize_read_stream, value:BenchMixed) -> bool:
+// ReadMixedEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadMixedEvent(stream:serialize_read_stream, value:MixedEvent) -> bool:
+    if not read_body_MixedEvent(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_BenchMixed decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_BenchMixed(stream:serialize_read_stream, value:BenchMixed) -> bool:
     var rv = 0
     var rok = true
     var rf = 0.0
@@ -661,13 +743,13 @@ def ReadBenchMixed(stream:serialize_read_stream, value:BenchMixed) -> bool:
     if not rok: return false
     value.EntitiesCount = rv
     for(value.EntitiesCount) i:
-        if not ReadMixedEntity(stream, value.Entities[i]): return false
+        if not read_body_MixedEntity(stream, value.Entities[i]): return false
     rv, rok = stream.serialize_int(rv, 0, 80) // the count, in [0, 80], guards the loop (SPEC §4.6, §6.3)
     if not rok: return false
     value.StatsCount = rv
     for(value.StatsCount) i:
-        if not ReadMixedStat(stream, value.Stats[i]): return false
-    if not ReadMixedEvent(stream, value.GameEvent): return false
+        if not read_body_MixedStat(stream, value.Stats[i]): return false
+    if not read_body_MixedEvent(stream, value.GameEvent): return false
     for(4) i:
         rv, rok = stream.serialize_bits(rv, 8) // the storage width (SPEC §4.3)
         if not rok: return false
@@ -726,6 +808,14 @@ def ReadBenchMixed(stream:serialize_read_stream, value:BenchMixed) -> bool:
     if not rok: return false
     value.IdleTicks = rv
     return true
+
+// ReadBenchMixed reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadBenchMixed(stream:serialize_read_stream, value:BenchMixed) -> bool:
+    if not read_body_BenchMixed(stream, value): return false
+    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // WriteBenchPacket writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.

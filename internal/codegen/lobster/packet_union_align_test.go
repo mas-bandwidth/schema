@@ -44,7 +44,7 @@ let expected = "\x02\x04\x06\x08\x00"
 
 let r = serialize_read_stream_padded(expected)
 let out = example.NewT()
-let rok = example.ReadT(r, out)
+let rok = example.read_body_T(r, out) // the body: its bits, then the one end check
 let rbits = r.bits_processed()
 let ok = rok and r.serialize_end()
 
