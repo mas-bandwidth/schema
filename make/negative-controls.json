@@ -240,11 +240,8 @@
         "packet-defaults-lua-negative-control",
         "packet-end-lua-negative-control",
         "packet-write-cfloat-lua-negative-control",
-<<<<<<< HEAD
+        "packet-write-bareint-lua-negative-control",
         "packet-write-text-lua-negative-control"
-=======
-        "packet-write-bareint-lua-negative-control"
->>>>>>> 1aa01b74572cdc9a04d3211970c5a474b759f7dc
       ],
       "lua": "5.4.8"
     },

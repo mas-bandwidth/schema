@@ -2399,25 +2399,6 @@ build of an assert leg is required to refuse it, and no gate may require one.
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
 
-<<<<<<< HEAD
-| leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
-|---|---|---|---|
-| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 and 10 debug; 8 not yet held |
-| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 and 10 debug; 8 not yet held |
-| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1, 3–7 and 10 debug; 2 unchecked; 8 not yet held |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
-| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
-| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 and 10 debug; 8 not yet held |
-| Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |
-| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 every build on the flat and the runtime tier; 8 not yet held |
-| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
-| Lua | 1–8 every build | 1–8 every build | 1–6, 8 and 10 every build; 7 raises |
-| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
-| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 not yet held |
-| MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
-| Goose | 1–8 every build | 1–8 every build | 1–8 and 10 every build |
-| Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps |
-=======
 Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
 <!-- One line per leg and writer, a blank line between every two: a change to one leg's line never touches the line next to another's. Edit your own line only; never reflow this list into a table. -->
@@ -2500,7 +2481,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–6, 10 and 11 every build; 7 raises; 8 not yet held
+  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises
 
 - **Luau**
 
@@ -2541,7 +2522,6 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
   - `SaveMessages`: 1–8 every build
 
   - packet `Write`: 1–6 debug; 7 traps
->>>>>>> 1aa01b74572cdc9a04d3211970c5a474b759f7dc
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
 mechanism above gives it — a debug assert in an assert leg and a refusal in
