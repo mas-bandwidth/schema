@@ -136,7 +136,7 @@ func TestJavaVariableKeyedUnionRetention(t *testing.T) {
 	driver := `package probe;
 public final class Driver {
  static void check(boolean ok,String why){if(!ok)throw new AssertionError(why);}
- static TableVariable.Writer child(TableVariable.Writer w,boolean tail){TableVariable.Writer body=w.sub(new byte[512]);body.putLeb(body.ref(ChildVariable.F_value));body.put8(4);body.put32(0);if(tail){body.putLeb(body.ref(12345));body.put8(4);body.put32(91);}body.put8(0);return body;}
+ static TableVariable.Writer child(TableVariable.Writer w,boolean tail){TableVariable.Writer body=w.sub(new byte[512]);body.putLeb(body.ref(ChildVariable.F_value));body.put8(4);body.put32(5);if(tail){body.putLeb(body.ref(12345));body.put8(4);body.put32(91);}body.put8(0);return body;}
  static void fields(TableVariable.Writer w,boolean tail,boolean unknown){
   w.putLeb(w.ref(RootVariable.F_slots));w.put8(16);TableVariable.Writer keyed=w.sub(new byte[1024]);keyed.put8(13);keyed.putLeb(1);keyed.putLeb(keyed.ref(unknown?9999:AXIS_X));TableVariable.Writer body=child(w,tail);keyed.putLeb(body.off);keyed.putBytes(body.buf,0,body.off);w.putLeb(keyed.off);w.putBytes(keyed.buf,0,keyed.off);
   w.putLeb(w.ref(RootVariable.F_choice));w.put8(15);w.putLeb(w.ref(unknown?8888:CHOICE_ITEM));w.put8(13);body=child(w,tail);w.putLeb(body.off);w.putBytes(body.buf,0,body.off);
@@ -152,7 +152,7 @@ public final class Driver {
    check((retain.used>0)==(mode==0),"replacement tail disposal mode "+mode);
    byte[] saved=RootRetain.saveRetain(v,retain,report);TableVariable.Report again=new TableVariable.Report();RootVariable.Value loaded=RootVariable.load(saved,again);
    check(loaded!=null&&!again.damaged&&again.unknown==(mode==0?2:0)&&loaded.tail==17,"retaining resave mode "+mode);
-   if(mode!=1)check(loaded.slots.get(0).value==0&&loaded.choice.tag==1&&loaded.choice.item.value==0,"known child values");
+   if(mode!=1)check(loaded.slots.get(0).value==5&&loaded.choice.tag==1&&loaded.choice.item.value==5,"known child values");
   }
   TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty==null&&bad.damaged&&!bad.refused,"damaged direct text arm discards the whole load");
   System.out.println("keyed/union child tails retained, unknown slots/arms excluded, a repeated field is damage");

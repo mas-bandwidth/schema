@@ -258,7 +258,11 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 		{"self", self, false},
 		{"to_root", toRoot, false},
 		{"unreached", unreached, false},
-		{"guard_twin", guardTwin, true},
+		// guard_twin turns the guard off by writing `on` at its default false
+		// and keeps the guarded slot: a conforming writer elides both, so the
+		// spelling is not the one encoding and the load refuses it
+		// (docs/SPEC-TABLES.md §3, §4, reads-refuse-non-canonical).
+		{"guard_twin", guardTwin, false},
 		{"guard_cycle", guardCycle, false},
 		{"list_twin", listTwin, true},
 		{"list_cycle", listCycle, false},
