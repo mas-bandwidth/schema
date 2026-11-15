@@ -2384,7 +2384,7 @@ active, a writer never produces bytes its own reader refuses.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
-| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 and 10 debug; 8 not yet held |
 | C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 and 10 not yet held |
 | C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 and 10 not yet held |
 | Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
