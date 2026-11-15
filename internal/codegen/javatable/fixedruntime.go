@@ -264,6 +264,16 @@ public final class TableFixed {
     }
 
     /**
+     * THE LOAD PATH'S HEADER, reused per thread: a read allocates nothing on
+     * its success path (docs/FIXED-FORM-ALGORITHM.md §4.2). readHeader fills it.
+     */
+    private static final ThreadLocal<Header> loadHeader = ThreadLocal.withInitial(Header::new);
+
+    static Header header() {
+        return loadHeader.get();
+    }
+
+    /**
      * read a file's header. Answers false and a named refusal.
      *
      * <p>A FORM BYTE'S REFUSAL SAYS WHICH DIRECTION: the registry is ordered, so one word for both
@@ -591,6 +601,17 @@ public final class TableFixed {
             layoutHash = hash;
             refuse(why);
         }
+    }
+
+    /**
+     * THE LOAD PATH'S DISCARD REPORT for a rollback, reused per thread: a
+     * refusal reports on the caller's report and never makes a new one per
+     * record.
+     */
+    private static final ThreadLocal<Report> loadDiscard = ThreadLocal.withInitial(Report::new);
+
+    static Report discard() {
+        return loadDiscard.get();
     }
 
     // ---- THE ONE READ LOOP --------------------------------------------------
@@ -2210,6 +2231,34 @@ public final class TableFixed {
         return n;
     }
 
+    /**
+     * ONE PLAN'S PREFILL: the destination ranges the plan does NOT write,
+     * packed [dst, size, ...], computed ONCE beside the plan (§4.3) and copied
+     * from the defaults before every record. count is the hole count; holes is
+     * sized for the worst case so a plan never grows it.
+     */
+    public static final class Prefill {
+        public final int[] holes;
+        public final int count;
+
+        Prefill(int[] holes, int count) {
+            this.holes = holes;
+            this.count = count;
+        }
+    }
+
+    /**
+     * compute a plan's hole list ONCE (docs/FIXED-FORM-ALGORITHM.md §4.3): the
+     * cover and the packed list are this call's only allocations, made beside
+     * the plan at init, never on a load path.
+     */
+    public static Prefill prefill(Entry[] plan, int count, int bodyBytes) {
+        final byte[] cover = new byte[bodyBytes];
+        final int[] out = new int[Math.max(2, bodyBytes * 2)];
+        final int n = holes(plan, count, cover, out);
+        return new Prefill(out, n);
+    }
+
     // ---- THE LINEAGE (docs/FIXED-FORM-ALGORITHM.md 5.2, 5.3) ----
     //
     // A FILE IS MATCHED ON ITS HASH AGAINST DATA THE BUILD LAID DOWN, and
@@ -2260,15 +2309,19 @@ public final class TableFixed {
         public final short[] remap;
         public final int unknown;
 
+        /** The plan's hole list and cover, computed once beside the plan (§4.3). */
+        public final Prefill prefill;
+
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry[] entries, int count, short[] remap, int unknown, Reason why) {
+        Plan(Entry[] entries, int count, short[] remap, int unknown, Reason why, Prefill prefill) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;
             this.unknown = unknown;
             this.why = why;
+            this.prefill = prefill;
         }
     }
 
@@ -2295,7 +2348,7 @@ public final class TableFixed {
      * entry carries layoutMalformed and LOAD refuses by that name if a file ever matches its hash.
      * Nothing is decoded and no counter moves either way.
      */
-    public static Plan[] lineagePlans(KnownLayout[] known, byte[] mine, int[] dest, long own) {
+    public static Plan[] lineagePlans(KnownLayout[] known, byte[] mine, int[] dest, long own, int bodyBytes) {
         final Plan[] out = new Plan[known.length];
         final Layout me = parse(mine, 0, mine.length, new Report());
         for (int i = 0; i < known.length; i++) {
@@ -2304,7 +2357,7 @@ public final class TableFixed {
             }
             final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
             if (theirs == null || me == null) {
-                out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed);
+                out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed, null);
                 continue;
             }
             // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
@@ -2337,7 +2390,7 @@ public final class TableFixed {
             final Report census = new Report();
             final int made = compile(theirs, me, dest, p, table, census);
             if (made >= 0) {
-                out[i] = new Plan(p, made, table, census.unknown, Reason.none);
+                out[i] = new Plan(p, made, table, census.unknown, Reason.none, prefill(p, made, bodyBytes));
             } else {
                 // THE ENTRY'S OWN LANE CARRIES ITS OWN REASON (5.9 #36): an
                 // entry past the writer's record is layoutRecordTooLarge and a
@@ -2349,7 +2402,7 @@ public final class TableFixed {
                                                 || census.reason == Reason.layoutMalformed))
                                 ? census.reason
                                 : Reason.planTooLarge;
-                out[i] = new Plan(null, 0, null, 0, why);
+                out[i] = new Plan(null, 0, null, 0, why, null);
             }
         }
         return out;

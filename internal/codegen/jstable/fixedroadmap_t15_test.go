@@ -136,6 +136,9 @@ func t15RunJs(t *testing.T, chain bool) {
   let found = false;
   for (let i = 0; i < plan.count && !found; i++) {
     const b = i * TableFixedLanes;
+    // The dead-byte checks (ops 7..10) carry a chain too; the live leaf is a
+    // copy/widen entry with the outermost-first links this row asserts.
+    if (plan.entries[b] >= 7) { continue; }
     if (plan.entries[b + 10] !== 3) { continue; }
     found = true;
     const at = plan.entries[b + 9];
