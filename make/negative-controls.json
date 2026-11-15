@@ -1060,6 +1060,33 @@
       "python": "pin"
     },
     {
+      "name": "python-vt-evolution-defaults",
+      "when": "pull-request",
+      "why": "the evolution kinds' defaults control (make/python.mk): a copy of the generated D is born at n = 6 where the declaration says 5, and the defaults_at construct (whose wire omits every field, so every value is the declared default) must go red by that name under the pinned interpreters. A prerequisite of test-python, scheduled by this row on the pins .github/actions/python restores.",
+      "targets": [
+        "python-vt-evolution-defaults-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
+      "name": "python-vt-evolution-renames",
+      "when": "pull-request",
+      "why": "the evolution kinds' rename control (make/python.mk): a copy of the generated Record carries its renamed field under the hash of its declared name instead of its `was` name, and the rename_field construct (an old writer's bytes) must go red by that name under the pinned interpreters. A prerequisite of test-python, scheduled by this row on the pins .github/actions/python restores.",
+      "targets": [
+        "python-vt-evolution-renames-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
+      "name": "python-vt-evolution-skip",
+      "when": "pull-request",
+      "why": "the evolution kinds' skip control (make/python.mk): a copy of the generated runtime's skip walk loses its text check, and skip_text_ill_formed (ill-formed UTF-8 in a field the old reader skips, which the engine refuses) must go red by that name under the pinned interpreters. A prerequisite of test-python, scheduled by this row on the pins .github/actions/python restores.",
+      "targets": [
+        "python-vt-evolution-skip-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

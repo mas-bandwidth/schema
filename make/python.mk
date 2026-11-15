@@ -15,8 +15,8 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-vt-evolution-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control python-vt-evolution-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-vt-evolution-negative-control python-vt-evolution-defaults-negative-control python-vt-evolution-renames-negative-control python-vt-evolution-skip-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control python-vt-evolution-negative-control python-vt-evolution-defaults-negative-control python-vt-evolution-renames-negative-control python-vt-evolution-skip-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -66,7 +66,20 @@ python-table-core-negative-control:
 # name. It needs the pins, so test-python depends on it and it is registered in
 # make/negative-controls.json as a gate test-python runs.
 python-vt-evolution-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtEvolutionNegativeControl' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControl$$' ./internal/codegen/pythontable/
+
+# The evolution kinds' other three controls, one per check: a wrong declared
+# default in a copy of the generated D (defaults_at must go red), a renamed
+# field under its declared name's id (rename_field), and the skip walk without
+# its text check (skip_text_ill_formed). Each is registered beside the first.
+python-vt-evolution-defaults-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlDefaults$$' ./internal/codegen/pythontable/
+
+python-vt-evolution-renames-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlRenames$$' ./internal/codegen/pythontable/
+
+python-vt-evolution-skip-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlSkipCheck$$' ./internal/codegen/pythontable/
 
 generated/bench/tables/python/.stamp: ;
 

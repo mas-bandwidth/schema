@@ -303,14 +303,17 @@ generated class per table and per map entry, each with its descriptor
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
   sink, so measure and save agree by construction.
-- **The shape is measured.** A table whose fields are all bools and integers
-  gets the straight-line generated save/load pair, unrolled with each field
-  descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
-  on the same table, under both pinned interpreters, in
-  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
-  straight-line pair is kept: its save is faster on both pins, and its load is
-  faster on the floor.
+- **The shape is measured.** A table whose fields are all scalars (bools,
+  integers and flags masks, strings, bytes and enums) gets the straight-line
+  generated save/load pair, unrolled with each field descriptor bound to a
+  local; every other table, and every construct a later card adds, keeps the
+  descriptor walk over `_schema/kinds.py`. The two shapes run on the same
+  table, under both pinned interpreters, in `TestPythonTableCoreShapeBench`
+  (integers) and `TestPythonEvolutionKindsShapeBench` (strings, bytes and
+  enums), both in internal/codegen/pythontable. The straight-line pair is kept:
+  for the integers its save is faster on both pins and its load is faster on
+  the floor, and for the evolution kinds both its save and its load are faster
+  on both pins (Bench, below).
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
   by-value tables and `*T` pointers to tables, for both the fixed and the
   variable class. The evolution card adds `string(N)`, `bytes(N)`, a flags mask
@@ -331,6 +334,24 @@ generated class per table and per map entry, each with its descriptor
   field at it elides, and a field the old writer omitted reads back as it.
   Union arm ids follow the same law in the union descriptor; their value codec
   is the unions card's.
+- **Skipped is not unread** (SPEC-TABLES §4, §6.5). A field, a nested field or
+  a node record the reader cannot name is walked by the engine's
+  declaration-free wire rules (`internal/tablewire/wirecheck.go`) before it
+  is counted `unknown`: framing, text (no NUL, valid UTF-8), bool bytes,
+  finite floats, the closed element kinds of arrays and keyed bodies,
+  references against the id table, the count cap and the nesting bound. Its
+  pointers join the one pointer graph, judged over every slot, known or
+  skipped: an index past the node table, a cycle (a pointer to the root is
+  one), a record no pointer reaches and a blob named twice refuse. A record
+  whose type this root cannot place keeps its index, is counted `unknown`
+  under a root that places nodes, and reads null from a slot that names it;
+  a slot that names a record of a type the reader declares but the slot does
+  not target is damage. `TestPythonVtEvolution` holds each case to the
+  engine's verdict.
+- **A deprecated enum variant** (SPEC-TABLES §2.15) keeps its id and ordinal
+  in the descriptor's `deprecated` set: a read that meets it yields the
+  field's declared default and counts nothing, and a write of it raises
+  `InvalidValue`, as the engine's decode and encode do.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
@@ -356,6 +377,26 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
+
+The evolution kinds' bench runs a six-field table (two strings, two bytes
+fields and two enums, every one off its declared default) under both pins,
+on a fleet host that was SHARED with other work at
+the time (load average 25 to 36 on 16 cores), so the absolute figures are
+high and the ratios are the record. Each figure is the minimum of five rounds
+of 10,000 iterations after warm-up, in nanoseconds per operation, as the
+range over three sittings:
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 17,542–18,689 | 19,382–19,838 | 18,029–18,904 | 18,799–19,392 |
+| load | 18,803–19,489 | 19,884–20,657 | 21,505–21,810 | 22,032–23,089 |
+
+The generated pair was faster in every sitting, on both operations and both
+pins: by 4% to 12% for the save and 3% to 6% for the load on 3.15.2, and by
+2% to 4% for the save and 2% to 7% for the load on 3.11.18. So a table of
+strings, bytes and enums takes the straight-line pair beside the integer
+tables. `TestPythonEvolutionKindsShapeBench` re-measures it and holds both
+shapes to the same value.
 
 ## IDENTIFIERS
 

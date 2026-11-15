@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"math/big"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -259,7 +260,7 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _skip, buffer_view, load_table\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
 	for _, st := range tables {
 		for _, f := range st.Fields {
@@ -368,6 +369,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
 		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
+		if dep := deprecatedOrdinals(f); dep != "" {
+			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
+		}
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
 		fmt.Fprintf(b, "        ),\n")
 	}
@@ -383,16 +387,19 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "register(%s)\n\n\n", name)
 }
 
-// scalarOnly reports whether every field is a bool or an integer the generated
-// straight-line shape can bind directly. A pointer, container or union keeps
-// the descriptor walk.
+// scalarOnly reports whether every field is a scalar the generated
+// straight-line shape can bind directly: a bool, an integer (a flags mask
+// included), a string, a bytes or an enum. A by-value table, a pointer, a
+// container or a union keeps the descriptor walk. The string, bytes and enum
+// kinds joined the set when the evolution kinds' shape bench measured the pair
+// faster (docs/PORT-PYTHON.md, THE TABLE FRAME, Bench).
 func scalarOnly(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
 			return false
 		}
 		switch codecOf(f) {
-		case "bool", "int":
+		case "bool", "int", "string", "bytes", "enum":
 		default:
 			return false
 		}
@@ -401,7 +408,7 @@ func scalarOnly(st *ir.Struct) bool {
 }
 
 // emitStraightLine emits the straight-line shape for a table whose fields are
-// all bools and integers (docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
+// all scalars (scalarOnly; docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
 // walk is unrolled with each field descriptor bound to a local, against the
 // runtime's descriptor walk over the same wire. The bench keeps the faster.
 func emitStraightLine(b *strings.Builder, st *ir.Struct) {
@@ -441,26 +448,24 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("            break\n")
 	b.WriteString("        field_id = reader.id_at(reference)\n")
 	b.WriteString("        kind = reader.byte()\n")
+	b.WriteString("        if field_id in seen:\n")
+	b.WriteString("            raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
+	b.WriteString("        seen.add(field_id)\n")
 	for i, f := range st.Fields {
 		if i == 0 {
 			fmt.Fprintf(b, "        if field_id == fields[%d].field_id:\n", i)
 		} else {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
-		b.WriteString("            if field_id in seen:\n")
-		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
-		b.WriteString("            seen.add(field_id)\n")
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}
 	if len(st.Fields) > 0 {
 		b.WriteString("        else:\n")
-		b.WriteString("            _skip(reader, kind)\n")
-		b.WriteString("            ctx.unknown += 1\n")
+		b.WriteString("            _unknown_field(reader, field_id, kind, ctx, True)\n")
 	} else {
-		b.WriteString("        _skip(reader, kind)\n")
-		b.WriteString("        ctx.unknown += 1\n")
+		b.WriteString("        _unknown_field(reader, field_id, kind, ctx, True)\n")
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
@@ -842,6 +847,30 @@ func variantIds(f *ir.Field) string {
 		return "(" + ids[0] + ",)"
 	}
 	return "(" + strings.Join(ids, ", ") + ")"
+}
+
+// deprecatedOrdinals is an enum field's deprecated variants by ordinal, as a
+// Python tuple, or "" when the enum deprecates none (docs/SPEC-TABLES.md
+// §2.15): a read of one yields the field's declared default, and a write of one
+// is refused.
+func deprecatedOrdinals(f *ir.Field) string {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return ""
+	}
+	var ords []string
+	for i := range ref.Variants {
+		if i < len(ref.VariantTags) && slices.Contains(ref.VariantTags[i], "deprecated") {
+			ords = append(ords, strconv.Itoa(i+1))
+		}
+	}
+	switch len(ords) {
+	case 0:
+		return ""
+	case 1:
+		return "(" + ords[0] + ",)"
+	}
+	return "(" + strings.Join(ords, ", ") + ")"
 }
 
 // fieldSize is a string or bytes field's declared byte bound, and 0 for every

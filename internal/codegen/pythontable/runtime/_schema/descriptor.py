@@ -30,6 +30,7 @@ class FieldDesc:
         "key_enum",
         "size",
         "variant_ids",
+        "deprecated",
         "default",
     )
 
@@ -49,6 +50,7 @@ class FieldDesc:
     key_enum: str
     size: int
     variant_ids: tuple[int, ...]
+    deprecated: frozenset[int]
     default: Any
 
     def __init__(
@@ -69,6 +71,7 @@ class FieldDesc:
         key_enum: str = "",
         size: int = 0,
         variant_ids: tuple[int, ...] = (),
+        deprecated: tuple[int, ...] = (),
         default: Any = None,
     ) -> None:
         self.name = name
@@ -87,6 +90,8 @@ class FieldDesc:
         self.key_enum = key_enum
         self.size = size
         self.variant_ids = variant_ids
+        # the ordinals of the variants marked `| deprecated` (§2.15)
+        self.deprecated = frozenset(deprecated)
         self.default = default
 
     def is_default(self, value: Any) -> bool:
