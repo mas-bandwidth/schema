@@ -194,6 +194,176 @@ func TestGooseFixedAbsentRecordOptionalIsZero(t *testing.T) {
 			}
 		})
 	}
+	t.Run("nested", func(t *testing.T) {
+		t.Parallel()
+		testNestedAbsentRecordOptional(t)
+	})
+}
+
+// nestedAbsentSchema holds Holder, a record whose one field is an absent
+// record optional over a record that bounds nothing, and reaches it through
+// each way a record nests in another: a field, a fixed array's slots, a
+// present optional's payload and a union's taken arm.
+const nestedAbsentSchema = `package tblnest
+
+fixed table Inner
+{
+    x float32
+}
+
+fixed table Holder
+{
+    extra ?Inner
+}
+
+union Pick
+{
+    narrow int32
+    hold   Holder
+}
+
+fixed table ByField
+{
+    h Holder
+}
+
+fixed table ByArray
+{
+    hs [2]Holder
+}
+
+fixed table ByOptional
+{
+    ho ?Holder
+}
+
+fixed table ByArm
+{
+    pick Pick
+}
+`
+
+// testNestedAbsentRecordOptional saves each root's lawful record through the
+// generated writer, then loads it (accepted) and the same image with each byte
+// of every absent `extra` payload set to 1 (each refused, verdict only).
+func testNestedAbsentRecordOptional(t *testing.T) {
+	u := parseCheckUnit(t, nestedAbsentSchema)
+	ns := goose.Namespace(u)
+	holder := fixedStructByName(t, u, "Holder")
+	extra := ir.TableFixedFieldBytes(holder.Fields[0])
+	pick := fixedRootStruct(t, u, "ByArm").Fields[0].Type.Ref.(*ir.Union)
+	arm := ir.TableFixedUnionTagBytes(pick)
+	stride := ir.TableFixedElementBytes(fixedRootStruct(t, u, "ByArray").Fields[0])
+	// each root: the Goose lines that make its lawful record, and the record
+	// offsets of the present flags of its absent `extra` optionals
+	roots := []struct {
+		name  string
+		setup string
+		flags []int64
+	}{
+		{"ByField", "", []int64{0}},
+		{"ByArray", "", []int64{0, stride}},
+		{"ByOptional", "v[0].HoPresent = true;", []int64{ir.TableFixedPresentBytes}},
+		{"ByArm", "v[0].Pick.Type = 2;", []int64{arm}},
+	}
+	var b strings.Builder
+	b.WriteString("fn main() {\n")
+	for _, r := range roots {
+		fmt.Fprintf(&b, "    {\n        var v: %[1]s::%[2]s[1] = [%[1]s::%[2]s { .. }; 1];\n        %[3]s\n", ns, r.name, r.setup)
+		fmt.Fprintf(&b, "        var out: u8[>..] = [];\n        let w = %s::%sFixedSave(v[0..1], out);\n", ns, r.name)
+		fmt.Fprintf(&b, "        print(\"saved %s \", w);\n        hex(out);\n    }\n", r.name)
+	}
+	b.WriteString("}\n")
+	out := runCustomFixedGoose(t, u, nil, b.String(), nil)
+	lines := strings.Split(out, "\n")
+	images := map[string][]byte{}
+	for i, l := range lines {
+		f := strings.Fields(l)
+		if len(f) == 3 && f[0] == "saved" && i+1 < len(lines) {
+			data, err := hex.DecodeString(strings.TrimSpace(lines[i+1]))
+			if err != nil {
+				t.Fatalf("an unreadable image after %q: %v", l, err)
+			}
+			images[f[1]] = data
+		}
+	}
+	files := map[string][]byte{}
+	var loads strings.Builder
+	type mutant struct{ root, file string }
+	var mutants []mutant
+	for _, r := range roots {
+		img, ok := images[r.name]
+		if !ok || len(img) < 20 {
+			t.Fatalf("the writer saved no image for %s:\n%s", r.name, out)
+		}
+		lb := int64(uint32(img[16]) | uint32(img[17])<<8 | uint32(img[18])<<16 | uint32(img[19])<<24)
+		at := 20 + lb + 8
+		seed := r.name + "-seed.bin"
+		files[seed] = img
+		fmt.Fprintf(&loads, "    probe_%s(%q);\n", r.name, seed)
+		for _, fl := range r.flags {
+			for k := int64(0); k < extra; k++ {
+				if img[at+fl+k] != 0 {
+					t.Fatalf("%s: the lawful record's absent extra is not zero (record byte %d is %d)", r.name, fl+k, img[at+fl+k])
+				}
+			}
+			for k := int64(1); k < extra; k++ {
+				m := append([]byte(nil), img...)
+				m[at+fl+k] = 1
+				name := fmt.Sprintf("%s-m%d.bin", r.name, fl+k)
+				files[name] = m
+				mutants = append(mutants, mutant{r.name, name})
+				fmt.Fprintf(&loads, "    probe_%s(%q);\n", r.name, name)
+			}
+		}
+	}
+	var p strings.Builder
+	for _, r := range roots {
+		fmt.Fprintf(&p, "fn probe_%s(name: const u8[:]) {\n", r.name)
+		fmt.Fprintf(&p, "    var data: u8[>..] = [];\n")
+		fmt.Fprintf(&p, "    if !read_file(name, data) { print(\"read-failed\"); return; }\n")
+		fmt.Fprintf(&p, "    var values: %[1]s::%[2]s[1] = [%[1]s::%[2]s { .. }; 1];\n", ns, r.name)
+		fmt.Fprintf(&p, "    var rep = schema_rt::FixedReport { .. };\n")
+		fmt.Fprintf(&p, "    let n = %s::%sFixedLoad(values, data, rep);\n", ns, r.name)
+		fmt.Fprintf(&p, "    print(\"load \", name, \" \", n);\n}\n\n")
+	}
+	p.WriteString("fn main() {\n" + loads.String() + "}\n")
+	out = runCustomFixedGoose(t, u, nil, p.String(), files)
+	got := map[string]int{}
+	for line := range strings.SplitSeq(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 3 && f[0] == "load" {
+			n, err := strconv.Atoi(f[2])
+			if err != nil {
+				t.Fatalf("an unreadable load line %q", line)
+			}
+			got[f[1]] = n
+		}
+	}
+	if len(got) != len(files) {
+		t.Fatalf("the probe answered %d of %d loads:\n%s", len(got), len(files), out)
+	}
+	for _, r := range roots {
+		if n := got[r.name+"-seed.bin"]; n != 1 {
+			t.Errorf("%s: the lawful record answered n=%d; it must read its one record", r.name, n)
+		}
+	}
+	for _, m := range mutants {
+		if got[m.file] != -1 {
+			t.Errorf("%s: %s, a byte of an absent nested `extra` payload set to 1, answered n=%d; a dead byte that is not zero refuses the whole load",
+				m.root, m.file, got[m.file])
+		}
+	}
+}
+
+// fixedStructByName is the unit's struct name.
+func fixedStructByName(t *testing.T, u *ir.Unit, name string) *ir.Struct {
+	t.Helper()
+	st, ok := u.Structs[name]
+	if !ok {
+		t.Fatalf("the unit has no struct %s", name)
+	}
+	return st
 }
 
 // absentExtraSpan is the file offset of Cfg.extra's present flag in the one
