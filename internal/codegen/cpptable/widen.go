@@ -302,6 +302,10 @@ func widenableElement(f *ir.Field) bool {
 // declared width is, and stored. onTrunc runs where the body cannot cover the
 // payload, which is framing damage on the body carrying it.
 func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue, ind, rdr string, onTrunc ...string) {
+	g.emitWidenedScalarChecked(f, declared, kindExpr, lvalue, ind, rdr, false, onTrunc...)
+}
+
+func (g *tableGen) emitWidenedScalarChecked(f *ir.Field, declared int, kindExpr, lvalue, ind, rdr string, forbidDefault bool, onTrunc ...string) {
 	if declared == tkF64 {
 		// THE FLOAT RUNG: every finite float32 is exactly a float64, so the
 		// ordinary conversion is the widening, and a NaN or an infinity never
@@ -309,7 +313,14 @@ func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue
 		g.emitIfActions(ind, fmt.Sprintf("!%s.has( 4 )", rdr), onTrunc...)
 		g.pf("%s{\n%s    const uint32_t widened_bits = %s.get32();\n", ind, ind, rdr)
 		g.pf("%s    if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }\n", ind)
-		g.pf("%s    else { %s = (double) table_bits_to_float( widened_bits ); }\n%s}\n", ind, lvalue, ind)
+		if forbidDefault {
+			g.pf("%s    else\n%s    {\n", ind, ind)
+			g.pf("%s        const double decoded_d = (double) table_bits_to_float( widened_bits );\n", ind)
+			g.emitIfActions(ind+"        ", g.fieldIsDefault(f, "decoded_d"), onTrunc...)
+			g.pf("%s        %s = decoded_d;\n%s    }\n%s}\n", ind, lvalue, ind, ind)
+		} else {
+			g.pf("%s    else { %s = (double) table_bits_to_float( widened_bits ); }\n%s}\n", ind, lvalue, ind)
+		}
 		return
 	}
 	width := tableKindWidth(declared)
@@ -340,6 +351,9 @@ func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue
 		}
 	} else {
 		g.pf("%s%s decoded_v = (%s) widened_v;\n", ind, storage, storage)
+	}
+	if forbidDefault {
+		g.emitIfActions(ind, g.fieldIsDefault(f, "decoded_v"), onTrunc...)
 	}
 	g.emitScalarClamps(f, width, signed, ind)
 	g.pf("%s%s = decoded_v;\n", ind, lvalue)
@@ -401,7 +415,11 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 	g.pf("%sr.report->widened++;\n", ind)
 	g.pf("%suint64_t widened_decoded = 0;\n", ind)
 	g.pf("%sfor ( uint64_t widened_i = 0; widened_i < %s; widened_i++ )\n%s{\n", ind, keepExpr, ind)
-	g.emitWidenedScalar(f, declared, kindExpr, fmt.Sprintf(elems, "(int32_t) widened_i"), ind+"    ", rdr, "r.report->damaged = true;", "break;")
+	elemDst := fmt.Sprintf(elems, "(int32_t) widened_i")
+	g.emitWidenedScalar(f, declared, kindExpr, elemDst, ind+"    ", rdr, "r.report->damaged = true;", "break;")
+	if g.elemNonDefaultVar != "" {
+		g.pf("%s    if ( %s ) { %s = true; }\n", ind, g.fieldDiffers(f, elemDst), g.elemNonDefaultVar)
+	}
 	g.pf("%s    widened_decoded = widened_i + 1;\n", ind)
 	g.pf("%s}\n", ind)
 	if count != "" {
@@ -418,6 +436,7 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 // declared kind widens (§4); without it, at the declared width.
 func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened bool) {
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
+	g.pf("%s    int32_t last_key_slot = 0;\n", ind)
 	g.pf("%s    for ( uint64_t i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref = 0;\n", ind)
 	g.pf("%[1]s        if ( !sub.getleb( key_ref ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
@@ -434,13 +453,18 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
 	g.pf("%[1]s            r.report->unknown++;\n%[1]s            %[2]s // a slot this reader cannot name\n", ind, g.retainLostInline())
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
+	g.pf("%[1]s        if ( int32_t( slot ) <= last_key_slot )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
+	g.pf("%s        last_key_slot = int32_t( slot );\n", ind)
+	if kind == tkTable {
+		g.pf("%[1]s        if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
+	}
 	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
 	// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 	slot := g.keyedSlots("value.", f) + "[int32_t( slot ) - 1]"
 	onTrunc := []string{"r.report->damaged = true;", "sub.offset += (int64_t) elem_len;", "continue;"}
 	switch {
 	case widened:
-		g.emitWidenedScalar(f, kind, "elem_kind", slot, ind+"            ", "elem", onTrunc...)
+		g.emitWidenedScalarChecked(f, kind, "elem_kind", slot, ind+"            ", "elem", true, onTrunc...)
 	case kind == tkTable:
 		g.inStep("int32_t( slot ) - 1", func() {
 			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
@@ -448,9 +472,9 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 			g.pf("%[1]s            if ( elem.offset != elem.size )\n%[1]s            {\n%[1]s                r.report->damaged = true;\n%[1]s                %[2]sReset( %[3]s );\n%[1]s            }\n", ind, f.Type.Name, slot)
 		})
 	case kind == tkEnum:
-		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", strings.Join(onTrunc, " "))
+		g.emitEnumRefLoadChecked(f, slot, ind+"            ", "elem", strings.Join(onTrunc, " "), true)
 	default:
-		g.emitTableReadScalarFrom(f, kind, slot, ind+"            ", "elem", onTrunc...)
+		g.emitTableReadScalarFromChecked(f, kind, slot, ind+"            ", "elem", true, onTrunc...)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)
