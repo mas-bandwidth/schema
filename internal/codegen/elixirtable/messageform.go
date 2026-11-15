@@ -255,6 +255,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_value(vocab, 14, shape, elem, value, acc),
     do: encode_array(vocab, shape, elem, value, acc)
 
+  defp encode_value(vocab, 16, shape, elem, value, acc),
+    do: encode_keyed(vocab, shape, elem, value, acc)
+
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
   defp encode_value(vocab, 30, _shape, _elem, value, acc) do
@@ -305,6 +308,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
 
+  # A QUANTIZED FLOAT RIDES ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width,
+  # then quantize by the packet wire's rule, in float32 at every step.
+  defp encode_float(%{packing: 2} = shape, value, acc) do
+    case round_f32(value) do
+      :nonfinite -> throw(:non_finite_float)
+      v32 -> {:ok, put_bits(acc, quantize(shape, v32), shape.bits)}
+    end
+  end
+
   defp encode_float(_shape, _value, _acc), do: :error
 
   # A text writes only what its entry announces, in every build (docs/SPEC.md
@@ -337,6 +350,33 @@ const messageBatchRuntimeBody = `  @batch_max 256
     case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc) do
       {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2)
       :error -> :error
+    end
+  end
+
+  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the number of present
+  # slots, then one (key reference, element) pair per slot, ascending by
+  # variant ordinal. A key reference names a kind-0 name entry and no other.
+  defp encode_keyed(vocab, shape, elem, value, acc) do
+    count = length(value)
+    check(count <= shape.max)
+    acc2 = put_bits(acc, count, bit_length(shape.max))
+    encode_keyed_entries(vocab, elem, value, acc2)
+  end
+
+  defp encode_keyed_entries(_vocab, _elem, [], acc), do: {:ok, acc}
+
+  defp encode_keyed_entries(vocab, elem, [{ref, v} | rest], acc) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+        acc2 = put_bits(acc, ref, vocab.ref_bits)
+
+        case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc2) do
+          {:ok, acc3} -> encode_keyed_entries(vocab, elem, rest, acc3)
+          :error -> :error
+        end
+
+      _ ->
+        :error
     end
   end
 
@@ -489,6 +529,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_value(vocab, 14, shape, elem, r, depth),
     do: read_array(vocab, shape, elem, r, depth)
 
+  defp read_value(vocab, 16, shape, elem, r, depth),
+    do: read_keyed(vocab, shape, elem, r, depth)
+
   defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
 
   defp read_value(vocab, kind, shape, elem, r, _depth),
@@ -534,6 +577,17 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  # A quantized float's index is read at its announced width and held to the
+  # step count; an index above the count is damage (§3.3), and a value that
+  # rounds past float32 is refused as non_finite_float.
+  defp read_float(%{packing: 2} = shape, r) do
+    case get_bits(r, shape.bits) do
+      {:ok, index, rest} when index <= shape.count -> {:ok, dequantize(shape, index), rest}
+      {:ok, _index, _rest} -> :malformed
+      :error -> :malformed
+    end
+  end
+
   defp read_float(_shape, _r), do: :malformed
 
   # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
@@ -558,6 +612,44 @@ const messageBatchRuntimeBody = `  @batch_max 256
       read_elements(vocab, shape, elem, shape.min + offset, rest2, [], next_depth)
     else
       _ -> :malformed
+    end
+  end
+
+  # An enum-keyed array reads the number of present slots, then one
+  # (key reference, element) pair per slot. A key that names no kind-0 entry
+  # is damage, and the same key twice in one array is damage (§3.2, §3.3).
+  defp read_keyed(vocab, shape, elem, r, depth) do
+    with {:ok, count, rest} <- get_bits(r, bit_length(shape.max)) do
+      next_depth = elem_depth(elem, depth)
+      read_keyed_entries(vocab, elem, count, rest, [], %{}, next_depth)
+    else
+      _ -> :malformed
+    end
+  end
+
+  defp read_keyed_entries(_vocab, _elem, 0, r, acc, _seen, _depth),
+    do: {:ok, Enum.reverse(acc), r}
+
+  defp read_keyed_entries(vocab, elem, n, r, acc, seen, depth) do
+    with {:ok, ref, rest} <- get_bits(r, vocab.ref_bits),
+         {:ok, entry} <- key_entry(vocab, ref),
+         false <- Map.has_key?(seen, entry.id) do
+      case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
+        {:ok, v, rest2} ->
+          read_keyed_entries(vocab, elem, n - 1, rest2, [{ref, v} | acc], Map.put(seen, entry.id, true), depth)
+
+        :malformed ->
+          :malformed
+      end
+    else
+      _ -> :malformed
+    end
+  end
+
+  defp key_entry(vocab, ref) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD -> {:ok, entry}
+      _ -> :error
     end
   end
 
@@ -1312,8 +1404,30 @@ const messageRuntimeBody = `  defstruct announced: false,
                 if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
                   delta = round_f32(hif - lof)
 
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
+                  if delta != :nonfinite do
+                    values = round_f32(delta / resf)
+
+                    if values != :nonfinite do
+                      # the step count and the index width derive from the
+                      # triple exactly as the packet wire derives them (SPEC.md
+                      # §4.3): the count clamps to [1, 2^32 - 256]
+                      values = if values < 1.0, do: 1.0, else: values
+                      values = if values > 4294967040.0, do: 4294967040.0, else: values
+                      count = ceil(values)
+
+                      {:ok,
+                       %{
+                         kind: kind,
+                         packing: 2,
+                         qmin: lof,
+                         qmax: hif,
+                         qres: resf,
+                         count: count,
+                         bits: bit_length(count)
+                       }, rest2}
+                    else
+                      :error
+                    end
                   else
                     :error
                   end
@@ -1451,6 +1565,31 @@ const messageRuntimeBody = `  defstruct announced: false,
     else
       <<f::little-float-32>> = <<bits::little-32>>
       f
+    end
+  end
+
+  # The compressed float's step-index arithmetic (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): the index a value takes, and the float an index names, in
+  # float32 at every step, never fused, never widened. The announcement already
+  # held the triple to the packet wire's own rule, so a finite value quantizes
+  # without overflow; the reader refuses a value that rounds past float32.
+  defp quantize(%{qmin: qmin, qmax: qmax, count: count}, value) do
+    delta = round_f32(qmax - qmin)
+    count32 = round_f32(count * 1.0)
+    normalized = round_f32(round_f32(value - qmin) / delta)
+    normalized = if normalized < 0.0, do: 0.0, else: normalized
+    normalized = if normalized > 1.0, do: 1.0, else: normalized
+    min(floor(round_f32(round_f32(normalized * count32) + 0.5)), count)
+  end
+
+  defp dequantize(%{qmin: qmin, qmax: qmax, count: count}, index) do
+    delta = round_f32(qmax - qmin)
+    count32 = round_f32(count * 1.0)
+    normalized = round_f32(round_f32(index * 1.0) / count32)
+
+    case round_f32(round_f32(normalized * delta) + qmin) do
+      :nonfinite -> throw(:non_finite_float)
+      value -> value
     end
   end
 

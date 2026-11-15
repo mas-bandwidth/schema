@@ -65,6 +65,34 @@ local function bitsReq(lo: number, hi: number): number
 	return bits
 end
 
+-- float32 narrowing (docs/SPEC-TABLES.md §3.3, SPEC.md §4.3): every step of
+-- the compressed float's derivation rounds to float32, so a number is narrowed
+-- through a 32-bit buffer before each arithmetic step.
+local f32scratch = buffer.create(4)
+local function f32n(x: number): number
+	buffer.writef32(f32scratch, 0, x)
+	return buffer.readf32(f32scratch, 0)
+end
+
+-- the step count of a quantized float32 triple, and 0 for a non-conforming one
+-- (docs/SPEC-TABLES.md §3.3, SPEC.md §4.3): min not below max, res not above
+-- zero, or a delta or delta/res not finite in float32.
+local function quantCount(qmin: number, qmax: number, qres: number): number
+	local mn = f32n(qmin)
+	local mx = f32n(qmax)
+	local rs = f32n(qres)
+	if not (mn < mx) or not (rs > 0) then return 0 end
+	local delta = f32n(mx - mn)
+	local values = f32n(delta / rs)
+	if delta - delta ~= 0 or values - values ~= 0 then return 0 end
+	if not (values >= 1) then
+		values = 1
+	elseif values > 4294967040.0 then
+		values = 4294967040.0
+	end
+	return math.ceil(values)
+end
+
 -- ---- the bit stream (docs/SPEC-TABLES.md §3.3: bit i is bit i%8 of byte i/8,
 -- low bit first, and every align is relative to the batch buffer's byte 0) ----
 
@@ -229,7 +257,13 @@ local function shapeRead(r: any, k: number): any
 			return s
 		elseif packing == 2 and k == 10 then
 			if r.at + 12 > r.e then r.bad = true; return s end
+			local qmin = buffer.readf32(r.b, r.at)
+			local qmax = buffer.readf32(r.b, r.at + 4)
+			local qres = buffer.readf32(r.b, r.at + 8)
 			r.at = r.at + 12
+			local count = quantCount(qmin, qmax, qres)
+			if count <= 0 then r.bad = true; return s end
+			s.bits = bitsReq(0, count)
 			return s
 		else
 			r.bad = true

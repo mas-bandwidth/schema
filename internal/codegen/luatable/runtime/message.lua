@@ -967,14 +967,14 @@ write_value = function(W, T, f, holder, key, ctx)
   elseif s == "array" then
     local d = f
     local n
-    if d.fixed then
-      n = d.bound
-    elseif d.keyed then
+    if d.keyed then
       n = 0
-      for i = 1, #v do
+      for i = 1, d.bound do
         if elem_rides(T, d.elem, v[i]) then n = n + 1 end
       end
       W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
+    elseif d.fixed then
+      n = d.bound
     else
       n = #v
       W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
@@ -982,7 +982,7 @@ write_value = function(W, T, f, holder, key, ctx)
     if d.elem_kind == 6 and d.elem.shape ~= "bytes" then W:align() end
     if d.keyed then
       local keys = d.keyed
-      for i = 1, #v do
+      for i = 1, d.bound do
         if elem_rides(T, d.elem, v[i]) then
           W:put(slot(T, keys[i][2]), ctx.refBits)
           local ev = { v = v[i] }
