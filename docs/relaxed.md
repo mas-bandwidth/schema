@@ -86,23 +86,13 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
   - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
-<<<<<<< HEAD
-  - `relax/hostile-rows-js`: base64-unpadded, jref_zero_byte, and base64-unpadded in the port's hostile-corpus run (carried finding); the JS reader validates a skipped value, so str-zero-escape-unknown-key is no longer relaxed.
-  - `relax/hostile-rows-lobster`: jref_zero_byte only. The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
-  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
-  - `relax/hostile-rows-luau`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-moo`: both hostile rows.
-  - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-squirrel`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried in `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
-=======
-  - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
+  - `relax/hostile-rows-js`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried finding); jref_zero_byte and str-zero-escape-unknown-key are gated again: the JS text writer refuses a zero byte, and the JS reader validates a skipped value. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
   - `relax/hostile-rows-moo`: gated again (both hostile rows).
   - `relax/hostile-rows-rust`: str-zero-escape-unknown-key, in the conformance leg and in the port's hostile-corpus run (carried findings); base64-unpadded is gated again.
   - `relax/hostile-rows-squirrel`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run, `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
->>>>>>> 7c9b4613ab41e74c9d70a0d43d094a54e0e90b6d
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
   maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
