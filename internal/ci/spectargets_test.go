@@ -149,6 +149,44 @@ func registryTargets(registryJSON string) (map[string]bool, error) {
 	return out, nil
 }
 
+// withControlEntries returns the registry with every make/negative-controls.d
+// entry's targets appended to the group it names, as tools/negativecontrols
+// reads the plan.
+func withControlEntries(t *testing.T, root, registryJSON string) string {
+	t.Helper()
+	var plan negativeControlPlan
+	if err := json.Unmarshal([]byte(registryJSON), &plan); err != nil {
+		t.Fatalf("make/negative-controls.json is not a valid registry: %v", err)
+	}
+	files, err := filepath.Glob(filepath.Join(root, "make", "negative-controls.d", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var e struct {
+			Group   string   `json:"group"`
+			Targets []string `json:"targets"`
+		}
+		if err := json.Unmarshal(body, &e); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		for i := range plan.Groups {
+			if plan.Groups[i].Name == e.Group {
+				plan.Groups[i].Targets = append(plan.Groups[i].Targets, e.Targets...)
+			}
+		}
+	}
+	out, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
 // invokedByCI is the DESIGN DEFAULT for "invoked by some job in ci.yml", written
 // once so the tree test and the fixture share it. A target is invoked when it is
 // a word on a `make` command line in ci.yml, or when it sits in a pull-request
@@ -259,7 +297,7 @@ func TestEverySpecTablesTargetIsInvokedByCI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := string(registryData)
+	registry := withControlEntries(t, root, string(registryData))
 	if _, err := registryTargets(registry); err != nil {
 		t.Fatalf("make/negative-controls.json is not a valid registry: %v", err)
 	}
