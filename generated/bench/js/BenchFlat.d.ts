@@ -12,31 +12,41 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteBenchPacketFlat(view: DataView, value: BenchPacket): number;
 export declare function ReadBenchPacketFlat(view: DataView, numBits: number, value: BenchPacket): boolean;
+export declare function ReadBenchPacketFlatBits(view: DataView, numBits: number, value: BenchPacket): number | false;
 
 export declare function WriteBenchIntsFlat(view: DataView, value: BenchInts): number;
 export declare function ReadBenchIntsFlat(view: DataView, numBits: number, value: BenchInts): boolean;
+export declare function ReadBenchIntsFlatBits(view: DataView, numBits: number, value: BenchInts): number | false;
 
 export declare function WriteBenchBitsFlat(view: DataView, value: BenchBits): number;
 export declare function ReadBenchBitsFlat(view: DataView, numBits: number, value: BenchBits): boolean;
+export declare function ReadBenchBitsFlatBits(view: DataView, numBits: number, value: BenchBits): number | false;
 
 export declare function WriteMixedEntityFlat(view: DataView, value: MixedEntity): number;
 export declare function ReadMixedEntityFlat(view: DataView, numBits: number, value: MixedEntity): boolean;
+export declare function ReadMixedEntityFlatBits(view: DataView, numBits: number, value: MixedEntity): number | false;
 
 export declare function WriteMixedStatFlat(view: DataView, value: MixedStat): number;
 export declare function ReadMixedStatFlat(view: DataView, numBits: number, value: MixedStat): boolean;
+export declare function ReadMixedStatFlatBits(view: DataView, numBits: number, value: MixedStat): number | false;
 
 export declare function WriteMixedHitEventFlat(view: DataView, value: MixedHitEvent): number;
 export declare function ReadMixedHitEventFlat(view: DataView, numBits: number, value: MixedHitEvent): boolean;
+export declare function ReadMixedHitEventFlatBits(view: DataView, numBits: number, value: MixedHitEvent): number | false;
 
 export declare function WriteMixedChatEventFlat(view: DataView, value: MixedChatEvent): number;
 export declare function ReadMixedChatEventFlat(view: DataView, numBits: number, value: MixedChatEvent): boolean;
+export declare function ReadMixedChatEventFlatBits(view: DataView, numBits: number, value: MixedChatEvent): number | false;
 
 export declare function WriteMixedPickupEventFlat(view: DataView, value: MixedPickupEvent): number;
 export declare function ReadMixedPickupEventFlat(view: DataView, numBits: number, value: MixedPickupEvent): boolean;
+export declare function ReadMixedPickupEventFlatBits(view: DataView, numBits: number, value: MixedPickupEvent): number | false;
 
 export declare function WriteMixedEventFlat(view: DataView, value: MixedEvent): number;
 export declare function ReadMixedEventFlat(view: DataView, numBits: number, value: MixedEvent): boolean;
+export declare function ReadMixedEventFlatBits(view: DataView, numBits: number, value: MixedEvent): number | false;
 
 export declare function WriteBenchMixedFlat(view: DataView, value: BenchMixed): number;
 export declare function ReadBenchMixedFlat(view: DataView, numBits: number, value: BenchMixed): boolean;
+export declare function ReadBenchMixedFlatBits(view: DataView, numBits: number, value: BenchMixed): number | false;
 
