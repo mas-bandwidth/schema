@@ -1,7 +1,7 @@
 package elixirtable
 
-// AN UNKNOWN KEYED OR ARRAY FIELD IS WALKED, NOT MERELY FRAMED (docs/SPEC-
-// TABLES.md §3, §4). A field this reader cannot name is skipped by the framing
+// AN UNKNOWN KEYED OR ARRAY FIELD IS WALKED, NOT MERELY FRAMED
+// (docs/SPEC-TABLES.md §3, §4). A field this reader cannot name is skipped by the framing
 // alone, and the framing of an enum-keyed body (kind 16) or an array body
 // (kind 14) includes the closed element-kind lists: a body whose element kind
 // is off the list, whose key references no id or names one twice, whose slot
