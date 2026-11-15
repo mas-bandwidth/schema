@@ -1163,7 +1163,7 @@ static SCHEMA_UNUSED int benchtable_table_json_base64_step( benchtable_table_jso
    cursor, decoded first, then held to CANONICAL base64, the standard alphabet,
    padded, pad bits zero, exactly the text the writer writes. -1, with in->bad
    set, when the text is not JSON. 0 when the decoded value is not canonical,
-   with *reason the refusal: kind_mismatch when it does not decode at all,
+   with *reason the refusal: the wrong kind when it does not decode at all,
    base64_not_canonical when it decodes but is another spelling. 1 when it is
    canonical, with *mark its first body byte and *length its decoded bytes.
    On 0 and 1 the cursor is past the closing quote. Nothing is stored. */
