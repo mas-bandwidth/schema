@@ -1301,6 +1301,9 @@ export function WriteBenchMixedFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(12, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+    return -1;
+  }
   v = (((value.clientId) >>> 0)) >>> 0;
   view.setUint32(16, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;

@@ -174,6 +174,9 @@ export function WriteProbeBitsFlat(view, value) {
   if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
     return -1;
   }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+    return -1;
+  }
   v = (((value.sensor) >>> 0)) >>> 0;
   view.setUint32(12, (lo | (v << 10)) >>> 0, true);
   lo = v >>> 22;
