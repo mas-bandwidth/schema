@@ -3239,7 +3239,7 @@ type TableNodeMap struct {
 }
 
 // Mark records that a slot the reader cannot name points at a node record: a
-// blob counts the slot, and any other record marks the record the slot sits
+// blob, placed or not, counts the slot, and any other record marks the record the slot sits
 // in, whose edges the graph walk then reads from the wire (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §4, §6.5).
 func (m TableNodeMap) Mark(index uint64) {
@@ -3395,6 +3395,14 @@ func tableNodeStorageReason(id uint64, body TableReader, nodeType func(uint64) *
 		}
 		return tableRegionRound(8 + int64(len(body.Buffer)) + extra), TableRefuseOk
 	}
+	if id == tableBytesTypeID || id == tableStringTypeID {
+		if int64(len(body.Buffer)) > 0xffffffff {
+			return -2, TableRefuseBlobOverSizeCap
+		}
+		if id == tableStringTypeID && !tableUTF8Valid(body.Buffer) {
+			return -2, TableRefuseWireDamaged
+		}
+	}
 	return -1, TableRefuseOk
 }
 func tableRegionMeasure(wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int) (int64, int64, TableOpenVerdict) {
@@ -3460,7 +3468,11 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 		n, reason := tableNodeStorageReason(id, body, nodeType, blobs)
 		if n == -2 {
-			return -1, 0, TableOpenRefused, reason
+			verdict := TableOpenRefused
+			if reason == TableRefuseWireDamaged {
+				verdict = TableOpenDamaged
+			}
+			return -1, 0, verdict, reason
 		}
 		if n > 0 {
 			data += n
@@ -3541,6 +3553,9 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		directory[k].TypeID = id
 		if size <= 0 {
 			directory[k] = TableNodeDirEntry{^uint64(0), 0}
+			if id == tableBytesTypeID || id == tableStringTypeID {
+				directory[k] = TableNodeDirEntry{tableNodeBlobAway, id}
+			}
 			unknown++
 		} else {
 			directory[k].Offset = uint64(used)
@@ -3564,13 +3579,15 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			break
 		}
 		nodes.from = k
-		if directory[k].Offset != ^uint64(0) {
-			p := unsafe.Add(base, directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))
-			if t := nodeType(id); t != nil {
-				body.Nodes = nodes
-				t.LoadBody(body, p)
-			} else {
-				copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
+		if o := directory[k].Offset; o != ^uint64(0) {
+			if o&tableNodeBlobAway != tableNodeBlobAway {
+				p := unsafe.Add(base, o&^(tableNodeWireNamed|tableNodeBlobSeen))
+				if t := nodeType(id); t != nil {
+					body.Nodes = nodes
+					t.LoadBody(body, p)
+				} else {
+					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
+				}
 			}
 		} else if reason := tableWireRecordCheck(body, len(r.Ids)/8, uint64(len(directory)-1), nodes.Mark); reason != TableRefuseOk {
 			report.Refuse(reason, "")
@@ -3809,6 +3826,9 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		isblob := id == tableBytesTypeID && blobs&1 != 0 || id == tableStringTypeID && blobs&2 != 0
 		if t == nil && !isblob {
 			directory[k].TypeID = 0
+			if id == tableBytesTypeID || id == tableStringTypeID {
+				directory[k] = TableNodeDirEntry{tableNodeBlobAway, id}
+			}
 			unknown++
 			k++
 			continue
@@ -4340,6 +4360,7 @@ func tableCycleValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*Table
 
 const tableNodeWireNamed uint64 = 1 << 63
 const tableNodeBlobSeen uint64 = 1 << 62
+const tableNodeBlobAway uint64 = 1<<48 - 1
 
 func tableCycleCheck(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo, r TableReader) bool {
 	return tableCycleCheckReason(base, root, a, dir, nodeType, r) == TableRefuseOk
@@ -5468,6 +5489,9 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		directory[k].TypeID = id
 		if size <= 0 {
 			directory[k] = TableNodeDirEntry{^uint64(0), 0}
+			if id == tableBytesTypeID || id == tableStringTypeID {
+				directory[k] = TableNodeDirEntry{tableNodeBlobAway, id}
+			}
 			unknown++
 		} else {
 			directory[k].Offset = uint64(used)
@@ -5494,13 +5518,15 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			break
 		}
 		nodes.from = k
-		if directory[k].Offset != ^uint64(0) {
-			p := unsafe.Add(base, directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))
-			if t := nodeType(id); t != nil {
-				body.Nodes = nodes
-				t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: body, Retain: retain, Path: tableRetainPath{at: p, node: uint32(k + 1)}}, p)
-			} else {
-				copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
+		if o := directory[k].Offset; o != ^uint64(0) {
+			if o&tableNodeBlobAway != tableNodeBlobAway {
+				p := unsafe.Add(base, o&^(tableNodeWireNamed|tableNodeBlobSeen))
+				if t := nodeType(id); t != nil {
+					body.Nodes = nodes
+					t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: body, Retain: retain, Path: tableRetainPath{at: p, node: uint32(k + 1)}}, p)
+				} else {
+					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
+				}
 			}
 		} else if reason := tableWireRecordCheck(body, len(r.Ids)/8, uint64(len(directory)-1), nodes.Mark); reason != TableRefuseOk {
 			report.Refuse(reason, "")

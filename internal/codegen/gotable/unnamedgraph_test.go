@@ -148,16 +148,18 @@ func TestBlobRecordsAreLeavesUnderEveryRoot(t *testing.T) {
 		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2); ptr(w, unknownField, 3) }, stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), blob(tableBytesTypeID, []byte{0})), false)
 	both(t, "a bytes blob no pointer reaches",
 		file(&ids, func(w *TableWriter) {}, blob(tableBytesTypeID, []byte{0})), false)
+	// text that is not well formed, in bytes that would also frame a body
 	both(t, "a string blob that is not well-formed text",
-		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableStringTypeID, []byte{0xff})), false)
+		file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableStringTypeID, body(&ids, func(w *TableWriter) { i32(w, unknownField, -1); w.Put8(0) }))), false)
 	both(t, "a declared *Node slot naming a bytes blob",
 		file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) }, blob(tableBytesTypeID, []byte{0})), false)
 	both(t, "a declared *Leaf slot naming a string blob",
-		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, blob(tableStringTypeID, []byte("hello"))), false)
+		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, blob(tableStringTypeID, []byte{0})), false)
+	// the engine counts two unknowns here: the field and the record
 	var seen TableReport
 	reached := file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }, blob(tableStringTypeID, []byte("hello")))
-	if NodeLoad(region(max(NodeLoadMeasure(reached), 1)), reached, &seen) == nil || seen.Unknown != 1 {
-		t.Fatalf("a reached blob this root places nowhere did not read as one unknown: %+v", seen)
+	if NodeLoad(region(max(NodeLoadMeasure(reached), 1)), reached, &seen) == nil || seen.Unknown != 2 {
+		t.Fatalf("a reached blob this root places nowhere did not read as one unknown field and one unknown record: %+v", seen)
 	}
 }
 `

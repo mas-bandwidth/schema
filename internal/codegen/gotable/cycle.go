@@ -12,6 +12,9 @@ package gotable
 // TypeID carry its offset in the node table, the low 48 bits keep its offset
 // in memory (all ones when it has none), and the low half of TypeID carries
 // the count and the link. Bit 62 marks a blob record a slot has already named.
+// A blob record this root places nowhere keeps its type id and all ones in
+// the low 48 bits of Offset (tableNodeBlobAway): it is a leaf like a placed
+// one, counted by its marks and never a vertex of the walk.
 // No allocation, reverse lookup, graph recursion, or writer-side map sorting
 // is needed.
 //
@@ -25,6 +28,7 @@ package gotable
 const tableCycleSource = `
 const tableNodeWireNamed uint64 = 1 << 63
 const tableNodeBlobSeen uint64 = 1 << 62
+const tableNodeBlobAway uint64 = 1<<48-1
 
 func tableCycleCheck(base unsafe.Pointer,root *TableTypeInfo,a *TableArena,dir []TableNodeDirEntry,nodeType func(uint64)*TableTypeInfo,r TableReader)bool{
  return tableCycleCheckReason(base,root,a,dir,nodeType,r)==TableRefuseOk
