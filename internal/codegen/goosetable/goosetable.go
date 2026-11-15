@@ -20,6 +20,7 @@ import (
 	"maps"
 	"math/big"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -392,6 +393,11 @@ func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 	lit.add("id", fmt.Sprintf("0x%016x", ir.TableWireId(t.WireName())))
 	lit.flag("table", t.IsTable)
 	lit.flag("fixed", t.FixedDeclared)
+	// A DECLARED FIXED TABLE PAST THE RECORD CEILING HAS NO FILE FORM
+	// (docs/SPEC-TABLES.md §1, §3.4): its read refuses form 1 as previous_form,
+	// the Go engine's verdict (internal/tablewire decodeWalk, decodeFixed). It
+	// is the declared fixed table this build emits no <T>FixedLoad for.
+	lit.flag("no_file_form", t.FixedDeclared && !slices.Contains(ir.TableFixedFormRoots(g.Unit), t))
 	lit.flag("variable", ir.VariableTables(g.Unit)[t.Name])
 	lit.flag("json_array", t.JsonArray)
 	lit.flag("integrity", t.Integrity == "crc32c")

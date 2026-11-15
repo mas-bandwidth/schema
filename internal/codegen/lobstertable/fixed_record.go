@@ -137,7 +137,7 @@ func (p *fixedRecordProjection) element(f *ir.Field, typed, cell, ind string) {
 			p.union(ref, typed, cell, ind)
 		case *ir.Enum:
 			if p.toTyped {
-				p.g.Pf("%s%s = %s(%s.i)\n", ind, typed, p.g.TypeRef(ref.Name, false), cell)
+				p.g.Pf("%s%s = %s(%s.i)\n", ind, typed, enumConversion(p.g, ref.Name), cell)
 			} else {
 				p.g.Pf("%s%s.i = int(%s)\n", ind, cell, typed)
 			}

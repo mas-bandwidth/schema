@@ -64,35 +64,35 @@ listed case that passes fails the leg until its line is removed.
   (json-base64-canonical), `str-zero-escape-unknown-key` is refused (the
   skipped value is validated), and write-refusal-json `jref_zero_byte` is
   refused (the text writer refuses a zero byte, docs/SPEC.md §5.1 row 8). The
-  Go engine and the Go JSON walk carry all three; the other legs still read
-  the two hostile rows (and some write the zero byte), so their cases are in
+  Go engine and the Go JSON walk carry all three; the legs that still read
+  a hostile row (or write the zero byte) have their cases in
   `test/conformance/relaxed.txt`. The table-base64 harness
-  (`test/table-base64/harness`) expects the canonical rule too, and its C, C++
-  and C# runs pass `-relax <slug>`, which keeps the old accept for the
-  non-canonical cases only (`make/checks/table-base64.mk`). Real fix, per
+  (`test/table-base64/harness`) expects the canonical rule too; its `-relax
+  <slug>` flag, which keeps the old accept for the non-canonical cases only,
+  is no longer passed by the C++ run (2026-11-15) and goes from the C and C# runs with the card sm-a1-main-green-relax-and-conformance (`make/checks/table-base64.mk`). Real fix, per
   leg: its JSON read refuses unpadded Base64 and set pad bits, and validates a
   skipped value; its text writer refuses a zero byte (a debug assert in C,
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
   leg's lines go. WIP: none.
-  - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
-  - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-elixir`: str-zero-escape-unknown-key, jref_zero_byte, and that row in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
-  - `relax/hostile-rows-go`: the generated Go JSON walk (not the engine)
-    reads str-zero-escape-unknown-key: it does not validate a skipped value.
-    Its hostile-corpus run drops that row from the staged manifest
-    (`make/schema-go-runs-hostile-corpus.mk`). The fix is more than the zero
-    check in `scanText`: the generated tests textzero (a skipped zero reads)
-    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the js text-boundary control does not count its leg's relaxed json-hostile cases (relax/hostile-rows-js).
-  - `relax/hostile-rows-goose`: both hostile rows.
-  - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-lobster`: jref_zero_byte only. The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
-  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
-  - `relax/hostile-rows-luau`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-moo`: both hostile rows.
-  - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-squirrel`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried in `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
+  Each slug below marked "gated again" has no relaxed site left: its rows
+  passed on main on 2026-11-15 and their relax lines were removed. It stays
+  listed only because `test/proof/in-progress.json` still names its proof
+  cells (`tools/matrix` refuses a relaxed cell whose slug is not listed here);
+  the entry goes with those cells at the next `make proof-write`.
+  - `relax/hostile-rows-c`: gated again (both hostile rows, jref_zero_byte, table-base64; the relaxed.txt lines and the table-base64 flag go with the card sm-a1-main-green-relax-and-conformance).
+  - `relax/hostile-rows-cpp`: gated again (both hostile rows, jref_zero_byte, table-base64, the hostile-corpus run, and the pack hostile-value gate, `Makefile`).
+  - `relax/hostile-rows-cs`: gated again (both hostile rows, jref_zero_byte, table-base64, and the hostile-corpus run; the relaxed.txt lines and the table-base64 flag go with the card sm-a1-main-green-relax-and-conformance).
+  - `relax/hostile-rows-elixir`: gated again (str-zero-escape-unknown-key, jref_zero_byte, and the hostile-corpus run).
+  - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
+  - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
+  - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
+  - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
+  - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
+  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
+  - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
+  - `relax/hostile-rows-moo`: gated again (both hostile rows).
+  - `relax/hostile-rows-rust`: str-zero-escape-unknown-key, in the conformance leg and in the port's hostile-corpus run (carried findings); base64-unpadded is gated again.
+  - `relax/hostile-rows-squirrel`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run, `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
   maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
@@ -155,10 +155,11 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, luau,
+  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau,
   moo and squirrel in `test/conformance/relaxed.txt`: each still writes
-  the element defaults into dead counted slots (CI full 43656719730). C and the
-  tool are right. WIP: none.
+  the element defaults into dead counted slots (CI full 43656719730). C, JS
+  (its ten cases pass and are gated again, 2026-11-15) and the tool are
+  right. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 
@@ -244,19 +245,6 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
-- `relax/dart-announce-refuses-nested-element`:
-  `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
-  cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
-  now refuses an announced list or keyed array whose element is itself a
-  list or keyed array (90b679296); the Dart announceRead still accepts it.
-  Real fix: the Dart announceRead refuses those shapes as the engine does,
-  the two cases want false, and the test's negative control is reworked.
-- `relax/dart-skip-progress-text-list-fixture`:
-  `internal/codegen/darttable` TestDartMessageSkipMakesProgress is skipped.
-  Its zero-progress fixture is a list of lists, which the engine now refuses
-  at announce time. Real fix: a fixture shape the engine admits, following
-  TestMessageSkipRefusesElementWithNoProgress (a text-list element with
-  length bound 0).
 - `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
   TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
   hold (count and log, not compare) the inputs the generated Go fixed read

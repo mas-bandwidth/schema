@@ -78,21 +78,34 @@ func TestPythonTablesEmitTheSurface(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 // TestPythonTableCarrySetStaysEmpty: the table frame itself adds no construct
 // from the §2 carry vocabulary (docs/SPEC-TABLES.md); every construct the
 // python set holds is one a field-kind layer registers in its own
 // compiler/carries_python_<kind>.go and appends to nonGoCarriers["python"]
 // from its own test file (the optional kind: optional-variable-closure).
 func TestPythonTableCarrySetStaysEmpty(t *testing.T) {
+=======
+// TestPythonTableCarrySetCarriesTimestamp: the table frame's first §2 carry
+// construct is `timestamp` (docs/SPEC-TABLES.md §2.11), registered in
+// compiler/carries_python_timestamp.go and held to the Go engine by
+// internal/codegen/pythontable's TestPythonVtTimestamp.
+func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
+>>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
 	t.Parallel()
 	got, ok := Carried("python")
 	if !ok {
 		t.Fatal("the python target registered no carries set")
 	}
+<<<<<<< HEAD
 	for _, construct := range got {
 		if !slices.Contains(nonGoCarriers["python"], construct) {
 			t.Errorf("the table frame registered %q, which no field-kind layer claims", construct)
 		}
+=======
+	if !slices.Contains(got, carryTimestamp) {
+		t.Fatalf("the table frame registered %v, and timestamp is not among them", got)
+>>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
 	}
 }
 
