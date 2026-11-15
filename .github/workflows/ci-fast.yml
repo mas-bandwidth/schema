@@ -144,6 +144,11 @@ name: CI fast
 # and `systemctl --user start 'nova-runner-schema-*'` to bring it back.
 
 on:
+  # every push to main: the sprint tells a card's red from main's own by this
+  # lane's verdict on the base tip, so every main tip needs one. A push diffs
+  # against the push's before sha (the plan job below).
+  push:
+    branches: [main]
   # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
   workflow_dispatch:
@@ -152,7 +157,9 @@ on:
 # branch, and an interactive gate that queues behind its own stale runs is the
 # thing this file is fixing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  # a push to main is grouped by its own sha, so no main tip loses its verdict
+  # to the next push
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The same sibling pins ci-full.yml and certify.yml carry, for the same reason: a
@@ -199,10 +206,22 @@ jobs:
         id: pick
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}
+          BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           set -euo pipefail
-          git fetch --quiet origin "$BASE"
-          files=$(git diff --name-only "origin/$BASE...HEAD")
+          # a push diffs against the tip it replaced; a new ref (all-zero
+          # before) or a before sha this clone lacks gets the broad selection
+          if [ -n "$BEFORE" ]; then
+            if [ "${BEFORE//0/}" != "" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              files=$(git diff --name-only "$BEFORE" HEAD)
+            else
+              echo "::notice::the push has no usable before sha ($BEFORE) — running the broad selection"
+              files="ir/"
+            fi
+          else
+            git fetch --quiet origin "$BASE"
+            files=$(git diff --name-only "origin/$BASE...HEAD")
+          fi
           if [ -z "$files" ]; then
             echo "::notice::the diff is empty against origin/$BASE — running the broad selection"
             files="ir/"
