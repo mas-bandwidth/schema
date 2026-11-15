@@ -168,6 +168,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitWriteBody(st)
 			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
+			g.gen.emitDeadCheckBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
 		// THE MESSAGE FORM'S BODY VERBS RIDE THE MESSAGE ROOTS' WHOLE CLOSURE,
@@ -220,6 +221,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"TableFixedKnownLayout", "TableFixedDecodeLayout", "TableFixedSelect",
 		"TableFixedRefuseHash", "TableFixedLineagePlans")
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
+	if fixedStructHasDead(st) {
+		g.needHome(st.Name + "FixedCheckDead")
+	}
 	finite := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
 	if finite {
 		g.needHome(st.Name + "FixedCheckBody")
@@ -530,11 +534,25 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
 	g.pf("    if (identity) {\n")
+	if fixedStructHasDead(st) {
+		g.pf("      %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+	}
 	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
 	g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
 	g.pf("      at += recordBytes;\n")
 	g.pf("      continue;\n")
 	g.pf("    }\n")
+	if fixedStructHasDead(st) {
+		// THE IDENTITY PLAN IS ONE COPY, so its dead bytes are checked on the
+		// SOURCE record just as the in-place door checks them; a COMPILED plan
+		// carries its own dead-byte entries (docs/FIXED-FORM-ALGORITHM.md §4.5,
+		// §5.3 step 11).
+		g.pf("    if (entries === %sFixedIdentity && holeN === 0) {\n", st.Name)
+		g.pf("      %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+		g.pf("    }\n")
+	}
 	g.pf("    for (let h = 0; h < holeN; h++) {\n")
 	g.pf("      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];\n")
 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)
