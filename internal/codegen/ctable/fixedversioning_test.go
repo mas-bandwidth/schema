@@ -770,6 +770,14 @@ func cHasField(st *ir.Struct, name string) bool {
 // the reset and immediately before the load — §5.7's 0x5A over the destination,
 // for the rows whose claim is that the PREFILL WRITES.
 func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, file, body, poison string, pre ...string) ([]byte, error) {
+	return cRunVersionProbeRoot(t, reader, older, retire, "", file, body, poison, pre...)
+}
+
+// cRunVersionProbeRoot is [cRunVersionProbe] with the fixed root named by the
+// caller. A unit may carry more than one fixed root — a corpus row whose root
+// names other fixed tables and a union that names one more — and the probe must
+// read the one the file belongs to.
+func cRunVersionProbeRoot(t *testing.T, reader string, older []string, retire int, rootName, file, body, poison string, pre ...string) ([]byte, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -815,6 +823,9 @@ func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, f
 		t.Fatal("no Table.h was generated")
 	}
 	root := cFixedRootName(t, u)
+	if rootName != "" {
+		root = rootName
+	}
 	snake := ir.RustSnake(root)
 	damage := strings.Join(pre, "\n")
 	probe := fmt.Sprintf(`#include <stdio.h>
