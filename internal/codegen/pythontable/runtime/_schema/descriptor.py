@@ -28,6 +28,9 @@ class FieldDesc:
         "array",
         "bound",
         "key_enum",
+        "array_kind",
+        "array_min",
+        "elem_kind",
         "default",
     )
 
@@ -45,6 +48,9 @@ class FieldDesc:
     array: bool
     bound: int
     key_enum: str
+    array_kind: int
+    array_min: int
+    elem_kind: int
     default: Any
 
     def __init__(
@@ -63,6 +69,9 @@ class FieldDesc:
         array: bool = False,
         bound: int = 0,
         key_enum: str = "",
+        array_kind: int = 0,
+        array_min: int = 0,
+        elem_kind: int = 0,
         default: Any = None,
     ) -> None:
         self.name = name
@@ -79,6 +88,9 @@ class FieldDesc:
         self.array = array
         self.bound = bound
         self.key_enum = key_enum
+        self.array_kind = array_kind
+        self.array_min = array_min
+        self.elem_kind = elem_kind
         self.default = default
 
     def is_default(self, value: Any) -> bool:
@@ -93,7 +105,25 @@ class FieldDesc:
             if not self.target:
                 return False
             return bool(value == new_by_name(self.target))
+        if self.codec == "union":
+            # None is the absence of the field, and a union whose arm is None
+            # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
+            return value is None or value.type == 0
+        if self.codec == "array":
+            return _array_is_default(self, value)
         return bool(value == self.default)
+
+
+def _array_is_default(fd: FieldDesc, value: Any) -> bool:
+    """Whether a positional array of a declared type elides (docs/SPEC-TABLES.md §3).
+
+    A fixed array of a declared type writes every element, because position is
+    identity there; a counted or unbounded one elides only when it is empty,
+    exactly as the engine's writer does.
+    """
+    if fd.array_kind == 1:  # [N]T
+        return False
+    return len(value) == 0
 
 
 class TableDesc:
@@ -186,6 +216,20 @@ def by_id(type_id: int) -> type[Any] | None:
 
 def by_name(name: str) -> type[Any] | None:
     return _REGISTRY_BY_NAME.get(name)
+
+
+def _register_value(cls: type[Any]) -> None:
+    """Register a hosted packet class by name only.
+
+    A packet type by value never rides the node table's type ids, so it takes
+    no id slot; it is reachable by name from the descriptor that carries it.
+    """
+    descriptor: TableDesc = cls.descriptor
+    _REGISTRY_BY_NAME[descriptor.name] = cls
+
+
+def _union_by_name(name: str) -> type[Any] | None:
+    return _REGISTRY_UNION_BY_NAME.get(name)
 
 
 def register_union(cls: type[Any]) -> None:

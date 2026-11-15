@@ -36,11 +36,15 @@ class _Table:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
+        # THE FIELD'S ID IS INTERNED FIRST: the header rides before the body
+        # and the id table's first-use order follows the write order
+        # (docs/SPEC-TABLES.md §3), so a nested body's ids land after the
+        # field's own.
+        w.varint(ctx.idref(fd.field_id))
+        w.byte(fd.kind)
         body = bytearray()
         bw = _body_writer(body)
         write_body(bw, value, ctx, False)
-        w.varint(ctx.idref(fd.field_id))
-        w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)
 

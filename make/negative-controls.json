@@ -1038,6 +1038,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-packet-types",
+      "when": "pull-request",
+      "why": "the packet-type-by-value control (make/python.mk): the nested body's length the generated table writer emits is moved in a copy of the runtime, and TestPythonTablePacketTypesNegativeControl must go red on its byte compare against the Go engine's wire. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "targets": [
+        "python-table-packet-types-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "python-table-core",
       "when": "pull-request",
       "why": "the table core's form-byte control (make/python.mk): the generated runtime's form byte is moved in a copy, and the pinned-interpreter probe must go red naming message_form_as_file. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",

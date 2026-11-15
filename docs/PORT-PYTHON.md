@@ -249,7 +249,8 @@ per unit, named for the unit's package:
 
 ```
 <dir>/<package>/__init__.py      re-exports the unit's types, Refused and InvalidValue
-<dir>/<package>/<Base>.py        one module per schema file
+<dir>/<package>/<Base>.py        one module per schema file: its packet declarations
+                                and its table classes side by side
 <dir>/<package>/_schema/         the runtime: serialize.py and the table runtime
 ```
 
@@ -289,11 +290,12 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_table.py`, `kind_pointer.py`,
+  `kind_array.py` and `kind_union.py` register the kinds this cut carries. A
+  later card adds its module and one registration line, never an edit to the
+  body walk. `kind_unsupported.py` is the named placeholder for a construct
+  whose descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -309,12 +311,26 @@ generated class per table and per map entry, each with its descriptor
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
   by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
-- **A packet-typed field is refused by name.** A table field whose type is a
-  packet `type` reaches `refusePacketValues` and is refused naming the field
-  and the type, until P4 carries packet types into tables.
+  variable class, and the by-value arrays and unions a packet type reaches
+  (below). `*bytes`, `*string`, `?T`, `[E]T` and maps have descriptors in this
+  cut and refuse by name through `kind_unsupported.py` until their cards land.
+- **A packet type is carried by value.** A table field, array element, map
+  entry or union arm whose type is a packet `type` is carried on the form-1
+  table wire as SPEC-TABLES states for a type by value: the field's descriptor
+  names the packet class, the field rides kind 13, and an array of the type
+  rides kind 14 with element kind 13 (`kind_array.py`) while a union arm that
+  holds it rides kind 15 (`kind_union.py`). The class itself is the packet
+  core's own generated class and codec, hosted in the same per-file module
+  (`python.Host`), and the runtime ships the packet core's serialize.py beside
+  the table runtime so that class's `read`/`write` still work. The table
+  descriptor is the one the table walk reads; it is registered by name only,
+  because a packet type by value never rides the node table's type ids.
+- **An uncarried packet kind is refused by name.** A packet type or packet
+  union the table closure reaches whose own fields use a kind the PACKET wire
+  does not carry (a `string`, a `float32`, a fixed-point or 128-bit integer,
+  an array, ...) is refused at generate time, naming the type, the field, the
+  kind and P4 the packet wire. It is never a blanket refusal of the unit, so a
+  unit is refused only for the packet kind that is still missing.
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
