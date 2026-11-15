@@ -180,7 +180,7 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]FixedTable
-		if FixedTableFixedLoad(fixed[:], data, tableFixedReadPlanFixedTable, read) != 1 {
+		if FixedTableFixedLoad(fixed[:], data, FixedTableFixedReadPlan, read) != 1 {
 			FixedTableReset(value)
 			return false
 		}
@@ -573,7 +573,7 @@ var FixedTableFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanFixedTable = make([]TableFixedEntry, int(FixedTableFixedPlanMax))
+var FixedTableFixedReadPlan = make([]TableFixedEntry, int(FixedTableFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

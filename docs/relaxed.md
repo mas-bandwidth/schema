@@ -148,6 +148,19 @@ listed case that passes fails the leg until its line is removed.
   conformance red. Files: `Makefile` (`HOSTILE_ENGINE_RELAXED`). Real fix: the
   ports carry both rules, the two rows flip to `refused`, and the filter goes.
   WIP: none.
+- `relax/cook-dead-slots-zero-ports`: `tables-tool-cook-node-align-negative-control`
+  (group `base-tool-cook-differential-b`) does not count the cook-write rows
+  archive, loadout_full, profile_elide, root_default and root_full. Since #3424
+  (fixed-dead-bytes-are-zero) the tool and the C writer leave a counted
+  array's slots past its count zero, but those five fixtures still hold the
+  element defaults there, so `TestCookWriteFixturesAreTheToolsBytes` is red on
+  them with no plant. Regenerating them (`conformance-harness generate`) makes
+  the C leg green and the C++ and Go cook writers red, which still write the
+  defaults (measured on bench; the C++ reference behind
+  `tables-tool-cook-differential` too). Files: `Makefile`
+  (`NODE_ALIGN_STALE_ROWS`). Real fix: every cook writer zeroes the dead slots,
+  the five fixtures are regenerated, and the rows go back into the control.
+  WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 

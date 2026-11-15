@@ -64,7 +64,10 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 		}
 	}
 	// each width's views only where the unit carries that width: the analyzer
-	// refuses an unused field
+	// refuses an unused field. A float64 field also reads an announced f32
+	// through the float32 views (THE FLOAT RUNG, emitMessageReadScalar), so a
+	// unit that carries float64 carries both widths' views.
+	usesFloat32 = usesFloat32 || usesFloat64
 	cells := ""
 	if usesFloat32 {
 		cells += strings.TrimLeft(dartMessageFloat32Runtime, "\n")

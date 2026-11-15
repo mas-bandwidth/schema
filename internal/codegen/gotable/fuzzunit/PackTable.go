@@ -343,7 +343,7 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]GunnerSettings
-		if GunnerSettingsFixedLoad(fixed[:], data, tableFixedReadPlanGunnerSettings, read) != 1 {
+		if GunnerSettingsFixedLoad(fixed[:], data, GunnerSettingsFixedReadPlan, read) != 1 {
 			GunnerSettingsReset(value)
 			return false
 		}
@@ -996,7 +996,7 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]ShipEntry
-		if ShipEntryFixedLoad(fixed[:], data, tableFixedReadPlanShipEntry, read) != 1 {
+		if ShipEntryFixedLoad(fixed[:], data, ShipEntryFixedReadPlan, read) != 1 {
 			ShipEntryReset(value)
 			return false
 		}
@@ -1819,7 +1819,7 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]GlobalSettings
-		if GlobalSettingsFixedLoad(fixed[:], data, tableFixedReadPlanGlobalSettings, read) != 1 {
+		if GlobalSettingsFixedLoad(fixed[:], data, GlobalSettingsFixedReadPlan, read) != 1 {
 			GlobalSettingsReset(value)
 			return false
 		}
@@ -3145,7 +3145,7 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]PackConfig
-		if PackConfigFixedLoad(fixed[:], data, tableFixedReadPlanPackConfig, read) != 1 {
+		if PackConfigFixedLoad(fixed[:], data, PackConfigFixedReadPlan, read) != 1 {
 			PackConfigReset(value)
 			return false
 		}
@@ -4799,7 +4799,7 @@ var GunnerSettingsFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanGunnerSettings = make([]TableFixedEntry, int(GunnerSettingsFixedPlanMax))
+var GunnerSettingsFixedReadPlan = make([]TableFixedEntry, int(GunnerSettingsFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5087,7 +5087,7 @@ var ShipEntryFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanShipEntry = make([]TableFixedEntry, int(ShipEntryFixedPlanMax))
+var ShipEntryFixedReadPlan = make([]TableFixedEntry, int(ShipEntryFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5369,7 +5369,7 @@ var GlobalSettingsFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanGlobalSettings = make([]TableFixedEntry, int(GlobalSettingsFixedPlanMax))
+var GlobalSettingsFixedReadPlan = make([]TableFixedEntry, int(GlobalSettingsFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5765,7 +5765,7 @@ var PackConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanPackConfig = make([]TableFixedEntry, int(PackConfigFixedPlanMax))
+var PackConfigFixedReadPlan = make([]TableFixedEntry, int(PackConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

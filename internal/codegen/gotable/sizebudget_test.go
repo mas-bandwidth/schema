@@ -58,7 +58,9 @@ const (
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
 	// -15: a fixed table's plain Save, Measure and Load are the fixed form's
 	// (§3.4): the variable form's measure walk and save header are gone at a fixed root, and a root with no file form refuses its save (§3.4)
-	goOneTableLineBudget = 10087
+	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
+	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
+	goOneTableLineBudget = 10102
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -99,7 +101,9 @@ const (
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
 	// +39: the strict read and the text read return the measure's refusal before the builder, and a small text decodes into a stack buffer so a refusal allocates nothing.
 	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
-	goExamplesLineBudget = 60078
+	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
+	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
+	goExamplesLineBudget = 60093
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
