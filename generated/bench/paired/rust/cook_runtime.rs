@@ -22,7 +22,6 @@
 // same way; a unit whose cooked records name nothing outside this file needs
 // none of it, and reading the same header everywhere is worth the allow.
 #![allow(unused_imports)]
-#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::manual_range_contains)]
 
 use crate::*;
@@ -70,7 +69,11 @@ pub unsafe fn table_cook_read64(p: *const u8) -> u64 {
 // UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED.
 ///
 /// # Safety
-/// `bytes` must point at `length` readable bytes.
+/// `bytes` must point at `length` readable bytes, and those bytes must be a
+/// genuine cook of this build: every bool byte 0 or 1, every self-relative
+/// offset a slot inside the region, and every count within its declared bound.
+/// The region must stay put and must not be written for as long as the returned
+/// region or anything borrowed from it lives.
 pub unsafe fn table_cook_open(
     bytes: *const u8,
     length: u64,
@@ -150,7 +153,8 @@ pub unsafe fn table_cook_open(
 /// in gotable/refusal.go. The ordinary open stays the fast path.
 ///
 /// # Safety
-/// bytes must point at length readable bytes.
+/// bytes must point at length readable bytes. This may be called on a refused
+/// region: it reads the header only and never forms a reference to a row.
 pub unsafe fn table_cook_open_reason(bytes: *const u8, length: u64, root_size: u64, root_align: u64) -> &'static str {
     unsafe {
         if table_cook_open(bytes, length, root_size, root_align).is_some() { return "ok"; }
@@ -237,6 +241,11 @@ pub enum TableCookRefuse {
 
 // table_cook_put writes one scalar unaligned in the chosen byte order (Go's
 // TableByteOrder: 1 little, 2 big). A null buffer is the measure pass.
+///
+/// # Safety
+/// out is null or points at a writable range of at + width bytes that stays
+/// put and is not written through any other pointer for the duration of the
+/// call; width is at most eight.
 pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, order: u64) {
     if out.is_null() {
         return;
@@ -264,6 +273,11 @@ unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
 // descriptors: present bytes first, every count checked against its declared
 // bound before anything is written, elements at their own width in the chosen
 // order. A null out means measure and validate only (§7.6's measure pass).
+///
+/// # Safety
+/// p must point at a readable record whose fields the descriptor describes;
+/// out is null or points at that record's writable extent. Neither buffer is
+/// written through any other pointer for the duration of the call.
 pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
     for i in 0..t.num_fields as usize {
         let f = &t.fields[i];

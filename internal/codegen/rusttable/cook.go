@@ -159,7 +159,6 @@ const cookModuleBanner = `//
 // same way; a unit whose cooked records name nothing outside this file needs
 // none of it, and reading the same header everywhere is worth the allow.
 #![allow(unused_imports)]
-#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::manual_range_contains)]
 
 `
@@ -209,7 +208,11 @@ pub unsafe fn table_cook_read64(p: *const u8) -> u64 {
 // UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED.
 ///
 /// # Safety
-/// ` + "`bytes`" + ` must point at ` + "`length`" + ` readable bytes.
+/// ` + "`bytes`" + ` must point at ` + "`length`" + ` readable bytes, and those bytes must be a
+/// genuine cook of this build: every bool byte 0 or 1, every self-relative
+/// offset a slot inside the region, and every count within its declared bound.
+/// The region must stay put and must not be written for as long as the returned
+/// region or anything borrowed from it lives.
 pub unsafe fn table_cook_open(
     bytes: *const u8,
     length: u64,
@@ -289,7 +292,8 @@ pub unsafe fn table_cook_open(
 /// in gotable/refusal.go. The ordinary open stays the fast path.
 ///
 /// # Safety
-/// bytes must point at length readable bytes.
+/// bytes must point at length readable bytes. This may be called on a refused
+/// region: it reads the header only and never forms a reference to a row.
 pub unsafe fn table_cook_open_reason(bytes: *const u8, length: u64, root_size: u64, root_align: u64) -> &'static str {
     unsafe {
         if table_cook_open(bytes, length, root_size, root_align).is_some() { return "ok"; }
@@ -693,7 +697,8 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 		g.pf("impl Default for %s {\n", name)
 		g.pf("    fn default() -> Self {\n")
 		g.pf("        // the empty union: tag zero and an overlay of zeros, which is a value\n")
-		g.pf("        // of every arm — each is plain data with no niche in it\n")
+		g.pf("        // of every arm — zero is valid for every scalar and every bool, and a\n")
+		g.pf("        // zero self-relative delta is the null reference\n")
 		g.pf("        unsafe { core::mem::zeroed() }\n")
 		g.pf("    }\n}\n\n")
 	}
@@ -741,8 +746,8 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 	g.pf("}\n\n")
 	g.pf("impl Default for %sRow {\n", st.Name)
 	g.pf("    fn default() -> Self {\n")
-	g.pf("        // a cooked record is plain bytes with no niche in it, so the zero\n")
-	g.pf("        // form is a value of the type by construction\n")
+	g.pf("        // a cooked record's zero form is a value of the type: zero is valid\n")
+	g.pf("        // for every scalar, and false is a valid bool\n")
 	if cookNamedTextReachable(st) {
 		// NAMED string(N)/bytes(N) DEFAULTS LIVE HERE (SPEC §4.2), matching
 		// C++ `char label[8 + 1] = "fx"`. Prefill already carries the same
@@ -799,8 +804,10 @@ func (g *gen) emitCookMapFinds(st *ir.Struct) {
 		g.pf("    /// The entry of `%s` whose key is `key`, by binary search over the\n", f.Name)
 		g.pf("    /// ascending entry array (docs/SPEC-TABLES.md §2.8).\n")
 		g.pf("    ///\n    /// # Safety\n")
-		g.pf("    /// The row must sit in a cook whose region holds its entry array (a cook\n")
-		g.pf("    /// is trusted input, §7).\n")
+		g.pf("    /// The row must sit in a genuine cook of this build: every bool byte 0 or\n")
+		g.pf("    /// 1, every self-relative offset a slot inside the region, and every count\n")
+		g.pf("    /// within its declared bound. The region must not be written while the\n")
+		g.pf("    /// returned entry's lifetime lasts.\n")
 		if key.Type.Kind == ir.TString {
 			g.pf("    pub unsafe fn %s_find(&self, key: &[u8]) -> Option<&%s> {\n", f.Name, entry)
 			g.pf("        let entries = unsafe { self.%s.as_slice() };\n", f.Name)
@@ -1071,7 +1078,13 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    pub const ROOT_SIZE: u64 = %d;\n", layout.Size)
 	g.pf("    pub const ROOT_ALIGN: u64 = %d;\n\n", ir.CookNodeAlign(g.unit, st))
 	g.pf("    /// Open checks the header and POINTS, and that is the WHOLE check.\n")
-	g.pf("    ///\n    /// # Safety\n    /// `bytes` must point at `length` readable bytes that outlive the handle.\n")
+	g.pf("    ///\n    /// # Safety\n")
+	g.pf("    /// `bytes` must point at `length` readable bytes, and those bytes must be a\n")
+	g.pf("    /// genuine cook of this build: every bool byte 0 or 1, every self-relative\n")
+	g.pf("    /// offset a slot inside the region, and every count within its declared\n")
+	g.pf("    /// bound. The region must stay put and must not be written for as long as\n")
+	g.pf("    /// this handle or anything borrowed from it lives; a bool byte that is not\n")
+	g.pf("    /// 0 or 1 is undefined behaviour the moment a row reference is formed.\n")
 	g.pf("    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<%sCook> {\n", st.Name)
 	g.pf("        unsafe {\n")
 	g.pf("            let (region, region_length) =\n")
@@ -1084,7 +1097,10 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("}\n\n")
 	g.pf("// %s dereferences one reference slot: NULL IN A REGION IS A DELTA OF ZERO\n", fn(st.Name, "at"))
 	g.pf("// (docs/SPEC-TABLES.md §6.3), and every other delta is one add.\n")
-	g.pf("///\n/// # Safety\n/// `slot` must point at a reference slot inside a region this build opened.\n")
+	g.pf("///\n/// # Safety\n")
+	g.pf("/// `slot` must point at a reference slot inside a genuine cook of this build,\n")
+	g.pf("/// and a non-zero delta must name a row the region holds. The region must not\n")
+	g.pf("/// be written while the returned pointer or anything read through it lives.\n")
 	g.pf("pub unsafe fn %s(slot: *const i64) -> *const %sRow {\n", fn(st.Name, "at"), st.Name)
 	g.pf("    unsafe {\n")
 	g.pf("        let delta = core::ptr::read_unaligned(slot);\n")
@@ -1275,6 +1291,11 @@ pub enum TableCookRefuse {
 
 // table_cook_put writes one scalar unaligned in the chosen byte order (Go's
 // TableByteOrder: 1 little, 2 big). A null buffer is the measure pass.
+///
+/// # Safety
+/// out is null or points at a writable range of at + width bytes that stays
+/// put and is not written through any other pointer for the duration of the
+/// call; width is at most eight.
 pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, order: u64) {
     if out.is_null() {
         return;
@@ -1302,6 +1323,11 @@ unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
 // descriptors: present bytes first, every count checked against its declared
 // bound before anything is written, elements at their own width in the chosen
 // order. A null out means measure and validate only (§7.6's measure pass).
+///
+/// # Safety
+/// p must point at a readable record whose fields the descriptor describes;
+/// out is null or points at that record's writable extent. Neither buffer is
+/// written through any other pointer for the duration of the call.
 pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
     for i in 0..t.num_fields as usize {
         let f = &t.fields[i];
