@@ -2082,8 +2082,8 @@
     },
     {
       "name": "java-wire-fuzz-retain",
-      "when": "pull-request",
-      "why": "the Java retention arm's control (tables-java-retain-fuzz-negative-control), split from java-wire-fuzz: the three controls in one job ran 109-128 s on AWS runners against the 2-minute per-commit rule (main CI full 43632830583 to 43640159584).",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job ran 109, 110, 124 and 125 s on CI full 43654301368, 43657435173, 43658279634 and 43658322804, killed twice by the 120 s per-commit rule; re-enable: relax/ci-time-java-wire-fuzz-retain. Before: the Java retention arm's control (tables-java-retain-fuzz-negative-control), split from java-wire-fuzz: the three controls in one job ran 109-128 s on AWS runners against the 2-minute per-commit rule (main CI full 43632830583 to 43640159584).",
       "targets": [
         "tables-java-retain-fuzz-negative-control"
       ],
@@ -2091,8 +2091,8 @@
     },
     {
       "name": "java-wire-fuzz-map-count",
-      "when": "pull-request",
-      "why": "the Java map-count control (tables-java-map-count-negative-control), split from java-wire-fuzz for the same 109-128 s.",
+      "when": "nightly",
+      "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job ran 123, 112 and 125 s on CI full 43654301368, 43657435173 and 43658322804, killed twice by the 120 s per-commit rule; re-enable: relax/ci-time-java-wire-fuzz-map-count. Before: the Java map-count control (tables-java-map-count-negative-control), split from java-wire-fuzz for the same 109-128 s.",
       "targets": [
         "tables-java-map-count-negative-control"
       ],
