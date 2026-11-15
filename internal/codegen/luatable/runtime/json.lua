@@ -74,6 +74,32 @@ local function new_in(text)
   return { t = text, p = 1, bad = false }
 end
 
+-- THE BYTES INSIDE A COMMENT, line or block, are well-formed UTF-8 and hold no
+-- NUL (§16.2): an ill-formed sequence refuses string_not_utf8, as at a string
+-- site (§16.3), and a NUL refuses malformed. One pass over t[from..to].
+local function comment_text(inp, from, to)
+  local i = from
+  while i <= to do
+    local c = inp.t:byte(i)
+    if c == 0 then
+      inp.bad = true
+      return false
+    end
+    if c < 0x80 then
+      i = i + 1
+    else
+      local w = utf8_seq(inp.t, i)
+      if w < 0 or i + w - 1 > to then
+        inp.utf8 = true
+        inp.bad = true
+        return false
+      end
+      i = i + w
+    end
+  end
+  return true
+end
+
 local function space(inp)
   while inp.p <= #inp.t do
     local c = inp.t:byte(inp.p)
@@ -83,13 +109,22 @@ local function space(inp)
       local n = inp.t:byte(inp.p + 1)
       if n == 47 then
         inp.p = inp.p + 2
+        local from = inp.p
         while inp.p <= #inp.t and inp.t:byte(inp.p) ~= 10 do
           inp.p = inp.p + 1
+        end
+        if not comment_text(inp, from, inp.p - 1) then
+          inp.p = #inp.t + 1
+          return
         end
       elseif n == 42 then
         local e = inp.t:find("*/", inp.p + 2, true)
         if e == nil then
           inp.bad = true
+          inp.p = #inp.t + 1
+          return
+        end
+        if not comment_text(inp, inp.p + 2, e - 1) then
           inp.p = #inp.t + 1
           return
         end
