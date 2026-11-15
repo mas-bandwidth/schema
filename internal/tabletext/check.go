@@ -30,12 +30,13 @@ func (e *InvalidValue) Error() string {
 // CheckValue walks a value as the writers walk it (absent optionals, elided
 // guards and deprecated fields are not written, so they are not asked) and
 // answers the first value outside its declaration as an *InvalidValue. It is
-// the check of the writers that carry a flags mask by its names or at its
-// declared W bits, the text form and the message form, so a mask bit that
-// names no variant (one a newer writer appended) refuses there rather than
-// being dropped.
+// the check of the TEXT writer, which carries a flags mask by its names, so a
+// mask bit that names no variant (one a newer writer appended) refuses there
+// rather than being dropped. A zero byte or unit is ill-formed text there too
+// (docs/SPEC.md §5.1 row 8): the text reader refuses `\u0000` in placed text,
+// so a writer never produces text its own reader refuses.
 func (m *Model) CheckValue(inst *Instance) error {
-	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}})
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, binaryText: true})
 }
 
 // CheckFileValue is CheckValue for the file forms, variable and fixed, which
@@ -51,8 +52,8 @@ func (m *Model) CheckFileValue(inst *Instance) error {
 
 // CheckBinaryValue is CheckValue for the binary writers that do not carry a
 // file's flags mask, which is the message form: a zero byte or unit is
-// ill-formed text there too (docs/SPEC.md §5.1 row 8), while the TEXT writer
-// alone spells it `\u0000`.
+// ill-formed text there too (docs/SPEC.md §5.1 row 8), as it is for the TEXT
+// writer (CheckValue).
 func (m *Model) CheckBinaryValue(inst *Instance) error {
 	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, binaryText: true})
 }
@@ -100,8 +101,13 @@ func (m *Model) checkField(owner string, fv *Field, seen *checkWalk) error {
 		return &InvalidValue{Field: name, Detail: fmt.Sprintf(format, a...)}
 	}
 	if f.Type.Blob() {
-		if b := fv.Cell.Blob; b != nil && f.Type.Kind == ir.TString && !utf8.Valid(b.Data) {
-			return bad("ill-formed UTF-8 text")
+		if b := fv.Cell.Blob; b != nil && f.Type.Kind == ir.TString {
+			if !utf8.Valid(b.Data) {
+				return bad("ill-formed UTF-8 text")
+			}
+			if seen.binaryText && bytes.IndexByte(b.Data, 0) >= 0 {
+				return bad("ill-formed UTF-8 text (a zero byte)")
+			}
 		}
 		return nil
 	}

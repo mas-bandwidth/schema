@@ -1,11 +1,11 @@
 # The fixed form as an algorithm
 
 **This is the document a port implements form `3` from.** §3.4 of `docs/SPEC-TABLES.md` states the wire and its
-reasons; this page states the same wire as steps, in one notation, so nine languages write the same code. Where
-the two disagree §3.4 is the law and this page is the bug — except at the footnotes, which are rulings neither
-§3.4 nor the C++ reference has caught up to. **The reference is not the specification**: it has accidents, and
-the ports that transliterated it inherited them as law. Implement from this page, prove against the oracle (§7),
-open the C++ only for a byte question.
+reasons; this page states the same wire as steps, in one notation, so every language the compiler emits writes
+the same code. Where the two disagree §3.4 is the law and this page is the bug — except at the footnotes, which
+are rulings neither §3.4 nor the C++ reference has caught up to. **The reference is not the specification**: it
+has accidents, and the ports that transliterated it inherited them as law. Implement from this page, prove
+against the oracle (§7), open the C++ only for a byte question.
 
 ## 0. The notation
 
@@ -226,6 +226,11 @@ value nobody wrote (fix 1). **A union** writes the tag and the taken arm only, z
 absent optional** writes flag `0` and **skips the payload store**: a declared default under a clear flag is
 meaning too (fix 13).
 
+**A COMPRESSED FLOAT'S `-0` IS `+0` ON THE WIRE** (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+fixed-compressed-negzero): the writer stores `+0` for a compressed float's `-0`, the same bits it stores for
+`+0`. It keeps no sign bit and counts nothing. A PLAIN `float32`/`float64`'s `-0` is not this rule's: it is
+carried bit-exact.
+
 **The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks use each language's own idiom, and that decides the build** ([SPEC.md](SPEC.md) §5.1's per-leg table; `docs/rulings.json`, `write-refusal`): a debug-only assert in C, C++, C#, Rust, Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose. `count <= Max`
 and `length <= N` are a caller contract; a release build of a debug-only leg removes its check exactly as it removes `assert`, pays nothing,
 and **clamps nothing**. The Go fixed writer REFUSES in every build: `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
@@ -239,9 +244,12 @@ the Go writer stores exactly that extent and nothing past it, so the caller's st
 storing it, and its dead slots in one clear, rather than inside the record-wide template zero (the same bytes,
 measured faster). The READ side keeps the wire safe: it checks the same number in every build: a count or length
 past its bound refuses `count_over_bound` / `length_over_bound` (§4.5), and a ranged scalar outside the writer's range
-refuses `out_of_range` (§4.6). **Slack is UNSPECIFIED on
-read and not a refusal**: a reader validates the USED UNITS only, and non-zero slack is not damage, not a
-refusal, and moves no counter.
+refuses `out_of_range` (§4.6). **Dead bytes are ZERO on read**: the bytes past the used extent — an absent
+optional's payload, a counted array's slots past its count, a text or bytes field's bytes past its length, and
+an inactive union arm (under tag `0`, and past a narrower taken arm) — are DEAD, and a non-zero dead byte
+REFUSES the whole load as `wire_damaged`, checked over every record before any record lands (§5.3 step 11).
+The reader validates the USED UNITS as values; everything not live in a record is dead, and no counter moves
+for it.
 
 ## 4. The reader: ONE path
 
@@ -304,6 +312,18 @@ to this build's own records; only to a peer's.
 | `widen` | source | destination | the source width | — | `dstsize`, `sign` |
 | `widenf` | source (4) | destination (8) | — | — | f32 into f64 |
 | `const` | — | the tag's storage | the tag width | **the constant**: this reader's own arm ordinal | `guard`, `arg` |
+| `present` | — | the payload's storage | — | **the present byte** | constant `1`, under `guard`, `arg` |
+
+**A PRESENT BYTE, A COUNT, A LENGTH AND A TAG DECIDE WHICH BYTES ARE DEAD.** A datum is LIVE when every guard
+on its chain holds, and, for an optional's payload, when its present byte is `1` (§5.3's definition, and §4.6
+walks the same live data). Everything not live in a record is DEAD, and the reader REFUSES the whole load as
+`wire_damaged` if any dead byte is not zero: the payload under a present byte of `0`; a counted array's
+element slots past its `count`; a `string(N)`'s or `bytes(N)`'s bytes past its used length; and an inactive
+union arm, the bytes under tag `0` and the bytes past a narrower taken arm inside the widest arm's span. An
+optional nested inside an absent payload, and a nested type inside a dead array slot or a dead arm, are dead
+whole. A fixed array `[N]T` and an enum-keyed `[Enum]T` have no dead bytes. A DEPRECATED SLOT is not a dead
+byte. The check is the CHECK pass's, over every record and before any record lands (§5.3 step 11), and it
+names no new vocabulary: `wire_damaged` is the refusal for a dead byte that is not zero.
 
 Flavours: `1` utf8, `3` bytes; `2` is retired with wide text and never reused. An **identity plan carries only `copy`, `count` and `text`** — an enum
 ordinal and a union tag ride inside plain `copy` runs there, so the range closing of §4.5 must live in the
@@ -398,23 +418,34 @@ The reader validates on load in **every** build, release included; a count or le
 | case | what it does, and what it validates |
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
-| `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE count_over_bound` — before any destination byte is written. Else `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
-| `text` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The length unit is BYTES, and the CONTENT RULES apply to the USED BYTES and nothing else**: UTF-8 validity over `v` bytes, never over `N` (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
+| `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE count_over_bound` — before any destination byte is written. Else `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written. **The element slots past its count are DEAD**, and a non-zero one refuses `wire_damaged` in the CHECK pass (§5.3 step 11) |
+| `text` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The bytes past the used length are DEAD**, and a non-zero one refuses `wire_damaged` in the CHECK pass (§5.3 step 11). **The length unit is BYTES, and the CONTENT RULES apply to the USED BYTES and nothing else**: UTF-8 validity over `v` bytes, never over `N` (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`, the WRITER's variant count; if `raw == 0`, `PUT(dstsize, out+dst, 0)` (None); if `raw <= n`, `PUT(dstsize, out+dst, table[raw])`; otherwise the op writes NOTHING and sets the record's FORGED FLAG for that field, so no forged value is ever landed or needs a representation. The op refuses nothing itself: the BOUNDS PASS refuses on the flag (§4.6), the one place ordinals are checked |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction (a non-finite f32 never reaches `widenf`: the read refuses it, SPEC-TABLES.md §3.3) |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
-| a `bool` or a PRESENT FLAG | a byte of `0` or `1` lands as the language's own false or true; **any other byte refuses `wire_damaged`** (SPEC-TABLES §4, §6.5): no writer emits one, and `0x02` is neither stored verbatim nor normalized |
+| a `bool`, a PRESENT FLAG, or the `present` op | a byte of `0` or `1` lands as the language's own false or true; **any other byte refuses `wire_damaged`** (SPEC-TABLES §4, §6.5): no writer emits one, and `0x02` is neither stored verbatim nor normalized. A present byte of `0` makes the payload under it DEAD, and a non-zero dead byte refuses `wire_damaged` in the CHECK pass (§5.3 step 11) |
+
+**EVERY DEAD BYTE IS CHECKED FOR ZERO IN THE CHECK PASS, NOT HERE.** The `count` row fixes a counted array's
+live slots, the `text` row a text or bytes field's used length, the present byte an absent optional's whole
+payload, and an inactive union arm is every byte outside the arm the tag names: tag `0` names no arm, and a
+narrower taken arm leaves the rest of the widest arm's span dead. Those dead bytes are never landed as values;
+a non-zero one REFUSES the whole load as `wire_damaged` in §5.3 step 11, over every record and before any
+record lands (§4.1 states the four kinds).
 
 ### 4.6 The bounds pass
 
 **A record is a positional image and the read loop moves bytes: it asks nothing about what they mean.** Two
 things a declaration bounds are held by nobody in §4.5 — a RANGED SCALAR's min and max, and an ORDINAL's set: a
 union tag past the arm count, an enum ordinal past the enum's top value. They are held by **STRAIGHT-LINE CODE
-AFTER THE PLAN RUN, and NOT BY PLAN ENTRIES**, an entry per bounded field being a test on every read of every
-record. **THE PASS RUNS OVER STORAGE, which is what makes ONE pass cover BOTH plans**: both land values in the
-same places, so a compiled plan needs no op of its own. It walks only **what a read can have written**, the LIVE data defined in §5.3 (a
+IN THE CHECK PASS, BEFORE ANY DESTINATION BYTE LANDS, and NOT BY PLAN ENTRIES**, an entry per bounded field
+being a test on every read of every record. **THE PASS READS THE RECORD BYTES THROUGH THE PLAN, which is what
+makes ONE pass cover BOTH plans**: both name the same source offsets and kinds, so a compiled plan needs no op
+of its own. It walks only **what a read can land**, the LIVE data defined in §5.3 (a
 counted array's first `min(count, bound)` elements, an optional's payload when its present byte is `1`, an arm
-whose guards hold) and never slack, because the prefill's defaults are in range by construction. **The pass REFUSES; it never clamps.** A type that bounds nothing emits no pass at all.
+whose guards hold); the bytes that are not live are DEAD and are not walked for bounds, because the prefill's
+defaults are in range by construction and the same CHECK pass holds every DEAD byte to zero (§5.3 step 11).
+**The pass REFUSES; it never clamps.** A type that bounds nothing emits no pass at all. A value the plan would
+widen is read at the WRITER's kind and held in the reader's type, exactly as the `widen` op lands it.
 
 **THE BOUNDS THIS PASS HOLDS ARE THE PLAN'S — THE WRITER'S OWN for the lineage entry the plan was compiled
 for** (bill §12.5), and never the reader's: the reader's range is the wider one, so holding to it would admit a
@@ -425,7 +456,9 @@ reference still owes the rest (§5.8 row 4).
 - **A RANGED SCALAR** outside the min and max the plan carries: `REFUSE out_of_range`, naming the field.
   **A fixed-point field's bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by
   `F` first; a `bits(N)` past `2^N - 1` refuses by the same name. A COMPRESSED FLOAT is a ranged scalar
-  here, its range carried by the plan like any other. **Every element of a ranged FIXED ARRAY is refused the
+  here, its range carried by the plan like any other. **Its `-0` is `+0`:** the bounds pass lands it as
+  exactly what `+0` lands as, refuses nothing and counts nothing, because only the sign differs
+  (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero). **Every element of a ranged FIXED ARRAY is refused the
   same as a scalar**, each by the same name. **The comparison is in the field's own type**: signed for a
   signed kind, UNSIGNED for an unsigned one, so a `uint64` at or above `2^63` is past the max and refuses.
 - **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant (the `ordinal` op's
@@ -553,7 +586,9 @@ fnv1a64 over `bytes` and then `digest` and refuses a line whose `wire` disagrees
 the field lines. **The SET is bound too**: `lineage=0x…` on the `fixed table` line is one hash over every
 entry's wire hash and retired mark, in order (#912), so a hand that DELETES, reorders or re-marks a lineage
 line is caught by name — and the remedy it names is never "write it again", because no command can recover the
-layout bytes of a record nobody declares any more: restore the file from version control. A layout stops being
+layout bytes of a record nobody declares any more: restore the file from version control. **AND THE LOCK REFUSES
+TWO LINEAGE ENTRIES WITH ONE HASH**: step 5 resolves a hash by its FIRST index, so a second entry carrying the
+same wire hash would be unreadable for ever, and the lock refuses the collision by name. A layout stops being
 served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and moves the
 floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
 becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
@@ -852,9 +887,10 @@ fixture asserts on a full widened run is the EXACT `min(their_n, my_n)`** (§5.9
 **COMPILED ENTRIES AND LIVE EXECUTION ARE DISTINCT.** The `min(their_n, my_n)`
 above is the number of element entries emitted from the two schema bounds. For
 an array with a count, execution visits only entries inside the record's live
-count (held to the admitted bounds). Entries past that count describe slack:
-they validate nothing, refuse nothing, and move no counter, as SPEC-TABLES
-§3.4 requires. In particular, a widened counted array reports one `widened`
+count (held to the admitted bounds). Entries past that count describe DEAD
+slots: they land nothing as a value and move no counter, and the CHECK pass
+(§5.3 step 11) refuses the whole load as `wire_damaged` when any byte of a
+dead slot is not zero, as SPEC-TABLES §3.4 requires. In particular, a widened counted array reports one `widened`
 per live element, not per reserved slot. The four-element case in §5.9 #33
 sends all four elements and still requires exactly four widenings.
 
@@ -943,9 +979,12 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
      record_bytes IS THE WHOLE RECORD, 8 + body, handed down already added (§5.2)
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
-      if record_bytes <= 8 or rest mod record_bytes != 0: REFUSE truncated
-                                                         -- 8 is the per-record hash; a body of nothing behind
-                                                        -- it would make `n` the file's length (fixedform.go:563)
+      if rest == 0 or record_bytes <= 8 or rest mod record_bytes != 0: REFUSE truncated
+                                                         -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a header
+                                                        -- and a layout followed by no record reads `n` = 0, and a
+                                                        -- batch of none holds no value to read. 8 is the per-record
+                                                        -- hash; a body of nothing behind it would make `n` the
+                                                        -- file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
  11  CHECK, every record, before any byte lands       -- in any order; the first condition met refuses
      per record, at `at`:
@@ -955,13 +994,15 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
          ill-formed used text:                          REFUSE text_ill_formed
          a count or length past the plan's bound:      REFUSE count_over_bound / length_over_bound
          a NaN or an infinity:                          REFUSE non_finite_float
+         a ranged scalar or a `bits(N)` past the plan's range: REFUSE out_of_range
+         an ordinal or a tag past the plan's set:       REFUSE out_of_range
+       every DEAD byte (LIVE, below):
+         a dead byte that is not zero:                  REFUSE wire_damaged
        at := at + record_bytes
- 12  LAND, every record                               -- the bounds pass refuses `out_of_range`
+ 12  LAND, every record                               -- the check pass has already refused every bad value
      per record, at `at`:
        PREFILL(out[rec], fills)                         -- §4.3
        RUN(plan, split, at+8, out[rec])                 -- §4.4, one loop, either plan
-       BOUNDS(out[rec])                                 -- §4.6, against THE PLAN'S bounds: REFUSE out_of_range,
-                                                        -- resetting every value written (below)
        at := at + record_bytes
      return n
 ```
@@ -1007,6 +1048,7 @@ nothing could reach.
 | a known hash whose LINEAGE ENTRY would not build | `layout_malformed` | the entry's own lane carries it, never a throw (§5.9 #36); a plan the compiler cannot lay is a GENERATE-time failure |
 | the plan does not fit the CALLER's declared capacity | `plan_too_large` | a caller resource refusal, outside the verdict contract (SPEC-TABLES §6.5); never a read-time stand-in for a plan the build should have laid |
 | an entry past the writer's record size | `layout_record_too_large` | the name |
+| a header and a layout followed by no record — `n` is 0, and a batch of none holds no value to read | `truncated` | the name |
 | a record size of `8` or less — the per-record hash and no body behind it | `truncated` | the name |
 | a ragged tail: `rest mod record_bytes != 0` | `truncated` | the name |
 | more records than the caller's capacity | `batch_too_large` | the name |
@@ -1015,29 +1057,47 @@ nothing could reach.
 | a length past the plan's cap (§4.5) | `length_over_bound` | the name |
 | ill-formed text in the USED units | `text_ill_formed` (§4.5, fix 11) | the name |
 | a bool or a present byte other than `0` or `1` | `wire_damaged` (§4.5) | the name |
+| a dead byte that is not zero — an absent optional's payload, a counted array's slots past its count, a text or bytes field's bytes past its length, an inactive union arm (§4.1, §4.5) | `wire_damaged` | the name |
 | a ranged scalar, a `bits(N)`, an ordinal or a tag outside the WRITER's range or set (§4.5, §4.6) | `out_of_range` | the name, naming the field |
 
-**REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal up to
-and including the per-record hash, count, length and text checks writes not one destination byte, the prefill
-included. A refusal the bounds pass meets after a record has landed (`out_of_range`) RESETS every value the load wrote to its declared defaults before it returns, which is
-the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first byte, a short header, a nonzero
-reserved byte, a ragged tail — is a refusal like any other, each by its own name (`truncated`,
-`reserved_not_zero`).
+**REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal,
+`out_of_range` included, writes not one destination byte, the prefill included: the bounds checks run in the
+check pass, before any record lands, beside the per-record hash and the count, length, text, bool and
+present-byte checks, and step 12 lands values already known good and refuses nothing. **A check that needs a
+value the plan would widen, or a planned offset, computes it from the record bytes and the plan**: a ranged
+scalar or a `bits(N)` is read at its `src` through the plan's entry, at the writer's width and signedness,
+then held in the reader's own type exactly as the `widen` op would land it (a fixed-point value shifted into
+VALUE UNITS by its `F`); an ordinal or tag is read at its own width, and a value past the plan's set is
+refused on the rule the remap table applies. Every refusal therefore leaves the caller's destination exactly
+as it was before the load — never clamped, never zero-filled, never prefilled, never reset to its declared
+defaults — which is the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first byte, a
+short header, a nonzero reserved byte, a ragged tail — is a refusal like any other, each by its own name
+(`truncated`, `reserved_not_zero`).
 
 **LIVE IS A TOTAL FUNCTION OF THE RECORD AND THE PLAN.** A datum is live when every guard on its chain
 holds its ordinal in the record (a tag byte equal to the guard's value, compared at its width), and, for
 an optional's payload, when its present byte is `1`. A counted array's live elements are its first
 `min(count, bound)` elements, `bound` being the plan's; a count past the bound is itself refused, so on a
 record that reads the two agree. A fixed array's elements are all live. A present byte other than `0` or `1` is
-refused by the check loop itself, so no payload's liveness rests on it. A TAG is checked in the bounds pass,
-not in the check loop (§4.6): a tag past the writer's arm count equals no guard's value, so no arm under it
-is live, and the bounds pass then refuses the tag.
+refused by the check loop itself, so no payload's liveness rests on it. A TAG is checked in the check pass,
+before any record lands (§4.6), from the record bytes and the plan: a tag past the writer's arm count equals
+no guard's value, so no arm under it is live, and the check pass then refuses the tag.
+
+**EVERYTHING NOT LIVE IS DEAD, AND EVERY DEAD BYTE IS ZERO.** LIVE is the definition of what is READ AS A
+VALUE; the four kinds of dead byte are the payload under a present byte of `0`, a counted array's element
+slots past its `count`, a `string(N)`'s or `bytes(N)`'s bytes past its used length, and an inactive union
+arm — the bytes under tag `0` and the bytes past a narrower taken arm inside the widest arm's span. An
+optional nested inside an absent payload, and a nested type inside a dead array slot or a dead arm, are dead
+whole. A fixed array `[N]T` and an enum-keyed array have no dead bytes; a DEPRECATED SLOT is not a dead byte.
+The CHECK pass refuses the whole load as `wire_damaged` when any dead byte is not zero, before any record
+lands.
 
 **TOTAL OVER THE BATCH.** A reader checks EVERY record's hash and its live counts, lengths, used text, bool
-and present bytes and floats, each against the WRITER's layout, before the first record lands, in whatever
-order is fastest for its language, and refuses at the first condition it meets. Only then does it land the
-records and run the bounds pass. A refusal of the check loop leaves `out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never
-left partly landed. This is the answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
+and present bytes, floats, ranges, ordinals and tags, and that every dead byte is zero, each against the
+WRITER's layout, before the first record lands, in whatever order is fastest for its language, and refuses at
+the first condition it meets. Only then does it land the records, values already known good. A refusal leaves
+`out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never left
+partly landed. This is the answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
 
 **THE CROSS-LANGUAGE ANSWER IS THE VERDICT** (SPEC-TABLES §6.5): "refused", or a read that lands values,
 which written back equal the canonical bytes. The reason and the `widened` count are per-language
@@ -1089,7 +1149,7 @@ diagnostics (SPEC-TABLES §6.5). `widened` is the one counter; every other row i
 |---|---|---|
 | `MATCH` and `EMIT`, at COMPILE | `UNLAWFUL` | a writer field no reader field names, or a pair whose kinds moved off every ladder: the entry is not a lawful widening of the reader, no plan is laid for it, and a file under its hash refuses `layout_malformed` (§5.2, §5.9 #30) |
 | `widen`, `widenf` | the value lands, exact; `widened` is a per-language diagnostic, not compared | a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**; the value written back equals the canonical bytes |
-| LOAD's CHECK loop (§5.3 step 11) | `no_layout`, `count_over_bound`, `length_over_bound`, `text_ill_formed`, `wire_damaged`, `non_finite_float` | a forged record hash, a count or length past the plan's bound, ill-formed used text, a bool or present byte other than `0` or `1`, a NaN or an infinity, over LIVE data only; any order, the first met refuses (SPEC-TABLES §6.5) |
+| LOAD's CHECK loop (§5.3 step 11) | `no_layout`, `count_over_bound`, `length_over_bound`, `text_ill_formed`, `wire_damaged`, `non_finite_float` | a forged record hash, a count or length past the plan's bound, ill-formed used text, a bool or present byte other than `0` or `1`, a NaN or an infinity, and a non-zero DEAD byte, over the record's live data and its dead bytes; any order, the first met refuses (SPEC-TABLES §6.5) |
 | the bounds pass | `out_of_range` | a ranged scalar off the plan's end, a `bits(N)` past `2^N - 1`, a union tag past the plan's arm count, an enum ordinal past the plan's top variant (a FORGED ordinal), **on the COMPILED plan exactly as on the identity one** (§4.6) |
 | `copy`, `const`, `present` | none | the op lands its value and moves nothing |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **the counter stays at zero**: an append the reader knows is not an event |
@@ -1626,7 +1686,8 @@ with count zero executes zero widenings; count one executes one; the example
 above has count four and executes four. Plan compilation still emits the
 bound-many entries because the per-record count is not known at compile time.
 This ruling forbids folding away a widening; it does not override §3.4's slack
-rule or require reading bytes past the live count. The native regression is
+rule or require reading bytes past the live count as values: those slots are
+dead, and the CHECK pass holds them to zero (§5.3 step 11). The native regression is
 `TestFixedCountedArrayLiveExtent` in `internal/codegen/elixirtable`.
 
 **34. THE STATIC-DATA STRUCT'S NAME IS THE CONTRACT; ITS MEMBER COUNT CAN BE THE LANGUAGE'S.** The name on this
@@ -1803,7 +1864,7 @@ of its own LINEAGE and its own files, and a table with no form is a root of neit
 | bound | verdict |
 |---|---|
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
-| **65536 bytes of record body** | a DECLARED fixed table keeps its storage, cook and block forms, but has NO FILE FORM: its file save refuses and its root refuses form `1`; the compiler names the table and its size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
+| **a record body of 65536 bytes is lawful and 65537 is not** | measured on the BODY, never on `8 + body`. A DECLARED fixed table PAST it keeps its storage, cook and block forms, but has NO FILE FORM: its file save refuses and its root refuses form `1`; the compiler names the table and its size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
 | **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
 | **64 nested LAYOUT ENTRIES** | a WARNING, always on, naming the table and its depth, and past it the table DOES NOT CARRY THE FIXED FORM — it keeps form `1`, and the `fixed` keyword still buys it the CLASS. A DECLARED fixed table is named the more loudly (the keyword is a request, and a request this form cannot serve is said out loud), but NEITHER IS EVER A SILENT DROP (fix 4). **THERE IS ONE NUMBER**: the layout's own 64 (§5.2's `layout_malformed`, docs/SPEC-TABLES.md §3.4's *"the walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*), which is what every runtime holds the wire to (`kTableFixedMaxDepth`), so the compiler cannot drop a form the wire would have carried. The root is depth 0. A nesting GROWN across it is refused at the lock, like the ceiling: the entries all widen legally while the form changes underneath |
 | **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |
@@ -1848,56 +1909,33 @@ not transliterate.** Then **prove against the oracle, in this order**:
 | 5 | **a byte-flip fuzz over the whole file, under a sanitizer, and it is not optional** — every offset is arithmetic over sizes a stranger wrote down, so every byte, one bit at a time, is answered one of two ways and never a third: a refusal by one name, or a read that lands values |
 | 6 | **the fixtures**, beside the corpus: `test/tables/FX1`/`FX2` (widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)`), `V1`/`V2` (a variant and an arm inserted mid-list, keyed slots sliding, an optional, a moved kind), `P1`/`P3` (value against `?T`), `UT1`/`UT2` (the guard and flavour lanes), and `bench/corpus/FixedTable.schema` |
 
-## 8. Coverage matrix stub
+## 8. Coverage
 
-Nine languages, one wire. Fill a cell when that port has proved the construct against the
-fixture in §7; leave it blank until it has. **C++ is the reference writer of the dump corpus,
-not an exemption from the proof.** This table is a stub: the fixtures exist, the per-language
-ticks are the work. It is not a second coverage page; every cell points at a fixture §7
-already names.
+Per-leg status is `ROADMAP.md`'s and `docs/roadmap.sexp`'s, not this page's: a leg ticks §7's proofs there, and
+those ticks are the status. **C++ is the reference writer of the dump corpus, not an exemption from the proof.**
+This page states the rules a leg proves; it keeps no second status table.
 
-| construct | fixture | cpp | c | go | cs | rust | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|---|---|
-| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack`/`fu1`/`fu2` | golden | | | | | | | | |
-| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3`, `fu1` into FU2 (NEW-READS-OLD) | golden | | | | | | | | |
-| the two widening rungs asserted after the compiled read | `fu1` into FU2: `mark int16`→`int32` SIGN-EXTENDED, `heat float32`→`float64` on the payload bits | golden | | | | | | | | |
-| OLD-REFUSES-NEW | `fu2` under FU1: `layout_unknown`, the file's hash, nothing decoded (COMPILE from the lock) | golden | | | | | | | | |
-| widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)` | `test/tables/FX1`/`FX2` | golden | | | | | | | | |
-| variant/arm inserted mid-list, keyed slots sliding, optional, moved kind | `V1`/`V2` | golden | | | | | | | | |
-| `?T` against a plain nesting | `P1`/`P3` | golden | | | | | | | | |
-| guard ordinal and text flavour as two lanes | `UT1`/`UT2` | golden | | | | | | | | |
-| keyed arrays nesting keyed arrays | dump `keyed` | golden | | | | | | | | |
-| counted arrays, enum off default, optionals in elements | dump `pack` | golden | | | | | | | | |
-| `FixedTable` wrapping `BenchMixed` | `bench/corpus/FixedTable.schema` | golden | | | | | | | | |
-| seven layout rules, each by own name | §7 item 3 | golden | | | | | | | | |
-| form bytes `1`/`2`/`6` | `previous_form`, `message_form_as_file`, `newer_form` | golden | | | | | | | | |
-| `plan_too_large` / `no_layout` / ragged tail | §7 item 3 | golden | | | | | | | | |
-| wrong plan, swapped `bytes(N)`, shared `arg`/`meta` | §7 item 4 | golden | | | | | | | | |
-| byte-flip fuzz, sanitizer, three answers never a fourth | §7 item 5 | | | | | | | | | |
+## Reference fixes
 
-A blank cell is not a skip. It is a cell nobody has ticked on this page yet.
+Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**.
 
-## Reference fixes pending
-
-Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**. Four landed while it was written.
-
-| fix | what it is | where it stands |
+| fix | what it is | where the rule is stated |
 |---|---|---|
-| 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | LANDED, `860d9f6f` |
-| 2 | **Bool and present flags** — a byte other than `0` or `1` refuses `wire_damaged` (2026-11-03); the reference lands both with a plain one-byte copy, so `0x02` becomes a `bool` holding `2` | pending, every leg |
-| 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | validation LANDED, `3e3da58d`; the names pending |
-| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | LANDED, `eeb5563b` |
-| 5 | **The ranged bound** — a ranged integer outside the writer's range refuses `out_of_range` on load, fixed-point on the raw scale (2026-11-03; it clamped and counted before) | pending, every leg — §4.6 |
-| 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | pending |
-| 7 | **Wide kinds** — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path | LANDED, `22a161c5` |
-| 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | in flight (JS) |
-| 9 | **The Envelope tag** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy; it now refuses `out_of_range` | pending, every leg — §4.6 |
-| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | LANDED, `79e34542` |
-| 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound refused where §3.4 says otherwise. The ruling: the length REFUSES BY NAME (`length_over_bound`), and the CONTENT refuses by name as the packet reader does (`text_ill_formed`) | pending |
-| 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | LANDED, `8c15973d` |
-| 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | LANDED, `db52975f` |
-| 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant REFUSE `out_of_range` (2026-11-03), on the identity path as well as the compiled one | pending, every leg — §4.5, §4.6 |
-| 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. Glenn's ruling: prefill the bytes the plan does not write; identity's list is empty | in flight (C #838, Rust #837) |
+| 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | §3.1 |
+| 2 | **Bool and present flags** — a byte other than `0` or `1` refuses `wire_damaged` (2026-11-03); the reference lands both with a plain one-byte copy, so `0x02` becomes a `bool` holding `2` | §4.5 |
+| 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | §1.1, §4.2 |
+| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | §6 |
+| 5 | **The ranged bound** — a ranged integer outside the writer's range refuses `out_of_range` on load, fixed-point on the raw scale (2026-11-03; it clamped and counted before) | §4.6 |
+| 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | docs/SPEC-TABLES.md §3.4 |
+| 7 | **Wide kinds** — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path | docs/SPEC-TABLES.md §15 |
+| 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | §1 |
+| 9 | **The Envelope tag** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy; it now refuses `out_of_range` | §4.6 |
+| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | §4.1, §5.2 |
+| 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound refused where §3.4 says otherwise. The ruling: the length REFUSES BY NAME (`length_over_bound`), and the CONTENT refuses by name as the packet reader does (`text_ill_formed`) | §4.5 |
+| 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | §4.1 |
+| 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | §3.1, §4.3 |
+| 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant REFUSE `out_of_range` (2026-11-03), on the identity path as well as the compiled one | §4.5, §4.6 |
+| 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. Glenn's ruling: prefill the bytes the plan does not write; identity's list is empty | §4.3 |
 
 Three smaller divergences, recorded rather than fixed here. **(a)** §3.4's `C` table gives an enum's ordinal
 width as `1, 2 or 4`, where the compiler and the reader both admit `8`, derived from the enum's top wire value.

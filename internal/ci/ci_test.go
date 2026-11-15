@@ -999,6 +999,18 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-cpp", streamToDevPR); ok {
 		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-cpp below main")
 	}
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-rust", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-rust below main")
+	}
+	// the Rust probe row runs exactly when the plan selects the Rust leg
+	rustIntoMain := sameRepoMainUnlabeled
+	rustIntoMain.PlanLegs = `["rust"]`
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", rustIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
+	}
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast.yml:leg-gate-rust ran with no Rust leg in the plan")
+	}
 	// the C++ parts run exactly when the plan selects the C++ leg
 	cppIntoMain := sameRepoMainUnlabeled
 	cppIntoMain.PlanLegs = `["cpp"]`
@@ -1187,13 +1199,14 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// does not name it (a push-and-pull-request replay, say).
 	// The plan here selects the Lobster leg too, whose rows are a job of
 	// their own (ci-fast.yml leg-gate-lobster) gated on that selection.
-	// leg-gate-squirrel and leg-gate-cpp are gated the same way on theirs.
+	// leg-gate-squirrel, leg-gate-cpp and leg-gate-rust are gated the same way
+	// on theirs.
 	dispatchEv := ciEvent{
 		Name:     "workflow_dispatch",
 		Branch:   "main",
 		Repo:     repo,
 		PlanPkgs: planPkgs,
-		PlanLegs: `["cpp","go","lobster","squirrel"]`,
+		PlanLegs: `["cpp","go","lobster","rust","squirrel"]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1247,6 +1260,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:leg-gate-cpp",
 		"ci-fast.yml:leg-gate-lobster",
+		"ci-fast.yml:leg-gate-rust",
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
