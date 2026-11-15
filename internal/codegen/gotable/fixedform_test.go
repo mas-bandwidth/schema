@@ -1895,16 +1895,16 @@ func TestLiveCount(t *testing.T) {
 	one.Marks[0] = 99
 	refused("a live element past its bound", one)
 
-	// THE CONTROL: the slack and an absent optional's payload are not live,
-	// and a value in them past the bound reads
+	// THE CONTROL: the writer's zeroed dead bytes and absent optional payload
+	// read. A non-zero dead byte is refused by TestFixedFormNonZeroSlackRefused
+	// and by the fixedvector dead-byte cases.
 	RootReset(&one)
 	one.MarksCount = 1
 	one.Marks[0] = 10
-	one.Marks[1], one.Marks[2], one.Marks[3] = 99, 99, 99
 	one.NotePresent = false
-	one.Note = 99
-	if got, r, n := load("slack", one); n != 1 || r != (TableReport{}) || got.Marks[0] != 10 || got.MarksCount != 1 {
-		t.Fatalf("LIVE: the slack or an absent payload was held: n=%d %+v %+v", n, got, r)
+	one.Note = 0
+	if got, r, n := load("zero dead bytes", one); n != 1 || r != (TableReport{}) || got.Marks[0] != 10 || got.MarksCount != 1 {
+		t.Fatalf("CONTROL: writer zero-dead-byte image did not read: n=%d %+v %+v", n, got, r)
 	}
 
 	// an ordinal past its set refuses, the union tag and the enum alike
@@ -3053,10 +3053,11 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 
 // TestFixedFormZeroBehindNarrowerArm is item W3 of schema#876, "zero behind a
 // narrower arm", asserted BY NAME on this leg (docs/FIXED-FORM-ALGORITHM.md
-// §3.1: "**A union** writes the tag and the taken arm only, zero behind a
-// narrower one"; docs/SPEC-TABLES.md §3.4, the union row: "ZERO on write behind
-// a narrower arm, IGNORED on read, never a refusal"). The rule has no C++
-// reference case of its own — the reference's slack_case() is the TEXT and
+// §3.1: a narrow arm's dead tail is zero on write and a non-zero byte refuses
+// the whole read as wire_damaged; docs/SPEC-TABLES.md §3.4). This test checks
+// the writer's zero fill; the generated-reader refusal is covered by
+// TestFixedDeadBytesAreZero's dead_union_narrow_tail.bin vector. The rule has
+// no C++ reference case of its own — the reference's slack_case() is the TEXT and
 // ARRAY rows, and its absent_optional_case() is the `?T` row — so the case is
 // written from the two docs, and it names them.
 //

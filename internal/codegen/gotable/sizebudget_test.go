@@ -35,7 +35,7 @@ const (
 	// +223: the one read (SPEC-TABLES §4, §6.5): the wire-alone check over every byte, the node table and the pointer graph, run before every variable-form body read
 	// +9: a message body refuses a field id it has carried (SPEC-TABLES §3.3)
 	// +4: a flags name twice in a JSON array refuses (SPEC-TABLES §16.2)
-	// +44: the fixed pre-scan reads used units only, never the slack past a count or under an absent optional (SPEC-TABLES §3.4)
+	// +44: the fixed pre-scan checks dead spans for zero after validating used units (fixed-dead-bytes-are-zero; SPEC-TABLES §3.4)
 	// +9: the message save refuses a ranged value or a flags bit its bits would truncate (SPEC-TABLES §3.3, §5)
 	// +13: the wire check holds the binary nesting bound (SPEC-TABLES §4, binary_max_depth)
 	// +26: the JSON read refuses a repeated decoded key it cannot place (SPEC-TABLES §16.2)
@@ -81,7 +81,7 @@ const (
 	// +2961: a fixed table whose closure holds a union carries the fixed form in a regional unit (RootConfig, LoadoutConfig, ArchiveConfig and their closure: leaves, write bodies, checks, plans)
 	// +252: a message body refuses a repeated field id, and an enum-keyed array a repeated slot (SPEC-TABLES §3.2, §3.3)
 	// +4: a flags name twice in a JSON array refuses (SPEC-TABLES §16.2)
-	// +44: the fixed pre-scan reads used units only, never the slack past a count or under an absent optional (SPEC-TABLES §3.4)
+	// +44: the fixed pre-scan checks dead spans for zero after validating used units (fixed-dead-bytes-are-zero; SPEC-TABLES §3.4)
 	// +168: the message save refuses a value outside its declaration, and a ranged value or a flags bit its bits would truncate (SPEC-TABLES §3.3, §5)
 	// +13: the wire check holds the binary nesting bound (SPEC-TABLES §4, binary_max_depth)
 	// +26: the JSON read refuses a repeated decoded key it cannot place (SPEC-TABLES §16.2)
