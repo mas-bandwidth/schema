@@ -5176,6 +5176,12 @@ defmodule Bench.Table do
         _ ->
           {:error, :malformed, empty_report()}
       end
+    rescue
+      # A read answers a value or a refusal (docs/SPEC-TABLES.md §6.5): an
+      # error raised inside the read is that refusal, never an escape from
+      # from_json.
+      _ ->
+        {:error, :malformed, empty_report()}
     catch
       {:missing_required, report} ->
         {:error, :missing_required, report}
@@ -6169,6 +6175,11 @@ defmodule Bench.Table do
     {:skip, throw(:wire_damaged)}
   end
 
+  # a big integer token is a decimal number for a float field: its text is
+  # parsed at the field's width, never folded into a bignum.
+  defp json_read_field(%{t: :float} = f, {:bigint, token}, report),
+    do: json_read_field(f, {:decimal, token}, report)
+
   defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
     case json_float_in_width(raw, f.width) do
       :error ->
@@ -6547,6 +6558,11 @@ defmodule Bench.Table do
     end
   end
 
+  # a big integer token is a decimal number for a float element.
+  defp json_read_list_elem(%{elem_kind: kind} = f, {:bigint, token}, report)
+       when kind in [10, 11],
+       do: json_read_list_elem(f, {:decimal, token}, report)
+
   defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
        when kind in [10, 11] and is_number(e) do
     case json_float_in_width(e, kind_width(kind)) do
@@ -6897,63 +6913,77 @@ defmodule Bench.Table do
   # no plus sign, digits after a point and an exponent); an integer stays an
   # integer and anything else stays its decimal text, {:decimal, token}, so a
   # fixed-point field reads it exactly and every other field reads the double
-  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2).
+  # it spells (docs/SPEC-TABLES.md §3, §4.12, §16.2). An integer token past
+  # what any integer field holds rides as {:bigint, token}: a float field reads
+  # the same text, and an integer field refuses it without a bignum.
   defp json_number(bin) do
     with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
          {:ok, frac_digits, r3} <- json_num_frac(r1),
          {:ok, exp_str, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
-      sign_str = if neg, do: "-", else: ""
+      token = json_token(bin, r4)
 
       cond do
-        neg and int_value == 0 and frac_digits == "" and exp_str == "" ->
+        frac_digits != "" or exp_str != "" ->
+          {:ok, {:decimal, token}, r4}
+
+        int_value == :big ->
+          {:ok, {:bigint, token}, r4}
+
+        neg and int_value == 0 ->
           # -0 KEEPS ITS SIGN (docs/SPEC-TABLES.md §3.3, §16.2): an integer
           # has no -0, so the token rides as its decimal text and a float
           # field reads -0.0 from it, where an integer field still reads 0
-          {:ok, {:decimal, "-0"}, r4}
-
-        frac_digits == "" and exp_str == "" ->
-          {:ok, if(neg, do: -int_value, else: int_value), r4}
+          {:ok, {:decimal, token}, r4}
 
         true ->
-          token =
-            sign_str <>
-              Integer.to_string(int_value) <>
-              if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
-
-          {:ok, {:decimal, token}, r4}
+          {:ok, if(neg, do: -int_value, else: int_value), r4}
       end
     end
   end
+
+  # json_token is the token as the document spells it, a sub-binary of the
+  # document: its length costs no copy and no bignum.
+  defp json_token(bin, rest),
+    do: binary_part(bin, 0, byte_size(bin) - byte_size(rest))
 
   defp json_num_sign(<<"-", rest::binary>>), do: {:ok, true, rest}
   defp json_num_sign(<<"+", _::binary>>), do: :error
   defp json_num_sign(rest), do: {:ok, false, rest}
 
-  # the integer part is accumulated by value, not as a text binary: one binary
-  # per element for a 70000-element integer array is the allocation this audit
-  # refuses (docs/SPEC-TABLES.md §16.2 gates the shape, not the cost).
+  # the integer part is accumulated by value only while an integer field can
+  # hold it: 10^39 is past every 128-bit bound, so forty digits is the widest
+  # an integer field needs. Past that the digits are consumed but not folded,
+  # which keeps the scan linear in the token's length (docs/SPEC-TABLES.md
+  # §16.2 gates the shape, not the cost).
   defp json_num_int({:ok, neg, rest}) do
-    case json_int_value(rest, 0) do
+    case json_int_value(rest) do
       {:ok, value, rest2} -> {:ok, neg, value, rest2}
+      {:big, rest2} -> {:ok, neg, :big, rest2}
       :error -> :error
     end
   end
 
   defp json_num_int(:error), do: :error
 
-  defp json_int_value(<<"0", c, _::binary>>, _acc) when c in ?0..?9, do: :error
-  defp json_int_value(<<"0", rest::binary>>, _acc), do: {:ok, 0, rest}
+  defp json_int_value(<<"0", c, _::binary>>) when c in ?0..?9, do: :error
+  defp json_int_value(<<"0", rest::binary>>), do: {:ok, 0, rest}
 
-  defp json_int_value(<<c, rest::binary>>, _acc) when c in ?1..?9,
-    do: json_int_digits(rest, c - ?0)
+  defp json_int_value(<<c, rest::binary>>) when c in ?1..?9,
+    do: json_int_digits(rest, c - ?0, 1)
 
-  defp json_int_value(_, _acc), do: :error
+  defp json_int_value(_), do: :error
 
-  defp json_int_digits(<<c, rest::binary>>, acc) when c in ?0..?9,
-    do: json_int_digits(rest, acc * 10 + (c - ?0))
+  defp json_int_digits(<<c, rest::binary>>, acc, digits) when c in ?0..?9 do
+    if digits < 40,
+      do: json_int_digits(rest, acc * 10 + (c - ?0), digits + 1),
+      else: json_int_past(rest)
+  end
 
-  defp json_int_digits(rest, acc), do: {:ok, acc, rest}
+  defp json_int_digits(rest, acc, _digits), do: {:ok, acc, rest}
+
+  defp json_int_past(<<c, rest::binary>>) when c in ?0..?9, do: json_int_past(rest)
+  defp json_int_past(rest), do: {:big, rest}
 
   defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
   defp json_num_frac(<<".", _::binary>>), do: :error
@@ -7091,6 +7121,8 @@ defmodule Bench.Table do
         end
     end
   end
+
+  defp fixed_raw({:bigint, _token}, _frac), do: :error
 
   defp fixed_raw(_, _), do: :error
 
