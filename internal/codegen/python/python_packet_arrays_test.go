@@ -1,6 +1,7 @@
 package python
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -371,6 +372,7 @@ const arraysGoProbe = `package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/mas-bandwidth/serialize.go/v2"
@@ -470,7 +472,8 @@ func goReference(t *testing.T, u *ir.Unit) []byte {
 	out, err := cmd.Output()
 	if err != nil {
 		msg := ""
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			msg = string(ee.Stderr)
 		}
 		t.Fatalf("the Go reference: %v\n%s", err, msg)

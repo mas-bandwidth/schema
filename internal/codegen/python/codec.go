@@ -118,6 +118,9 @@ func fieldKind(f *ir.Field) string {
 		if f.Type.Width <= 64 {
 			return "int"
 		}
+		if f.Type.Width == 128 {
+			return "int128"
+		}
 		return ""
 	case ir.TFloat32:
 		return "float32"
