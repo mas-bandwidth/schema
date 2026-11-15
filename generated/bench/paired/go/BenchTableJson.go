@@ -823,11 +823,11 @@ func tableJSONAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 // ---- reading ----
 
 type tableJSONIn struct {
-	graph  *tableJSONGraph
-	text   []byte
-	pos    int
-	report *TableReport
-	bad    bool // the text is not JSON: the walk stops and keeps what it placed
+	graph          *tableJSONGraph
+	text           []byte
+	pos            int
+	report         *TableReport
+	bad, jsonLayer bool // bad: the text is not JSON; jsonLayer: the JSON layer (§16.12), not the table walk
 	// mas-bandwidth/schema docs/SPEC-TABLES.md §16.2, the read option: null where the row is an
 	// array or a map reads as [] or {}
 	nullEmpty bool
@@ -981,8 +981,8 @@ func (in *tableJSONIn) scanString(out []byte) (int32, bool) { return in.scanText
 // scanKey scans a NAME, compared and never stored; a zero in it is the value's own row's event.
 func (in *tableJSONIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, false) }
 
-// scanSkipped holds a skipped string or an object key to the text rules of a placed value (§4, §16.3).
-func (in *tableJSONIn) scanSkipped(out []byte) (int32, bool) { return in.scanText(out, true) }
+// scanSkipped holds a skipped string or an object key to the text rules of a placed value (§4, §16.3); the JSON layer (§16.12) has no table, so a zero there stays.
+func (in *tableJSONIn) scanSkipped(out []byte) (int32, bool) { return in.scanText(out, !in.jsonLayer) }
 
 func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
 	if in.peek() != '"' {
