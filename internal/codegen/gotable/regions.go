@@ -346,7 +346,7 @@ func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit func(*TableR
  if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),visit)}
  if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j := range count {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
 }
-func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow }
+func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));text:=unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length));if e.id==tableStringTypeID&&!tableUTF8Valid(text){return false};w.Raw(text);return !w.Overflow }
 func tableNodeMeasure(w *TableWriter,ids *TableIds,e *tableNodeEntry)int64 {*w=TableWriter{Measuring:true,Ids:ids};if !tableNodeWrite(w,e){return -1};return w.Offset}
 // A typed frame keeps its pointers visible to Go's collector. The descriptor
 // callbacks make it escape once per call; node-proportional storage uses the pair.
@@ -424,6 +424,7 @@ func tableRegionFromJSON(value unsafe.Pointer,info *TableTypeInfo,worker *TableW
 // there is no spelling to owe, and writing the value at each slot is the
 // amplification the standard refuses (docs/SPEC-TABLES.md §2.5, §16.7).
 func tableRegionToJSON(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,options TableJSONOptions,allocator ...TableAllocator) (int64,TableRefuseReason) {
+ if buffer!=nil {if _,reason:=tableRegionToJSON(value,info,nil,options,allocator...);reason!=TableRefuseOk{return -1,reason}}
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1,n.reason};defer n.Release();if n.shared{return -1,TableRefuseBlobShared};graph:=tableJSONGraph{node:func(p unsafe.Pointer)*tableJSONGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
  for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1,TableRefuseInvalidValue}}
  out:=tableJSONOut{buffer:buffer,measure:buffer==nil,graph:&graph,omit:options.OmitDefaults,compact:options.Compact};if !tableJSONWriteValue(&out,value,info,0){return -1,TableRefuseInvalidValue};out.put('\n');if out.overflow||out.invalid{return -1,TableRefuseInvalidValue};return out.offset,TableRefuseOk
