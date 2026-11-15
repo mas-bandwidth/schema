@@ -15,6 +15,9 @@
 // refuses an out-of-contract value — in every build, production
 // included. Read<Name>Flat(view, numBits, value) -> bool, the family read
 // verdict; reader obligations ride in every build too.
+// Read<Name>FlatBits(view, numBits, value) -> the bits that read consumed,
+// or false. The framing entry: the same refusals, and not the end-of-packet
+// check, so a later object may follow in the same buffer (SPEC §5, §6.3).
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -36,12 +39,14 @@ export const FlatReadSlack = 8;
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold RealPacketMaxBytes.
 export function WriteRealPacketFlat(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return -1;
   }
   lo = (((((value.f001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff));
+  if (!Number.isFinite(value.f002F64)) { // a bare float must be finite
+    return -1;
+  }
   SC.setFloat64(0, value.f002F64, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 21)) >>> 0, true);
@@ -59,6 +64,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 2000.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
@@ -74,17 +82,11 @@ export function WriteRealPacketFlat(view, value) {
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.f007F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 18)) >>> 0, true);
   lo = v >>> 14;
   SC.setBigUint64(0, value.f008U64, true);
@@ -99,19 +101,16 @@ export function WriteRealPacketFlat(view, value) {
   }
   lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
   x = value.f010F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(28, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
+  if (!Number.isInteger(value.f011Bits) || value.f011Bits < 0 || value.f011Bits > 1023) {
+    return -1;
+  }
   v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
   view.setUint32(32, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
@@ -119,17 +118,11 @@ export function WriteRealPacketFlat(view, value) {
   sb = 3;
   if (value.f012Bool) {
     x = value.f013F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -190,6 +183,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
+  if (!Number.isFinite(value.f019F64)) { // a bare float must be finite
+    return -1;
+  }
   SC.setFloat64(0, value.f019F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
@@ -210,17 +206,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.f020F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -242,17 +232,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   x = value.f022F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -260,6 +244,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isInteger(value.f023Bits) || value.f023Bits < 0 || value.f023Bits > 33554431) {
+    return -1;
   }
   v = ((value.f023Bits & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -271,17 +258,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   x = value.f024F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -291,6 +272,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.f025Fixed) || value.f025Fixed < -30464 || value.f025Fixed > 30464) {
+    return -1;
+  }
+  if (!Number.isInteger(value.f026Bits) || value.f026Bits < 0 || value.f026Bits > 511) {
     return -1;
   }
   v = (((((value.f025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.f026Bits & 0x1ff) << 16)) >>> 0;
@@ -306,6 +290,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -2.0 || x > 2.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
@@ -317,6 +304,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
+  }
+  if (!Number.isInteger(value.f028Bits) || value.f028Bits < 0 || value.f028Bits > 15) {
+    return -1;
   }
   v = ((value.f028Bits & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -347,17 +337,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.f030F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -365,6 +349,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isInteger(value.f031Bits) || value.f031Bits < 0 || value.f031Bits > 1) {
+    return -1;
   }
   if (!Number.isInteger(value.f032Int) || value.f032Int < -3 || value.f032Int > 3) {
     return -1;
@@ -384,7 +371,13 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (22 - sb);
   }
+  if (!Number.isInteger(value.f035Bits) || value.f035Bits < 0 || value.f035Bits > 511) {
+    return -1;
+  }
   if (!Number.isInteger(value.f036Enum) || value.f036Enum < 0 || value.f036Enum > 5) { // headroom above the wire range cannot ride
+    return -1;
+  }
+  if (!Number.isInteger(value.f039Bits) || value.f039Bits < 0 || value.f039Bits > 524287) {
     return -1;
   }
   v = (((value.f034Uint) & 0x3fff) | ((value.f035Bits & 0x1ff) << 14) | ((value.f036Enum & 0x7) << 23) | ((value.f037Bool ? 1 : 0) << 26) | ((value.f038Bool ? 1 : 0) << 27)) >>> 0;
@@ -411,6 +404,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isInteger(value.f041Int) || value.f041Int < -55 || value.f041Int > 55) {
     return -1;
   }
+  if (!Number.isInteger(value.f042Bits) || value.f042Bits < 0 || value.f042Bits > 1073741823) {
+    return -1;
+  }
   v = (((((value.f040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.f041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
@@ -431,17 +427,11 @@ export function WriteRealPacketFlat(view, value) {
   }
   if (value.f043Bool) {
     x = value.f044F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -449,6 +439,9 @@ export function WriteRealPacketFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isInteger(value.f045Bits) || value.f045Bits < 0 || value.f045Bits > 4095) {
+      return -1;
     }
     if (!Number.isInteger(value.f046Uint) || value.f046Uint < 0 || value.f046Uint > 76063) {
       return -1;
@@ -474,6 +467,9 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
+  }
+  if (!Number.isFinite(value.f048F64)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.f048F64, true);
   v = SC.getUint32(0, true);
@@ -520,17 +516,11 @@ export function WriteRealPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
     x = value.f053F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -568,17 +558,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   x = value.f058F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -586,6 +570,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isFinite(value.f059F64)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.f059F64, true);
   v = SC.getUint32(0, true);
@@ -606,6 +593,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
+  if (!Number.isInteger(value.f060Bits) || value.f060Bits < 0 || value.f060Bits > 255) {
+    return -1;
+  }
   v = ((value.f060Bits & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
@@ -617,6 +607,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f061Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -90.0 || x > 90.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
@@ -678,6 +671,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 30.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
@@ -706,6 +702,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -100.0 || x > 100.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
@@ -722,6 +721,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 2000.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
@@ -733,6 +735,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
+  }
+  if (!Number.isInteger(value.f069Bits) || value.f069Bits < 0 || value.f069Bits > 2047) {
+    return -1;
   }
   if (!Number.isInteger(value.f070Uint) || value.f070Uint < 0 || value.f070Uint > 2) {
     return -1;
@@ -750,6 +755,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
@@ -764,6 +772,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f072Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < 0.0 || x > 100.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
@@ -816,6 +827,9 @@ export function WriteRealPacketFlat(view, value) {
     if (!Number.isInteger(value.f077Int) || value.f077Int < -17 || value.f077Int > 17) {
       return -1;
     }
+    if (!Number.isInteger(value.f078Bits) || value.f078Bits < 0 || value.f078Bits > 511) {
+      return -1;
+    }
     if (!Number.isInteger(value.f079Uint) || value.f079Uint < 0 || value.f079Uint > 17) {
       return -1;
     }
@@ -837,6 +851,12 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
+  }
+  if (!Number.isInteger(value.f081Bits) || value.f081Bits < 0 || value.f081Bits > 536870911) {
+    return -1;
+  }
+  if (!Number.isInteger(value.f082Bits) || value.f082Bits < 0 || value.f082Bits > 33554431) {
+    return -1;
   }
   v = ((value.f080Bool ? 1 : 0) | ((value.f081Bits & 0x1fffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -862,6 +882,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
+  if (!Number.isInteger(value.f085Bits) || value.f085Bits < 0 || value.f085Bits > 2097151) {
+    return -1;
+  }
   if (!Number.isInteger(value.f086Uint) || value.f086Uint < 0 || value.f086Uint > 399) {
     return -1;
   }
@@ -883,6 +906,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
+  if (!Number.isFinite(value.f087F64)) { // a bare float must be finite
+    return -1;
+  }
   SC.setFloat64(0, value.f087F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
@@ -903,6 +929,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.f088Int) || value.f088Int < -694 || value.f088Int > 694) {
+    return -1;
+  }
+  if (value.f089Bits < 0n || value.f089Bits > 281474976710655n) {
     return -1;
   }
   v = (((((value.f088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
@@ -958,6 +987,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
+  if (value.f093Bits < 0n || value.f093Bits > 18446744073709551615n) {
+    return -1;
+  }
   v = ((value.f092Bool ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
@@ -989,6 +1021,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isInteger(value.f095Fixed) || value.f095Fixed < -103350272 || value.f095Fixed > 103350272) {
     return -1;
   }
+  if (!Number.isInteger(value.f096Bits) || value.f096Bits < 0 || value.f096Bits > 262143) {
+    return -1;
+  }
   v = ((value.f094Bool ? 1 : 0) | (((((value.f095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
@@ -997,6 +1032,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
+  }
+  if (!Number.isInteger(value.f097Bits) || value.f097Bits < 0 || value.f097Bits > 4095) {
+    return -1;
   }
   v = ((value.f096Bits & 0x3ffff) | ((value.f097Bits & 0xfff) << 18)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1914,6 +1952,921 @@ export function ReadRealPacketFlat(view, numBits, value) {
   value.f096Bits = v;
   v = (out >>> 18) & 0xfff;
   value.f097Bits = v;
+  br += 30;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadRealPacketFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadRealPacketFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadRealPacketFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (291 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1fffff) >>> 0;
+  if (v > 1610990) { // a smuggled offset is refused
+    return false;
+  }
+  value.f001Int = (v + 4294161801) | 0;
+  out = (view.getUint32(2, true) >>> 5) | (view.getUint32(6, true) << 27);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(6, true) >>> 5) | (view.getUint32(10, true) << 27);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.f002F64 = SC.getFloat64(0, true);
+  out = (view.getUint32(10, true) >>> 5) | (view.getUint32(14, true) << 27);
+  v = (out & 0x1fffff) >>> 0;
+  if (v > 1671794) { // a smuggled offset is refused
+    return false;
+  }
+  value.f003Int = (v + 4294131399) | 0;
+  out = (view.getUint32(13, true) >>> 2) | (view.getUint32(17, true) << 30);
+  v = (out & 0x7fff) >>> 0;
+  if (v > 20000) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f004Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 20000.0) * 2000.0) + 0.0);
+  v = (out >>> 15) & 0x1fff;
+  if (v > 7316) { // a smuggled offset is refused
+    return false;
+  }
+  value.f005Uint = v | 0;
+  out = (view.getUint32(16, true) >>> 6) | (view.getUint32(20, true) << 26);
+  v = (out & 0xfff) >>> 0;
+  if (v > 3026) { // a smuggled offset is refused
+    return false;
+  }
+  value.f006Int = (v + 4294965783) | 0;
+  out = (view.getUint32(18, true) >>> 2) | (view.getUint32(22, true) << 30);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f007F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f007F32 = SC.getFloat32(0, true);
+  }
+  out = (view.getUint32(22, true) >>> 2) | (view.getUint32(26, true) << 30);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(26, true) >>> 2) | (view.getUint32(30, true) << 30);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.f008U64 = bg;
+  out = (view.getUint32(30, true) >>> 2) | (view.getUint32(34, true) << 30);
+  v = (out & 0x3f) >>> 0;
+  if (v > 44) { // a smuggled offset is refused
+    return false;
+  }
+  value.f009Int = (v + 4294967274) | 0;
+  out = view.getUint32(31, true);
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f010F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f010F32 = SC.getFloat32(0, true);
+  }
+  out = view.getUint32(35, true);
+  v = (out & 0x3ff) >>> 0;
+  value.f011Bits = v;
+  v = (out >>> 10) & 0x1;
+  value.f012Bool = v !== 0;
+  br = 291;
+  if (value.f012Bool) {
+    if (br + 88 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      value.f013F32 = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      value.f013F32 = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3ff) >>> 0;
+    if (v > 775) { // a smuggled offset is refused
+      return false;
+    }
+    value.f014Uint = v | 0;
+    v = (out >>> 10) & 0x3f;
+    if (v > 42) { // a smuggled offset is refused
+      return false;
+    }
+    value.f015Int = (v + 4294967275) | 0;
+    br += 16;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7ffffff) >>> 0;
+    if (v > 75497472) { // a smuggled raw offset is refused
+      return false;
+    }
+    value.f016Fixed = -37748736 + v;
+    br += 27;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fff) >>> 0;
+    if (v > 4606) { // a smuggled offset is refused
+      return false;
+    }
+    value.f017Uint = v | 0;
+    br += 13;
+  } else {
+    value.f013F32 = 0;
+    value.f014Uint = 0;
+    value.f015Int = 0;
+    value.f016Fixed = 0;
+    value.f017Uint = 0;
+  }
+  if (br + 476 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7ff) >>> 0;
+  if (v > 1668) { // a smuggled offset is refused
+    return false;
+  }
+  value.f018Int = (v + 4294966462) | 0;
+  br += 11;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.f019F64 = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  br += 32;
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f020F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f020F32 = SC.getFloat32(0, true);
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7ffffff) >>> 0;
+  if (v > 102977536) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f021Ufixed = v;
+  br += 27;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  br += 32;
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f022F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f022F32 = SC.getFloat32(0, true);
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1ffffff) >>> 0;
+  value.f023Bits = v;
+  br += 25;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  br += 32;
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f024F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f024F32 = SC.getFloat32(0, true);
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xffff) >>> 0;
+  if (v > 60928) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f025Fixed = -30464 + v;
+  v = (out >>> 16) & 0x1ff;
+  value.f026Bits = v;
+  v = (out >>> 25) & 0x1f;
+  if (v > 16) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f027Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 16.0) * 4.0) + -2.0);
+  br += 30;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xf) >>> 0;
+  value.f028Bits = v;
+  br += 4;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.f029I64 = BigInt.asIntN(64, bg);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  br += 32;
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f030F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f030F32 = SC.getFloat32(0, true);
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1) >>> 0;
+  value.f031Bits = v;
+  v = (out >>> 1) & 0x7;
+  if (v > 6) { // a smuggled offset is refused
+    return false;
+  }
+  value.f032Int = (v + 4294967293) | 0;
+  v = (out >>> 4) & 0x3ffff;
+  if (v > 142780) { // a smuggled offset is refused
+    return false;
+  }
+  value.f033Uint = v | 0;
+  br += 22;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3fff) >>> 0;
+  if (v > 14149) { // a smuggled offset is refused
+    return false;
+  }
+  value.f034Uint = v | 0;
+  v = (out >>> 14) & 0x1ff;
+  value.f035Bits = v;
+  v = (out >>> 23) & 0x7;
+  if (v > 5) { // headroom above the wire range is refused
+    return false;
+  }
+  value.f036Enum = v;
+  v = (out >>> 26) & 0x1;
+  value.f037Bool = v !== 0;
+  v = (out >>> 27) & 0x1;
+  value.f038Bool = v !== 0;
+  br += 28;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7ffff) >>> 0;
+  value.f039Bits = v;
+  br += 19;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xffff) >>> 0;
+  if (v > 40960) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f040Fixed = -20480 + v;
+  v = (out >>> 16) & 0x7f;
+  if (v > 110) { // a smuggled offset is refused
+    return false;
+  }
+  value.f041Int = (v + 4294967241) | 0;
+  br += 23;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3fffffff) >>> 0;
+  value.f042Bits = v;
+  v = (out >>> 30) & 0x1;
+  value.f043Bool = v !== 0;
+  br += 31;
+  if (value.f043Bool) {
+    if (br + 81 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      value.f044F32 = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      value.f044F32 = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xfff) >>> 0;
+    value.f045Bits = v;
+    v = (out >>> 12) & 0x1ffff;
+    if (v > 76063) { // a smuggled offset is refused
+      return false;
+    }
+    value.f046Uint = v | 0;
+    br += 29;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xfffff) >>> 0;
+    if (v > 861952) { // a smuggled offset is refused
+      return false;
+    }
+    value.f047Int = (v + 4294536320) | 0;
+    br += 20;
+  } else {
+    value.f044F32 = 0;
+    value.f045Bits = 0;
+    value.f046Uint = 0;
+    value.f047Int = 0;
+  }
+  if (br + 81 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.f048F64 = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xffff) >>> 0;
+  if (v > 49152) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f049Ufixed = v;
+  v = (out >>> 16) & 0x1;
+  value.f050Bool = v !== 0;
+  br += 17;
+  if (value.f050Bool) {
+    if (br + 47 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1) >>> 0;
+    value.f051Bool = v !== 0;
+    v = (out >>> 1) & 0x7f;
+    if (v > 114) { // a smuggled offset is refused
+      return false;
+    }
+    value.f052Int = (v + 4294967239) | 0;
+    br += 8;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
+    br += 32;
+    if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+      SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+      value.f053F32 = SC.getFloat64(0, true);
+    } else {
+      SC.setUint32(0, v, true);
+      value.f053F32 = SC.getFloat32(0, true);
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7f) >>> 0;
+    if (v > 70) { // a smuggled offset is refused
+      return false;
+    }
+    value.f054Int = (v + 4294967261) | 0;
+    br += 7;
+  } else {
+    value.f051Bool = false;
+    value.f052Int = 0;
+    value.f053F32 = 0;
+    value.f054Int = 0;
+  }
+  if (br + 290 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1) >>> 0;
+  value.f055Bool = v !== 0;
+  v = (out >>> 1) & 0x1f;
+  if (v > 26) { // a smuggled offset is refused
+    return false;
+  }
+  value.f056Int = (v + 4294967283) | 0;
+  v = (out >>> 6) & 0x1f;
+  if (v > 30) { // a smuggled offset is refused
+    return false;
+  }
+  value.f057Int = (v + 4294967281) | 0;
+  br += 11;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
+  br += 32;
+  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
+    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    value.f058F32 = SC.getFloat64(0, true);
+  } else {
+    SC.setUint32(0, v, true);
+    value.f058F32 = SC.getFloat32(0, true);
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.f059F64 = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xff) >>> 0;
+  value.f060Bits = v;
+  v = (out >>> 8) & 0x1ff;
+  if (v > 360) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f061Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 360.0) * 180.0) + -90.0);
+  v = (out >>> 17) & 0x1ff;
+  if (v > 503) { // a smuggled offset is refused
+    return false;
+  }
+  value.f062Uint = v | 0;
+  br += 26;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.f063I64 = BigInt.asIntN(64, bg);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1ff) >>> 0;
+  if (v > 299) { // a smuggled offset is refused
+    return false;
+  }
+  value.f064Uint = v | 0;
+  v = (out >>> 9) & 0x3f;
+  if (v > 60) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f065Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 60.0) * 30.0) + 0.0);
+  v = (out >>> 15) & 0xffff;
+  if (v > 32768) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f066Ufixed = v;
+  br += 31;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3ff) >>> 0;
+  if (v > 800) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f067Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 800.0) * 200.0) + -100.0);
+  v = (out >>> 10) & 0x7ff;
+  if (v > 2000) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f068Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 2000.0) * 2000.0) + 0.0);
+  v = (out >>> 21) & 0x7ff;
+  value.f069Bits = v;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // a smuggled offset is refused
+    return false;
+  }
+  value.f070Uint = v | 0;
+  v = (out >>> 2) & 0x1ff;
+  if (v > 500) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f071Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 500.0) * 10.0) + 0.0);
+  v = (out >>> 11) & 0x3fff;
+  if (v > 10000) { // headroom above the quantum count is refused
+    return false;
+  }
+  value.f072Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 100.0) + 0.0);
+  v = (out >>> 25) & 0xf;
+  if (v > 8) { // a smuggled offset is refused
+    return false;
+  }
+  value.f073Int = (v + 4294967292) | 0;
+  v = (out >>> 29) & 0x1;
+  value.f074Bool = v !== 0;
+  br += 30;
+  if (value.f074Bool) {
+    if (br + 100 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.f075U64 = bg;
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xffff) >>> 0;
+    if (v > 52436) { // a smuggled offset is refused
+      return false;
+    }
+    value.f076Int = (v + 4294941078) | 0;
+    v = (out >>> 16) & 0x3f;
+    if (v > 34) { // a smuggled offset is refused
+      return false;
+    }
+    value.f077Int = (v + 4294967279) | 0;
+    v = (out >>> 22) & 0x1ff;
+    value.f078Bits = v;
+    br += 31;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1f) >>> 0;
+    if (v > 17) { // a smuggled offset is refused
+      return false;
+    }
+    value.f079Uint = v | 0;
+    br += 5;
+  } else {
+    value.f075U64 = 0n;
+    value.f076Int = 0;
+    value.f077Int = 0;
+    value.f078Bits = 0;
+    value.f079Uint = 0;
+  }
+  if (br + 356 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1) >>> 0;
+  value.f080Bool = v !== 0;
+  v = (out >>> 1) & 0x1fffffff;
+  value.f081Bits = v;
+  br += 30;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1ffffff) >>> 0;
+  value.f082Bits = v;
+  v = (out >>> 25) & 0x7;
+  if (v > 5) { // headroom above the wire range is refused
+    return false;
+  }
+  value.f083Enum = v;
+  br += 28;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xff) >>> 0;
+  if (v > 128) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f084Ufixed = v;
+  v = (out >>> 8) & 0x1fffff;
+  value.f085Bits = v;
+  br += 29;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1ff) >>> 0;
+  if (v > 399) { // a smuggled offset is refused
+    return false;
+  }
+  value.f086Uint = v | 0;
+  br += 9;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.f087F64 = SC.getFloat64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7ff) >>> 0;
+  if (v > 1388) { // a smuggled offset is refused
+    return false;
+  }
+  value.f088Int = (v + 4294966602) | 0;
+  br += 11;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xffff) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.f089Bits = bg;
+  v = (out >>> 16) & 0xff;
+  if (v > 214) { // a smuggled offset is refused
+    return false;
+  }
+  value.f090Uint = v | 0;
+  v = (out >>> 24) & 0x1f;
+  value.f091Flags = BigInt(v);
+  v = (out >>> 29) & 0x1;
+  value.f092Bool = v !== 0;
+  br += 30;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.f093Bits = bg;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1) >>> 0;
+  value.f094Bool = v !== 0;
+  v = (out >>> 1) & 0xfffffff;
+  if (v > 206700544) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.f095Fixed = -103350272 + v;
+  br += 29;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3ffff) >>> 0;
+  value.f096Bits = v;
+  v = (out >>> 18) & 0xfff;
+  value.f097Bits = v;
+  br += 30;
+  return br;
 }
 

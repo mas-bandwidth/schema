@@ -49,6 +49,15 @@ func (g *gen) refuse(ind, cond, comment string) {
 	g.pf("%sif %s then%s\n%s\treturn false\n%send\n", ind, cond, comment, ind, ind)
 }
 
+// refuseRead emits a guard that latches the read refusal through the stream's
+// one latch when cond holds (docs/PORT-MOO.md, THE WIRE).
+func (g *gen) refuseRead(ind, cond, comment string) {
+	if comment != "" {
+		comment = " -- " + comment
+	}
+	g.pf("%sif %s then%s\n%s\tstream:fail(\"value_out_of_range\")\n%s\treturn false\n%send\n", ind, cond, comment, ind, ind, ind)
+}
+
 // ---------------------------------------------------------------------------
 // Write.
 
@@ -112,12 +121,27 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 		return g.writeScalar(val, val+"Length", f, ind)
 	}
 	limit := fmt.Sprintf("%d", f.ArrayBound)
+	if isByteElem(f) {
+		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"buffer\"", val), "the byte array's fixed storage")
+	} else {
+		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"table\"", val), "the array's table storage")
+	}
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		g.refuse(ind, fmt.Sprintf("not isInt(%s, %d, %d)", count, f.ArrayMin, f.ArrayBound), "the count guards the loop (SPEC §6.3)")
+		limit = count
+	}
+	if isByteElem(f) {
+		g.refuse(ind, fmt.Sprintf("buffer.len(%s) < %s", val, limit), "the byte storage covers every element")
+	} else if isRecordType(f.Type) {
+		g.pf("%sfor i = 1, %s do\n", ind, limit)
+		g.refuse(ind+"\t", fmt.Sprintf("type(%s[i]) ~= \"table\"", val), "each live record has table storage")
+		g.pf("%send\n", ind)
+	}
+	if f.Array == ir.ArrayCounted {
+		count := val + "Count"
 		g.pf("%sNUM.value = %s\n", ind, count)
 		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, %d, %d)", f.ArrayMin, f.ArrayBound), "the count (SPEC §4.6)")
-		limit = count
 	}
 	e := *f
 	e.Array = ir.ArrayNone
@@ -125,7 +149,8 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 	var err error
 	switch {
 	case isByteElem(f):
-		err = g.writeScalar(fmt.Sprintf("buffer.readu8(%s, i - 1)", val), "", &e, ind+"\t")
+		g.pf("%s\tNUM.value = buffer.readu8(%s, i - 1)\n", ind, val)
+		g.call(ind+"\t", "stream:serializeBits(NUM, 8)", "")
 	case isBuffer(f.Type):
 		err = g.writeScalar(val+"[i]", val+"Length[i]", &e, ind+"\t")
 	default:
@@ -133,6 +158,18 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 	}
 	g.pf("%send\n", ind)
 	return err
+}
+
+func isRecordType(t ir.FieldType) bool {
+	if t.Kind != ir.TNamed {
+		return false
+	}
+	switch t.Ref.(type) {
+	case *ir.Struct, *ir.Union:
+		return true
+	default:
+		return false
+	}
 }
 
 // writeScalar writes one value of a field's kind (SPEC §4.3's table).
@@ -178,7 +215,7 @@ func (g *gen) writeScalar(val, length string, f *ir.Field, ind string) error {
 		g.pf("%sSTR.value = %s\n", ind, val)
 		g.call(ind, fmt.Sprintf("stream:serializeString(STR, %d)", t.Size+1), "length, align, the bytes (SPEC §4.7)")
 	case ir.TBytes:
-		g.refuse(ind, fmt.Sprintf("not isInt(%s, 0, %d) or buffer.len(%s) < %s", length, t.Size, val, length),
+		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"buffer\" or not isInt(%s, 0, %d) or buffer.len(%s) < %s", val, length, t.Size, val, length),
 			"the length guards the slice (SPEC §6.3)")
 		g.pf("%sNUM.value = %s\n", ind, length)
 		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", t.Size), "")
@@ -197,6 +234,7 @@ func (g *gen) writeScalar(val, length string, f *ir.Field, ind string) error {
 				g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", ref.WireBits), "the flags wire width")
 			}
 		case *ir.Struct, *ir.Union:
+			g.refuse(ind, fmt.Sprintf("type(%s) ~= \"table\"", val), "record storage")
 			g.call(ind, fmt.Sprintf("%s.Write%s(stream, %s)", g.mod(t.Name), t.Name, val), "")
 		default:
 			return fmt.Errorf("field %s: named type %s is not carried on the packet wire", f.Name, t.Name)
@@ -566,7 +604,7 @@ func (g *gen) readInt(val string, f *ir.Field, ind string) {
 		}
 		g.call(ind, fmt.Sprintf("stream:serializeBits(NUM, %d)", bits), "")
 		if diff := new(big.Int).Sub(hi, lo); diff.Cmp(mask(int(bits))) != 0 {
-			g.refuse(ind, fmt.Sprintf("NUM.value > %s", diff), "a read rejects out of range (SPEC §4.3)")
+			g.refuseRead(ind, fmt.Sprintf("NUM.value > %s", diff), "a read rejects out of range (SPEC §4.3)")
 		}
 		g.pf("%s%s = NUM.value + %s\n", ind, val, paren(lo))
 	default:
@@ -586,7 +624,7 @@ func (g *gen) readInt(val string, f *ir.Field, ind string) {
 		}
 		g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", bits), "")
 		if diff := new(big.Int).Sub(hi, lo); diff.Cmp(mask(int(bits))) != 0 {
-			g.refuse(ind, fmt.Sprintf("serialize.Uint64.cmp(WIDE.value, %s) > 0", g.k(wideNew("Uint64", diff, 64))), "a read rejects out of range (SPEC §4.3)")
+			g.refuseRead(ind, fmt.Sprintf("serialize.Uint64.cmp(WIDE.value, %s) > 0", g.k(wideNew("Uint64", diff, 64))), "a read rejects out of range (SPEC §4.3)")
 		}
 		g.pf("%s%s = serialize.Uint64.add(WIDE.value, %s)\n", ind, val, g.k(wideNew("Uint64", lo, 64)))
 	}

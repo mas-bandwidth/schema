@@ -224,6 +224,15 @@ namespace Ludicrous
 
         public static bool ReadFixedProbe(ReadStream stream, ref FixedProbe value)
         {
+            if (!ReadFixedProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadFixedProbeBody(ReadStream stream, ref FixedProbe value)
+        {
             if (!stream.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
             {
                 return false;
@@ -317,6 +326,15 @@ namespace Ludicrous
 
         public static bool ReadUnsignedProbe(ReadStream stream, ref UnsignedProbe value)
         {
+            if (!ReadUnsignedProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadUnsignedProbeBody(ReadStream stream, ref UnsignedProbe value)
+        {
             if (!stream.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
             {
                 return false;
@@ -347,7 +365,7 @@ namespace Ludicrous
                 {
                     return false;
                 }
-                value.Tail = (byte)rawValue;
+                value.Tail = unchecked((byte)rawValue);
             }
             return true;
         }
@@ -403,6 +421,15 @@ namespace Ludicrous
         }
 
         public static bool ReadWideProbe(ReadStream stream, ref WideProbe value)
+        {
+            if (!ReadWideProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadWideProbeBody(ReadStream stream, ref WideProbe value)
         {
             if (!stream.SerializeUInt128(ref value.EntityId))
             {
@@ -476,7 +503,7 @@ namespace Ludicrous
             }
             Debug.Assert(value.KeysCount >= 0 && value.KeysCount <= 4, "value.KeysCount out of range [0, 4]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.KeysCount);
+                uint offsetValue = unchecked((uint)(value.KeysCount));
                 if (!stream.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -505,6 +532,15 @@ namespace Ludicrous
 
         public static bool ReadLudicrousState(ReadStream stream, ref LudicrousState value)
         {
+            if (!ReadLudicrousStateBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadLudicrousStateBody(ReadStream stream, ref LudicrousState value)
+        {
             {
                 int enumValue = 0;
                 if (!stream.SerializeInt(ref enumValue, 0, 3))
@@ -513,11 +549,11 @@ namespace Ludicrous
                 }
                 value.Mode = (DriveMode)enumValue;
             }
-            if (!ReadFixedProbe(stream, ref value.Probe))
+            if (!ReadFixedProbeBody(stream, ref value.Probe))
             {
                 return false;
             }
-            if (!ReadWideProbe(stream, ref value.Wide))
+            if (!ReadWideProbeBody(stream, ref value.Wide))
             {
                 return false;
             }
@@ -590,6 +626,15 @@ namespace Ludicrous
 
         public static bool ReadDegenerateProbe(ReadStream stream, ref DegenerateProbe value)
         {
+            if (!ReadDegenerateProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadDegenerateProbeBody(ReadStream stream, ref DegenerateProbe value)
+        {
             value.LockedFixed = unchecked((int)(-196608L));
             value.LockedInt = unchecked((int)(7L));
             value.LockedWide = -12345678901234L;
@@ -599,7 +644,7 @@ namespace Ludicrous
                 {
                     return false;
                 }
-                value.Tail = (byte)rawValue;
+                value.Tail = unchecked((byte)rawValue);
             }
             return true;
         }
@@ -635,6 +680,15 @@ namespace Ludicrous
         }
 
         public static bool ReadFixedVec(ReadStream stream, ref FixedVec value)
+        {
+            if (!ReadFixedVecBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadFixedVecBody(ReadStream stream, ref FixedVec value)
         {
             if (!stream.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
             {
@@ -696,6 +750,15 @@ namespace Ludicrous
         }
 
         public static bool ReadFixedQuat(ReadStream stream, ref FixedQuat value)
+        {
+            if (!ReadFixedQuatBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadFixedQuatBody(ReadStream stream, ref FixedQuat value)
         {
             if (!stream.SerializeFixed(ref value.X, 2, 30, -1, 1))
             {

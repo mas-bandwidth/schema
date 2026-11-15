@@ -198,11 +198,11 @@ WRITE(T, w, value):
 
 An empty body writes nothing: presence is the payload (SPEC §4.6). A write of trusted in-range
 values always produces the bytes. Buffer overrun is caller error (`ASSERT`). Out-of-range values,
-a count past its bound, a length past `N`, a union tag past `Max`, and an interior 0x00 in a
-`string` on write are **writer contracts**: `ASSERT` in debug, gone in release wherever
-the language has that idiom, every-build only in Go and Elixir (SPEC §5). What a release build
-writes from a broken contract is defined but unspecified. **No write-side check is a substitute
-for the reader.**
+a bare integer off its declared width, a count past its bound, a length past `N`, a union tag
+past `Max`, and an interior 0x00 in a `string` on write are **writer contracts**: a debug
+`ASSERT` where the language has that idiom, a refusal in every build where it does not
+(SPEC §5.1). What a release build writes from a broken contract is defined but unspecified.
+**No write-side check is a substitute for the reader.**
 
 ### 2.1 bits_required
 
@@ -258,7 +258,7 @@ PUT_RANGED(w, value, min, max):
 |---|---|
 | `bool` | `PUT_BITS(w, 0 or 1, 1)` |
 | `bits(N)` | `PUT_VALUE(w, value, N)`, N in [1,64] |
-| bare `intN` / `uintN` | `N` raw bits. Signed width `< 64`: cast to the **same-width unsigned** first, then `PUT_VALUE` — a signed value converted to u64 sign-extends and the high bits corrupt the stream |
+| bare `intN` / `uintN` | `N` raw bits. The value must fit its declared width (SPEC §5.1 row 11), checked by the leg's mechanism — a debug assert in C, C++, C#, Rust, Java and Dart, a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose. Signed width `< 64`: cast to the **same-width unsigned** first, then `PUT_VALUE` — a signed value converted to u64 sign-extends and the high bits corrupt the stream |
 | ranged `intN` / `uintN` | `PUT_RANGED` |
 | `uint128` (bare) | 128 raw bits, low 64-bit half first (`PUT_VALUE` of the low 64, then the high 64) |
 | `int128 \| min, max` | `PUT_RANGED` over the 128-bit range; where the range fits 64 bits or fewer the bytes are identical to `int64` over the same bounds. Bare `int128` and ranged `uint128` do not compile |
@@ -289,15 +289,31 @@ A triple that is not finite in float32, or that overflows or requires that clamp
 compile (SPEC §4.6). On write:
 
 ```
-ASSERT value is finite
+CHECK value is finite and min <= value <= max  // the leg's mechanism, before quantizing
 normalized := (value - min) / delta
-normalized := clamp to [0, 1]                  // NaN forced in via !>= / !<=
 scaled := normalized * steps
 FORCE_ROUND(scaled)                            // the product rounds to float32 BEFORE 0.5 is added
 integer := floor(scaled + 0.5)
 if integer > steps: integer := steps           // normative once steps >= 2^23
 PUT_BITS(w, integer, wire_bits)
 ```
+
+**The value check is SPEC §5.1 row 10.** A NaN, an infinity, or a finite value outside
+[min, max] is a value the declaration does not admit, checked before quantizing by the leg's
+mechanism as `docs/rulings.json` `write-refusal` lists it: a debug assert in C, C++, C#, Rust,
+Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO
+and Goose. A conforming writer never relies on clamping the value into [0, 1]: an in-range value
+normalizes into [0, 1] by itself. What a build whose check is compiled out writes for an
+off-range value is unspecified (SPEC §5), and the reader on the other end refuses an off-range
+decode (§3.4). A runtime that keeps a [0, 1] clamp in its release build is not required to
+remove it; the clamp is not part of the rule. Negative zero normalises to +0: it compares equal
+to 0, so it passes the check wherever 0 does and quantizes exactly as +0.
+
+**The integer clamp is not a value clamp.** It is part of quantizing an in-range value: once
+`steps >= 2^23` float32 has no room below one for the added 0.5, so `scaled + 0.5` for a value
+at or next to `max` can round to `steps + 1`, and the clamp brings that rounding back to the
+last step. It does not stand in for the value check: in the build where the check is active, no
+off-range value reaches it.
 
 **Two roundings, never one FMA.** A fused multiply-add diverges by one quantization step at
 boundary values. Do not fold `normalized * steps + 0.5` into one expression. Do not drop the

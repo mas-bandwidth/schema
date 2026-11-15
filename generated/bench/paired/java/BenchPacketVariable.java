@@ -722,6 +722,8 @@ public final class BenchPacketVariable {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {
@@ -1163,7 +1165,10 @@ public final class BenchPacketVariable {
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
-        if (in.bad) {
+        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and
+        // comments, then refuse unless the cursor is at the end of the text.
+        in.space();
+        if (in.bad || in.p != text.length) {
             report.damaged = true;
         }
         if (report.refused) {
@@ -1357,7 +1362,7 @@ public final class BenchPacketVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanString();
+        String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -1437,7 +1442,7 @@ public final class BenchPacketVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanString();
+            String key = in.scanName();
             if (in.bad) {
                 return;
             }
@@ -1743,7 +1748,7 @@ public final class BenchPacketVariable {
                     }
                 }
             } else {
-                in.skipValue();
+                in.skipValue(depth + 1);
                 in.rep.unknown++;
             }
             c = in.peek();

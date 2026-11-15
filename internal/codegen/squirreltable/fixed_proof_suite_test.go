@@ -92,14 +92,48 @@ func TestSquirrelFixedProofSuiteNegativeControl(t *testing.T) {
 	fixedproof.RunNegativeControlSuite(t, squirrelFixedProofRunner{})
 }
 
-// TestSquirrelFixedProofEvolution runs the 16 non-value fixed-table rows
-// (fixed-file-roundtrip and the 15 evolution/layout/plan/lineage/file rows)
-// through the shared fixedproof evolution suite.
+// TestSquirrelFixedProofEvolution runs the non-value fixed-table rows
+// (fixed-file-roundtrip and the evolution/layout/plan/lineage/file rows)
+// through the shared fixedproof evolution suite. The live-extents row's file
+// carries non-zero dead bytes, which docs/rulings.json fixed-dead-bytes-are-
+// zero refuses, so this leg states that row's claim itself.
 func TestSquirrelFixedProofEvolution(t *testing.T) {
 	t.Parallel()
 	sqrun.Require(t)
 	repo := filepath.Join("..", "..", "..")
-	fixedproof.RunEvolutionSuite(t, repo, squirrelFixedProofRunner{})
+	fixedproof.RunEvolutionRows(t, repo, squirrelFixedProofRunner{},
+		"fixed-file-roundtrip", "file-envelope", "batch-capacity",
+		"plan-selection", "compiled-plans", "definition-hash", "fixed-closure",
+		"retirement", "retired-runtime", "optional-values", "field-evolution",
+		"writing", "union-guards", "plan-execution", "interoperability")
+	t.Run("live-extents", func(t *testing.T) {
+		t.Parallel()
+		runner := squirrelFixedProofRunner{}
+		u := fixedproof.ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
+		file, why := runner.SaveCustom(t, u, "T", "live_extents_base")
+		if why != "" {
+			t.Fatalf("save live_extents_base failed: %s", why)
+		}
+		body := len(file) - 13
+		file[body+5] = 99
+		file[body+6] = 99
+		file[body+8] = 99
+		if n, reason, fields, _, _ := runner.LoadLineage(t, u, "T", nil, file, -1); n != -1 || len(fields) != 0 {
+			t.Errorf("C14/W4: n=%d r=%q fields=%v, want the non-zero dead bytes refused", n, reason, fields)
+		}
+		corpus := fixedCorpus(t)
+		older := fixedproof.LoadRepoUnit(t, repo, "test/tables/VOLD_field_append.schema")
+		newer := fixedproof.LoadRepoUnit(t, repo, "test/tables/VNEW_field_append.schema")
+		rootName := fixedproof.RootOf(t, older)
+		eOld, _ := fixedproof.LineageEntryOf(older, rootName)
+		data, err := os.ReadFile(filepath.Join(corpus, "old_field_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, f, _, _ := runner.LoadLineage(t, newer, rootName, map[string][]fixedproof.LineageEntry{rootName: {eOld}}, data, -1); f["r0.w"] != "77" {
+			t.Errorf("W9: the unwritten field: %v", f)
+		}
+	})
 }
 
 // TestSquirrelFixedBatch4097Roundtrip proves that 4,097 fixed records save and
