@@ -529,7 +529,11 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - an array: refused
+  - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
+    carried ([the packet arrays](port-python/packet-arrays.md)); an array of
+    an uncarried element is refused by its element's kind
+
+  - a keyed `[E]T` array and a list `[]T`: refused
 
   - `const`: refused
 

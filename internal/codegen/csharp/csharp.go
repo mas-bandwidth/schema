@@ -145,12 +145,12 @@ func (g *gen) assemble() []byte {
 		h.WriteString("// Error tells the two apart.\n")
 		h.WriteString("//\n")
 		h.WriteString("// WRITE-side contracts — a value outside its declared range, a count or a\n")
-		h.WriteString("// length outside its bound, a mask bit above the wire width, an interior\n")
-		h.WriteString("// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so\n")
-		h.WriteString("// they compile out of a release build along with the call, exactly as\n")
-		h.WriteString("// serialize.cs's own WriteStream does. In a shipping release build it is\n")
-		h.WriteString("// the caller's responsibility to be correct on the write side; every check\n")
-		h.WriteString("// the reader needs is on the read side and runs in every build.\n")
+		h.WriteString("// length outside its bound, a mask bit above the wire width, a zero byte or\n")
+		h.WriteString("// ill-formed UTF-8 in a string(N) — are CALLER ERROR and ride on\n")
+		h.WriteString("// Debug.Assert, so they compile out of a release build along with the call,\n")
+		h.WriteString("// exactly as serialize.cs's own WriteStream does. In a shipping release\n")
+		h.WriteString("// build it is the caller's responsibility to be correct on the write side;\n")
+		h.WriteString("// every check the reader needs is on the read side and runs in every build.\n")
 	}
 	h.WriteString("\n")
 	if g.needsSystem {
@@ -208,6 +208,9 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.sf("// The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two\n")
 		g.sf("// sides at the same id speak identical bits; there is no other versioning.\n")
 		g.sf("public const ulong ProtocolId = 0x%016x;\n\n", g.unit.ProtocolId)
+		if unitHasStrings(g.unit) {
+			g.emitTextValid()
+		}
 	}
 
 	// declaration order — schema references are order-free and so is C#

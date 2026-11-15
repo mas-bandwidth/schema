@@ -219,7 +219,13 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 
 		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, ""},
 
-		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
+		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, ""},
+
+		{"array of an uncarried kind", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+
+		{"keyed array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, KeyEnum: "Slot", Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses keyed array"},
+
+		{"list", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses list"},
 
 		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, "uses const"},
 

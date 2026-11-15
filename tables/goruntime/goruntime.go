@@ -749,10 +749,6 @@ type TableFixedDst struct {
 	Counted, Arg, Meta    uint8
 }
 
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const TableFixedDstDeprecated uint8 = 0x80
-
 type TableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count   int32
@@ -2018,4 +2014,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xad5850dc4545aec9
+const Version uint64 = 0x41dce6b6d2d9e7ca
