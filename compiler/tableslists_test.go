@@ -59,19 +59,35 @@ func TestListCarriers(t *testing.T) {
 		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
 		want = append(want, "squirrel")
 	}
-	python := slices.Contains(listTargets, "python")
-	if python && !gooseLegBuilt && !mooLegBuilt {
-		// The tagged leg's registration (compiler/carries_python_unbounded.go)
-		// sorts before the target files, so python registers first. When another
-		// tagged leg sorts the registry, place it in that order instead.
-		want = append([]string{"python"}, want...)
-	} else if python {
-		want = append(want, "python")
-	}
-	want = withMooLeg(withGooseLeg(want))
-	if !slices.Equal(gooseLegOrdered(listTargets), want) {
+	want = withPythonListLeg(withMooLeg(withGooseLeg(want)))
+	if !slices.Equal(pythonListLegOrdered(gooseLegOrdered(listTargets)), want) {
 		t.Fatalf("listTargets = %v, want %v", listTargets, want)
 	}
+}
+
+// The list gates name the Python leg only where the target is built in
+// (`-tags schema_leg_python`): compiler/carries_python_unbounded.go registers
+// it as a list carrier, from an init that runs before the targets' own files.
+func pythonListLegBuilt() bool {
+	return slices.Contains(listTargets, "python")
+}
+
+// withPythonListLeg is a sorted carrier list with python in it when the leg is
+// built.
+func withPythonListLeg(carriers []string) []string {
+	if !pythonListLegBuilt() {
+		return carriers
+	}
+	return slices.Sorted(slices.Values(append(slices.Clone(carriers), "python")))
+}
+
+// pythonListLegOrdered is the registry as the gate compares it: sorted when the
+// python leg is built (its init registers first), as given otherwise.
+func pythonListLegOrdered(registered []string) []string {
+	if !pythonListLegBuilt() {
+		return registered
+	}
+	return slices.Sorted(slices.Values(registered))
 }
 
 // TestNoTargetRefusesAListFreeUnit: the refusal is the CONSTRUCT's and not a
