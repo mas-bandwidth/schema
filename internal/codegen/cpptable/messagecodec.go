@@ -239,7 +239,8 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.storageAssert("    ", "value."+name+"_length", f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", name)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")

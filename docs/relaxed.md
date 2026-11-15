@@ -31,20 +31,6 @@ relaxed cell whose slug has no entry here.
   `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
   then drop the flag. WIP: `fix/main-red/dead-bytes`.
-- `relax/unknown-arm-text-c`: the C wire fuzz (`make tables-c-wire-fuzz`,
-  `tables-c-retain`, and the release gate's C runs) passes
-  `--relax-vector unknown_arm_text_nul` (`C_RELAX_VECTORS` in `make/c.mk`).
-  The pinned vector (testdata/wire/tables/fuzz-vectors/INDEX.txt) is an arm
-  that streamdemo.Feed's union cannot name, of the text kind, whose text holds
-  a NUL. Every read must refuse it (docs/SPEC-TABLES.md §6.5: the strict rules
-  apply to every byte, in fields a reader does not declare too). The C read
-  skips an unknown arm by its L without walking it, and loads. Its divergence
-  is counted, not failed, and if it ever agrees with the oracle the run fails
-  until the flag is dropped. Files: `test/conformance/harness/main.go`,
-  `test/conformance/harness/wirefuzz.go`, `make/c.mk`,
-  `make/wire-fuzz-release.mk`. Real fix: the C read walks an unknown arm's
-  payload by its framing, as Elixir's does since PR 3290; then drop
-  `C_RELAX_VECTORS`. WIP: none.
 - `relax/unknown-arm-text-cpp`: the same vector and the same skip on the C++
   wire fuzz (`make tables-wire-fuzz`, `tables-wire-fuzz-retain`, and the
   release gate's C++ runs), through `CPP_RELAX_VECTORS` in the `Makefile`.
@@ -155,8 +141,8 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau,
-  moo and squirrel in `test/conformance/relaxed.txt`: each still writes
+  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster and moo
+  in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15) and the tool are
   right. WIP: none.
@@ -272,7 +258,6 @@ PR 3290. WIP for every proof slug: none unless named here.
   answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
   on the Rust side).
 
-- `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
 - `relax/proof-i3-moo`: 1 cell(s): `porting I3 / moo` (❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two block...). Real fix: the porting register's I3 cell for moo is proven (docs/PORTING.md).

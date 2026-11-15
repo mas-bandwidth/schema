@@ -530,7 +530,7 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     // anywhere but its own transport. The two blob ids are lawful types.
     const tid = table[tref - 1];
     if (tid === TableNodeTableId || tid === TableBuildVersionId || tid === TableMessageVocabularyId) { report.damaged = true; return null; }
-    raw.push({ tid, body: payload.slice(rec.at, rec.at + tlen) });
+    raw.push({ tid, tref, body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
   if (count !== raw.length) { report.damaged = true; return null; }
@@ -912,7 +912,7 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    entry: %v,\n", st.IsMapEntry())
 		g.pf("    fields: [\n")
 		for i, f := range st.Fields {
-			g.pf("      %s,\n", g.fieldDesc(f, i, guards[f.Name]))
+			g.pf("      %s,\n", g.fieldDescNamed(f, f.Name, i, guards[f.Name], st.IsMapEntry() && f.Name == ir.MapKeyFieldName))
 		}
 		g.pf("    ],\n")
 		var placeable []string
@@ -944,13 +944,13 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 // carries, its shape and the JSON shape its text takes (§16.2), and what the
 // shape needs. An OPTIONAL ?T (§2.3) is its value's descriptor with `opt`.
 func (g *variableGen) fieldDesc(f *ir.Field, ordinal int, guards []guardStep) string {
-	return g.fieldDescNamed(f, f.Name, ordinal, guards)
+	return g.fieldDescNamed(f, f.Name, ordinal, guards, false)
 }
 
 // fieldDescNamed is fieldDesc under the property name the storage holds the
 // value at: the field's own, or "value" for a union arm's field line, whose
 // holder is the arm object { arm, value } (§2.6).
-func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guards []guardStep) string {
+func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guards []guardStep, keep bool) string {
 	var b strings.Builder
 	tail := g.fieldDescTail(f)
 	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, ",
@@ -966,6 +966,9 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guar
 	}
 	if f.Type.Optional {
 		b.WriteString("opt: true, ")
+	}
+	if keep {
+		b.WriteString("keep: true, ")
 	}
 	if len(guards) > 0 {
 		fmt.Fprintf(&b, "g: %s, ", jsGuards(guards))
