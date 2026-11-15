@@ -1503,7 +1503,7 @@ namespace Blockhome
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
                 Span<byte> key = stackalloc byte[MaxKey];
-                if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
                 if (!Same(key.Slice(0, used), "&node"))
@@ -2067,8 +2067,9 @@ namespace Blockhome
                             return RefuseText(ref input, "string_not_utf8");
                         }
                     }
-                    // Only stored text rejects NUL; skipped values and object field
-                    // names still accept that escape. Map keys opt in before length checks.
+                    // A placed string, an object key and a skipped value take one
+                    // rule (docs/SPEC-TABLES.md §16.3): a text that decodes to U+0000
+                    // refuses the read. Map keys opt in before length checks.
                     if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
                     if (measure)
                     {
@@ -2244,7 +2245,7 @@ namespace Blockhome
                     if (c == 0) { input.Bad = true; return false; }
                     if (close == '}')
                     {
-                        if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
@@ -2279,7 +2280,7 @@ namespace Blockhome
                     case (byte)'"':
                         {
                             int ignored;
-                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored, stored: true);
                         }
                     case (byte)'t': return Literal(text, ref input, "true");
                     case (byte)'f': return Literal(text, ref input, "false");
@@ -2346,7 +2347,7 @@ namespace Blockhome
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
                     Span<byte> key = stackalloc byte[MaxKey];
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int tag = 0;
@@ -2729,7 +2730,7 @@ namespace Blockhome
                         if (c == '}') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
                         int keyLength;
-                        if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         int slot = -1;
@@ -2858,7 +2859,7 @@ namespace Blockhome
                     if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
                     if (c == 0) { input.Bad = true; return false; }
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int index = -1;
