@@ -6150,6 +6150,15 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         return false;
     }
     type_id = s.ids->at( ref );
+    // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+    // MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3): the node table, the build
+    // version and the vocabulary are transports, so no record's TYPE reference
+    // may resolve to one of their ids. The two blob type ids are lawful.
+    if ( type_id == kTableNodeTableFieldId || type_id == kTableBuildVersionFieldId || type_id == kTableMessageVocabularyFieldId )
+    {
+        s.damaged = true;
+        return false;
+    }
     uint64_t declared_length = 0;
     if ( !rec.getleb( declared_length ) )
     {
