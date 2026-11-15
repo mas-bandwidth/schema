@@ -559,6 +559,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.call(ind, fmt.Sprintf("stream.serializeInt128(%s, %s, %s)", scratch, bigLit(f.IntMin), bigLit(f.IntMax)), "")
 			} else {
 				// uint128 is the raw field: 128 bits, low 64-bit half first
+				g.emitBareIntCheck(f, name, ind)
 				g.pf("%s%s.value = %s;\n", ind, scratch, name)
 				g.call(ind, fmt.Sprintf("stream.serializeUint128(%s)", scratch), "")
 			}
@@ -706,6 +707,7 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 // exactly as in C++). Signed BigInt values likewise need their unsigned
 // two's-complement bit pattern before calling the runtime bit writer.
 func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
+	g.emitBareIntCheck(f, name, ind)
 	if f.Type.Width == 64 {
 		scratch := g.bigScratch()
 		bits := name
@@ -719,6 +721,22 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	scratch := g.numScratch()
 	g.pf("%s%s.value = %s;\n", ind, scratch, fmtNumCast(f, name))
 	g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, f.Type.Width), "")
+}
+
+// emitBareIntCheck refuses a bare integer its declared width cannot carry,
+// and a value of the wrong JavaScript type (a BigInt only above 32 bits, a
+// Number that is an integer otherwise), before the mask could wrap it
+// (SPEC §5.1): the flat tier's guardBareInt twin.
+func (g *gen) emitBareIntCheck(f *ir.Field, name, ind string) {
+	lo, hi := bareIntBounds(f)
+	if f.Type.Width > 32 {
+		g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) { // a bare integer must fit its width\n",
+			ind, name, name, bigLit(lo), name, bigLit(hi))
+	} else {
+		g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) { // a bare integer must fit its width\n",
+			ind, name, name, lo.String(), name, hi.String())
+	}
+	g.pf("%s  return false;\n%s}\n", ind, ind)
 }
 
 // fmtNumCast renders the value-to-unsigned conversion for a 32-bit-or-less

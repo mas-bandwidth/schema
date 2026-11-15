@@ -213,6 +213,9 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeAlign()) {
     return false;
   }
+  if (typeof value.probeId !== "bigint" || value.probeId < 0n || value.probeId > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.probeId;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -409,8 +412,14 @@ export function WriteProbeSample(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
     return false;
   }
+  if (!Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.rawDelta >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  if (typeof value.bigDelta !== "bigint" || value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.bigDelta);
@@ -430,12 +439,18 @@ export function WriteProbeSample(stream, value) {
       return false;
     }
     if (value.hasTarget) {
+      if (!Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 65535) { // a bare integer must fit its width
+        return false;
+      }
       NUMBER_SCRATCH.value = value.targetId;
       if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
         return false;
       }
     }
   } else {
+    if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 4294967295) { // a bare integer must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.idleTicks;
     if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
       return false;
@@ -449,6 +464,9 @@ export function WriteProbeSample(stream, value) {
     return false;
   }
   for (let i = 0; i < value.samplesCount; i++) {
+    if (!Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 65535) { // a bare integer must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.samples[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
@@ -537,6 +555,9 @@ export function ZeroProbeRing(value) {
 }
 
 export function WriteProbeRing(stream, value) {
+  if (!Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.radius;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
@@ -583,6 +604,9 @@ export function WriteProbeSlab(stream, value) {
   }
   NUMBER_SCRATCH.value = value.width;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
+    return false;
+  }
+  if (!Number.isInteger(value.height) || value.height < 0 || value.height > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.height;
@@ -730,6 +754,9 @@ export function ZeroProbeCollider(value) {
 }
 
 export function WriteProbeCollider(stream, value) {
+  if (!Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.armor;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
@@ -804,6 +831,9 @@ export function ZeroProbeConfig(value) {
 }
 
 export function WriteProbeConfig(stream, value) {
+  if (!Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.retries >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
@@ -947,6 +977,9 @@ export function ZeroTest(value) {
 }
 
 export function WriteTest(stream, value) {
+  if (!Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.testA;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
@@ -1323,28 +1356,49 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
+  if (!Number.isInteger(value.int8Value) || value.int8Value < -128 || value.int8Value > 127) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.int8Value & 0xff;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  if (!Number.isInteger(value.int16Value) || value.int16Value < -32768 || value.int16Value > 32767) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.int16Value & 0xffff;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
+  if (!Number.isInteger(value.uint8Value) || value.uint8Value < 0 || value.uint8Value > 255) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.uint8Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  if (!Number.isInteger(value.uint16Value) || value.uint16Value < 0 || value.uint16Value > 65535) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.uint16Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
+  if (!Number.isInteger(value.uint32Value) || value.uint32Value < 0 || value.uint32Value > 4294967295) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.uint32Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
+  if (typeof value.uint64Value !== "bigint" || value.uint64Value < 0n || value.uint64Value > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.uint64Value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.int64Full !== "bigint" || value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Full);

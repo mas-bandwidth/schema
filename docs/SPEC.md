@@ -2382,7 +2382,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
-- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`); 9 unchecked
+- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), and a map key held twice, at every record the save graph reaches; 9 unchecked
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
@@ -2425,7 +2425,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 debug; 3–8 every build
 
-  - packet `Write`: 1, 3–7 and 10 debug; 2 unchecked; 8 not yet held
+  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked
 
 - **Rust**
 
@@ -2441,7 +2441,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–7 debug; 8 and 10 not yet held
+  - packet `Write`: 1–8 and 10 debug
 
 - **Dart**
 
@@ -2449,7 +2449,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–5 and 8 debug; 6–7 every build
 
-  - packet `Write`: 1–8 and 10 debug
+  - packet `Write`: 1–8 and 10 debug; 11 debug for widths below 64, held by `packet-write-bareint-dart`; a 64-bit field is a Dart `int` (a `uint64` its bit pattern), so 2^63 in an `int64`, and 2^64 or a negative in a `uint64`, has no Dart value: no 64-bit write is checked, and the test names those cases as not representable rather than running them
 
 - **Go**
 
@@ -2465,7 +2465,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 and 10 every build on the flat and the runtime tier
+  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
 
 - **Elixir**
 
@@ -2473,7 +2473,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–6 and 8 every build; 7 unrepresentable
 
-  - packet `Write`: 1–7 and 10 every build (`ArgumentError`); 8 not yet held
+  - packet `Write`: 1–8 and 10 every build (`ArgumentError`); 11 every build, held by `packet-write-bareint-elixir`
 
 - **Lua**
 
@@ -2517,9 +2517,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
 - **Lobster**
 
-  - `FixedSave`: 1–8 every build (`SaveChecked`)
+  - `FixedSave`: 1–8 every build (`FixedSave`, which `FixedSaveChecked` calls with a caller buffer)
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–8 and 10 every build
 
   - packet `Write`: 1–6 debug; 7 traps
 

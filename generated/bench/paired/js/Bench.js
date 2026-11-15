@@ -178,6 +178,9 @@ export function WriteBenchPacket(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.big !== "bigint" || value.big < 0n || value.big > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.big;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -1339,8 +1342,14 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
+  if (typeof value.sessionId !== "bigint" || value.sessionId < 0n || value.sessionId > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.sessionId;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (!Number.isInteger(value.clientId) || value.clientId < 0 || value.clientId > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.clientId;
@@ -1397,6 +1406,9 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   for (let i = 0; i < 4; i++) {
+    if (!Number.isInteger(value.loadout[i]) || value.loadout[i] < 0 || value.loadout[i] > 255) { // a bare integer must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.loadout[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
@@ -1461,6 +1473,9 @@ export function WriteBenchMixed(stream, value) {
   }
   NUMBER_SCRATCH.value = value.drift;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
+    return false;
+  }
+  if (typeof value.wideKey !== "bigint" || value.wideKey < 0n || value.wideKey > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.wideKey;
