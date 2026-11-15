@@ -139,7 +139,12 @@ const tableMapJsonSource = `
                 ReadOnlySpan<byte> token = actual;
                 Space(token, ref probe);
                 if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
-                { input.Bad = true; return false; }
+                {
+                    // a key that is not the key kind's integer spelling is a
+                    // NAMED refusal (docs/SPEC-TABLES.md §16.2), not damage
+                    if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
+                    input.Bad = true; return false;
+                }
                 if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
             }
             if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
@@ -157,7 +162,7 @@ const tableMapJsonSource = `
                     // A key names a present optional value even when the
                     // value's shape is wrong; the new entry keeps its default.
                     if (field.Optional) { field.SetPresent(entry, true); }
-                    if (shape != Shape(field))
+                    if (!TableShapeMatches(Shape(field), shape))
                     {
                         return RefuseText(ref input, "kind_mismatch");
                     }

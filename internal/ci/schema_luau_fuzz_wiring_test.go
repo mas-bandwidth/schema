@@ -13,8 +13,8 @@ import (
 // TestSchemaElixirRunsHostileCorpusWiring holds the Elixir port's: each gate
 // is a make target the port's unit target runs, each control is registered on
 // the pull-request tier of make/negative-controls.json, the wire fuzz holds the
-// roots its leg cannot open to a pinned list, and the corpus workflow has both
-// a push/pull-request gate and a scheduled control, fleet only, fork guarded.
+// roots its leg cannot open to a pinned list, and the corpus workflow runs
+// nightly and on dispatch only (the owner, 2026-11-15), fleet only, fork guarded.
 func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -113,12 +113,20 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 
 	workflow := read(".github/workflows/schema-luau-runs-hostile-corpus.yml")
 	carries("schema-luau-runs-hostile-corpus.yml", workflow,
-		"push:", "pull_request:", "schedule:", "workflow_dispatch:",
-		"branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
+		"schedule:", "workflow_dispatch:",
 		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 		"make dist-luau",
 		"make schema-luau-runs-hostile-corpus\n",
 		"make schema-luau-runs-hostile-corpus-negative-control")
+	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
+	// not light moved to nightly test now." "no exceptions."): no push and no
+	// pull request starts the corpus workflow; those run only ci-fast.yml.
+	for _, p := range nightlyOnlyTriggerProblems(workflow) {
+		t.Errorf("schema-luau-runs-hostile-corpus.yml: %s", p)
+	}
+	if len(nightlyOnlyTriggerProblems(strings.Replace(workflow, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored push trigger was not refused")
+	}
 	if strings.Contains(workflow, "runs-on: ubuntu-latest") {
 		t.Error("the corpus workflow runs on a GitHub-hosted runner; every CI job is on the fleet")
 	}
@@ -135,12 +143,20 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
 	} {
-		if ok, err := jobSelectsSelfHosted(workflow, "corpus", ev); err != nil || !ok {
-			t.Errorf("the Luau corpus job did not run on %+v: ok=%v err=%v", ev, ok, err)
+		if ok, err := jobSelectsSelfHosted(workflow, "corpus", ev); err != nil || ok {
+			t.Errorf("the Luau corpus job ran on %+v: ok=%v err=%v; the workflow is nightly and dispatch only", ev, ok, err)
 		}
-		if ok, _ := jobSelectsSelfHosted(workflow, "negative-control", ev); ok {
-			t.Errorf("the Luau negative-control job ran on %+v; it is the scheduled half", ev)
+	}
+	for _, ev := range []ciEvent{
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		for _, job := range []string{"corpus", "negative-control"} {
+			if ok, err := jobSelectsSelfHosted(workflow, job, ev); err != nil || !ok {
+				t.Errorf("the Luau %s job did not run on %+v: ok=%v err=%v", job, ev, ok, err)
+			}
 		}
 	}
 }

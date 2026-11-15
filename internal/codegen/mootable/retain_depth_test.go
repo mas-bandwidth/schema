@@ -143,7 +143,6 @@ func TestMooRetainKeepsAFieldNested128(t *testing.T) {
 		{name: "keyed scalar element at 127 bodies", bodies: 127, inner: keyedScalarSlot},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			wire := depthWire(c)
 			want := goRetain(t, g.unit, "T", wire, retainDepthStore, -1)
