@@ -867,7 +867,10 @@ public final class BenchMixedVariable {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -903,7 +906,10 @@ public final class BenchMixedVariable {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -948,6 +954,8 @@ public final class BenchMixedVariable {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {
@@ -1015,6 +1023,8 @@ public final class BenchMixedVariable {
                         long n = r.leb();
                         if (r.fail) {
                             r.fail = false;
+                            report.damaged = true;
+                        } else if (!TableVariable.arrayElemKindClosed(ek)) {
                             report.damaged = true;
                         } else if (ek != 6) {
                             report.refuse("kind_mismatch");
