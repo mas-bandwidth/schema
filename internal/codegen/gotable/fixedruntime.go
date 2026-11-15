@@ -1066,15 +1066,6 @@ func tableFixedTagBytes(b tableFixedLayoutView, i int32) uint32 {
 // root's kind and size; then the walk — index in range (5), depth (7), kind
 // known (2), own size (6), the children, then the size and shape rules (3, 4);
 // and last that the walk consumed exactly the entries (5).
-// Layout lengths are u32; 4 + 17*count must fit that wire length.
-// Check the full count before conversion, rather than discarding high bits.
-func tableFixedLayoutCount(count uint32) (int32, bool) {
-	if count > 0x7fffffff {
-		return 0, false
-	}
-	return int32(count), true
-}
-
 func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
@@ -1087,11 +1078,12 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
-	indexCount, ok := tableFixedLayoutCount(count)
-	if !ok {
+	// Layout byte lengths are u32; 4 + 17*count must fit that wire length.
+	// Refuse counts outside the index domain before converting, never mask them.
+	if count > 0x7fffffff {
 		return out, "layout_tree_unclosed"
 	}
-	view := tableFixedLayoutView{Bytes: bytes, Count: indexCount}
+	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
 	// 2. THE ROOT IS A TABLE, and its size is the record's body
 	root := tableFixedEntryAt(view, 0)
 	if root.Kind != 13 {
