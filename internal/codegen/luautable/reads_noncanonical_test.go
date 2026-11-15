@@ -87,7 +87,7 @@ func generateNonCanonicalUnit(t *testing.T, schema string) map[string][]byte {
 }
 
 // nonCanonicalProbe is the main for one row. It reads the same wire through
-// the plain load, the retaining load (strict and walk), and the message load
+// the plain load, the walk load, the retaining load (strict and walk), and the message load
 // (strict and walk), printing one "name=verdict" line each; a canonical row
 // also prints the re-saved bytes.
 const nonCanonicalProbe = `local inputs = require("./inputs")
@@ -118,6 +118,8 @@ end
 if form == "variable" then
 	local plain = L.load(root, inputs.wire, report())
 	print("plain=" .. (if plain ~= nil then "read" else "refused"))
+	local walk = L.loadWalk(root, inputs.wire, report())
+	print("walk=" .. (if walk ~= nil then "read" else "refused"))
 	local retained = R.LoadRetain(root, inputs.wire, report(), 65536)
 	print("retain=" .. (if retained ~= nil then "read" else "refused"))
 	local walked = R.loadRetainWalk(root, inputs.wire, report(), 65536)
@@ -214,7 +216,7 @@ func TestLuauReadsRefuseNonCanonical(t *testing.T) {
 			case "announcement":
 				entries = []string{"announcement"}
 			case "variable":
-				entries = []string{"plain", "retain", "retainwalk"}
+				entries = []string{"plain", "walk", "retain", "retainwalk"}
 			case "message":
 				entries = []string{"message", "messagewalk"}
 			}

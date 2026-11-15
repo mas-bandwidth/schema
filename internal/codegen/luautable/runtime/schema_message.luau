@@ -467,13 +467,13 @@ end
 
 skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 	-- A BODY HAS ONE ENCODING FOR ITS VALUE (§3.3): its field references follow
-	-- the announcement's declaration order, and a body with no field at all
-	-- omits every field the announcement declares.
+	-- the announcement's declaration order. A body that ends at once is the
+	-- value with every field at its default, which is lawful (§4).
 	local lastRef = 0
 	while true do
 		local ref, ok = get(r, st.refBits)
 		if not ok then return false end
-		if ref == 0 then return lastRef ~= 0 end
+		if ref == 0 then return true end
 		if ref <= lastRef then return false end
 		lastRef = ref
 		local e = entryOf(st.v, ref)
@@ -484,30 +484,107 @@ skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 	end
 end
 
--- A SCALAR FIELD AT THE DEFAULT ITS WRITER ELIDES (§3.3 (a)): the reader peeks
--- the announced payload without consuming it, because a non-default value is
--- stepped over by the ordinary skip. A plain float is left to the skip; its
--- bits are not an integer default.
-local function messageFieldDefault(fd: any, r: any, e: any): boolean
+-- the declared default as the little-endian two's-complement 32-bit words of
+-- an unpacked integer payload `w` bits wide (the low word alone, reduced, when
+-- w is under 32), or nil when the default is not an integer
+local defScratch = buffer.create(16)
+local function defaultWords(def: any, w: number): { number }?
+	buffer.fill(defScratch, 0, 0)
+	if typeof(def) == "table" then
+		if typeof(def.lo) ~= "integer" or typeof(def.hi) ~= "integer" then return nil end
+		buffer.writeinteger(defScratch, 0, def.lo)
+		buffer.writeinteger(defScratch, 8, def.hi)
+	elseif typeof(def) == "integer" then
+		buffer.writeinteger(defScratch, 0, def)
+		if integer.lt(def, 0i) then buffer.fill(defScratch, 8, 0xFF, 8) end
+	elseif typeof(def) == "number" then
+		if def ~= math.floor(def) then return nil end
+		buffer.writeu32(defScratch, 0, def % 2 ^ 32)
+		buffer.writeu32(defScratch, 4, math.floor(def / 2 ^ 32) % 2 ^ 32)
+		if def < 0 then buffer.fill(defScratch, 8, 0xFF, 8) end
+	else
+		return nil
+	end
+	if w < 32 then return { buffer.readu32(defScratch, 0) % 2 ^ w } end
+	local words = {}
+	for i = 1, w // 32 do words[i] = buffer.readu32(defScratch, (i - 1) * 4) end
+	return words
+end
+
+-- A FIELD AT THE DEFAULT ITS WRITER ELIDES (§3.3 (a)): the reader peeks the
+-- announced payload without consuming it, and a field the writer would have
+-- left out refuses the batch. Every lawful writer's default for a field this
+-- reader names is the reader's own (a changed default is refused by the
+-- lineage check, docs/VERSIONING.md), so the writer's build version does not
+-- enter: an empty string, bytes or counted array (every writer elides a zero
+-- count); a bool, an unpacked integer of any width, or a fixed-point raw at the
+-- default's own bits; a plain float at the default's own bit pattern; an enum
+-- naming the default variant, or None where the default is None. A packed
+-- integer and a compressed float carry an offset this walk does not hold, and
+-- read as before.
+local function messageFieldDefault(fd: any, r: any, e: any, st: any): boolean
 	if fd == nil or fd.required == true or fd.present ~= nil then return false end
-	if (e.shape.packing or 0) ~= 0 then return false end
 	local k = e.shape.kind
-	if k == 10 or k == 11 then return false end
+	if k == 12 or k == 14 then
+		local n, ok = countOf(r, e.shape)
+		return ok and n == 0
+	end
+	if k == 30 then
+		if fd.s ~= "enum" then return false end
+		local ref, ok = get(r, st.refBits)
+		if not ok then return false end
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		if ref == 0 then return def == 0 end
+		if def == 0 or fd.vs == nil or fd.vs[def] == nil then return false end
+		local en = entryOf(st.v, ref)
+		return en ~= nil and en.id == fd.vs[def][2]
+	end
+	if (e.shape.packing or 0) ~= 0 then return false end
+	if k == 10 or k == 11 then
+		if fd.s ~= "float" then return false end
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		if typeof(def) ~= "number" then return false end
+		if k == 10 then
+			buffer.writef32(defScratch, 0, def)
+			local bits, ok = get(r, 32)
+			return ok and bits == buffer.readu32(defScratch, 0)
+		end
+		buffer.writef64(defScratch, 0, def)
+		local lo, lok = get(r, 32)
+		local hi, hok = get(r, 32)
+		return lok and hok and lo == buffer.readu32(defScratch, 0) and hi == buffer.readu32(defScratch, 4)
+	end
 	local w = kindBits(k)
-	if w <= 0 or w > 32 or (e.shape.bits or 0) ~= w then return false end
-	local raw, ok = get(r, w)
-	if not ok then return false end
-	if k == 1 then return (raw ~= 0) == (fd.def == true) end
-	local def = fd.def or 0
-	if typeof(def) ~= "number" then return false end
-	local m = 2 ^ w
-	if def < 0 then def = def + m end
-	return raw == def % m
+	if w <= 0 or (e.shape.bits or 0) ~= w then return false end
+	if k == 1 then
+		local raw, ok = get(r, 1)
+		return ok and (raw ~= 0) == (fd.def == true)
+	end
+	if not ((k >= 2 and k <= 9) or (k >= 18 and k <= 29)) then return false end
+	local words = defaultWords(fd.def or 0, w)
+	if words == nil then return false end
+	if w < 32 then
+		local raw, ok = get(r, w)
+		return ok and raw == words[1]
+	end
+	for i = 1, #words do
+		local x, ok = get(r, 32)
+		if not ok or x ~= words[i] then return false end
+	end
+	return true
 end
 
 skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boolean?): boolean
 	local k = e.shape.kind
 	if k == 0 or k == 32 then return true end
+	if fieldEntry == true and fd ~= nil then
+		local at = r.off
+		local def = messageFieldDefault(fd, r, e, st)
+		r.off = at
+		if def then return false end
+	end
 	if k == 30 then
 		local at = r.off
 		local ref, ok = get(r, st.refBits)
@@ -623,12 +700,6 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		return ok and skip(r, n * 8)
 	end
 	if plainFloat(e.shape, fd) then return floatStep(r, st, k, fd) end
-	if fieldEntry == true and fd ~= nil then
-		local at = r.off
-		local def = messageFieldDefault(fd, r, e)
-		r.off = at
-		if def then return false end
-	end
 	return skip(r, e.shape.bits)
 end
 
