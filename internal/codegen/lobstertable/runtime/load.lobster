@@ -621,6 +621,10 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
             return read_refuse(rep, "non_finite_float")
         if declared != 11 and fd.franged and (v < fd.flo or v > fd.fhi):
             return read_refuse(rep, "out_of_range")
+        if declared != 11 and fd.franged and v == 0.0:
+            // a compressed float's -0 lands as +0 (§3.3, the special values)
+            cell.f = 0.0
+            return true
         cell.f = if declared == 11: v else: fround(v)
         return true
     if kind == 11:
