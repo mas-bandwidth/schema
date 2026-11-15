@@ -22,7 +22,7 @@ import (
 func packetVoidPythonFixture(t *testing.T) (schema, probe, goldens string) {
 	t.Helper()
 	dir := filepath.Join(repoRoot(t), "test", "packet-void")
-	return filepath.Join(dir, "Python.schema"),
+	return filepath.Join(dir, "python", "Python.schema"),
 		filepath.Join(dir, "python", "main.py"),
 		filepath.Join(dir, "python", "goldens.txt")
 }

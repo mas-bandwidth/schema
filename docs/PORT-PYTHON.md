@@ -495,16 +495,16 @@ the core stands against the P4 row; the rules of this page are unchanged.
   byte; a root blocked by an uncarried kind names that kind.
 - **Unions have their own packet-void gate.** The union kind is carried, so
   the golden harness never skips a root for it, and `TestPythonPacketUnions`
-  holds the leg's half of `test/packet-void`: `test/packet-void/Python.schema`
-  keeps `Void.schema`'s union shapes in the kinds the core carries (its bit
-  fields and arrays are later cards), and `test/packet-void/python/goldens.txt`
-  is read and written back byte for byte under both pins, mypy --strict over
-  the tree. A payload-free arm spends exactly its tag bits, a selected payload
-  is rebuilt at its declared defaults before decoding, every out-of-contract
-  write raises `InvalidValue`, and truncated or hostile input raises
-  `Refused`. `TestPythonPacketUnionsNegativeControl` plants one extra set bit
-  on a void arm's write in a copy of the generated code and the probe goes
-  red by name.
+  holds the leg's half of `test/packet-void`:
+  `test/packet-void/python/Python.schema` keeps `Void.schema`'s union shapes
+  in the kinds the core carries (its bit fields and arrays are later cards),
+  and `test/packet-void/python/goldens.txt` is read and written back byte for
+  byte under both pins, mypy --strict over the tree. A payload-free arm spends
+  exactly its tag bits, a selected payload is rebuilt at its declared defaults
+  before decoding, every out-of-contract write raises `InvalidValue`, and
+  truncated or hostile input raises `Refused`.
+  `TestPythonPacketUnionsNegativeControl` plants one extra set bit on a void
+  arm's write in a copy of the generated code and the probe goes red by name.
 
 ## THE PACKET CORE BENCH
 

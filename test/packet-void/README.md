@@ -43,12 +43,12 @@ for a runtime that reads or writes more.
 ## Python
 
 `make packet-void-python` checks the same SPEC §4.8 rules through the Python
-packet core, under both pinned interpreters and mypy --strict. `Python.schema`
-keeps the union shapes of `Void.schema` but uses only the kinds the Python core
-carries today: its bit fields and arrays belong to later cards, so `Frame`
-uses one-bit bools around its tag and the `Batch` row is absent. `python/main.py`
-reads and writes `python/goldens.txt`, whose bytes are calculated here and
-never produced by the writer under test:
+packet core, under both pinned interpreters and mypy --strict.
+`python/Python.schema` keeps the union shapes of `Void.schema` but uses only
+the kinds the Python core carries today: its bit fields and arrays belong to
+later cards, so `Frame` uses one-bit bools around its tag and the `Batch` row
+is absent. `python/main.py` reads and writes `python/goldens.txt`, whose bytes
+are calculated here and never produced by the writer under test:
 
 | Value | Calculation | Byte |
 |---|---|---|
