@@ -9651,6 +9651,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0.0f ) | (int) ( value->server_time > 65535.0f );
+    value->server_time = value->server_time + 0.0f;
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
@@ -9690,10 +9691,14 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
         (*damaged)++;
     }
     (*out_of_range) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
+    value->aim_x = value->aim_x + 0.0f;
     (*out_of_range) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
+    value->aim_y = value->aim_y + 0.0f;
     (*out_of_range) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
+    value->aim_z = value->aim_z + 0.0f;
     (*out_of_range) += (int) ( value->flux < -1000000000000000000ll ) | (int) ( value->flux > 1000000000000000000ll );
     (*out_of_range) += (int) ( value->ping < 0.0f ) | (int) ( value->ping > 250.0f );
+    value->ping = value->ping + 0.0f;
     /* bits(24) width clamp */
     (*out_of_range) += ( value->crc_hint > 16777215ull );
     (*out_of_range) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
