@@ -6921,20 +6921,18 @@ defmodule Bench.Table do
          {:ok, frac_digits, r3} <- json_num_frac(r1),
          {:ok, exp_str, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
-      token = json_token(bin, r4)
-
       cond do
         frac_digits != "" or exp_str != "" ->
-          {:ok, {:decimal, token}, r4}
+          {:ok, {:decimal, json_token(bin, r4)}, r4}
 
         int_value == :big ->
-          {:ok, {:bigint, token}, r4}
+          {:ok, {:bigint, json_token(bin, r4)}, r4}
 
         neg and int_value == 0 ->
           # -0 KEEPS ITS SIGN (docs/SPEC-TABLES.md §3.3, §16.2): an integer
           # has no -0, so the token rides as its decimal text and a float
           # field reads -0.0 from it, where an integer field still reads 0
-          {:ok, {:decimal, token}, r4}
+          {:ok, {:decimal, json_token(bin, r4)}, r4}
 
         true ->
           {:ok, if(neg, do: -int_value, else: int_value), r4}
