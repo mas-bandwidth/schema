@@ -704,7 +704,7 @@ json-hostile num-float32-upper-band        tabledemo  RootConfig  testdata/confo
 json-hostile num-float64-overflow          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow refused
 json-hostile num-fraction                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-fraction       refused
 json-hostile num-int-overflow              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow   refused
-json-hostile num-int64-min                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-min      read
+json-hostile num-int64-min-string                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-min-string      read
 json-hostile num-integral-forms            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms refused
 json-hostile num-leading-plus              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus   refused
 json-hostile num-leading-zero              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero   refused
@@ -726,10 +726,10 @@ json-hostile num-exponent-forms            tabledemo  RootConfig  testdata/confo
 json-hostile num-float32-min-subnormal     tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-min-subnormal read
 json-hostile num-negative-zero-floats      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero-floats read
 json-hostile num-float-max                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float-max      read
-json-hostile num-int64-extremes            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes read
-json-hostile num-uint64-max                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max     read
-json-hostile num-uint64-two-to-63          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63 read
-json-hostile num-int64-past-extremes       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes refused
+json-hostile num-int64-extremes-string            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes-string read
+json-hostile num-uint64-max-string                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max-string     read
+json-hostile num-uint64-two-to-63-string          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63-string read
+json-hostile num-int64-past-extremes-string       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes-string refused
 json-hostile str-writer-escapes            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-writer-escapes read
 json-hostile str-raw-non-ascii             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-raw-non-ascii  read
 json-hostile base64-padding-one            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-padding-one read
@@ -863,28 +863,31 @@ cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.
 # the text form's rules at the wide kinds (§16.2): a fixed takes any number
 # token whose value is EXACTLY representable in its Q I.F and refuses a finer
 # one as the wrong shape, never rounding; out of range clamps on the raw scale;
-# a magnitude past 128 bits saturates and counts; a 128-bit integer takes any
-# integral token, exact past 2^53
+# a magnitude past 128 bits saturates and counts; a 128-bit integer takes its
+# string of digits, exact past 2^53. A fixed kind wider than 32 bits and a
+# 128-bit integer are written as strings (§16.2); the same vectors spelled as
+# bare number tokens are JSON-HOSTILE-NUMBER-TOKEN.txt's, and each `-string`
+# row here is one of those vectors' string twin
 json-hostile fixed-fraction-too-fine       scalars    SimState    testdata/conformance/tables/json-hostile/fixed-fraction-too-fine refused
 json-hostile fixed-exact-fraction          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-exact-fraction read
-json-hostile fixed-integral-token          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-integral-token read
+json-hostile fixed-integral-token-string          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-integral-token-string read
 json-hostile fixed-over-range              scalars    SimState    testdata/conformance/tables/json-hostile/fixed-over-range   refused
 json-hostile fixed-huge-exponent           scalars    SimState    testdata/conformance/tables/json-hostile/fixed-huge-exponent refused
 json-hostile fixed-below-resolution        scalars    SimState    testdata/conformance/tables/json-hostile/fixed-below-resolution refused
 json-hostile fixed-negative-zero           scalars    SimState    testdata/conformance/tables/json-hostile/fixed-negative-zero read
-json-hostile fixed-at-bound                scalars    SimState    testdata/conformance/tables/json-hostile/fixed-at-bound     read
+json-hostile fixed-at-bound-string                scalars    SimState    testdata/conformance/tables/json-hostile/fixed-at-bound-string     read
 json-hostile ufixed-negative               scalars    SimState    testdata/conformance/tables/json-hostile/ufixed-negative    refused
 json-hostile fixed-array-elements          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-array-elements refused
 json-hostile fixed-wrong-shape             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-wrong-shape  refused
-json-hostile int128-beyond-int64           scalars    SimState    testdata/conformance/tables/json-hostile/int128-beyond-int64 read
-json-hostile int128-over-range             scalars    SimState    testdata/conformance/tables/json-hostile/int128-over-range  refused
+json-hostile int128-beyond-int64-string           scalars    SimState    testdata/conformance/tables/json-hostile/int128-beyond-int64-string read
+json-hostile int128-over-range-string             scalars    SimState    testdata/conformance/tables/json-hostile/int128-over-range-string  refused
 json-hostile int128-fractional             scalars    SimState    testdata/conformance/tables/json-hostile/int128-fractional  refused
 json-hostile int128-integral-forms         scalars    SimState    testdata/conformance/tables/json-hostile/int128-integral-forms refused
-json-hostile uint128-max                   scalars    SimState    testdata/conformance/tables/json-hostile/uint128-max        read
-json-hostile uint128-over                  scalars    SimState    testdata/conformance/tables/json-hostile/uint128-over       refused
-json-hostile uint128-negative              scalars    SimState    testdata/conformance/tables/json-hostile/uint128-negative   refused
+json-hostile uint128-max-string                   scalars    SimState    testdata/conformance/tables/json-hostile/uint128-max-string        read
+json-hostile uint128-over-string                  scalars    SimState    testdata/conformance/tables/json-hostile/uint128-over-string       refused
+json-hostile uint128-negative-string              scalars    SimState    testdata/conformance/tables/json-hostile/uint128-negative-string   refused
 json-hostile int128-saturated-below        scalars    SimState    testdata/conformance/tables/json-hostile/int128-saturated-below refused
-json-hostile fixed-nested-type             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-nested-type  refused
+json-hostile fixed-nested-type-string             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-nested-type-string  refused
 
 # THE BYTE BUFFER's text rules (§2.5, §16.2): `""` and `null` are two values;
 # a body that is not base64, or not a string at all, is `kind_mismatch` with

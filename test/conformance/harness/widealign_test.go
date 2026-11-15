@@ -27,7 +27,7 @@ func TestWideRegionFramingAlignment(t *testing.T) {
 	}
 	value := root.model.New(root.def)
 	var report tabletext.Report
-	if !root.model.Read(value, []byte(`{"wide":1,"vertex":{"n":2}}`), &report) {
+	if !root.model.Read(value, []byte(`{"wide":"1","vertex":{"n":"2"}}`), &report) {
 		t.Fatalf("json %+v", report)
 	}
 	wire, err := tablewire.Encode(root.model, value)
