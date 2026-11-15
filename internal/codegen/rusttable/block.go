@@ -68,7 +68,6 @@ const blockModuleBanner = `//
 // many there are and how far apart they sit — and then those rows, each array
 // at a fixed pitch. This side reads those three facts and points.
 
-#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::manual_range_contains)]
 
 `
@@ -209,7 +208,9 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 	b.pf("}\n\n")
 
 	b.pf("impl Default for %sBlockProjection {\n    fn default() -> Self {\n", name)
-	b.pf("        // a projection is plain bytes with no niche in it\n")
+	b.pf("        // zero is a valid value of every field type a projection holds, a\n")
+	b.pf("        // bool included, so the zero form is a value of the type by\n")
+	b.pf("        // construction\n")
 	b.pf("        unsafe { core::mem::zeroed() }\n    }\n}\n\n")
 
 	// THE LAYOUT CONTRACT
@@ -300,6 +301,11 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("// §19.1), the Rust spelling of gotable/blockbuild.go's %sBlockBegin:\n", n)
 	b.pf("// storage, every count and the whole extent are checked before any byte\n")
 	b.pf("// of the extent changes, and it returns the used extent, rounded to 64.\n")
+	b.pf("///\n/// # Safety\n")
+	b.pf("/// `buf` must point at `capacity` writable bytes, with `capacity` non-negative,\n")
+	b.pf("/// and those bytes must not be written through any other pointer for the\n")
+	b.pf("/// duration of the call. A short capacity or a count past its declared bound\n")
+	b.pf("/// refuses without writing.\n")
 	b.pf("pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
 	b.pf("    if buf.is_null() {\n        return None;\n    }\n")
 	b.pf("    let _ = counts;\n")
@@ -598,7 +604,14 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("    // offset_of near 2^63 must refuse, and an addition that carried past\n")
 	b.pf("    // the top of the type would be the undefined behaviour the check after\n")
 	b.pf("    // it was supposed to catch.\n")
-	b.pf("    ///\n    /// # Safety\n    /// `base` must point at `bytes` readable bytes that outlive the handle.\n")
+	b.pf("    ///\n    /// # Safety\n")
+	b.pf("    /// `base` must point at `bytes` readable bytes, 64-byte aligned, of a\n")
+	b.pf("    /// genuine block of this build: its prologue names this build's magic,\n")
+	b.pf("    /// byte order and version, and each triple's count and stride describe\n")
+	b.pf("    /// rows inside the extent — every bool byte 0 or 1, every self-relative\n")
+	b.pf("    /// offset inside the region, every count honest. The region must stay\n")
+	b.pf("    /// put, stay aligned, and must not be written while the handle or\n")
+	b.pf("    /// anything borrowed from it lives.\n")
 	b.pf("    pub unsafe fn open(base: *const u8, bytes: i64) -> Option<%sBlock> {\n", name)
 	b.pf("        unsafe {\n")
 	b.pf("            if base.is_null() || bytes < %d {\n                return None;\n            }\n", bl.Projection.Size)
@@ -660,7 +673,10 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	// gotable/refusal.go's spellings (SPEC-TABLES §19.2). The ordinary open is
 	// kept as the fast path; classification only runs after it refuses.
 	b.pf("    /// Name the first failed open clause (§19.2).\n")
-	b.pf("    ///\n    /// # Safety\n    /// `base` must point at `bytes` readable bytes.\n")
+	b.pf("    ///\n    /// # Safety\n")
+	b.pf("    /// The same contract as `open`: `base` must point at `bytes` readable\n")
+	b.pf("    /// bytes, 64-byte aligned, of a genuine block of this build, and the region\n")
+	b.pf("    /// must not be written while it is read.\n")
 	b.pf("    pub unsafe fn open_reason(base: *const u8, bytes: i64) -> &'static str {\n")
 	b.pf("        unsafe {\n")
 	b.pf("            if Self::open(base, bytes).is_some() { return \"ok\"; }\n")

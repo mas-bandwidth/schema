@@ -32,8 +32,9 @@ pub struct FixedTableRow {
 
 impl Default for FixedTableRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // zero is a valid value of every field type a cooked record holds,
+        // a bool included, so the zero form is a value of the type by
+        // construction
         unsafe { core::mem::zeroed() }
     }
 }
