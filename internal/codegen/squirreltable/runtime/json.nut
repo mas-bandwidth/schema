@@ -1320,6 +1320,20 @@ local byteOrderMark = function(r) {
   if (r.p == 0 && r.n >= 3 && r.t[0] == 0xef && r.t[1] == 0xbb && r.t[2] == 0xbf) r.p = 3;
 };
 
+// A COMMENT'S BYTES ARE TEXT (docs/SPEC-TABLES.md §16.2): well-formed UTF-8
+// and no NUL, the same rule the string site holds (§16.3). Linear in the
+// comment's length.
+local commentText = function(s, from, to) {
+  local i = from;
+  while (i < to) {
+    if ((s[i] & 0xff) == 0) return false;
+    local w = utf8Sequence(s, i);
+    if (w < 0 || i + w > to) return false;
+    i += w;
+  }
+  return true;
+};
+
 // whitespace and comments: accepted on read, never written (§16.2); an
 // unclosed /* is malformed, and a lone slash is not JSON
 local space = function(r) {
@@ -1328,18 +1342,22 @@ local space = function(r) {
     local c = t[r.p];
     if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { r.p++; continue; }
     if (c == '/' && r.p + 1 < n && t[r.p + 1] == '/') {
-      r.p += 2;
+      local start = r.p + 2;
+      r.p = start;
       while (r.p < n && t[r.p] != '\n') r.p++;
+      if (!commentText(t, start, r.p)) { r.bad = true; return; }
       continue;
     }
     if (c == '/' && r.p + 1 < n && t[r.p + 1] == '*') {
-      local q = r.p + 2;
+      local start = r.p + 2;
+      local q = start;
       local found = false;
       while (q + 1 < n) {
         if (t[q] == '*' && t[q + 1] == '/') { found = true; break; }
         q++;
       }
       if (!found) { r.bad = true; r.p = n; return; }
+      if (!commentText(t, start, q)) { r.bad = true; return; }
       r.p = q + 2;
       continue;
     }
