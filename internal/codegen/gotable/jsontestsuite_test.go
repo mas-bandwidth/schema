@@ -18,7 +18,7 @@ const jsonTestSuiteProbe = `package probe
 
 func jsonTestSuiteAccepts(text []byte) bool {
 	var report TableReport
-	in := tableJSONIn{text: text, report: &report}
+	in := tableJSONIn{text: text, report: &report, jsonLayer: true}
 	in.byteOrderMark()
 	ok := in.skipValue(0)
 	in.space()

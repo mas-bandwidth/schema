@@ -103,7 +103,7 @@ export function WriteW13(stream, value) {
   return true;
 }
 
-export function ReadW13(stream, value) {
+export function ReadW13(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 12)) { // the count guards the loop (§6.3)
     return false;
   }
@@ -114,7 +114,7 @@ export function ReadW13(stream, value) {
     }
     value.items[i] = NUMBER_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type W17
@@ -162,7 +162,7 @@ export function WriteW17(stream, value) {
   return true;
 }
 
-export function ReadW17(stream, value) {
+export function ReadW17(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 9)) { // the count guards the loop (§6.3)
     return false;
   }
@@ -173,7 +173,7 @@ export function ReadW17(stream, value) {
     }
     value.items[i] = NUMBER_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type W26
@@ -221,7 +221,7 @@ export function WriteW26(stream, value) {
   return true;
 }
 
-export function ReadW26(stream, value) {
+export function ReadW26(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 6)) { // the count guards the loop (§6.3)
     return false;
   }
@@ -232,7 +232,7 @@ export function ReadW26(stream, value) {
     }
     value.items[i] = NUMBER_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type W1
@@ -280,7 +280,7 @@ export function WriteW1(stream, value) {
   return true;
 }
 
-export function ReadW1(stream, value) {
+export function ReadW1(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 20)) { // the count guards the loop (§6.3)
     return false;
   }
@@ -291,7 +291,7 @@ export function ReadW1(stream, value) {
     }
     value.items[i] = NUMBER_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type W52
@@ -339,7 +339,7 @@ export function WriteW52(stream, value) {
   return true;
 }
 
-export function ReadW52(stream, value) {
+export function ReadW52(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
   }
@@ -350,7 +350,7 @@ export function ReadW52(stream, value) {
     }
     value.items[i] = BIGINT_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type W50
@@ -398,7 +398,7 @@ export function WriteW50(stream, value) {
   return true;
 }
 
-export function ReadW50(stream, value) {
+export function ReadW50(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
   }
@@ -409,7 +409,7 @@ export function ReadW50(stream, value) {
     }
     value.items[i] = BIGINT_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type F13
@@ -447,14 +447,14 @@ export function WriteF13(stream, value) {
   return true;
 }
 
-export function ReadF13(stream, value) {
+export function ReadF13(stream, value, nested) {
   for (let i = 0; i < 7; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8191)) {
       return false;
     }
     value.items[i] = NUMBER_SCRATCH.value;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Tri3
@@ -494,7 +494,7 @@ export function WriteTri3(stream, value) {
   return true;
 }
 
-export function ReadTri3(stream, value) {
+export function ReadTri3(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
   }
@@ -503,7 +503,7 @@ export function ReadTri3(stream, value) {
     return false;
   }
   value.b = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type ArrTri3
@@ -552,17 +552,17 @@ export function WriteArrTri3(stream, value) {
   return true;
 }
 
-export function ReadArrTri3(stream, value) {
+export function ReadArrTri3(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 10)) { // the count guards the loop (§6.3)
     return false;
   }
   value.itemsCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!ReadTri3(stream, value.items[i])) {
+    if (!ReadTri3(stream, value.items[i], true)) {
       return false;
     }
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Eleven
@@ -602,7 +602,7 @@ export function WriteEleven(stream, value) {
   return true;
 }
 
-export function ReadEleven(stream, value) {
+export function ReadEleven(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -611,7 +611,7 @@ export function ReadEleven(stream, value) {
     return false;
   }
   value.b = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type ArrEleven
@@ -650,13 +650,13 @@ export function WriteArrEleven(stream, value) {
   return true;
 }
 
-export function ReadArrEleven(stream, value) {
+export function ReadArrEleven(stream, value, nested) {
   for (let i = 0; i < 9; i++) {
-    if (!ReadEleven(stream, value.items[i])) {
+    if (!ReadEleven(stream, value.items[i], true)) {
       return false;
     }
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type EmptyA
@@ -685,8 +685,9 @@ export function WriteEmptyA() {
   return true;
 }
 
-export function ReadEmptyA() {
-  return true;
+export function ReadEmptyA(stream, value, nested) {
+  // empty body — presence is the payload (SPEC §4.6)
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type EmptyB
@@ -715,8 +716,9 @@ export function WriteEmptyB() {
   return true;
 }
 
-export function ReadEmptyB() {
-  return true;
+export function ReadEmptyB(stream, value, nested) {
+  // empty body — presence is the payload (SPEC §4.6)
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -783,7 +785,7 @@ export function WriteEmptyUnion(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadEmptyUnion(stream, value) {
+export function ReadEmptyUnion(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -791,12 +793,18 @@ export function ReadEmptyUnion(stream, value) {
   switch (value.type) {
     case EmptyUnionType.A:
       InitEmptyA(value.a); // fresh declared defaults on every selection
-      return ReadEmptyA(stream, value.a);
+      if (!ReadEmptyA(stream, value.a, true)) {
+        return false;
+      }
+      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
     case EmptyUnionType.B:
       InitEmptyB(value.b); // fresh declared defaults on every selection
-      return ReadEmptyB(stream, value.b);
+      if (!ReadEmptyB(stream, value.b, true)) {
+        return false;
+      }
+      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
   }
-  return true; // None
+  return nested === true || stream.serializeEnd(); // None
 }
 
 // type HoldsEmptyUnion
@@ -842,19 +850,19 @@ export function WriteHoldsEmptyUnion(stream, value) {
   return true;
 }
 
-export function ReadHoldsEmptyUnion(stream, value) {
+export function ReadHoldsEmptyUnion(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
   value.lead = NUMBER_SCRATCH.value;
-  if (!ReadEmptyUnion(stream, value.u)) {
+  if (!ReadEmptyUnion(stream, value.u, true)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Strs
@@ -926,7 +934,7 @@ export function WriteStrs(stream, value) {
   return true;
 }
 
-export function ReadStrs(stream, value) {
+export function ReadStrs(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -952,7 +960,7 @@ export function ReadStrs(stream, value) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type ArrNested
@@ -1015,7 +1023,7 @@ export function WriteArrNested(stream, value) {
   return true;
 }
 
-export function ReadArrNested(stream, value) {
+export function ReadArrNested(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -1025,7 +1033,7 @@ export function ReadArrNested(stream, value) {
   }
   value.itemsCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!ReadEleven(stream, value.items[i])) {
+    if (!ReadEleven(stream, value.items[i], true)) {
       return false;
     }
   }
@@ -1033,7 +1041,7 @@ export function ReadArrNested(stream, value) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Sole
@@ -1066,11 +1074,11 @@ export function WriteSole(stream, value) {
   return true;
 }
 
-export function ReadSole(stream, value) {
+export function ReadSole(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
   value.only = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
