@@ -18,11 +18,13 @@ _ARRAY_ELEMENT_KINDS = frozenset(
 
 
 def _payload(fd: FieldDesc, value: Any, path: str) -> bytes:
-    if isinstance(value, bytes):
+    # Exact types only: a subclass could answer bytes() or == with other
+    # bytes than it holds.
+    if type(value) is bytes:
         payload = value
-    elif isinstance(value, bytearray):
+    elif type(value) is bytearray:
         payload = bytes(value)
-    elif isinstance(value, memoryview):
+    elif type(value) is memoryview:
         if value.format != "B":
             raise InvalidValue(path, "a memoryview must have format B")
         payload = value.tobytes()

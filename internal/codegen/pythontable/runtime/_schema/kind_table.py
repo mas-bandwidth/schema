@@ -21,7 +21,9 @@ def _target(fd: FieldDesc) -> type[Any]:
 
 class _Table:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
-        if not isinstance(value, _target(fd)):
+        # EXACTLY the generated class: a subclass could carry another
+        # descriptor or __eq__, and neither may change what is written.
+        if type(value) is not _target(fd):
             raise InvalidValue(path, f"not a {fd.target}")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
@@ -34,9 +36,29 @@ class _Table:
         return obj
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        w.varint(ctx.idref(fd.field_id))
+        from .save import write_body
+
+        # AN ALL-DEFAULT NESTED TABLE ELIDES BY ITS BODY, as the engine
+        # elides it (internal/tablewire/encode.go, kind 13; SPEC-TABLES §3):
+        # the field's id is interned first, the body is built, and when the
+        # body is its terminator alone the field is dropped and every id it
+        # interned is undone, so an elided field costs nothing in the id
+        # table either. Each field inside decided its own elision against its
+        # DECLARED default (floats by bit pattern, compressed floats by
+        # value), so the body, not an equality, is the answer.
+        mark = len(ctx.ids)
+        reference = ctx.idref(fd.field_id)
+        body = bytearray()
+        write_body(_body_writer(body), value, ctx, False)
+        if len(body) <= 1:
+            for interned in ctx.ids[mark:]:
+                del ctx.refs[interned]
+            del ctx.ids[mark:]
+            return
+        w.varint(reference)
         w.byte(fd.kind)
-        self.write_value(w, fd, value, ctx)
+        w.varint(len(body))
+        w.raw(body)
 
     def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body

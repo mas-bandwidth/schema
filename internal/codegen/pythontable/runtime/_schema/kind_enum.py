@@ -2,7 +2,10 @@
 
 An enum value is a plain int ordinal. On the wire it rides as the reference to
 its VARIANT NAME's id, with 0 for None. A reference this build cannot name is
-unknown: the field reads None and the load counts one.
+unknown: the field reads None and the load counts one. A variant marked
+``| deprecated`` is retired in place (§2.15): a read of it lands the field's
+declared default (an array element's default is None) and is never unknown,
+and a write of it raises InvalidValue.
 """
 
 from typing import Any
@@ -20,6 +23,8 @@ class _Enum:
             raise InvalidValue(path, f"{value} is outside [0, {fd.hi}]")
         if value != 0 and value > len(fd.variants):
             raise InvalidValue(path, f"{value} names no variant")
+        if value in fd.retired:
+            raise InvalidValue(path, f"{value} names the deprecated variant {fd.variants[value - 1][0]}")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         reference = r.varint()
@@ -28,6 +33,8 @@ class _Enum:
         variant_id = r.id_at(reference)
         for index, (_, wire_id) in enumerate(fd.variants):
             if wire_id == variant_id:
+                if index + 1 in fd.retired:
+                    return fd.default
                 return index + 1
         ctx.unknown += 1
         return 0

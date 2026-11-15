@@ -77,7 +77,16 @@ def measure_table(value: Any) -> int:
     return _encode(value, Writer(None))
 
 
+def check_root(value: Any) -> None:
+    """Refuse a root that is not exactly a generated class: a subclass could
+    carry another descriptor or __eq__, and neither may change the bytes."""
+    cls = descriptor.by_name(value.descriptor.name)
+    if cls is None or type(value) is not cls:
+        raise InvalidValue("", f"not a {value.descriptor.name}")
+
+
 def _encode(value: Any, writer: Writer) -> int:
+    check_root(value)
     _validate(value, value.descriptor, "", set())
     ctx = Ctx()
     ctx.indices[id(value)] = 1
@@ -107,12 +116,12 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if current is None:
                 continue
             target = descriptor.by_name(field.target)
-            if target is None or not isinstance(current, target):
+            if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target} or None")
             _validate(current, current.descriptor, where, seen)
         elif field.codec == "table":
             target = descriptor.by_name(field.target)
-            if target is None or not isinstance(current, target):
+            if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
         else:
@@ -139,8 +148,8 @@ def _collect(value: Any, ctx: Ctx) -> None:
             _collect(current, ctx)
             ctx.onstack.discard(key)
         elif field.codec == "table":
-            if field.is_default(current):
-                continue
+            # Always walked: whether a nested table elides is decided by its
+            # body when it is written (kind_table.py), never by a compare.
             _collect(current, ctx)
         elif field.codec == "array":
             elem = field.elem

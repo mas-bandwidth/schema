@@ -46,7 +46,7 @@ class _Array:
                 from .descriptor import by_name
 
                 target = by_name(elem.target)
-                if target is None or not isinstance(item, target):
+                if target is None or type(item) is not target:
                     raise InvalidValue(where, f"not a {elem.target}")
                 from .save import _validate
 

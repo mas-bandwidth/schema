@@ -38,10 +38,15 @@ class _Float:
             raise InvalidValue(path, "not a float")
         if not math.isfinite(value):
             raise InvalidValue(path, "not a finite float")
-        if fd.float_range and (value < fd.fmin or value > fd.fmax):
-            raise InvalidValue(path, f"{value} is outside [{fd.fmin}, {fd.fmax}]")
+        stored = value
         if fd.codec == "float32":
-            _pack(fd, 0.0 if (fd.float_range and value == 0.0) else value)
+            # THE RANGE IS HELD ON THE VALUE THE WIRE CARRIES: a float32 is
+            # rounded first, so a value inside the range whose float32 lies
+            # outside it (0.1 under max = 0.1) is refused here rather than
+            # written as bytes every reader refuses.
+            stored = _unpack(fd, _pack(fd, value))
+        if fd.float_range and (stored < fd.fmin or stored > fd.fmax):
+            raise InvalidValue(path, f"{value} is outside [{fd.fmin}, {fd.fmax}]")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         value = _unpack(fd, r.take(_WIDTH[fd.codec]))

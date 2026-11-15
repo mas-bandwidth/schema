@@ -3,7 +3,8 @@
 A field's descriptor names what a generic walk needs: its schema name, its
 table-wire id and kind, the codec that carries it, its declared range, and the
 table (or union) whose value it holds. An ARRAY carries its element's own
-descriptor under ``elem``, and an ENUM carries its variant names and wire ids.
+descriptor under ``elem``, and an ENUM carries its variant names and wire ids
+and the ordinals of its variants marked ``| deprecated`` under ``retired``.
 A table's descriptor holds its own type id and its fields by declaration order
 and by wire id. The values are DATA, built once at import, so the codec
 modules only ever read them.
@@ -36,6 +37,7 @@ class FieldDesc:
         "default",
         "elem",
         "variants",
+        "retired",
         "f32",
         "fmin",
         "fmax",
@@ -61,6 +63,7 @@ class FieldDesc:
     default: Any
     elem: FieldDesc | None
     variants: tuple[tuple[str, int], ...]
+    retired: frozenset[int]
     f32: bool
     fmin: float
     fmax: float
@@ -87,6 +90,7 @@ class FieldDesc:
         default: Any = None,
         elem: FieldDesc | None = None,
         variants: tuple[tuple[str, int], ...] = (),
+        retired: tuple[int, ...] = (),
         f32: bool = False,
         fmin: float = 0.0,
         fmax: float = 0.0,
@@ -111,6 +115,7 @@ class FieldDesc:
         self.default = default
         self.elem = elem
         self.variants = variants
+        self.retired = frozenset(retired)
         self.f32 = f32
         self.fmin = fmin
         self.fmax = fmax
@@ -135,11 +140,13 @@ class FieldDesc:
         if self.codec == "float64":
             return _float64_is_default(self, value)
         if self.codec == "table":
-            if value is None:
-                return True
-            if not self.target:
-                return False
-            return bool(value == new_by_name(self.target))
+            # A BY-VALUE TABLE IS NEVER ELIDED HERE. Its elision is decided by
+            # its encoded body, as the engine decides it
+            # (internal/tablewire/encode.go, kind 13): the body is written,
+            # and it is dropped, with every id it interned, exactly when it
+            # is its terminator alone (kind_table.py). No value compare, and
+            # so no __eq__, takes part.
+            return False
         return bool(value == self.default)
 
 

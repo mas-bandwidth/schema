@@ -2,6 +2,7 @@ package pythontable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -231,10 +232,7 @@ func TestPythonVtFixedClassNegativeControl(t *testing.T) {
 	t.Parallel()
 	u, files := vtFixedClassFiles(t)
 	wire := vtFixedClassEngineWire(t, u, "Root", vtFixedClassJSON)
-	sabotaged := make(map[string][]byte, len(files))
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	sabotaged := maps.Clone(files)
 	const path = "vtfc/_schema/kind_array.py"
 	text, ok := sabotaged[path]
 	if !ok {
@@ -309,7 +307,7 @@ func readManifestUnits(path string) ([]manifestUnit, error) {
 		return nil, err
 	}
 	var units []manifestUnit
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 3 || fields[0] != "unit" {
 			continue
@@ -353,7 +351,7 @@ func loadManifestUnit(repo string, paths []string) (*ir.Unit, error) {
 			base := strings.TrimSuffix(name, ".schema")
 			ast, perrs := parser.Parse(name, data)
 			if len(perrs) > 0 {
-				return nil, fmt.Errorf("%s: %v", file, perrs[0])
+				return nil, fmt.Errorf("%s: %w", file, perrs[0])
 			}
 			sources = append(sources, check.SourceFile{Path: file, Name: name, Base: base, Bytes: data, AST: ast})
 		}
