@@ -134,9 +134,10 @@ func (w *wgen) emitStruct(st *ir.Struct) error {
 	w.Pf("    return SERIALIZE_ERROR_NONE;\n}\n\n")
 
 	w.Declare("Read" + st.Name)
-	w.Pf("// Read%s reads value, validating every field. It returns false with the\n", st.Name)
-	w.Pf("// reason latched on the stream (serialize_error(s)) for a wire the schema refuses.\n")
-	w.Pf("fn Read%s(s: ReadStream&, value: %s&) -> bool {\n", st.Name, st.Name)
+	w.Pf("// Read%s reads value, validating every field, then ends the packet (SPEC §5).\n", st.Name)
+	w.Pf("// It returns false with the reason latched on the stream (serialize_error(s)).\n")
+	w.emitReadEntry(st.Name)
+	w.Pf("inline fn _Read%s(s: ReadStream&, value: %s&) -> bool {\n", st.Name, st.Name)
 	w.n = 0
 	if err := w.emitReadItems(st.Items, "    "); err != nil {
 		return fmt.Errorf("%s: %w", st.Name, err)
@@ -193,8 +194,9 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 
 	w.Declare("Read" + d.Name)
 	w.Pf("// Read%s reads the tag, refusing one above the arm count, then builds the\n", d.Name)
-	w.Pf("// selected arm FRESH at its defaults and reads its payload into it (SPEC §4.8).\n")
-	w.Pf("fn Read%s(s: ReadStream&, value: %s&) -> bool {\n", d.Name, d.Name)
+	w.Pf("// selected arm FRESH at its defaults, reads its payload, and ends the packet (SPEC §5).\n")
+	w.emitReadEntry(d.Name)
+	w.Pf("inline fn _Read%s(s: ReadStream&, value: %s&) -> bool {\n", d.Name, d.Name)
 	if d.Max == 0 {
 		w.Pf("    guard serialize_error(s) == SERIALIZE_ERROR_NONE else { return false; }\n")
 		w.Pf("    value.Type = %sNone; // zero wire bits: only None exists\n    return true;\n}\n\n", tag)
@@ -214,7 +216,7 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 		typ := w.TypeRef(v.Type, false)
 		w.Pf("    if value.Type == %s%s {\n", tag, arm)
 		w.Pf("        value.%s = %s { .. }; // a fresh payload on every selection\n", arm, typ)
-		w.Pf("        return Read%s(s, value.%s);\n", typ, arm)
+		w.Pf("        return _Read%s(s, value.%s);\n", typ, arm)
 		w.Pf("    }\n")
 	}
 	w.Pf("    return true; // None or a payload-free arm: the tag is the whole wire\n}\n\n")
@@ -481,6 +483,18 @@ func (w *wgen) emitWriteEntry(name string) {
 	w.Pf("    let refusal = _Write%s(s, l, value);\n", name)
 	w.Pf("    schema_rt::wire_close(s, l);\n")
 	w.Pf("    return refusal;\n}\n\n")
+}
+
+// Every Read<T> is the one-packet read: a thin entry over an `inline fn
+// _Read<T>` that carries the type's fields, then the runtime's end check
+// (SPEC §5). The end refuses a whole byte left after the top-level object and
+// non-zero unused bits in the final byte, and it runs once, here; a nested
+// type inside generated code reads through its `_Read<T>` body and never ends.
+func (w *wgen) emitReadEntry(name string) {
+	w.Pf("fn Read%s(s: ReadStream&, value: %s&) -> bool {\n", name, name)
+	w.Pf("    guard _Read%s(s, value) else { return false; }\n", name)
+	w.Pf("    guard serialize_end(s) else { return false; } // one packet's end: no trailing byte, no set padding (SPEC §5)\n")
+	w.Pf("    return true;\n}\n\n")
 }
 
 // streamCall emits a runtime call that takes the stream, the packer state put

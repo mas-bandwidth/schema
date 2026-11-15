@@ -150,7 +150,6 @@ cpp json-hostile str-zero-escape-unknown-key relax/hostile-rows-cpp
 cs json-hostile base64-unpadded relax/hostile-rows-cs
 cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs
 dart json-hostile base64-unpadded relax/hostile-rows-dart
-dart json-hostile str-zero-escape-unknown-key relax/hostile-rows-dart
 elixir json-hostile base64-unpadded relax/hostile-rows-elixir
 elixir json-hostile str-zero-escape-unknown-key relax/hostile-rows-elixir
 goose json-hostile base64-unpadded relax/hostile-rows-goose
@@ -159,7 +158,6 @@ java json-hostile base64-unpadded relax/hostile-rows-java
 java json-hostile str-zero-escape-unknown-key relax/hostile-rows-java
 js json-hostile base64-unpadded relax/hostile-rows-js
 js json-hostile str-zero-escape-unknown-key relax/hostile-rows-js
-lobster json-hostile base64-unpadded relax/hostile-rows-lobster
 lobster json-hostile str-zero-escape-unknown-key relax/hostile-rows-lobster
 lua json-hostile base64-unpadded relax/hostile-rows-lua
 lua json-hostile str-zero-escape-unknown-key relax/hostile-rows-lua

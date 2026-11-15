@@ -4,10 +4,10 @@
   "experience": 4294967295,
   "tilt": 127,
   "heading": -32768,
-  "timestamp": -1,
+  "timestamp": "-1",
   "badge": 255,
   "port": 65535,
-  "epoch": 1,
+  "epoch": "1",
   "precision": 1e+23,
   "ratings": [
     7.0385313e-26,

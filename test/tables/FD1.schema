@@ -1,0 +1,40 @@
+// FD1.schema — a fixed root with one `| deprecated` field of every shape, for
+// the fixed form's deprecated-field vectors (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// "Deprecated fields are carried"; docs/SPEC-TABLES.md §3.4, §21.2, §22.6 and
+// docs/rulings.json fixed-deprecated-field-is-carried).
+//
+// A deprecated field in the fixed form is CARRIED: it reads and writes like any
+// other field, and its declared default applies only where the record does not
+// supply it. Every field below that takes a default declares one that no vector
+// stores, so a reader that yields the default instead of the stored value
+// answers a different number than the manifest's `expect=`.
+package tblfd1
+
+type Spot
+{
+    x int32 = 5
+    y int32 = 6
+}
+
+type Tally
+{
+    n int32 = 7
+}
+
+union Pick
+{
+    tally Tally
+    spot  Spot
+}
+
+fixed table FdRoot
+{
+    lead      int32 = 1
+    old_count int32 = 4 | deprecated
+    old_tag   string(8) = "abc" | deprecated
+    old_marks [..3]uint16 | deprecated
+    old_bonus ?uint16 | deprecated
+    old_spot  Spot | deprecated
+    old_pick  Pick | deprecated
+    trail     int32 = 2
+}
