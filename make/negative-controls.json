@@ -3099,11 +3099,11 @@
       ]
     },
     {
-      "name": "write-refusal-storage-release-cpp",
+      "name": "write-check-storage-debug-cpp",
       "when": "pull-request",
-      "why": "the C++ release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the message writer with the release flags (-DNDEBUG), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small compiler run, with no toolchain beyond the host C++ compiler.",
+      "why": "the C++ debug storage gate (docs/SPEC.md §5.1): C++ is an assert leg, so a count or a wstring length past its storage is held by the writer's schema_assert in a debug build and a release build carries no write-side check. The gate generates a small table unit, compiles the message writer without NDEBUG, and requires Measure and Save each to die on the assert for an over-long count and an over-long length; the control runs that gate, then strips the generated storage asserts and requires the same gate to go red. Two small C++ compiler runs, with no toolchain beyond the host C++ compiler.",
       "targets": [
-        "write-refusal-storage-release-cpp-negative-control"
+        "write-check-storage-debug-cpp-negative-control"
       ]
     },
     {
@@ -3240,6 +3240,15 @@
       "why": "the packet core's control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ShipCreate reader offsets the health field by one and TestPythonPacketCoreNegativeControl must go red on the write-back marker. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-packet-core-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
+      "name": "python-packet-floats",
+      "when": "pull-request",
+      "why": "the Python packet float kinds' controls (make/python.mk, packet-finite-python-negative-control): the finite rule is removed from a copy of the generated tree once per direction and test/packet-finite/python/main.py must fail exactly the vectors in its read.expected and write.expected, and the compressed float's range check is cut from a copy of a generated validator and the contract probe must name exactly its vectors, and the fixed point read's raw span check is cut from a copy of the bit layer and the probe must name exactly the headroom reads. One SCHEMA_SLOW go test, about a second of interpreter time on a bench; the row's cost is the pin cache restore.",
+      "targets": [
+        "packet-finite-python-negative-control"
       ],
       "python": "pin"
     }
