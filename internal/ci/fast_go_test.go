@@ -69,7 +69,7 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 		ev := ciEvent{
 			Name:     "pull_request",
 			Branch:   base,
-			HeadRef:  "sprint/schema-go",
+			HeadRef:  "sprint-group/schema-go",
 			Repo:     "mas-bandwidth/schema",
 			HeadRepo: "mas-bandwidth/schema",
 			PlanPkgs: "./internal/codegen/gotable",
@@ -95,7 +95,7 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 	if ok, err := jobRunsInWorkflow(mutated, "go-test-touched", ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint/schema-go",
+		HeadRef:  "sprint-group/schema-go",
 		Repo:     "mas-bandwidth/schema",
 		HeadRepo: "mas-bandwidth/schema",
 		PlanPkgs: "./internal/codegen/gotable",
@@ -106,8 +106,8 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 }
 
 // TestCIFastAndCIFullRunOnPullRequestWhateverItsBase is the sprint-base gate:
-// CI fast and CI full run on a pull request into any base. Push triggers stay
-// as they were. A fork pull request still never reaches a self-hosted job.
+// CI fast runs on a pull request into any base; CI full runs on none (it is
+// nightly). A fork pull request still never reaches a self-hosted job.
 func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	wfs := workflows(t, repoRoot(t))
 	ev := ciEvent{
@@ -127,31 +127,16 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", ev); err != nil || ok {
 		t.Fatalf("ci-fast.yml leg-gate ran below main on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
 	}
-	// ci-full.yml on any base: pr-select runs, and pins and cs-tables follow
-	// it (the owner, 2026-11-15: heavy suite failure on main is fine, like a
-	// hierarchical merge); generated is behind the full-ci label.
-	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "pr-select", ev); err != nil || !ok {
-		t.Fatalf("ci-full.yml pr-select did not run on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
-	}
-	selected := ev
-	selected.PRPins, selected.PRCS = "yes", "yes"
-	for _, job := range []string{"pins", "cs-tables"} {
-		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, selected); err != nil || !ok {
-			t.Fatalf("ci-full.yml %s did not run on a pull request into %s that selects it: ok=%v err=%v", job, ev.Branch, ok, err)
-		}
-	}
-	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", ev); err != nil || ok {
-		t.Fatalf("unlabeled ci-full.yml go-test ran on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
-	}
-	labeled := ev
-	labeled.Labels = []string{"full-ci"}
-	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", labeled); err != nil || !ok {
-		t.Fatalf("labeled ci-full.yml go-test did not run on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
+	// ci-full.yml runs nightly and on dispatch only (the owner, 2026-11-15: "I
+	// want everything that is not light moved to nightly test now." "no
+	// exceptions."): no pull request, whatever its base, starts it.
+	if workflowTriggersOn(wfs["ci-full.yml"], ev) {
+		t.Fatalf("ci-full.yml triggers on a pull request into %s; it runs nightly and on dispatch only", ev.Branch)
 	}
 	fork := ev
 	fork.HeadRepo = "fork/schema"
 	fork.Labels = []string{"full-ci"}
-	for _, name := range []string{"ci-fast.yml", "ci-full.yml"} {
+	for _, name := range []string{"ci-fast.yml"} {
 		if branches := workflowTriggerBranches(wfs[name])["pull_request"]; len(branches) != 0 {
 			t.Fatalf("%s pull_request filters bases %v; it must run whatever the base is", name, branches)
 		}
@@ -168,12 +153,29 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 			}
 		}
 	}
-	push := workflowTriggerBranches(wfs["ci-full.yml"])["push"]
-	if strings.Join(push, ",") != "main,dev,fixed-table-form" {
-		t.Fatalf("ci-full.yml push branches = %v, want main, dev, fixed-table-form", push)
+	if _, ok := workflowTriggerBranches(wfs["ci-full.yml"])["push"]; ok {
+		t.Fatal("ci-full.yml gained a push trigger; it runs nightly and on dispatch only")
 	}
-	if _, ok := workflowTriggerBranches(wfs["ci-fast.yml"])["push"]; ok {
-		t.Fatal("ci-fast.yml gained a push trigger")
+	// ci-fast.yml runs on a push to main and nowhere else: the sprint reads
+	// this lane's verdict on every base tip to tell a card's red from main's.
+	if push := workflowTriggerBranches(wfs["ci-fast.yml"])["push"]; len(push) != 1 || push[0] != "main" {
+		t.Fatalf("ci-fast.yml push branches %v; it runs on a push to main only", push)
+	}
+	if !workflowTriggersOn(wfs["ci-fast.yml"], ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}) {
+		t.Fatal("ci-fast.yml does not trigger on a push to main")
+	}
+	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
+	for nameJob, body := range yamlJobs(wfs["ci-fast.yml"]) {
+		if strings.Contains(body, "github.event_name == 'workflow_dispatch'") {
+			continue // the leg rows run on dispatch only
+		}
+		runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], nameJob, mainPush)
+		if err != nil {
+			t.Fatalf("ci-fast.yml %s eval error on a push to main: %v", nameJob, err)
+		}
+		if !runs {
+			t.Fatalf("ci-fast.yml %s does not run on a push to main", nameJob)
+		}
 	}
 }
 

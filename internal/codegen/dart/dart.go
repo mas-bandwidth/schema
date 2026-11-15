@@ -31,7 +31,9 @@
 // Functions per type: write<Name>(value, view) -> bytes written (trusted
 // writer, contracts asserted); read<Name>(value, view, numBits) -> bool (the
 // family read verdict — reads validate EVERYTHING and never throw on hostile
-// bytes); zero<Name>(value) -> the §5 zero form. No measure function is
+// bytes); read<Name>Bits(value, view, numBits, bitOffset) -> bits consumed or
+// -1 (the framing entry, SPEC §5 and §6.3: the same read from a bit offset,
+// with no end-of-packet check); zero<Name>(value) -> the §5 zero form. No measure function is
 // generated (SPEC §6.1): write returns the size.
 // Buffers are caller-owned ByteData views: write buffers hold <name>MaxBytes
 // (a multiple of 8 — the family write-buffer granularity); read buffers need
@@ -335,6 +337,10 @@ func (g *gen) assemble() []byte {
 		h.WriteString("// static run, ranges, wire constants, reserved and align padding, union\n")
 		h.WriteString("// tags — and NEVER throw on hostile bytes. No slack past the payload is\n")
 		h.WriteString("// required: the reader prices its 64-bit windows inside the buffer.\n")
+		h.WriteString("//\n")
+		h.WriteString("// read<Name>Bits(value, view, numBits, bitOffset) -> the bits consumed, or\n")
+		h.WriteString("// -1 on the same refusals: the framing entry, read from a bit offset with\n")
+		h.WriteString("// no end-of-packet check, so several objects read in turn from one buffer.\n")
 		h.WriteString("//\n")
 		h.WriteString("// zero<Name>(value) -> the §5 zero form. There is no measure function\n")
 		h.WriteString("// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.\n")
