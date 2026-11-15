@@ -419,6 +419,8 @@ func init() {
 		Name{Name: "table_json_base64_alphabet", What: "the text form's walk"},
 		Name{Name: "table_json_base64_value", What: "the text form's base64 decode lookup"},
 		Name{Name: "table_json_base64_step", What: "the text form's base64 body, JSON layer first"},
+		Name{Name: "table_json_base64_decode", What: "the text form's base64 body, decoded after the scan"},
+		Name{Name: "table_json_base64_scan", What: "the text form's base64 body scan"},
 		Name{Name: "table_json_count", What: "the text form's walk"},
 		Name{Name: "table_json_decimal_point", What: "the text form's walk"},
 		Name{Name: "table_json_element_shape", What: "the text form's walk"},

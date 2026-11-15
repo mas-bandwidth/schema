@@ -13857,7 +13857,7 @@ in build version (§20.5).
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
+  FromJson  FromJsonBytes  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
   SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   ReadStrict
