@@ -1663,8 +1663,18 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 		g.emitWriteOffset(name, f.IntMin, f.IntMax, ind)
 		return
 	}
-	// bare integer at storage width; signed values mask to the same-width
-	// two's-complement pattern (the family's bare-integer wire)
+	// bare integer at storage width (SPEC §5.1 row 1): a BEAM term has no
+	// storage width, so the writer refuses a non-integer and a value outside
+	// the declared intN/uintN range in every build. Signed values then mask
+	// to the same-width two's-complement pattern (the family's bare-integer
+	// wire).
+	lo, hi := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+	if f.Type.Signed {
+		lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(w-1)))
+		hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w-1)), big.NewInt(1))
+	}
+	g.raiseIf(fmt.Sprintf("not is_integer(%s)", name), fmt.Sprintf("%s is not an integer", g.dsp(name)), ind)
+	g.emitCheckRange(name, g.dsp(name), lo, hi, ind)
 	g.emitWriteWideRaw(name, w, ind)
 }
 

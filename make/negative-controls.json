@@ -2173,12 +2173,13 @@
     {
       "name": "elixir-packets",
       "when": "pull-request",
-      "why": "the Elixir port's five packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, the finite-float read rule, and the one-packet end check, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
+      "why": "the Elixir port's six packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, the finite-float read rule, the one-packet end check, and the bare-integer write width, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
       "targets": [
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-finite-elixir-negative-control",
-        "packet-end-elixir-negative-control"
+        "packet-end-elixir-negative-control",
+        "packet-write-bareint-elixir-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
