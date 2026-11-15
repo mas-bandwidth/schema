@@ -975,15 +975,16 @@ func tableJSONEncodeUTF8(code uint32, unit []byte) int32 {
 // U+0000 refuses the read, because no wire carries a zero in text and a read
 // must never place a value the writer or the strict reader refuses. Only the
 // \u0000 escape can produce one; a raw control byte is already not JSON. A
-// string only skipped or measured (no destination) stores nothing, and
-// scanKey's names (object keys, enum and flag names) store nothing either.
-func (in *tableJSONIn) scanString(out []byte) (int32, bool) { return in.scanText(out, false) }
+// string only measured (no destination) stores nothing.
+func (in *tableJSONIn) scanString(out []byte) (int32, bool) { return in.scanText(out, out != nil) }
 
-// scanKey scans a NAME: an object key or a variant name, compared and never
-// stored, so a zero in it is not 16.3's event (it simply names nothing).
-func (in *tableJSONIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, true) }
+// scanKey scans a NAME, compared and never stored; a zero in it is the value's own row's event.
+func (in *tableJSONIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, false) }
 
-func (in *tableJSONIn) scanText(out []byte, name bool) (int32, bool) {
+// scanSkipped holds a skipped string or an object key to the text rules of a placed value (§4, §16.3).
+func (in *tableJSONIn) scanSkipped(out []byte) (int32, bool) { return in.scanText(out, true) }
+
+func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -1057,9 +1058,8 @@ func (in *tableJSONIn) scanText(out []byte, name bool) (int32, bool) {
 					in.bad = true
 					return 0, false
 				}
-				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
-				// refuses the read
-				if code == 0 && !name && out != nil {
+				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage or a skipped value refuses the read
+				if code == 0 && zero {
 					in.zero = true
 					in.bad = true
 					return 0, false
@@ -1369,13 +1369,13 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 		if closing == '}' {
 			_ = in.peek()
 			keyStart := in.pos
-			decodedLen, ok := in.scanString(nil)
+			decodedLen, ok := in.scanSkipped(nil)
 			if !ok {
 				return false
 			}
 			in.pos = keyStart
 			if overflow == nil && decodedLen <= int32(len(keyArena)-arenaLen) && keyCount < len(keyOff) {
-				n, ok := in.scanKey(keyArena[arenaLen : arenaLen+int(decodedLen)])
+				n, ok := in.scanSkipped(keyArena[arenaLen : arenaLen+int(decodedLen)])
 				if !ok {
 					return false
 				}
@@ -1416,7 +1416,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					}
 				}
 				buf := make([]byte, decodedLen)
-				n, ok := in.scanKey(buf)
+				n, ok := in.scanSkipped(buf)
 				if !ok {
 					return false
 				}
@@ -1461,7 +1461,7 @@ func (in *tableJSONIn) skipValue(depth int32) bool {
 	case '[':
 		return in.skipContainer(']', depth)
 	case '"':
-		_, ok := in.scanString(nil)
+		_, ok := in.scanSkipped(nil)
 		return ok
 	case 't':
 		return in.literal("true")
@@ -1518,7 +1518,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			return true
 		}
 		var key [tableJSONMaxKey]byte
-		keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
+		keyLength, ok := in.scanSkipped(key[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -2003,7 +2003,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				return false
 			}
 			var key [tableJSONMaxKey]byte
-			keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
+			keyLength, ok := in.scanSkipped(key[:tableJSONMaxKey-1])
 			if !ok {
 				return false
 			}
@@ -2189,7 +2189,7 @@ func tableJSONReadTableFields(in *tableJSONIn, base unsafe.Pointer, info *TableT
 			return false
 		}
 		var key [tableJSONMaxKey]byte
-		keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
+		keyLength, ok := in.scanSkipped(key[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
