@@ -188,11 +188,11 @@ func TestPairedHeadersAgree(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(left) != 0 {
-		n := len(left)
+		full, n := left, len(left)
 		if n > 40 {
 			left = left[:40]
 		}
-		t.Fatalf("%d leftover line(s) after the twin map (first %d):\n%s", n, len(left), strings.Join(left, "\n"))
+		t.Fatalf("%s%d leftover line(s) after the twin map (first %d):\n%s", disagreementHead(full), n, len(left), strings.Join(left, "\n"))
 	}
 }
 
@@ -269,5 +269,109 @@ func TestCCounterDroppedIncrementReds(t *testing.T) {
 	other := `report->refused = true; report->refuse_reason = kind_mismatch;`
 	if left := diffLines("fixture", canonicalize(reason), canonicalize(other)); len(left) == 0 {
 		t.Fatal("two different refusal reasons passed the twin gate")
+	}
+}
+
+// disagreementHead puts the open disagreements a leftover shows at the head
+// of a failure, so a red names the rule before it lists the lines.
+func disagreementHead(left []string) string {
+	named := nameDisagreements(left)
+	if len(named) == 0 {
+		return ""
+	}
+	return strings.Join(named, "\n") + "\n"
+}
+
+// TestCDamagedCounterAgrees holds that the bool-byte strip is gone
+// (docs/FIXED-FORM-ALGORITHM.md §4.5): both legs refuse a byte other than 0
+// or 1 in the load's check pass, outside this runtime. A damaged counter
+// planted back into the C run is a real disagreement and stays in the diff.
+func TestCDamagedCounterAgrees(t *testing.T) {
+	c := `
+static SCHEMA_UNUSED void table_fixed_apply( const TableFixedEntry * p, const uint8_t * base, int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+{
+    for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+}
+static SCHEMA_UNUSED void table_fixed_run( void )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    table_fixed_apply( p, base, &out_of_range, &widened, &damaged );
+    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+}
+`
+	cpp := `
+inline void TableFixedApply( const TableFixedEntry & p, const uint8_t * base, int32_t & oor_count, int32_t & widened )
+{
+    for ( i = 0; i < p.size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
+}
+inline void TableFixedRun( void )
+{
+    int32_t oor_count = 0;
+    TableFixedApply( p, base, oor_count, widened );
+    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+}
+`
+	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) == 0 {
+		t.Fatal("a damaged counter planted back into the C run was mapped away")
+	}
+}
+
+// TestCDamagedCounterWrongReasonReds is that rule's NEGATIVE CONTROL: the
+// strip matches only the wire_damaged refusal, so a damaged counter that
+// refuses under another name stays in the diff.
+func TestCDamagedCounterWrongReasonReds(t *testing.T) {
+	c := `if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }`
+	cpp := `if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }`
+	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) == 0 {
+		t.Fatal("a damaged counter refusing under another name passed the twin gate")
+	}
+}
+
+// TestCDamagedRefusalStillEmitted holds the closed debt on the real C
+// artifact: a bool or present byte other than 0 or 1 refuses wire_damaged in
+// the load's check pass, and the run loop does not count that byte itself.
+func TestCDamagedRefusalStillEmitted(t *testing.T) {
+	cSrc, _, root := readTwinHeaders(t)
+	cPlain, err := dequalifyC(cSrc, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"p->op != kTableFixedBool && p->op != kTableFixedPresentDefaults",
+		"( at + 8 )[p->src + b] > 1u",
+		"report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED",
+	} {
+		if !strings.Contains(cPlain, want) {
+			t.Fatalf("the real C artifact no longer carries %q: the wire_damaged check pass is gone from the C leg", want)
+		}
+	}
+	for _, gone := range []string{
+		"if ( s[i] > 1 ) { (*damaged)++; }",
+		"if ( src[p->src] > 1 ) { (*damaged)++; }",
+	} {
+		if strings.Contains(cPlain, gone) {
+			t.Fatalf("the C run still counts a damaged byte (%q): that counter was retired when the check pass took the refusal", gone)
+		}
+	}
+}
+
+// TestOpenDisagreementsAreNamed holds the naming: a leftover that carries a
+// disagreement's marker is named with its rule, and a leftover that carries
+// none is named as nothing.
+func TestOpenDisagreementsAreNamed(t *testing.T) {
+	saved := openDisagreements
+	t.Cleanup(func() { openDisagreements = saved })
+	openDisagreements = []disagreement{{name: "ABSENT PAYLOAD (a fixture rule)", markers: []string{"kTableFixedPresentDefaults"}}}
+	named := nameDisagreements([]string{
+		"runtime:cpp:13 - kTableFixedPresentDefaults = 9;",
+	})
+	if len(named) != 1 || !strings.Contains(named[0], "ABSENT PAYLOAD") {
+		t.Fatalf("the open disagreement was not named: %q", named)
+	}
+	if got := nameDisagreements([]string{"runtime:c:1 + kTableFixedCopy = 99;"}); len(got) != 0 {
+		t.Fatalf("an unrelated leftover was named as an open disagreement: %q", got)
 	}
 }

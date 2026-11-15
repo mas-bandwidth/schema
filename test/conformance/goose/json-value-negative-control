@@ -10,10 +10,10 @@
 #                                       json-write red; wire, json-read and
 #                                       json-hostile green
 #   json-value-negative-control share   a reference reads null instead of the
-#                                       node its label defined, over listdemo
-#                                       (whose one hostile row carries no
-#                                       reference): json-read red; wire,
-#                                       json-write and json-hostile green
+#                                       node its label defined, over graphdemo:
+#                                       json-read red and the hostile row that
+#                                       shares a node by label (json-hostile)
+#                                       red; wire and json-write green
 #   json-value-negative-control total   a text list's read never meets its
 #                                       total (§2.13), over featurewitnesses:
 #                                       json-hostile red; wire, json-read and
@@ -41,9 +41,12 @@ label)
 share)
 	from='        jr_point(c, s, l.wire);'
 	to='        jr_null(c, s);'
-	want="json-read "
-	green="wire json-write json-hostile"
-	unit=listdemo
+	# The reader resolving a reference to null reds every text that reads a
+	# shared node (json-read) and the hostile row whose canonical value
+	# shares a node by label (shared-node-by-label, json-hostile).
+	want="json-hostile json-read "
+	green="wire json-write"
+	unit=graphdemo
 	;;
 total)
 	from='            if total > 0 && n > total - spent {'

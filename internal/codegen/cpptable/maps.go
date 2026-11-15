@@ -1374,6 +1374,9 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 	g.pf("%s    uint64_t count = 0;\n", ind)
 	g.pf("%[1]s    if ( !r.getleb( count ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
+	g.pf("%s    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind\n", ind)
+	g.pf("%s    // is held to the array list first, under any count (§3, §4).\n", ind)
+	g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 	g.pf("%s    // A MAP HEADER WHOSE ELEMENT KIND IS NOT %d is the ordinary array\n", ind, tkTable)
 	g.pf("%s    // kind mismatch of §4, and nothing about a map is special-cased\n", ind)
 	g.pf("%[1]s    if ( elem_kind != %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind, tkTable)
@@ -1623,31 +1626,8 @@ func (g *tableGen) emitMapBuilderSurfaces(members []*ir.Struct) {
 // mapNumberEdge descends one map's entries for the NUMBERING walk.
 func (g *tableGen) mapNumberEdge(f *ir.Field) {
 	g.emitMapEntryLoop(f, "value", "return false;", func(entry, elem, ind string) {
-		g.pf("%[1]sif ( !%[2]sNumber( ctx, numbering, %[3]s ) )\n%[1]s{\n%[1]s    TableMapRelease( cursor_%[4]s );\n%[1]s    return false;\n%[1]s}\n", ind, entry, elem, f.Name)
+		g.pf("%[1]sif ( !%[2]sNumberEdges( ctx, numbering, %[3]s ) )\n%[1]s{\n%[1]s    TableMapRelease( cursor_%[4]s );\n%[1]s    return false;\n%[1]s}\n", ind, entry, elem, f.Name)
 	})
-}
-
-// mapPackMeasureEdge descends one map's entries for the PACK MEASURE.
-func (g *tableGen) mapPackMeasureEdge(f *ir.Field) {
-	g.emitMapEntryLoop(f, "value", "return -1;", func(entry, elem, ind string) {
-		g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", ind, entry, elem)
-		g.pf("%[1]sif ( inner < 0 )\n%[1]s{\n%[1]s    TableMapRelease( cursor_%[2]s );\n%[1]s    return -1;\n%[1]s}\n", ind, f.Name)
-		g.pf("%sbytes += inner;\n", ind)
-	})
-}
-
-// mapPackEdge descends one map's entries for the PACK, against the array
-// <T>MapPack already placed in the node's extent.
-func (g *tableGen) mapPackEdge(f *ir.Field) {
-	entry := mapEntryOf(f)
-	g.emitMapEntryLoopHead(f, "src", "return false;")
-	g.pf("        %s * placed_%s = (%s *) ( dst.%s.entries.value != 0 ? ( (uint8_t *) &dst.%s.entries + dst.%s.entries.value ) : NULL );\n",
-		entry.Name, f.Name, entry.Name, f.Name, f.Name, f.Name)
-	g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
-	g.pf("            if ( !%sPackEdges( ctx, seen, *cursor_%s[i], placed_%s[i], base, capacity, used ) ) { TableMapRelease( cursor_%s ); return false; }\n",
-		entry.Name, f.Name, f.Name, f.Name)
-	g.pf("        }\n")
-	g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
 }
 
 // emitMapEntryLoopHead opens one map's sorted cursor over the given subject.

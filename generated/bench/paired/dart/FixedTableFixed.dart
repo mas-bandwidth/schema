@@ -401,7 +401,7 @@ final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
 /// THE IDENTITY PLAN, coalesced HERE rather than at run time: when a record's
 /// hash is this build's own the plan is the one the compiler already wrote.
 /// Because the reader's own storage in this language IS the wire's layout,
-/// source and destination advance together and the walk collapses to 12
+/// source and destination advance together and the walk collapses to 15
 /// entries — the same coalescer the plan compiler runs, reaching its best
 /// case
 /// rather than skipping a step. A COUNT and a TEXT LENGTH keep entries of
@@ -411,20 +411,23 @@ final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
 // dart format off
 final Int32List fixedTableFixedIdentity = Int32List.fromList(const <int>[
   0, 0, 0, 52, 0, -1, 0, 0, 1, 0, 0,
-  1, 52, 52, 8, 0, -1, 0, 0, 1, 0, 0, // entities count
+  1, 52, 52, 8, 51, -1, 0, 0, 1, 0, 0, // entities count
   0, 56, 56, 408, 0, -1, 0, 0, 1, 0, 0, // entities, whole
-  1, 464, 464, 80, 0, -1, 0, 0, 1, 0, 0, // stats count
+  1, 464, 464, 80, 8, -1, 0, 0, 1, 0, 0, // stats count
   0, 468, 468, 641, 0, -1, 0, 0, 1, 0, 0, // stats, whole
   0, 1122, 1122, 4, 0, -1, 0, 0, 1, 0, 0, // loadout, whole
   2, 1126, 1126, 15, 1130, -1, 0, 1, 1, 0, 0, // player_name
   2, 1145, 1145, 16, 1149, -1, 0, 3, 1, 0, 0, // payload
   0, 1165, 1165, 71, 0, -1, 0, 0, 1, 0, 0,
+  8, 1109, 1109, 13, 0, 1108, 0, 0, 1, 0, 0, // tag 0's dead arm
   0, 1109, 1109, 13, 0, 1108, 1, 0, 1, 0, 0,
+  8, 1117, 1117, 5, 0, 1108, 2, 0, 1, 0, 0, // dead past the taken arm
   0, 1109, 1109, 8, 0, 1108, 2, 0, 1, 0, 0,
+  8, 1117, 1117, 5, 0, 1108, 3, 0, 1, 0, 0, // dead past the taken arm
   0, 1109, 1109, 8, 0, 1108, 3, 0, 1, 0, 0,
 ]);
 // dart format on
-const int fixedTableFixedIdentityCount = 12;
+const int fixedTableFixedIdentityCount = 15;
 
 /// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an
 /// entry's guards lanes, (guard, arg, argw) a link, outermost first.

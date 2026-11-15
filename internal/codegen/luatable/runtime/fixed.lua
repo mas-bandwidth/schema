@@ -57,6 +57,18 @@ local function zeros(n)
   return string.rep("\0", n)
 end
 
+-- EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+-- fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3;
+-- docs/SPEC-TABLES.md §3.4, §13.10): an absent optional's payload, a counted
+-- array's slots past its count, a text's or bytes' units past its used length,
+-- and an inactive union arm. A non-zero byte is wire_damaged, and the whole
+-- read refuses. The range is [from, to), in Lua's one-based cursor.
+local function check_dead(buf, from, to)
+  for i = from, to - 1 do
+    if buf:byte(i) ~= 0 then error("wire_damaged", 0) end
+  end
+end
+
 local function pack_uint(v, w)
   if w == 1 then return string.pack("<I1", v) end
   if w == 2 then return string.pack("<I2", v) end
@@ -315,6 +327,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local n = string.unpack("<i4", buf, pos)
     local cap = size - 4
     if n < 0 or n > cap then error("length_over_bound") end
+    check_dead(buf, pos + 4 + n, pos + size)
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
     return sub, pos + size
@@ -344,6 +357,13 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local ud = T.FixedUnions[d.target]
     local tag = unpack_int(buf, pos, ud.tag, false)
     if tag > #ud.arms then refuse_out_of_range() end
+    local live = ud.tag
+    if tag ~= 0 then
+      local arm = ud.arms[tag]
+      local fd = T.Unions[d.target].arms[tag].field
+      if fd ~= nil then live = live + arm.size end
+    end
+    check_dead(buf, pos + live, pos + size)
     local v = { tag = tag }
     if tag ~= 0 then
       local arm = ud.arms[tag]
@@ -368,6 +388,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
       end
       local n = string.unpack("<i4", buf, pos)
       if n < 0 or n > d.bound then error("count_over_bound") end
+      check_dead(buf, pos + 4 + n * elemSize, pos + size)
       for i = 1, n do
         local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
         if ev == nil then
@@ -387,6 +408,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     end
     local n = string.unpack("<i4", buf, pos)
     if n < 0 or n > d.bound then error("count_over_bound") end
+    check_dead(buf, pos + 4 + n * elemSize, pos + size)
     for i = 1, n do
       t[i] = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
     end
@@ -408,7 +430,11 @@ decode_table = function(T, name, buf, pos, writerSize)
       if f.optional then
         local present = bool_byte(buf, cursor)
         v[f.name .. "_present"] = present
-        if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem) end
+        if present then
+          v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem)
+        else
+          check_dead(buf, cursor + 1, cursor + fs)
+        end
         cursor = cursor + fs
       else
         v[f.name], cursor = decode_value(T, f, buf, cursor, fs, f.fixed_elem)
@@ -595,6 +621,8 @@ local function decode_old_table(T, name, node, buf, pos, rep)
           v[f.name .. "_present"] = present
           if present and child.children[1] ~= nil and compat_old(f, child.children[1]) then
             v[f.name] = decode_old_value(T, f, child.children[1], buf, cpos + 1, rep)
+          elseif not present then
+            check_dead(buf, cpos + 1, cpos + child.size)
           end
         elseif compat_old(f, child) then
           -- THE PRESENT COMPANION THE READER GAINED IS TRUE for an old T (§5.9
@@ -632,6 +660,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local n = string.unpack("<i4", buf, pos)
     local cap = node.size - 4
     if n < 0 or n > cap then error("length_over_bound") end
+    check_dead(buf, pos + 4 + n, pos + node.size)
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
     return sub
@@ -658,6 +687,12 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local tag = unpack_int(buf, pos, w, false)
     -- THE WRITER'S ARM COUNT GOVERNS (§4.6): a tag past it refuses
     if tag > nArms then refuse_out_of_range() end
+    local live = w
+    if tag ~= 0 then
+      local armNode = node.children[tag]
+      if armNode ~= nil then live = live + armNode.size end
+    end
+    check_dead(buf, pos + live, pos + node.size)
     if tag > #T.Unions[d.target].arms then tag = 0 end
     local v = { tag = tag }
     if tag ~= 0 then
@@ -689,6 +724,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local n = string.unpack("<i4", buf, pos)
     local cap = es > 0 and math.floor((node.size - 4) / es) or 0
     if n < 0 or n > cap then error("count_over_bound") end
+    check_dead(buf, pos + 4 + n * es, pos + node.size)
     for i = 1, n do
       local ev = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es, rep)
       if ev == nil and d.elem.shape == "enum" then ev = false end
@@ -774,7 +810,7 @@ function F.write(T, name, value)
   -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
   -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
   local refused = D.refuse_write(T, name, value)
-  if refused ~= nil then error(refused, 0) end
+  if refused ~= nil then return nil, refused end
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
   local out = f.header .. f.hashPrefix .. body
@@ -808,7 +844,7 @@ function F.save(T, name, values)
   for i = 1, #values do
     local v = values[i]
     local refused = D.refuse_write(T, name, v)
-    if refused ~= nil then error(refused, 0) end
+    if refused ~= nil then return nil, refused end
     local body = encode_table(T, name, v)
     if #body ~= f.size then error("layout_malformed", 0) end
     parts[#parts + 1] = hPrefix .. body

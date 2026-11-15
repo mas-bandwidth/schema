@@ -11,14 +11,11 @@ name: TLA nightly
 # proved like every later one.
 
 on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '53 4 * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/tla-nightly.yml
-      - tla/**
-      - internal/ci/strictonly_tla_test.go
 
 concurrency:
   group: tla-nightly-${{ github.ref }}

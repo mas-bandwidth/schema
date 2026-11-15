@@ -1,7 +1,10 @@
 name: Lobster fixed proof qualification
 on:
-  push:
-    branches: [codex/schema-lobster-fixed-proof]
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
 permissions:
   contents: read
 jobs:

@@ -126,24 +126,28 @@
     {
       "name": "base-packet-2",
       "when": "pull-request",
-      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults and Go packet-finite controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls.",
+      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults, Go packet-finite and the C packet-end read controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls; the C packet-end read control joins the same group.",
       "targets": [
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
-        "packet-finite-go-negative-control"
+        "packet-finite-go-negative-control",
+        "packet-write-cfloat-c-negative-control",
+        "packet-end-c-negative-control"
       ]
     },
     {
       "name": "base-packet-3",
       "when": "pull-request",
-      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go) and packet-void read/write (C, C++) controls. Measured 28 s of control time on run 42556155793 over 6 controls.",
+      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
       "targets": [
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
-        "packet-void-cpp-write-negative-control"
+        "packet-void-cpp-write-negative-control",
+        "packet-write-cfloat-cpp-negative-control",
+        "packet-end-cpp-negative-control"
       ]
     },
     {
@@ -233,7 +237,9 @@
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
-        "packet-end-lua-negative-control"
+        "packet-end-lua-negative-control",
+        "packet-write-cfloat-lua-negative-control",
+        "packet-write-bareint-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1035,6 +1041,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-core",
+      "when": "pull-request",
+      "why": "the table core's form-byte control (make/python.mk): the generated runtime's form byte is moved in a copy, and the pinned-interpreter probe must go red naming message_form_as_file. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "targets": [
+        "python-table-core-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
@@ -1206,6 +1221,15 @@
       "why": "the C# packet read-termination rule (docs/SPEC.md §5): one overlay rebuild of the emitter without the public read's end call, one regenerated End unit, and the shared packet-end vectors required to refuse the trailing byte and the final-byte padding while the exact packet stays accepted.",
       "targets": [
         "packet-end-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-write-cfloat",
+      "when": "pull-request",
+      "why": "the C# packet writer's compressed-float range contract (docs/SPEC.md §5.1 row 10, docs/PACKET-WIRE-ALGORITHM.md §2.5): one overlay rebuild of the emitter with the generated finite/range assertion removed, one regenerated CFloat unit, and the shared cases required to report the three finite off-range verdicts red by name while the lawful cases stay written.",
+      "targets": [
+        "packet-write-cfloat-cs-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -1491,7 +1515,9 @@
         "cards-rust-conformance-hash-negative-control",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
-        "packet-utf8-rust-negative-control"
+        "packet-utf8-rust-negative-control",
+        "packet-end-rust-negative-control",
+        "packet-write-text-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -1644,7 +1670,8 @@
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
         "packet-end-js-negative-control",
-        "packet-utf8-js-negative-control"
+        "packet-utf8-js-negative-control",
+        "packet-write-cfloat-js-negative-control"
       ],
       "node": "26"
     },
@@ -1875,7 +1902,8 @@
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
-        "packet-end-dart-negative-control"
+        "packet-end-dart-negative-control",
+        "packet-write-cfloat-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -2149,11 +2177,12 @@
     {
       "name": "elixir-packets",
       "when": "pull-request",
-      "why": "the Elixir port's four packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, and the finite-float read rule, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
+      "why": "the Elixir port's five packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, the finite-float read rule, and the one-packet end check, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
       "targets": [
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
-        "packet-finite-elixir-negative-control"
+        "packet-finite-elixir-negative-control",
+        "packet-end-elixir-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -2426,12 +2455,14 @@
     {
       "name": "goose-packet",
       "when": "pull-request",
-      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction and the end-check control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction, the end-check control and the Write text-content control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
       "targets": [
         "packet-defaults-goose-negative-control",
         "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
-        "packet-utf8-goose-negative-control"
+        "packet-utf8-goose-negative-control",
+        "packet-write-cfloat-goose-negative-control",
+        "packet-write-text-goose-negative-control"
       ]
     },
     {
@@ -2746,7 +2777,9 @@
       "targets": [
         "packet-finite-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
-        "packet-defaults-squirrel-negative-control"
+        "packet-defaults-squirrel-negative-control",
+        "packet-write-bareint-squirrel-negative-control",
+        "packet-end-squirrel-negative-control"
       ],
       "squirrel": "3.2"
     },
@@ -2855,9 +2888,10 @@
     {
       "name": "luau-packet",
       "when": "pull-request",
-      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
+      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes, the packet end check and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
       "targets": [
         "packet-defaults-luau-negative-control",
+        "packet-end-luau-negative-control",
         "packet-finite-luau-negative-control",
         "packet-utf8-luau-negative-control"
       ],
@@ -2978,7 +3012,7 @@
     {
       "name": "moo",
       "when": "pull-request",
-      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). The block-lead control also runs the positive 130-placement matrix, removes the runtime alignment check, and requires exactly 126 unaligned cases to wrongly open while the four aligned cases stay unchanged (0.18 seconds of test time on Studio). Each packet control is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
+      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). Every target in the row names the pin's interpreter and analyzer under dist/moo, so the runner's environment cannot select another moo. The block-lead control also runs the positive 130-placement matrix, removes the runtime alignment check, and requires exactly 126 unaligned cases to wrongly open while the four aligned cases stay unchanged (0.18 seconds of test time on Studio). Each packet control is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
       "targets": [
         "tables-moo-block-lead-negative-control",
         "packet-analyze-moo-negative-control",
@@ -3097,11 +3131,11 @@
       "java": "21"
     },
     {
-      "name": "write-refusal-storage-release-dart",
+      "name": "write-refusal-storage-debug-dart",
       "when": "pull-request",
-      "why": "the Dart release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the cook writer AOT, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small Dart compile.",
+      "why": "the Dart debug storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs the cook writer with asserts on, and requires a count and a length past their storage to hit the assert. The control runs that gate first, then strips the generated asserts and requires the same debug gate to go red. Two small Dart runs.",
       "targets": [
-        "write-refusal-storage-release-dart-negative-control"
+        "write-refusal-storage-debug-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -3300,6 +3334,10 @@
     {
       "target": "packet-utf8-moo-negative-control",
       "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-end-moo-negative-control",
+      "reason": "the moo leg's one-packet end-check control (make/moo-packet.mk, SPEC §5 'Read termination'): the emitted public read's end call is dropped, so trailing data and non-zero final-byte padding must both fail by name. It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",
