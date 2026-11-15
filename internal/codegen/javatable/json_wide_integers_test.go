@@ -16,7 +16,8 @@ import (
 // jsonIntegersSchema is the unit testdata/wire/json-integers/ reads: an int32,
 // an int64, a uint64, a ranged int128, a ranged int64, a wide fixed-point field
 // and a map keyed by uint64 — every integer storage width the two JSON integer
-// rules name (docs/SPEC-TABLES.md §16.2).
+// rules name (docs/SPEC-TABLES.md §16.2). Keys carries a map keyed by int32,
+// so a narrow integer key is held to the same spelling as a wide one.
 const jsonIntegersSchema = `package jsonintegers
 
 table Integers
@@ -28,6 +29,11 @@ table Integers
     ranged  int64 | min = 0, max = 9007199254740993
     frac    fixed(48, 16) | min = -10, max = 10
     counts  map[uint64]int32
+}
+
+table Keys
+{
+    narrow  map[int32]int32
 }
 `
 
@@ -113,6 +119,36 @@ func TestJavaJsonWideIntegersAreStrings(t *testing.T) {
 		paths = append(paths, filepath.Join(dir, r.json))
 	}
 
+	// A map key, and a wide fixed-point field's string, is the token and
+	// nothing around it: the number scan steps over whitespace and comments
+	// between tokens, never inside a key or a string (§16.2), so a comment
+	// before the digits refuses as the engine refuses it. A keys-* row reads
+	// Keys; the rest are the canonical text with one site respelled. keys-read
+	// is the control that the Keys path reads at all.
+	canon := string(canonical)
+	extras := []struct{ name, text, verdict string }{
+		{"map-key-block-comment.refused.json", strings.Replace(canon, "\"0\": 1", "\"/*x*/0\": 1", 1), "refused"},
+		{"map-key-line-comment.refused.json", strings.Replace(canon, "\"0\": 1", "\"//x\\n0\": 1", 1), "refused"},
+		{"frac-string-block-comment.refused.json", strings.Replace(canon, "\"frac\": \"0.5\"", "\"frac\": \"/*x*/0.5\"", 1), "refused"},
+		{"frac-string-line-comment.refused.json", strings.Replace(canon, "\"frac\": \"0.5\"", "\"frac\": \"//x\\n0.5\"", 1), "refused"},
+		{"keys-read.read.json", "{\"narrow\": {\"-3\": 2, \"5\": 1}}", "read"},
+		{"keys-block-comment.refused.json", "{\"narrow\": {\"/*x*/5\": 1}}", "refused"},
+		{"keys-line-comment.refused.json", "{\"narrow\": {\"//x\\n5\": 1}}", "refused"},
+		{"keys-space.refused.json", "{\"narrow\": {\" 5\": 1}}", "refused"},
+	}
+	extraDir := t.TempDir()
+	for _, e := range extras {
+		if !strings.HasPrefix(e.name, "keys-") && e.text == canon {
+			t.Fatalf("%s: the respelling did not apply to the canonical text", e.name)
+		}
+		p := filepath.Join(extraDir, e.name)
+		if err := os.WriteFile(p, []byte(e.text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, row{name: strings.SplitN(e.name, ".", 2)[0], json: e.name, verdict: e.verdict})
+		paths = append(paths, p)
+	}
+
 	const driverSrc = `import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -124,6 +160,25 @@ public final class WideIntegerProbe {
     public static void main(String[] args) throws Exception {
         for (String path : args) {
             byte[] input = Files.readAllBytes(Path.of(path));
+            if (Path.of(path).getFileName().toString().startsWith("keys-")) {
+                jsonintegers.TableVariable.Report kr = new jsonintegers.TableVariable.Report();
+                jsonintegers.KeysVariable.Value kv = jsonintegers.KeysVariable.fromJson(input, kr);
+                boolean kok = kv != null && !kr.refused && !kr.damaged;
+                StringBuilder keys = new StringBuilder();
+                if (kok) {
+                    ArrayList<jsonintegers.KeysNarrowEntryVariable.Value> entries = new ArrayList<>(kv.narrow);
+                    entries.sort((a, b) -> Integer.compare(a.key, b.key));
+                    for (int i = 0; i < entries.size(); i++) {
+                        if (i > 0) {
+                            keys.append(',');
+                        }
+                        keys.append(entries.get(i).key).append(':').append(entries.get(i).value);
+                    }
+                }
+                System.out.println("{\"keys\":true,\"ok\":" + kok + ",\"refused\":" + kr.refused + ",\"damaged\":" + kr.damaged
+                        + ",\"nullValue\":" + (kv == null) + ",\"counts\":\"" + keys + "\"}");
+                continue;
+            }
             jsonintegers.TableVariable.Report r = new jsonintegers.TableVariable.Report();
             jsonintegers.IntegersVariable.Value v = jsonintegers.IntegersVariable.fromJson(input, r);
             boolean ok = v != null && !r.refused && !r.damaged;
@@ -190,6 +245,7 @@ public final class WideIntegerProbe {
 		t.Fatalf("got %d lines, want %d:\n%s", len(lines), len(rows), got)
 	}
 	type result struct {
+		Keys      bool
 		OK        bool
 		Refused   bool
 		Damaged   bool
@@ -215,6 +271,12 @@ public final class WideIntegerProbe {
 			case "read":
 				if !res.OK || res.Refused || res.Damaged || res.NullValue {
 					t.Fatalf("%s: Java refused a vector the corpus reads: %s", r.name, lines[i])
+				}
+				if res.Keys {
+					if res.Counts != "-3:2,5:1" {
+						t.Errorf("%s: decoded keys %s, want -3:2,5:1", r.name, res.Counts)
+					}
+					return
 				}
 				if res.Small != 7 || res.Wide != -42 || res.UWide != "18446744073709551615" ||
 					res.Hi != 0x7fffffffffffffff || res.Lo != -1 ||
