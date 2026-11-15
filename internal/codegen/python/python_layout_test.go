@@ -87,12 +87,20 @@ def fail(message):
     sys.exit(1)
 
 
-def refused(name, data):
+def refused(name, data, kind=Layout):
     try:
-        Layout.read(data)
+        kind.read(data)
     except Refused:
         return
     fail("accepted " + name)
+
+
+def truncations(kind, data, where):
+    # Every proper prefix of a pinned wire must be refused. where maps each
+    # prefix length to the construct the cut stops inside, so a failure names
+    # it; every length below len(data) is cut, named or not.
+    for length in range(len(data)):
+        refused(kind.__name__ + " truncated to " + str(length) + " bytes, inside " + where.get(length, "the wire"), data[:length], kind)
 
 
 def invalid_layout(name, mutate):
@@ -123,18 +131,47 @@ bad_padding = bytearray(pinned_on)
 bad_padding[2] |= 0x40
 refused("set alignment padding", bytes(bad_padding))
 
-refused("a truncated input", pinned_on[:-1])
+# Layout on=True: byte 0 is the const; byte 1 is on and yes_value's low seven
+# bits; byte 2 is yes_value's top bit, reserved(5) and two bits of align
+# padding; bytes 3 and 4 are tail. Padding runs to a byte boundary, so a cut
+# that stops in the padding is the cut that stops in its byte, which also
+# holds the reserved bits.
+truncations(Layout, pinned_on, {
+    0: "the const",
+    1: "yes_value",
+    2: "the reserved bits and the align padding",
+    3: "tail",
+    4: "tail",
+})
 refused("a trailing byte", pinned_on + b"\x00")
 
+# Wide: const(0x123456789, 36) fills bytes 0-3 and the low half of byte 4;
+# reserved(40) runs from the top half of byte 4 to the low half of byte 9;
+# the align padding is the top half of byte 9; byte 10 is tail.
 pinned_wide = bytes.fromhex("896745230100000000005a")
+truncations(Wide, pinned_wide, {
+    0: "the const",
+    1: "the const",
+    2: "the const",
+    3: "the const",
+    4: "the const",
+    5: "the reserved bits",
+    6: "the reserved bits",
+    7: "the reserved bits",
+    8: "the reserved bits",
+    9: "the reserved bits and the align padding",
+    10: "tail",
+})
+refused("a Wide trailing byte", pinned_wide + b"\x00", Wide)
 wide_bad = bytearray(pinned_wide)
 wide_bad[0] = 0x88
-try:
-    Wide.read(bytes(wide_bad))
-except Refused:
-    pass
-else:
-    fail("accepted a wrong wide const")
+refused("a wrong wide const", bytes(wide_bad), Wide)
+wide_reserved = bytearray(pinned_wide)
+wide_reserved[7] = 0x01
+refused("a set wide reserved bit", bytes(wide_reserved), Wide)
+wide_padding = bytearray(pinned_wide)
+wide_padding[9] = 0x10
+refused("set wide alignment padding", bytes(wide_padding), Wide)
 
 on = Layout()
 on.yes_value = 0x12
@@ -155,6 +192,14 @@ if off_data.hex() != "ab6800563478":
 back_off = Layout.read(off_data)
 if back_off.on is not False or back_off.no_value != 0x34 or back_off.yes_value != 0 or back_off.inverted != 0x78 or back_off.tail != 0x3456:
     fail("on=False read or SPEC §5 untaken zero: " + repr(back_off))
+truncations(Layout, off_data, {
+    0: "the const",
+    1: "no_value",
+    2: "the reserved bits and the align padding",
+    3: "tail",
+    4: "tail",
+    5: "inverted",
+})
 
 wide = Wide()
 wide_data = wide.write()
@@ -172,6 +217,7 @@ nested.child.inverted = 0x55
 nested_data = nested.write()
 if Nested.read(nested_data) != nested:
     fail("Nested round-trip")
+truncations(Nested, nested_data, {0: "lead", 1: "the child's const"})
 
 invalid_layout("on=1", lambda value: setattr(value, "on", 1))
 invalid_layout("on=0", lambda value: setattr(value, "on", 0))
@@ -205,7 +251,13 @@ print("ok")
 // on the wire, beside if/else, over every pinned interpreter; every field's
 // declared default in the constructor; the untaken side zeroed by a read
 // (SPEC §5); InvalidValue for every out-of-contract write; Refused for every
-// truncated or hostile input; mypy --strict over the generated package.
+// truncated or hostile input (every proper prefix of each pinned wire); mypy
+// --strict over the generated package.
+//
+// The gate proves the constructs on this fixture only. The goldens that use
+// them (probe_header, bench_packet, bench_mixed, testdata) also use kinds
+// other packet cards carry, so they stay on the golden harness's skip list,
+// naming that kind, and their round-trip is recorded by the packet close.
 func TestPythonPacketLayout(t *testing.T) {
 	t.Parallel()
 	pkg, files := layoutUnit(t)
