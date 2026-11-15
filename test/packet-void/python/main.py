@@ -127,11 +127,7 @@ def main() -> None:
                 fail("mixed arm defaults after " + name)
 
     # A union read is a fresh value, so an unselected payload is at its
-    # declared defaults, not the stale object a caller held before.
-    stale = Mixed()
-    stale.type = MixedType.Payload
-    stale.payload.count = 7
-    stale.payload.marker = False
+    # declared defaults.
     selected = Mixed.read(b"\x01")
     if selected.type != MixedType.Ping or selected.payload.count != -1 or selected.payload.marker is not True:
         fail("payload defaults after a void selection")
@@ -164,12 +160,15 @@ def main() -> None:
     bad.type = 1
     expect_invalid("empty-tag", bad)
 
-    expect_refused("mixed-tag-4", Mixed, b"\x04")
+    # Mixed's 2-bit tag uses all four values, so it has no unused tag: 0x04 is
+    # tag 0 with a set bit past the value.
+    expect_refused("mixed-trailing-bit", Mixed, b"\x04")
     expect_refused("mixed-empty", Mixed, b"")
     expect_refused("mixed-short-payload", Mixed, bytes.fromhex("feff"))
     expect_refused("mixed-trailing", Mixed, bytes.fromhex("0100"))
     expect_refused("frame-empty", Frame, b"")
-    expect_refused("tags-tag-4", Tags, b"\x04")
+    expect_refused("tags-tag-3", Tags, b"\x03")
+    expect_refused("tags-trailing-bit", Tags, b"\x04")
     expect_refused("single-empty", Single, b"")
     expect_refused("empty-trailing", Empty, b"\x00")
 

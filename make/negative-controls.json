@@ -3241,7 +3241,7 @@
     {
       "name": "python-packet-unions",
       "when": "pull-request",
-      "why": "the union and payload-free-arm control (docs/PORT-PYTHON.md, THE PACKET CORE CUT; test/packet-void/README.md): a copy of the generated writer spends one extra set bit on the payload-free arms and TestPythonPacketUnionsNegativeControl must go red on the write marker. One SCHEMA_SLOW go test under a pinned interpreter, the cost of the pin cache restore rather than the run.",
+      "why": "the union and payload-free-arm control (docs/PORT-PYTHON.md, THE PACKET CORE CUT; test/packet-void/README.md): a copy of the generated writer spends one extra set bit on the payload-free arms, and a copy of the generated reader widens a union's tag range over its unused tags; TestPythonPacketUnionsNegativeControl must go red on the write marker and on the unused-tag read against the Go reference. One SCHEMA_SLOW go test under a pinned interpreter, the cost of the pin cache restore rather than the run.",
       "targets": [
         "packet-void-python-negative-control"
       ],

@@ -62,6 +62,10 @@ are calculated here and never produced by the writer under test:
 | Single Ack | tag 1 | `01` |
 | Empty None, no declared arms | no bits | none |
 
+The reads also refuse `Tags` tag 3 (`03`), its one unused tag value; `Mixed`
+has no unused tag, so its `04` input is tag 0 with a set bit past the value
+and is refused as trailing input.
+
 `TestPythonPacketUnionsNegativeControl` plants one extra set bit on the
 writer's payload-free arms in a copy of the generated code, and the probe must
 go red by name; the target is registered in `make/negative-controls.json`.
