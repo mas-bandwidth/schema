@@ -119,11 +119,6 @@
       "slug": "relax/cook-dead-slots-zero-ports"
     },
     {
-      "row": "surface cook-write",
-      "lang": "squirrel",
-      "slug": "relax/cook-dead-slots-zero-ports"
-    },
-    {
       "row": "surface write-refusal-json",
       "lang": "cpp",
       "slug": "relax/hostile-rows-cpp"
