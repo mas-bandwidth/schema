@@ -484,11 +484,26 @@ func TestProbe(t *testing.T) {
 	if tblk1.RootSave(&old, kwire) != n {
 		t.Fatal("K1 RootSave did not write RootMeasure's answer")
 	}
+	// THE PLAIN SAVE OF A FIXED TABLE WRITES FORM 3 (docs/SPEC-TABLES.md §3,
+	// internal/codegen/gotable/write.go): K2's plain Load matches the hash and
+	// refuses K1's layout by name.
+	if kwire[0] != 3 {
+		t.Fatalf("K1's plain Save did not write form 3: form byte %d", kwire[0])
+	}
 	var kback tblk2.Root
 	tblk2.RootReset(&kback)
 	var kr tblk2.TableReport
-	if tblk2.RootLoad(&kback, kwire, &kr) || kr.Refusal != tblk2.TableRefusePreviousForm {
-		t.Fatalf("the respelled reader did not refuse K1's form-1 file as previous_form: %+v", kr)
+	if tblk2.RootLoad(&kback, kwire, &kr) || !kr.FixedRaised || kr.Reason != "layout_unknown" {
+		t.Fatalf("the respelled reader did not refuse K1's form-3 file as layout_unknown: %+v", kr)
+	}
+	// A form-1 file at a fixed root is previous_form, read before any value.
+	form1 := append([]byte(nil), kwire...)
+	form1[0] = 1
+	var pback tblk2.Root
+	tblk2.RootReset(&pback)
+	var pr tblk2.TableReport
+	if tblk2.RootLoad(&pback, form1, &pr) || pr.Refusal != tblk2.TableRefusePreviousForm {
+		t.Fatalf("the respelled reader did not refuse a form-1 file as previous_form: %+v", pr)
 	}
 
 	fwire := make([]byte, tblk1.RootFixedMeasure(1))
