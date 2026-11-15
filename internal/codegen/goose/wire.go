@@ -16,10 +16,11 @@
 // value the wire cannot carry (SERIALIZE_ERROR_VALUE_OUT_OF_RANGE for a value
 // outside its range, a count or a length past its bound, an out-of-set union
 // tag; SERIALIZE_ERROR_NON_FINITE_FLOAT for a NaN or an infinity, SPEC §4.3).
-// Goose has no build-removable assert (`assert` aborts in every build), so a
-// writer contract is the every-build refusal Go makes native, never an abort:
-// serialize.goose aborts on write misuse (its U9), so the generated writer
-// checks every value BEFORE the runtime sees it.
+// A stream too small for the value returns SERIALIZE_ERROR_PAST_END before any
+// bit moves. Goose has no build-removable assert (`assert` aborts in every
+// build), so a writer contract is the every-build refusal Go makes native,
+// never an abort: serialize.goose aborts on write misuse (its U9), so the
+// generated writer checks every value BEFORE the runtime sees it.
 //
 // A read returns true, or false with the reason latched on the stream
 // (serialize_error(s)): the runtime's own (past_end, non_finite_float,
@@ -133,6 +134,10 @@ func (w *wgen) emitStruct(st *ir.Struct) error {
 	}
 	w.Pf("    return SERIALIZE_ERROR_NONE;\n}\n\n")
 
+	if err := w.emitMeasureStruct(st); err != nil {
+		return err
+	}
+
 	w.Declare("Read" + st.Name)
 	w.Pf("// Read%s reads value, validating every field, then ends the packet (SPEC §5).\n", st.Name)
 	w.Pf("// It returns false with the reason latched on the stream (serialize_error(s)).\n")
@@ -190,6 +195,10 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 			w.Pf("    }\n")
 		}
 		w.Pf("    return SERIALIZE_ERROR_NONE; // None or a payload-free arm: the tag is the whole wire\n}\n\n")
+	}
+
+	if err := w.emitMeasureUnion(d); err != nil {
+		return err
 	}
 
 	w.Declare("Read" + d.Name)
@@ -479,6 +488,12 @@ func floatLit32(v float32) string {
 // entries would have left.
 func (w *wgen) emitWriteEntry(name string) {
 	w.Pf("fn Write%s(s: WriteStream&, value: %s&) -> i32 {\n", name, name)
+	w.Pf("    if s.num_bits - s.bits_written < %sMaxBits {\n", name)
+	w.Pf("        // a stream too small for the value refuses before the runtime sees the\n")
+	w.Pf("        // write; serialize.goose aborts on a write past the buffer (U9)\n")
+	w.Pf("        let need = _Measure%s(value, s.bits_written) - s.bits_written;\n", name)
+	w.Pf("        if need > s.num_bits - s.bits_written { return SERIALIZE_ERROR_PAST_END; }\n")
+	w.Pf("    }\n")
 	w.Pf("    var l = schema_rt::wire_open(s);\n")
 	w.Pf("    let refusal = _Write%s(s, l, value);\n", name)
 	w.Pf("    schema_rt::wire_close(s, l);\n")

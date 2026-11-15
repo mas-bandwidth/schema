@@ -317,3 +317,183 @@ func (w *wgen) emitWrite128(f *ir.Field, expr, ind string) error {
 	w.streamCall(ind, "%sserialize_int128(s, %s, %s, %s);\n", ind, v, int128Lit(f.IntMin), int128Lit(f.IntMax))
 	return nil
 }
+
+// ---- the measure pass -------------------------------------------------------
+
+// The generated writer checks the value's real size against the stream's room
+// left before the runtime sees a write that would not fit: serialize.goose
+// aborts on a write past the buffer (U9), so the short stream is refused with
+// SERIALIZE_ERROR_PAST_END instead. The fast path is <T>MaxBits, the longest
+// path the type can take; below it the measure pass sums the value's exact
+// wire bits, alignment folded at its real position, so a stream that holds the
+// value still succeeds byte-identically.
+
+// emitMeasureStruct writes _Measure<T>, the value's exact end bit position
+// starting from bits.
+func (w *wgen) emitMeasureStruct(st *ir.Struct) error {
+	w.Pf("fn _Measure%s(value: %s&, bits: i64) -> i64 {\n", st.Name, st.Name)
+	w.Pf("    var total = bits;\n")
+	w.n = 0
+	if err := w.emitMeasureItems(st.Items, "    "); err != nil {
+		return fmt.Errorf("%s: %w", st.Name, err)
+	}
+	w.Pf("    return total;\n}\n\n")
+	return nil
+}
+
+// emitMeasureUnion writes _Measure<U>: the tag, then the selected arm.
+func (w *wgen) emitMeasureUnion(d *ir.Union) error {
+	tag := d.Name + "Type"
+	w.Pf("fn _Measure%s(value: %s&, bits: i64) -> i64 {\n", d.Name, d.Name)
+	w.Pf("    var total = bits;\n")
+	if bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max)); bits > 0 {
+		w.Pf("    total += %d; // the tag\n", bits)
+	}
+	for _, v := range d.Variants {
+		if v.Void() {
+			continue
+		}
+		if v.Ref == nil {
+			return fmt.Errorf("union %s arm %s carries no type payload, which the packet wire has no encoding for", d.Name, v.Name)
+		}
+		arm := ir.GoExportName(v.Name)
+		w.Pf("    if value.Type == %s%s { total = _Measure%s(value.%s, total); }\n", tag, arm, w.TypeRef(v.Type, false), arm)
+	}
+	w.Pf("    return total;\n}\n\n")
+	return nil
+}
+
+func (w *wgen) emitMeasureItems(items []ir.Item, ind string) error {
+	for _, item := range items {
+		switch it := item.(type) {
+		case *ir.FieldItem:
+			if err := w.emitMeasureField(it.F, ind); err != nil {
+				return err
+			}
+		case *ir.ConstItem:
+			if it.Bits > 0 {
+				w.Pf("%stotal += %d; // const(%s, %d)\n", ind, it.Bits, it.Value.String(), it.Bits)
+			}
+		case *ir.ReservedItem:
+			if it.Bits > 0 {
+				w.Pf("%stotal += %d; // reserved(%d)\n", ind, it.Bits, it.Bits)
+			}
+		case *ir.AlignItem:
+			w.Pf("%stotal += (8 - total %% 8) %% 8;\n", ind)
+		case *ir.Branch:
+			w.Pf("%sif %s {\n", ind, condExpr(it))
+			if err := w.emitMeasureItems(it.Then, ind+"    "); err != nil {
+				return err
+			}
+			if it.Else != nil {
+				w.Pf("%s} else {\n", ind)
+				if err := w.emitMeasureItems(it.Else, ind+"    "); err != nil {
+					return err
+				}
+			}
+			w.Pf("%s}\n", ind)
+		}
+	}
+	return nil
+}
+
+func (w *wgen) emitMeasureField(f *ir.Field, ind string) error {
+	name := "value." + ir.GoExportName(f.Name)
+	if f.Array == ir.ArrayNone {
+		return w.emitMeasureScalar(f, name, name+"Length", ind)
+	}
+	limit := fmt.Sprint(f.ArrayBound)
+	if f.Array == ir.ArrayCounted {
+		bits := ir.BitsRequired(big.NewInt(int64(f.ArrayMin)), big.NewInt(int64(f.ArrayBound)))
+		if bits > 0 {
+			w.Pf("%stotal += %d; // the count\n", ind, bits)
+		}
+		n := w.tmp("n")
+		w.Pf("%slet %s = if %s > %d { %d } else if %s < 0 { 0 } else { %s };\n", ind, n, name+"Count", f.ArrayBound, f.ArrayBound, name+"Count", name+"Count")
+		limit = n
+	}
+	i := w.tmp("ix")
+	if f.Array == ir.ArrayCounted {
+		w.Pf("%sif %s > 0 {\n", ind, limit)
+		w.Pf("%s    for %s in %s {\n", ind, i, limit)
+		if err := w.emitMeasureScalar(f, name+"["+i+"]", name+"Length["+i+"]", ind+"        "); err != nil {
+			return err
+		}
+		w.Pf("%s    }\n%s}\n", ind, ind)
+		return nil
+	}
+	w.Pf("%sfor %s in %s {\n", ind, i, limit)
+	if err := w.emitMeasureScalar(f, name+"["+i+"]", name+"Length["+i+"]", ind+"    "); err != nil {
+		return err
+	}
+	w.Pf("%s}\n", ind)
+	return nil
+}
+
+func (w *wgen) emitMeasureScalar(f *ir.Field, expr, length, ind string) error {
+	t := f.Type
+	switch t.Kind {
+	case ir.TBool:
+		w.Pf("%stotal += 1;\n", ind)
+	case ir.TFloat32:
+		if f.HasFloatRange {
+			w.Pf("%stotal += %d;\n", ind, ir.CompressedFloatBits(f.FMin, f.FMax, f.Resolution))
+			return nil
+		}
+		w.Pf("%stotal += 32;\n", ind)
+	case ir.TFloat64:
+		w.Pf("%stotal += 64;\n", ind)
+	case ir.TString, ir.TBytes:
+		if bits := ir.BitsRequired(big.NewInt(0), big.NewInt(int64(t.Size))); bits > 0 {
+			w.Pf("%stotal += %d; // the length\n", ind, bits)
+		}
+		w.Pf("%stotal += (8 - total %% 8) %% 8; // the payload aligns\n", ind)
+		w.Pf("%sif %s > 0 { total += %s * 8; }\n", ind, length, length)
+	case ir.TFixed:
+		if f.IntMin == nil || f.IntMax == nil {
+			return fmt.Errorf("fixed field %s has no resolved whole-unit bounds", f.Name)
+		}
+		if f.IntMin.Cmp(f.IntMax) != 0 {
+			w.Pf("%stotal += %d;\n", ind, ir.BitsRequired(f.IntMin, f.IntMax)+int64(t.FracBits))
+		}
+	case ir.TInt:
+		if t.Width > 64 {
+			if !f.HasIntRange {
+				w.Pf("%stotal += 128;\n", ind)
+				return nil
+			}
+			if f.IntMin == nil || f.IntMax == nil {
+				return fmt.Errorf("int128 field %s has no resolved range (SPEC §4.3)", f.Name)
+			}
+			if f.IntMin.Cmp(f.IntMax) != 0 {
+				w.Pf("%stotal += %d;\n", ind, ir.BitsRequired(f.IntMin, f.IntMax))
+			}
+			return nil
+		}
+		if f.HasIntRange {
+			if bits := ir.BitsRequired(f.IntMin, f.IntMax); bits > 0 {
+				w.Pf("%stotal += %d;\n", ind, bits)
+			}
+			return nil
+		}
+		w.Pf("%stotal += %d;\n", ind, t.Width)
+	case ir.TBits:
+		w.Pf("%stotal += %d;\n", ind, t.Width)
+	case ir.TNamed:
+		switch ref := t.Ref.(type) {
+		case *ir.Enum:
+			if bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)); bits > 0 {
+				w.Pf("%stotal += %d;\n", ind, bits)
+			}
+		case *ir.Flags:
+			w.Pf("%stotal += %d;\n", ind, ref.WireBits)
+		case *ir.Struct, *ir.Union:
+			w.Pf("%stotal = _Measure%s(%s, total);\n", ind, w.TypeRef(t.Name, false), expr)
+		default:
+			return fmt.Errorf("field %s names %s, which has no packet wire", f.Name, t.Name)
+		}
+	default:
+		return fmt.Errorf("field %s has a type kind with no packet wire", f.Name)
+	}
+	return nil
+}
