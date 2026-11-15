@@ -2335,7 +2335,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert. As a fact of today's code, C++, C, Rust, Java and
+row is the debug assert. As a fact of today's code, C++, C, Java and
 Dart also refuse a count or length past the storage it indexes in a release
 build, before the first byte, held by the `write-refusal-storage-release-<lang>`
 gates.
@@ -2387,7 +2387,7 @@ active, a writer never produces bytes its own reader refuses.
 | C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
 | C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 and 10 not yet held |
 | C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 and 10 not yet held |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
+| Rust | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
 | Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
 | Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 and 10 not yet held |
 | Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |

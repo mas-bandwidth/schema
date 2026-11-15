@@ -214,14 +214,16 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 	m.pf("    w.put(0, TABLE_MESSAGE_REF_BITS);\n    !w.overflow\n}\n\n")
 }
 
-// storageCheck refuses a used length or a live count outside its storage,
-// which no wire can spell (gotable emitStorageCheck).
+// storageCheck holds a used length or a live count outside its storage,
+// which no wire can spell (gotable emitStorageCheck). It is a WRITE check,
+// so by rule it is a debug_assert! and nothing else: a release build carries
+// no write-side check at all (docs/SPEC.md §5.1, an assert leg).
 func (m *msgGen) storageCheck(f *ir.Field, expr, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		m.pf("%sif %s_length < 0 || %s_length > %d { return false; }\n", ind, expr, expr, f.Type.Size)
+		m.pf("%sdebug_assert!(%s_length >= 0 && %s_length <= %d, \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
-		m.pf("%sif %s_count < 0 || %s_count > %d { return false; }\n", ind, expr, expr, f.ArrayBound)
+		m.pf("%sdebug_assert!(%s_count >= 0 && %s_count <= %d, \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, expr, f.ArrayBound)
 	}
 }
 
