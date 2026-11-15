@@ -85,7 +85,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-elixir`: gated again (str-zero-escape-unknown-key, jref_zero_byte, and the hostile-corpus run).
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
   - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
-  - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
   - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
