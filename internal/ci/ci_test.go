@@ -351,29 +351,36 @@ func jobIfCondition(data, job string) string {
 	return ""
 }
 
-// TestGeneratedTreeAndPinsRunOnEveryPullRequest (issue #1421) refuses the one
-// gate that must NEVER be behind the `full-ci` label. The `generated` job is
-// the only check that names a stale committed generated/ tree, and it lives in
-// ci-full.yml — whose every job skipped itself on an unlabelled pull request.
-// A pull request into fixed-table-form runs neither this file nor the leg gate
-// (ci-fast.yml's gate is `github.base_ref == 'main'`), so #1395 landed a stale
-// generated/bench/paired/rust/fixed_runtime.rs with nothing able to see it. A
-// "the committed tree is what this compiler emits" question is an ITERATION
-// question by this file's own rule, so it belongs on every pull request and
-// not behind a label. `pins` answers the same question for testdata/ and is
-// dropped from the label gate with it.
-func TestGeneratedTreeAndPinsRunOnEveryPullRequest(t *testing.T) {
+// TestGeneratedTreeAndPinsRunAfterTheMerge holds the two whole-tree guards,
+// generated and pins, to the owner, 2026-11-15: heavy suite failure on main is
+// fine, like a hierarchical merge. That ruling supersedes issue #1421 for the
+// PR gate only. #1421 put both on every pull request because a pull request
+// into fixed-table-form ran neither (#1395 landed a stale
+// generated/bench/paired/rust/fixed_runtime.rs). Now a stale tree or pin that
+// a pull request lets through is caught on the merge, so this test refuses
+// either guard leaving the merge, the nightly or a dispatch: both must run on
+// a push to main, dev and fixed-table-form, on the schedule and on
+// workflow_dispatch. On a pull request, generated runs with the full-ci label
+// (the sprint's card gate runs make generated-current) and pins when
+// pr-select finds its paths; checkCIFullPRSelection holds that half.
+func TestGeneratedTreeAndPinsRunAfterTheMerge(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	wf := string(data)
+	events := []ciEvent{
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "fixed-table-form", Repo: "mas-bandwidth/schema"},
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	}
 	for _, job := range []string{"generated", "pins"} {
-		cond := jobIfCondition(string(data), job)
-		if cond == "" {
-			continue // no gate: runs on every trigger, every pull request with it
-		}
-		if strings.Contains(cond, "full-ci") {
-			t.Errorf("ci-full.yml's %q job still gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a stale committed tree lands with no job able to see it (issue #1421)", job, cond)
+		for _, ev := range events {
+			if ok, err := jobSelectsSelfHosted(wf, job, ev); err != nil || !ok {
+				t.Errorf("ci-full.yml's %q job does not run on %s %s (ok=%v err=%v): a stale committed tree or pin would land with no job able to see it (issue #1421)", job, ev.Name, ev.Branch, ok, err)
+			}
 		}
 	}
 }
@@ -1349,6 +1356,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:negative-controls",
 		"ci-full.yml:negative-controls-matrix",
 		"ci-full.yml:pins",
+		"ci-full.yml:pr-select",
 		"ci-full.yml:proof",
 		"ci-full.yml:shape-gate",
 		"ci-full.yml:vuln",
