@@ -16,6 +16,8 @@ const (
 	fixedPresentBytes = int64(1)
 	kFixedOpFlat      = byte(7)
 	kFixedOpBool      = byte(9)
+	kFixedOpDead      = byte(10)
+	kFixedMetaPresent = byte(1)
 )
 
 func fixedStorageBytes(t ir.FieldType) int64 {
@@ -801,9 +803,11 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 			src:   fieldWireBase,
 			dst:   presentSlot,
 			size:  1,
+			aux:   int(size - fixedPresentBytes),
 			guard: guard,
 			op:    kFixedOpBool,
 			arg:   arg,
+			meta:  kFixedMetaPresent,
 		})
 		*wireOff += fixedPresentBytes
 		payload := len(b.plan)
@@ -864,6 +868,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			src:   fieldWireBase,
 			dst:   countSlot,
 			size:  f.ArrayBound,
+			aux:   int(fixedElementBytes(f)),
 			guard: guard,
 			op:    1,
 			arg:   arg,
@@ -1076,6 +1081,12 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			b.argw = fixedGuardWidth(tagBytes)
 			armWireOffset := wireBase + tagBytes
 			owner := unionOwner(r)
+			// TAG 0 NAMES NO ARM: the whole arm span is dead (§4.5), and the
+			// read refuses a non-zero dead byte (docs/rulings.json
+			// fixed-dead-bytes-are-zero).
+			at0 := len(b.plan)
+			b.addPlan(fixedPlanEntry{src: armWireOffset, size: elemSize - tagBytes, guard: kFixedNoGuard, op: kFixedOpDead})
+			b.stampGuard(at0, wireBase, 0, b.argw)
 			for j, v := range r.Variants {
 				*wireOff = armWireOffset
 				if v.F == nil {
@@ -1087,6 +1098,11 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 				// (Length, Count) are members of the union object, so the arm
 				// walks as a payload, never as a bare element.
 				b.buildPayload(owner, v.F, expr, armBase, wireOff, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), kFixedNoGuard, 0)
+				// A NARROWER TAKEN ARM LEAVES ITS TAIL DEAD (§4.5): the span
+				// past the arm's own extent inside the widest arm's span.
+				if tail := elemSize - tagBytes - fixedFieldBytes(v.F); tail > 0 {
+					b.addPlan(fixedPlanEntry{src: armWireOffset + fixedFieldBytes(v.F), size: tail, guard: kFixedNoGuard, op: kFixedOpDead})
+				}
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1217,6 +1233,12 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			b.argw = fixedGuardWidth(tagBytes)
 			armWireOffset := wireBase + tagBytes
 			owner := unionOwner(r)
+			// TAG 0 NAMES NO ARM: the whole arm span is dead (§4.5), and the
+			// read refuses a non-zero dead byte (docs/rulings.json
+			// fixed-dead-bytes-are-zero).
+			at0 := len(b.plan)
+			b.addPlan(fixedPlanEntry{src: armWireOffset, size: elemSize - tagBytes, guard: kFixedNoGuard, op: kFixedOpDead})
+			b.stampGuard(at0, wireBase, 0, b.argw)
 			for j, v := range r.Variants {
 				if v.F == nil {
 					continue // a payload-free arm: no slot, no plan entry (§2.6)
@@ -1224,6 +1246,11 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 				*wireOff = armWireOffset
 				at := len(b.plan)
 				b.buildPayloadSlotsAndPlan(owner, v.F, expr, baseSlot, wireOff, fixedFieldBytes(v.F), kFixedNoGuard, 0)
+				// A NARROWER TAKEN ARM LEAVES ITS TAIL DEAD (§4.5): the span
+				// past the arm's own extent inside the widest arm's span.
+				if tail := elemSize - tagBytes - fixedFieldBytes(v.F); tail > 0 {
+					b.addPlan(fixedPlanEntry{src: armWireOffset + fixedFieldBytes(v.F), size: tail, guard: kFixedNoGuard, op: kFixedOpDead})
+				}
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1299,9 +1326,11 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 			src:   fieldWireBase,
 			dst:   presentSlot,
 			size:  1,
+			aux:   int(size - fixedPresentBytes),
 			guard: guard,
 			op:    kFixedOpBool,
 			arg:   arg,
+			meta:  kFixedMetaPresent,
 		})
 		*wireOff += fixedPresentBytes
 		payload := len(b.plan)
@@ -1344,6 +1373,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			src:   fieldWireBase,
 			dst:   countSlot,
 			size:  f.ArrayBound,
+			aux:   int(fixedElementBytes(f)),
 			guard: guard,
 			op:    1,
 			arg:   arg,
@@ -1893,6 +1923,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			opName = "TableFixedWire.Flat"
 		case kFixedOpBool:
 			opName = "TableFixedWire.BoolByte"
+		case kFixedOpDead:
+			opName = "TableFixedWire.Dead"
 		}
 		argw := p.argw
 		if argw == 0 {
@@ -2359,6 +2391,12 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("            case TableFixedWire.BoolByte:\n                {\n")
 	g.pf("                    ulong raw = src[(int)p.Src];\n")
 	g.pf("                    if (raw > 1) { return \"wire_damaged\"; }\n")
+	g.pf("                    // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json\n")
+	g.pf("                    // fixed-dead-bytes-are-zero): a present byte of 0 makes the\n")
+	g.pf("                    // whole payload behind it dead (§4.5). Aux is its source byte count.\n")
+	g.pf("                    if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)\n                    {\n")
+	g.pf("                        string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);\n")
+	g.pf("                        if (dw != null) { return dw; }\n                    }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, raw, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Flat:\n                {\n")
@@ -2398,12 +2436,22 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("            case TableFixedWire.Count:\n                {\n")
 	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }\n")
+	g.pf("                    // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):\n")
+	g.pf("                    // Aux is one element's source byte count, Size the bound in elements.\n")
+	g.pf("                    if (p.Aux != 0 && (uint)v < p.Size)\n                    {\n")
+	g.pf("                        string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);\n")
+	g.pf("                        if (dw != null) { return dw; }\n                    }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Text:\n                {\n")
 	g.pf("                    uint cap = p.Size;\n")
 	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }\n")
+	g.pf("                    // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE\n")
+	g.pf("                    // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.\n")
+	g.pf("                    if ((uint)v < p.Size)\n                    {\n")
+	g.pf("                        string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);\n")
+	g.pf("                        if (dw != null) { return dw; }\n                    }\n")
 	g.pf("                    ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);\n")
 	g.pf("                    if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))\n                    {\n")
 	g.pf("                        return \"text_ill_formed\";\n                    }\n")
@@ -2455,6 +2503,12 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	// TableFixedWire.Run's Const case.
 	g.pf("                    if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return \"out_of_range\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
+	g.pf("                    break;\n                }\n")
+	g.pf("            case TableFixedWire.Dead:\n                {\n")
+	g.pf("                    // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json\n")
+	g.pf("                    // fixed-dead-bytes-are-zero): an inactive union arm's span.\n")
+	g.pf("                    string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);\n")
+	g.pf("                    if (dw != null) { return dw; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")
 }
