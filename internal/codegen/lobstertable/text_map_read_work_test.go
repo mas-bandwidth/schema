@@ -36,7 +36,6 @@ func TestLobsterTextMapReadWorkIsBounded(t *testing.T) {
 	instrumentMapReadWork(t, g)
 
 	for _, order := range []string{"ascending", "descending", "interleaved"} {
-		order := order
 		n1, n2 := small, small*2
 		c1 := runMapWork(t, g, mapJSONWorkProgram(g, order, n1), mapJSONInput(order, n1), "input.json")
 		c2 := runMapWork(t, g, mapJSONWorkProgram(g, order, n2), mapJSONInput(order, n2), "input.json")
@@ -137,7 +136,7 @@ func mapWorkKeys(n int, order string) []int {
 	out := make([]int, 0, n)
 	switch order {
 	case "ascending":
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out = append(out, i)
 		}
 	case "descending":
