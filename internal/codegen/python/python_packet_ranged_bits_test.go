@@ -676,7 +676,7 @@ func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]b
 		t.Fatalf("the generated Go reference: %v\n%s", err, out)
 	}
 	got := map[string][]byte{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "CASE|")
 		if !ok {
 			continue
