@@ -2648,13 +2648,29 @@ defmodule Benchtable.Table do
   end
 
   defp unknown_array?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
-    case leb(rest) do
-      {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
-      _ -> false
+    if unknown_array_element?(ek) do
+      case leb(rest) do
+        {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
+        _ -> false
+      end
+    else
+      false
     end
   end
 
   defp unknown_array?(_b, _ids, _depth), do: false
+
+  # THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4), judged under any
+  # count, a count of 0 included: an array body opens with 1-13, 15, 17, 18-30,
+  # and an enum-keyed body with 1-11, 13, 18-30. No declaration produces any
+  # other element kind, so no reader can hold a declaration it agrees with.
+  defp unknown_array_element?(kind),
+    do:
+      (kind >= 1 and kind <= 13) or kind == 15 or kind == 17 or
+        (kind >= 18 and kind <= 30)
+
+  defp unknown_keyed_element?(kind),
+    do: (kind >= 1 and kind <= 11) or kind == 13 or (kind >= 18 and kind <= 30)
 
   defp unknown_elements?(rest, _ek, 0, _ids, _depth), do: rest == <<>>
 
@@ -2666,9 +2682,13 @@ defmodule Benchtable.Table do
   end
 
   defp unknown_keyed?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
-    case leb(rest) do
-      {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
-      _ -> false
+    if unknown_keyed_element?(ek) do
+      case leb(rest) do
+        {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
+        _ -> false
+      end
+    else
+      false
     end
   end
 
