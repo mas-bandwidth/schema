@@ -10,16 +10,6 @@
   "relaxed": [
     {
       "row": "surface cook-write",
-      "lang": "c",
-      "slug": "relax/c-cook-write-dead-slots"
-    },
-    {
-      "row": "cases tabledemo",
-      "lang": "c",
-      "slug": "relax/c-cook-write-dead-slots"
-    },
-    {
-      "row": "surface cook-write",
       "lang": "java",
       "slug": "relax/proof-cook-write-java"
     },

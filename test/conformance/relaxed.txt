@@ -25,16 +25,3 @@ rust write-refusal-message mref_range_high relax/rust-write-refusal-debug-assert
 rust write-refusal-message mref_range_low relax/rust-write-refusal-debug-asserts
 rust write-refusal-message mref_text_illformed relax/rust-write-refusal-debug-asserts
 rust write-refusal-message mref_text_zero relax/rust-write-refusal-debug-asserts
-#
-# relax/c-cook-write-dead-slots: the committed cook-write files predate PR 3424
-# (dead counted slots are zero); the C leg is right and the files are stale.
-c cook-write archive relax/c-cook-write-dead-slots
-c cook-write archive-be relax/c-cook-write-dead-slots
-c cook-write loadout_full relax/c-cook-write-dead-slots
-c cook-write loadout_full-be relax/c-cook-write-dead-slots
-c cook-write profile_elide relax/c-cook-write-dead-slots
-c cook-write profile_elide-be relax/c-cook-write-dead-slots
-c cook-write root_default relax/c-cook-write-dead-slots
-c cook-write root_default-be relax/c-cook-write-dead-slots
-c cook-write root_full relax/c-cook-write-dead-slots
-c cook-write root_full-be relax/c-cook-write-dead-slots
