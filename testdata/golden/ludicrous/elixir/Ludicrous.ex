@@ -374,7 +374,7 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = 2
 
     {data, scratch, scratch_bits} =
-      w_fixed_probe_samples(value_samples, data, scratch, scratch_bits)
+      wZfixed_probeZsamples(value_samples, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -401,7 +401,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.FixedProbe.t(), non_neg_integer()} | :error
   def read_fixed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -430,7 +430,7 @@ defmodule Ludicrous.Ludicrous do
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
-      {bits_read, v_samples} = r_fixed_probe_samples(2, [], data, num_bits, 114)
+      {bits_read, v_samples} = rZfixed_probeZsamples(2, [], data, num_bits, 114)
 
       value = %Ludicrous.FixedProbe{
         angle: v_angle,
@@ -573,7 +573,7 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = 2
 
     {data, scratch, scratch_bits} =
-      w_unsigned_probe_samples(value_samples, data, scratch, scratch_bits)
+      wZunsigned_probeZsamples(value_samples, data, scratch, scratch_bits)
 
     if value_locked != 196_608 do
       raise ArgumentError, "value.locked must hold the locked value 196608"
@@ -612,7 +612,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.UnsignedProbe.t(), non_neg_integer()} | :error
   def read_unsigned_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -645,7 +645,7 @@ defmodule Ludicrous.Ludicrous do
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
-      {bits_read, v_samples} = r_unsigned_probe_samples(2, [], data, num_bits, 146)
+      {bits_read, v_samples} = rZunsigned_probeZsamples(2, [], data, num_bits, 146)
       v_locked = 196_608
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFF
@@ -829,7 +829,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.WideProbe.t(), non_neg_integer()} | :error
   def read_wide_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1033,7 +1033,7 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = 4
 
     {data, scratch, scratch_bits} =
-      w_fixed_probe_samples(value_probe_samples, data, scratch, scratch_bits)
+      wZfixed_probeZsamples(value_probe_samples, data, scratch, scratch_bits)
 
     %{
       entity_id: value_wide_entity_id,
@@ -1184,7 +1184,7 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_ludicrous_state_keys(value_keys, data, scratch, scratch_bits)
+      wZludicrous_stateZkeys(value_keys, data, scratch, scratch_bits)
 
     v = if value_has_target, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
@@ -1259,7 +1259,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.LudicrousState.t(), non_neg_integer()} | :error
   def read_ludicrous_state_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1290,7 +1290,7 @@ defmodule Ludicrous.Ludicrous do
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_probe_ticks = v
-      {bits_read, v_probe_samples} = r_fixed_probe_samples(2, [], data, num_bits, 116)
+      {bits_read, v_probe_samples} = rZfixed_probeZsamples(2, [], data, num_bits, 116)
 
       v_probe = %Ludicrous.FixedProbe{
         angle: v_probe_angle,
@@ -1368,7 +1368,7 @@ defmodule Ludicrous.Ludicrous do
       if v > 4, do: throw(:invalid)
       n = v
       if bits_read + 406 + n * 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_keys} = r_ludicrous_state_keys(n, [], data, num_bits, bits_read + 406)
+      {bits_read, v_keys} = rZludicrous_stateZkeys(n, [], data, num_bits, bits_read + 406)
       if bits_read + 1 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 1)
       v = rv
@@ -1502,7 +1502,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.DegenerateProbe.t(), non_neg_integer()} | :error
   def read_degenerate_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1647,7 +1647,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.FixedVec.t(), non_neg_integer()} | :error
   def read_fixed_vec_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1798,7 +1798,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.FixedQuat.t(), non_neg_integer()} | :error
   def read_fixed_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1843,9 +1843,9 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  defp w_fixed_probe_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZfixed_probeZsamples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_fixed_probe_samples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZfixed_probeZsamples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1901,10 +1901,10 @@ defmodule Ludicrous.Ludicrous do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_fixed_probe_samples(rest, data, scratch, scratch_bits)
+    wZfixed_probeZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp w_fixed_probe_samples([e | rest], data, scratch, scratch_bits) do
+  defp wZfixed_probeZsamples([e | rest], data, scratch, scratch_bits) do
     if e < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1920,13 +1920,13 @@ defmodule Ludicrous.Ludicrous do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_fixed_probe_samples(rest, data, scratch, scratch_bits)
+    wZfixed_probeZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp r_fixed_probe_samples(0, acc, _data, _num_bits, bits_read),
+  defp rZfixed_probeZsamples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read)
+  defp rZfixed_probeZsamples(remaining, acc, data, num_bits, bits_read)
        when remaining >= 2 do
     rv = rdw(data, bits_read, 42)
     v = rv &&& 0x1FFFFF
@@ -1937,22 +1937,22 @@ defmodule Ludicrous.Ludicrous do
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e2 = v - 524_288
-    r_fixed_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 42)
+    rZfixed_probeZsamples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 42)
   end
 
-  defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read) do
+  defp rZfixed_probeZsamples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 21)
     v = rv
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e = v - 524_288
-    r_fixed_probe_samples(remaining - 1, [e | acc], data, num_bits, bits_read + 21)
+    rZfixed_probeZsamples(remaining - 1, [e | acc], data, num_bits, bits_read + 21)
   end
 
-  defp w_unsigned_probe_samples([], data, scratch, scratch_bits),
+  defp wZunsigned_probeZsamples([], data, scratch, scratch_bits),
     do: {data, scratch, scratch_bits}
 
-  defp w_unsigned_probe_samples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZunsigned_probeZsamples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2008,10 +2008,10 @@ defmodule Ludicrous.Ludicrous do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_unsigned_probe_samples(rest, data, scratch, scratch_bits)
+    wZunsigned_probeZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp w_unsigned_probe_samples([e | rest], data, scratch, scratch_bits) do
+  defp wZunsigned_probeZsamples([e | rest], data, scratch, scratch_bits) do
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2027,13 +2027,13 @@ defmodule Ludicrous.Ludicrous do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_unsigned_probe_samples(rest, data, scratch, scratch_bits)
+    wZunsigned_probeZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp r_unsigned_probe_samples(0, acc, _data, _num_bits, bits_read),
+  defp rZunsigned_probeZsamples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read)
+  defp rZunsigned_probeZsamples(remaining, acc, data, num_bits, bits_read)
        when remaining >= 2 do
     rv = rdw(data, bits_read, 42)
     v = rv &&& 0x1FFFFF
@@ -2044,21 +2044,21 @@ defmodule Ludicrous.Ludicrous do
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e2 = v
-    r_unsigned_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 42)
+    rZunsigned_probeZsamples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 42)
   end
 
-  defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read) do
+  defp rZunsigned_probeZsamples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 21)
     v = rv
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e = v
-    r_unsigned_probe_samples(remaining - 1, [e | acc], data, num_bits, bits_read + 21)
+    rZunsigned_probeZsamples(remaining - 1, [e | acc], data, num_bits, bits_read + 21)
   end
 
-  defp w_ludicrous_state_keys([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZludicrous_stateZkeys([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_ludicrous_state_keys([e | rest], data, scratch, scratch_bits) do
+  defp wZludicrous_stateZkeys([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2091,13 +2091,13 @@ defmodule Ludicrous.Ludicrous do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_ludicrous_state_keys(rest, data, scratch, scratch_bits)
+    wZludicrous_stateZkeys(rest, data, scratch, scratch_bits)
   end
 
-  defp r_ludicrous_state_keys(0, acc, _data, _num_bits, bits_read),
+  defp rZludicrous_stateZkeys(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_ludicrous_state_keys(remaining, acc, data, num_bits, bits_read) do
+  defp rZludicrous_stateZkeys(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -2111,6 +2111,6 @@ defmodule Ludicrous.Ludicrous do
     v = rv
     w = w ||| v <<< 96
     e = w
-    r_ludicrous_state_keys(remaining - 1, [e | acc], data, num_bits, bits_read + 128)
+    rZludicrous_stateZkeys(remaining - 1, [e | acc], data, num_bits, bits_read + 128)
   end
 end

@@ -114,11 +114,11 @@ public final class Bench {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
@@ -265,7 +265,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchPacketBits(
             BenchPacket value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -275,7 +278,7 @@ public final class Bench {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 249 > numBits) {
+        if ((long) bitsRead + 249 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -334,7 +337,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 136 > numBits) {
+        if ((long) bitsRead + 136 > numBits) {
             return -1;
         }
         if ((bitsRead & 7) == 0) {
@@ -351,9 +354,21 @@ public final class Bench {
     }
 
     // readBenchPacket decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readBenchPacket(BenchPacket value, byte[] data, int numBits) {
-        return readBenchPacketBits(value, data, 0, numBits) >= 0;
+        final int end = readBenchPacketBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type BenchInts
@@ -489,7 +504,10 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchIntsBits(BenchInts value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -498,7 +516,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 110 > numBits) {
+        if ((long) bitsRead + 110 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -553,9 +571,21 @@ public final class Bench {
     }
 
     // readBenchInts decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readBenchInts(BenchInts value, byte[] data, int numBits) {
-        return readBenchIntsBits(value, data, 0, numBits) >= 0;
+        final int end = readBenchIntsBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type BenchBits
@@ -653,7 +683,10 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchBitsBits(BenchBits value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -663,7 +696,7 @@ public final class Bench {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 156 > numBits) {
+        if ((long) bitsRead + 156 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -698,9 +731,21 @@ public final class Bench {
     }
 
     // readBenchBits decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readBenchBits(BenchBits value, byte[] data, int numBits) {
-        return readBenchBitsBits(value, data, 0, numBits) >= 0;
+        final int end = readBenchBitsBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
@@ -1034,7 +1079,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedEntityBits(
             MixedEntity value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1043,7 +1091,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 135 > numBits) {
+        if ((long) bitsRead + 135 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
@@ -1104,9 +1152,21 @@ public final class Bench {
     }
 
     // readMixedEntity decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readMixedEntity(MixedEntity value, byte[] data, int numBits) {
-        return readMixedEntityBits(value, data, 0, numBits) >= 0;
+        final int end = readMixedEntityBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type MixedStat
@@ -1175,7 +1235,10 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedStatBits(MixedStat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1184,7 +1247,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 18 > numBits) {
+        if ((long) bitsRead + 18 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -1197,9 +1260,21 @@ public final class Bench {
     }
 
     // readMixedStat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readMixedStat(MixedStat value, byte[] data, int numBits) {
-        return readMixedStatBits(value, data, 0, numBits) >= 0;
+        final int end = readMixedStatBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type MixedHitEvent
@@ -1283,7 +1358,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedHitEventBits(
             MixedHitEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1292,7 +1370,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 28 > numBits) {
+        if ((long) bitsRead + 28 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
@@ -1311,9 +1389,21 @@ public final class Bench {
     }
 
     // readMixedHitEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readMixedHitEvent(MixedHitEvent value, byte[] data, int numBits) {
-        return readMixedHitEventBits(value, data, 0, numBits) >= 0;
+        final int end = readMixedHitEventBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type MixedChatEvent
@@ -1384,7 +1474,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedChatEventBits(
             MixedChatEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1393,7 +1486,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 14 > numBits) {
+        if ((long) bitsRead + 14 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1406,9 +1499,21 @@ public final class Bench {
     }
 
     // readMixedChatEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readMixedChatEvent(MixedChatEvent value, byte[] data, int numBits) {
-        return readMixedChatEventBits(value, data, 0, numBits) >= 0;
+        final int end = readMixedChatEventBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type MixedPickupEvent
@@ -1480,7 +1585,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedPickupEventBits(
             MixedPickupEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1489,7 +1597,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 18 > numBits) {
+        if ((long) bitsRead + 18 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
@@ -1502,9 +1610,21 @@ public final class Bench {
     }
 
     // readMixedPickupEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readMixedPickupEvent(MixedPickupEvent value, byte[] data, int numBits) {
-        return readMixedPickupEventBits(value, data, 0, numBits) >= 0;
+        final int end = readMixedPickupEventBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC
@@ -1612,7 +1732,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedEventBits(
             MixedEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1621,7 +1744,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1645,9 +1768,21 @@ public final class Bench {
     }
 
     // readMixedEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readMixedEvent(MixedEvent value, byte[] data, int numBits) {
-        return readMixedEventBits(value, data, 0, numBits) >= 0;
+        final int end = readMixedEventBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type BenchMixed
@@ -2025,7 +2160,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchMixedBits(
             BenchMixed value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2036,7 +2174,7 @@ public final class Bench {
         long v;
         long lo;
         long hi;
-        if (bitsRead + 353 > numBits) {
+        if ((long) bitsRead + 353 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
@@ -2093,13 +2231,13 @@ public final class Bench {
             return -1; // a smuggled offset is refused
         }
         value.serverTime = (int) v;
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         value.entitiesCount = (int) (v + 1);
-        if (bitsRead + value.entitiesCount * 135L > numBits) {
+        if ((long) bitsRead + value.entitiesCount * 135L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.entitiesCount; i0++) {
@@ -2108,7 +2246,7 @@ public final class Bench {
                 return -1;
             }
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -2117,7 +2255,7 @@ public final class Bench {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.statsCount = (int) v;
-        if (bitsRead + value.statsCount * 18L > numBits) {
+        if ((long) bitsRead + value.statsCount * 18L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.statsCount; i0++) {
@@ -2130,7 +2268,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 32 > numBits) {
+        if ((long) bitsRead + 32 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 4; i0++) {
@@ -2138,7 +2276,7 @@ public final class Bench {
             bitsRead += 8;
             value.loadout[i0] = (byte) v;
         }
-        if (bitsRead + 4 > numBits) {
+        if ((long) bitsRead + 4 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
@@ -2148,7 +2286,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.playerNameLength * 8L > numBits) {
+        if ((long) bitsRead + value.playerNameLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.playerName, 0, value.playerNameLength);
@@ -2184,7 +2322,7 @@ public final class Bench {
                 return -1; // an interior null is content the read refuses (SPEC §4.7)
             }
         }
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -2197,12 +2335,12 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.payloadLength * 8L > numBits) {
+        if ((long) bitsRead + value.payloadLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.payload, 0, value.payloadLength);
         bitsRead += value.payloadLength * 8;
-        if (bitsRead + 370 > numBits) {
+        if ((long) bitsRead + 370 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -2283,7 +2421,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 37 > numBits) {
+        if ((long) bitsRead + 37 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffL;
@@ -2302,8 +2440,20 @@ public final class Bench {
     }
 
     // readBenchMixed decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readBenchMixed(BenchMixed value, byte[] data, int numBits) {
-        return readBenchMixedBits(value, data, 0, numBits) >= 0;
+        final int end = readBenchMixedBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

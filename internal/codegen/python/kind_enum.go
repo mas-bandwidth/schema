@@ -1,6 +1,8 @@
 package python
 
 import (
+	"strconv"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -25,8 +27,7 @@ func init() {
 		},
 		validate: func(c *emitCtx, f *ir.Field, expr, path string) {
 			ref := f.Type.Ref.(*ir.Enum)
-			c.m.needSchema("validate_int")
-			c.line("validate_int(%s, %s, 0, %d)", expr, fieldPath(path, f.Name), ref.Max)
+			emitIntValidate(c, expr, fieldPath(path, f.Name), "0", strconv.FormatInt(ref.Max, 10))
 		},
 		zero: func(c *emitCtx, f *ir.Field, target string) {
 			c.line("%s = 0", target)

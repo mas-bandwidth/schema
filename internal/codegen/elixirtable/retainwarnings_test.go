@@ -12,6 +12,7 @@ import (
 // earlier clauses own them. Compile an actual emitted module with the project's
 // strict warning gate so an impossible fallback result cannot recur unnoticed.
 func TestRetainScalarFallbackCompilesWithoutWarningsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir strict retained payload compilation")
 	elixir := elixirBinary(t)
 	compiler := filepath.Join(filepath.Dir(elixir), "elixirc")

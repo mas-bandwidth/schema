@@ -48,7 +48,7 @@ func TestRubyDesignPage(t *testing.T) {
 	for d := 1; d <= 8; d++ {
 		row := "| D" + strconv.Itoa(d) + " |"
 		found := false
-		for _, line := range strings.Split(text, "\n") {
+		for line := range strings.SplitSeq(text, "\n") {
 			if !strings.HasPrefix(line, row) {
 				continue
 			}
@@ -83,7 +83,7 @@ func TestRubyDesignPage(t *testing.T) {
 	}
 	var workSet string
 	tasks := map[string]string{}
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		if strings.Contains(line, `(:id "port/ruby" :type :work-set`) {
 			workSet = line
 		}

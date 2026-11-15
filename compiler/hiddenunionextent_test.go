@@ -8,6 +8,7 @@ import (
 )
 
 func TestCppHiddenUnionExtentRefusal(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
  table Item { values []uint32 }
  union Choice { item Item }

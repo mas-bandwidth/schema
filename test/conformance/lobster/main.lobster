@@ -35,10 +35,12 @@ import .json
 // the message form (§3.3), retain-unknown (§6.6), the cooked form's read,
 // write and forgery battery (§7), and the block form's reflective read with
 // its forgery battery (§19.2), each refusal with its reason, the JSON
-// text form (§16), and the framing vectors (docs/LAYERS/1-framing.md)
+// text form (§16), the framing vectors (docs/LAYERS/1-framing.md), and the
+// write contract through each table writer (SPEC §5.1)
 let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
-    "json-read", "json-write", "json-hostile"]
+    "json-read", "json-write", "json-hostile",
+    "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]
 
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
@@ -436,6 +438,157 @@ def surface_json_hostile(text:string):
         else:
             say(f[1], "refused\n")
 
+// THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1; test/conformance/README.md):
+// each row loads one wire, sets ONE field to the row's value and runs the
+// writer its surface names; Lobster refuses in every build, so this answers
+// from the ordinary build. A line is
+// `write-refusal[-form] <case> <unit> <root> <wire> <path> <kind> <value>`,
+// and a message row's <unit> is the CONNECTION, joined to its unit.
+
+// wr_hex is a row's `bytes` value, hex digits two to a byte, as a string
+def wr_hex(text:string) -> string:
+    var out = schema_rt.zeros(length(text) / 2)
+    var i = 0
+    while i + 1 < length(text):
+        let b, ok = string_to_int(substring(text, i, 2), 16)
+        assert ok
+        out = write_int8_le(out, i / 2, b)
+        i += 2
+    return out
+
+// wr_float is a row's `float` value: nan, inf, -inf or a decimal
+def wr_float(text:string) -> float:
+    if text == "nan":
+        return schema_rt.f64frombits(0x7FF8000000000000)
+    if text == "inf":
+        return schema_rt.f64frombits(0x7FF0000000000000)
+    if text == "-inf":
+        return schema_rt.f64frombits(0xFFF0000000000000)
+    let v, ok = string_to_float(text)
+    assert ok
+    return v
+
+// wr_int is a row's `int`, `count`, `ordinal` or `tag` value
+def wr_int(text:string) -> int:
+    let v, ok = string_to_int(text, 10)
+    assert ok
+    return v
+
+// wr_segment splits one path segment, `name` or `name[i]`, into the name and
+// the index, -1 for none
+def wr_segment(segment:string) -> string, int:
+    let open = find_string(segment, "[")
+    if open < 0:
+        return segment, -1
+    assert substring(segment, length(segment) - 1, 1) == "]"
+    return substring(segment, 0, open), wr_int(substring(segment, open + 1, length(segment) - open - 2))
+
+// wr_set sets the one field a row names: Path is dotted field names with
+// `[i]` element indexes from the root, and Kind says what the value sets
+def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
+    let segments = tokenize(path, ".", "")
+    var rec = root
+    for(segments) segment, i:
+        let name, index = wr_segment(segment)
+        let sl = schema_rt.slot_named(rec, name)
+        if i < length(segments) - 1:
+            let v = if index >= 0: sl.elems[index] else: sl.cell
+            let t = v.tab
+            assert t
+            rec = t
+            continue
+        if sl.fd.present != "":
+            sl.present = true
+        let v = if index >= 0: sl.elems[index] else: sl.cell
+        if kind == "count":
+            // new elements are copies of element 0's value
+            let n = wr_int(text)
+            sl.count = n
+            while length(sl.elems) < n:
+                push(sl.elems, if length(sl.elems) > 0: copy(sl.elems[0]) else: schema_rt.element_zero(sl.fd))
+        elif kind == "length":
+            var s = ""
+            for(wr_int(text)): s += "a"
+            v.s = s
+        elif kind == "bytes":
+            v.s = wr_hex(text)
+        elif kind == "int":
+            let n = wr_int(text)
+            v.i = n
+            v.w = schema_rt.Int128 { n, if n < 0: -1 else: 0 }
+        elif kind == "ordinal":
+            v.i = wr_int(text)
+        elif kind == "tag":
+            // the tag, and the arm it names at its zero; a tag past the arm
+            // set holds no payload
+            let tag = wr_int(text)
+            v.i = tag
+            v.tab = nil
+            v.arm = nil
+            var ud = sl.fd
+            if index >= 0:
+                let e = sl.fd.e
+                assert e
+                ud = e
+            let un = schema_rt.lookup_union(ud.t)
+            assert un
+            if tag >= 1 and tag <= length(un.arms):
+                let arm = un.arms[tag - 1]
+                if arm.s == "tab":
+                    v.tab = schema_rt.new_record(schema_rt.table_of(arm.t))
+                elif arm.s != "void":
+                    v.arm = schema_rt.new_slot(arm)
+        else:
+            assert kind == "float"
+            v.f = wr_float(text)
+
+// wr_rows are the rows of one write-refusal surface that this unit answers:
+// a message row through its connection's unit
+def wr_rows(text:string, kind:string) -> [[string]]:
+    let out:[[string]] = []
+    let connections = lines(text, "connection")
+    for(lines(text, kind)) f:
+        if length(f) >= 8:
+            var unit = f[2]
+            if kind == "write-refusal-message":
+                unit = ""
+                for(connections) c:
+                    if length(c) >= 3 and c[1] == f[2]:
+                        unit = c[2]
+            if unit == unit_key:
+                push(out, f)
+    return out
+
+def surface_write_refusal(text:string, kind:string):
+    for(wr_rows(text, kind)) f:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        assert rec
+        wr_set(rec, f[5], f[6], f[7])
+        var answer = "refused\n"
+        if kind == "write-refusal-message":
+            let out, n = schema_rt.save_messages([rec], schema_rt.LoadReport {})
+            if n >= 0:
+                assert n == length(out)
+                answer = "wrote\n"
+        elif kind == "write-refusal-json":
+            // THE TEXT WRITER WRITES A ZERO BYTE (docs/SPEC-TABLES.md §16.3)
+            // as \u0000: a text that holds one but does not spell it is
+            // neither verdict
+            let out, why = schema_rt.json_write(rec)
+            if why == "":
+                answer = "wrote\n"
+                if f[6] == "bytes" and find_string(wr_hex(f[7]), "\x00") >= 0 and find_string(out, "\\u0000") < 0:
+                    answer = "wrote without \\u0000\n"
+        else:
+            // the root's own form's writer: a declared fixed root saves
+            // through the fixed form's checked writer (save_reasoned)
+            let out, why = schema_rt.save_reasoned(rec)
+            if why == "":
+                assert length(out) > 0
+                answer = "wrote\n"
+        say(f[1], answer)
+
 if surface == "list":
     for(surfaces) s:
         print(s)
@@ -478,6 +631,8 @@ else:
         surface_json_hostile(text)
     elif surface == "block-foreign":
         surface_block(text, true)
+    elif find_string(surface, "write-refusal") == 0:
+        surface_write_refusal(text, surface)
     else:
         assert surface == "block-dump"
         surface_block_dump(text)

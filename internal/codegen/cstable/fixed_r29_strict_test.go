@@ -72,7 +72,7 @@ func csFixedR29SpanLoad(src string) string {
 // csFixedR29ReplaceInWriterClamp mutates the real writer-bound clamp alone and
 // splices it back into the emitted artifact.
 func csFixedR29ReplaceInWriterClamp(src, old, new string) (string, bool) {
-	const sig = "public static void BandFixedClampKnown0("
+	const sig = "public static bool BandFixedClampKnown0("
 	clamp := csFn(src, sig)
 	if clamp == "" {
 		return src, false
@@ -92,7 +92,7 @@ func csFixedR29ReplaceInWriterClamp(src, old, new string) (string, bool) {
 func csFixedR29StrictFaults(src string) []string {
 	var faults []string
 
-	clamp := csFn(src, "public static void BandFixedClampKnown0(")
+	clamp := csFn(src, "public static bool BandFixedClampKnown0(")
 	if clamp == "" {
 		return append(faults, "the writer-bound clamp BandFixedClampKnown0 is not emitted")
 	}
@@ -119,8 +119,8 @@ func csFixedR29StrictFaults(src string) []string {
 	if !strings.Contains(load, "writerClamp = BandFixedClampKnown[pick];") {
 		faults = append(faults, "the load does not select the writer's bounds by the resolved lineage index")
 	}
-	invoke := strings.Index(load, "writerClamp?.Invoke(values[k], report);")
-	ownPass := strings.Index(load, "BandFixedClamp(values[k], report);")
+	invoke := strings.Index(load, "if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }")
+	ownPass := strings.Index(load, "if (!BandFixedClamp(values[k], report)) { refused = true; }")
 	if invoke < 0 {
 		faults = append(faults, "the load never holds the compiled lane to the writer's bounds")
 	}
@@ -130,7 +130,7 @@ func csFixedR29StrictFaults(src string) []string {
 
 	if invoke >= 0 {
 		tail := load[invoke:]
-		refuse := strings.Index(tail, "if (report != null && report.Refused)")
+		refuse := strings.Index(tail, "if (refused)")
 		reset := strings.Index(tail, "for (int j = 0; j <= k; ++j) { TableReset(values[j]); }")
 		ret := strings.Index(tail, "return -1;")
 		if refuse < 0 || reset < refuse || ret < reset {
@@ -183,12 +183,12 @@ func TestCSharpFixedR29StrictNegativeControl(t *testing.T) {
 	}
 
 	load := csFixedR29SpanLoad(src)
-	const reset = "for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n                    report.Verdict = TableWire.Verdict.Refused;"
+	const reset = "for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }"
 	if !strings.Contains(load, reset) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the refusal reset is not in the real load artifact")
 	}
 	noReset := strings.Replace(src, reset,
-		"report.Verdict = TableWire.Verdict.Refused;", 1)
+		"if (report != null) { report.Verdict = TableWire.Verdict.Refused; }", 1)
 	if noReset == src {
 		t.Fatalf("NEGATIVE CONTROL FAILED: could not splice the dropped reset back into the real artifact")
 	}

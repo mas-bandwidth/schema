@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import 'dart:typed_data';
 
@@ -87,11 +87,12 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
 }
 
 // readDefaultArm decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -150,6 +151,17 @@ bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   value.marker = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -284,11 +296,12 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
 }
 
 // readDefaultChoice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -425,6 +438,17 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
       bitsRead += 3;
       value.second.marker = v;
   }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -535,15 +559,16 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
 }
 
 // readDefaultChoicePacket decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultChoicePacket(
   DefaultChoicePacket value,
   ByteData view,
   int numBits,
 ) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -680,6 +705,17 @@ bool readDefaultChoicePacket(
       bitsRead += 3;
       value.choice.second.marker = v;
   }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -801,11 +837,12 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
 }
 
 // readDefaultBulkArm decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -895,6 +932,17 @@ bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
     }
   }
   bitsRead += value.dataLength * 8;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1119,15 +1167,16 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
 }
 
 // readDefaultBulkChoice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultBulkChoice(
   DefaultBulkChoice value,
   ByteData view,
   int numBits,
 ) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1331,6 +1380,17 @@ bool readDefaultBulkChoice(
         }
       }
       bitsRead += value.second.dataLength * 8;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }

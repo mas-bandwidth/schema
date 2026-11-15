@@ -37,13 +37,16 @@ conformance-negative-control-squirrel-block: build/conformance-harness build/con
 		forgery block block-dump
 
 # THE RETAINED-ID CAPACITY (§6.6): the save interns retained ids past the
-# caller's list, so retain_ids_short keeps a record it must drop and the retain
-# surface goes red; the plain wire and the report never touch retention.
+# caller's list, so retain_ids_short keeps a record it must drop and writes it
+# back: the retain-save surface goes red on the saved bytes. The retain surface
+# compares the known value alone, which a capacity holds whole whatever unknown
+# data fits (test/conformance/harness/run.go, "retain"), so it stays green, as
+# do the plain wire and the report, which never touch retention.
 .PHONY: conformance-negative-control-squirrel-retain
 conformance-negative-control-squirrel-retain: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@sh test/conformance/squirrel/negative-control retain retain.nut \
 		's/if (store.ids.len() >= store.idCapacity) return false;//' \
-		retain wire report
+		retain-save retain wire report
 
 # THE FRAMING LAYER (docs/LAYERS/1-framing.md): the load forgets the id
 # table's 4096-entry maximum (docs/SPEC-TABLES.md §3), so frame_entries_4097
@@ -58,13 +61,15 @@ conformance-negative-control-squirrel-framing: build/conformance-harness build/c
 test-squirrel: conformance-negative-control-squirrel-framing
 
 # A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the load forgets its
-# cycle check, so the framing rows node_cycle_self, node_cycle_to_root and
-# node_cycle_mid read where they owe the refusal and the framing surface goes
-# red, while wire and report, which hold no cycle, stay green.
+# two cycle verdicts (the wire graph walk and the resolved graph check), so the
+# framing rows node_cycle_self, node_cycle_to_root and node_cycle_mid read
+# where they owe the refusal and framing goes red, while wire and report, which
+# hold no cycle, stay green.
 .PHONY: conformance-negative-control-squirrel-cycle
 conformance-negative-control-squirrel-cycle: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+# Keep the DFS terminating while bypassing the back-edge and resolved checks.
 	@sh test/conformance/squirrel/negative-control cycle load.nut \
-		's/if (_require("schema_table_save").cyclic/if (false \&\& _require("schema_table_save").cyclic/' \
+		's/if (mark\[t\] == 1) return wcDamage(c);/if (mark[t] == 1) continue;/;s/if (_require("schema_table_save").cyclic(T, rootName, v, verts)) report.bodyDamaged = true;/if (false) report.bodyDamaged = true;/' \
 		framing wire report
 
 test-squirrel: conformance-negative-control-squirrel-cycle

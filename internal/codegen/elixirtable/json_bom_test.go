@@ -14,6 +14,7 @@ import (
 // A BOM is an entry prefix, not whitespace and not something to remove from
 // stored strings. Compare accepted values and exact wire bytes with Go.
 func TestJSONBOMEntryElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package bomentry
 table Root {

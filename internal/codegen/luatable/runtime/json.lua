@@ -16,7 +16,6 @@ local J = {}
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
-local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 ----------------------------------------------------------------------------
@@ -65,23 +64,6 @@ local function utf8_seq(s, i)
   if code >= 0xd800 and code <= 0xdfff then return -1 end
   if code > 0x10ffff then return -1 end
   return want
-end
-
-local function utf8_decode(s)
-  local c = s:byte(1)
-  if c < 0x80 then return c end
-  local code, at
-  if c < 0xe0 then
-    code, at = c & 0x1f, 2
-  elseif c < 0xf0 then
-    code, at = c & 0x0f, 3
-  else
-    code, at = c & 0x07, 4
-  end
-  for i = 2, at do
-    code = (code << 6) | (s:byte(i) & 0x3f)
-  end
-  return code
 end
 
 ----------------------------------------------------------------------------
@@ -438,7 +420,7 @@ local function scan_number(inp)
     end
   end
   local n = inp.p - start
-  if n <= 0 or n > MAX_NUMBER then return nil end
+  if n <= 0 then return nil end
   return inp.t:sub(start, inp.p - 1)
 end
 
@@ -1806,10 +1788,11 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     inp.p = inp.p + 1
     return { tag = 0 }
   end
-  local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3);
+  -- a key past the bound names no arm
+  local name, over_bound, ok = scan_string(inp, MAX_KEY)
   if not ok then return nil end
-  local name = inp.t:sub(start + 1, inp.p - 2)
+  if over_bound then name = nil end
   if peek(inp) ~= ":" then
     inp.bad = true
     return nil
@@ -1954,10 +1937,11 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     holder[key] = out
     return true
   elseif s == "enum" then
-    local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    -- the variant is matched by the string's DECODED value
+    -- (docs/SPEC-TABLES.md §16.3); a name past the bound names no variant
+    local name, over_bound, ok = scan_string(inp, MAX_KEY)
     if not ok then return false end
-    local name = inp.t:sub(start + 1, inp.p - 2)
+    if over_bound then name = nil end
     if name == "None" then
       holder[key] = elem and false or nil
       return true
@@ -2088,6 +2072,18 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         end
       else
         x = nearest_f32(token, x, narrow)
+      end
+    end
+    -- a compressed float is held to its declared [min, max] as the wire read
+    -- holds it (docs/SPEC-TABLES.md §17.3, §16.2): a number past either end
+    -- counts outOfRange, which the strict read refuses, as place_integer does
+    if d.fmin ~= nil and d.fmax ~= nil then
+      if x < d.fmin then
+        x = d.fmin
+        report.outOfRange = report.outOfRange + 1
+      elseif x > d.fmax then
+        x = d.fmax
+        report.outOfRange = report.outOfRange + 1
       end
     end
     holder[key] = x
@@ -2911,8 +2907,9 @@ end
 function J.ToJson(T, name, v)
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, v)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, v, true)
   if refused ~= nil then return nil, refused end
   local g = count_nodes(T, desc, v)
   if g == nil then return nil end

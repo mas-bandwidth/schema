@@ -23,6 +23,7 @@ import (
 )
 
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	file := filepath.Join(corpus, "old_cfloat_res_refine.bin")

@@ -21,7 +21,7 @@ var generatedMembers = wordSet(`read write load save descriptor`)
 // moduleNames are the names a generated module binds itself: the imports it
 // spells unqualified and the constants it writes beside the declarations. A
 // declaration with one of these names would replace the binding.
-var moduleNames = wordSet(`Final Self Ref ReadStream WriteStream InvalidValue Refused
+var moduleNames = wordSet(`Final Self Ref ReadStream WriteStream WriteMisuse InvalidValue Refused
 	float32_bits_eq float64_bits_eq validate_bool validate_int wire_input`)
 
 // enumMembers are the members every generated enum class defines beside its
@@ -156,6 +156,9 @@ func checkDecl(file string, d ir.Decl) error {
 			}
 			if unionMembers[a.Name] {
 				return fmt.Errorf("python: %s.schema: union %s's arm %s is the name of a member the generated class defines (%s); rename the arm", file, d.Name, a.Name, unionMemberList())
+			}
+			if enumMembers[ir.GoExportName(a.Name)] {
+				return fmt.Errorf("python: %s.schema: union %s's arm %s exports %s on %sType, the name of a member the generated tag class defines; rename the arm", file, d.Name, a.Name, ir.GoExportName(a.Name), d.Name)
 			}
 		}
 	}

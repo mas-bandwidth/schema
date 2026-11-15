@@ -150,6 +150,9 @@ type fixedGen struct {
 	// flat packet reader is), so a loop inside an inlined element must not
 	// shadow the loop variable its base offset is written in.
 	loops int
+	// deadLoops numbers the CHECK pass's zero-scan locals, so a scan inside a
+	// scan names its own byte counter.
+	deadLoops int
 	// inl numbers the locals an inlined struct element binds.
 	inl int
 }
@@ -368,41 +371,42 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
-// fixedFieldNeedsValueCheck covers finite floats and required scalar ranges,
-// here or anywhere below it (a struct by value, a union arm, an array).
+// fixedFieldNeedsValueCheck covers every field whose VALUE the fixed writer
+// must hold to its declaration before the first byte (docs/SPEC.md §5.1 rows
+// 1-8): a ranged or bits-bounded scalar, an enum ordinal, a union tag, a
+// counted array's count, a text's used length and content, and a nested record.
+// A plain bool carries none of those rows and, being a JavaScript boolean in
+// its own slot, has no storage type to refuse either.
 func fixedFieldNeedsValueCheck(f *ir.Field) bool {
 	if f == nil {
 		return false
 	}
-	if fixedIsFloat(f.Type) || (f.Required && f.HasIntRange) {
+	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 		return true
 	}
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return slices.ContainsFunc(r.Fields, fixedFieldNeedsValueCheck)
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if fixedFieldNeedsValueCheck(v.F) {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	return f.Type.Kind != ir.TBool
 }
 
-// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S FINITE CHECK
-// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
-// same rule as packets"): false when any float the record would carry is a
-// NaN or an infinity, or a required scalar is outside its declared range, so the
-// save refuses (-1) before it writes a byte. Only a type that holds a float
-// or a required range gets one; other roots have nothing to check.
+// fixedStructNeedsValueCheck is the question <T>FixedCheckBody asks of a
+// record before it is emitted: false when every field is a plain bool, so the
+// zero-cost rule leaves the body out.
+func fixedStructNeedsValueCheck(st *ir.Struct) bool {
+	return st != nil && slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
+}
+
+// emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S PREFLIGHT
+// (docs/SPEC.md §5.1; docs/SPEC-TABLES.md §3.3, §3.4): false when any field,
+// array element, nested record or arm payload holds a value the declaration
+// does not admit, so the save refuses (-1) before it writes a byte. The count
+// and length rows are the every-build STORAGE guards: a count past the array's
+// slots or a length past the field's bytes would index past the storage it
+// describes, so they come first, before any element or byte is touched.
 func (g *fixedGen) emitCheckBody(st *ir.Struct) {
-	if !slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck) {
+	if !fixedStructNeedsValueCheck(st) {
 		return
 	}
-	g.pf("// %s's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).\n", st.Name)
+	g.pf("// %s's writer preflight: every value the declaration does not admit is\n", st.Name)
+	g.pf("// refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).\n")
 	g.pf("export function %sFixedCheckBody(value) {\n", st.Name)
 	for _, f := range st.Fields {
 		if !fixedFieldNeedsValueCheck(f) {
@@ -422,16 +426,56 @@ func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 
 func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	name := js.MemberName(f.Name)
+	expr := val + "." + name
 	switch {
 	case f.KeyEnum != "":
-		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
+		g.emitCheckValueArray(expr, ind)
+		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), expr, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
+		g.emitCheckValueArray(expr, ind)
+		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), expr, ind)
 	case f.Array == ir.ArrayCounted:
-		g.emitCheckValueLoop(f, fmt.Sprintf("%s.%sCount", val, name), val+"."+name, ind)
+		g.emitCheckValueArray(expr, ind)
+		count := expr + "Count"
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+			ind, count, count, count, count, f.ArrayBound)
+		g.emitCheckValueLoop(f, count, expr, ind)
+	case f.Type.Kind == ir.TString:
+		g.emitCheckValueText(f, expr, ind)
+	case f.Type.Kind == ir.TBytes:
+		g.emitCheckValueBytes(f, expr, ind)
 	default:
-		g.emitCheckValueElement(f, val+"."+name, ind)
+		g.emitCheckValueElement(f, expr, ind)
 	}
+}
+
+// emitCheckValueArray is the storage-type guard a fixed array or a text field
+// owes an untyped caller: a value that is not the array the module indexes is
+// refused, never indexed as if it were one.
+func (g *fixedGen) emitCheckValueArray(expr, ind string) {
+	g.pf("%sif (!Array.isArray(%s) && !(%s instanceof Uint8Array)) { return false; }\n", ind, expr, expr)
+}
+
+func (g *fixedGen) emitCheckValueText(f *ir.Field, expr, ind string) {
+	if !g.emitCheckValueBytes(f, expr, ind) {
+		return
+	}
+	g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, new DataView(%s.buffer, %s.byteOffset, %s.byteLength), 0, %sLength)) { return false; }\n",
+		ind, expr, expr, expr, expr)
+}
+
+// emitCheckValueBytes refuses a used length outside 0..N, a value that is not
+// the Uint8Array the module copies from, and a Uint8Array whose own storage is
+// shorter than the used length it names: the writer may only read the units
+// the buffer actually holds. It answers whether the caller can then read the
+// used units (a text has one more content rule to hold).
+func (g *fixedGen) emitCheckValueBytes(f *ir.Field, expr, ind string) bool {
+	g.pf("%sif (!(%s instanceof Uint8Array)) { return false; }\n", ind, expr)
+	length := expr + "Length"
+	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+		ind, length, length, length, length, f.Type.Size)
+	g.pf("%sif (%s.length < %s) { return false; }\n", ind, expr, length)
+	return true
 }
 
 func (g *fixedGen) emitCheckValueLoop(f *ir.Field, count, expr, ind string) {
@@ -442,38 +486,78 @@ func (g *fixedGen) emitCheckValueLoop(f *ir.Field, count, expr, ind string) {
 }
 
 func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
-	if f.Required {
-		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
-		} else if lo, hi, ok := ir.TableRawRange(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, fixedIsBig(f.Type)), expr, jsIntLit(hi, fixedIsBig(f.Type)))
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%sif (%s === null || typeof %s !== \"object\") { return false; }\n", ind, expr, expr)
+			if fixedStructNeedsValueCheck(r) {
+				g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
+			}
+			return
+		case *ir.Union:
+			g.pf("%sif (%s === null || typeof %s !== \"object\") { return false; }\n", ind, expr, expr)
+			g.pf("%sif (!Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d) { return false; }\n",
+				ind, expr, expr, expr, len(r.Variants))
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			for i, v := range r.Variants {
+				if v.F == nil || !fixedFieldNeedsValueCheck(v.F) {
+					continue
+				}
+				g.pf("%s  case %d: {\n", ind, i+1)
+				g.emitCheckValuePayload(v.F, expr, ind+"    ")
+				g.pf("%s    break;\n%s  }\n", ind, ind)
+			}
+			g.pf("%s  default: break;\n%s}\n", ind, ind)
+			return
+		case *ir.Enum:
+			g.pf("%sif (!Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+				ind, expr, expr, expr, r.Max)
+			return
+		case *ir.Flags:
+			g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+			return
 		}
+		return
 	}
 	switch f.Type.Kind {
+	case ir.TBool:
+		return
 	case ir.TFloat32:
-		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) { return false; }\n",
+			ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		}
 		return
 	case ir.TFloat64:
-		g.pf("%sif (!Number.isFinite(%s)) { return false; }\n", ind, expr)
-		return
-	}
-	if f.Type.Kind != ir.TNamed {
-		return
-	}
-	switch r := f.Type.Ref.(type) {
-	case *ir.Struct:
-		g.pf("%sif (!%sFixedCheckBody(%s)) { return false; }\n", ind, r.Name, expr)
-	case *ir.Union:
-		g.pf("%sswitch (%s.type) {\n", ind, expr)
-		for i, v := range r.Variants {
-			if !fixedFieldNeedsValueCheck(v.F) {
-				continue
-			}
-			g.pf("%s  case %d: {\n", ind, i+1)
-			g.emitCheckValuePayload(v.F, expr, ind+"    ")
-			g.pf("%s    break;\n%s  }\n", ind, ind)
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) { return false; }\n",
+			ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
 		}
-		g.pf("%s  default: break;\n%s}\n", ind, ind)
+		return
+	}
+	asBig := fixedIsBig(f.Type)
+	if asBig {
+		g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+	} else {
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
+	}
+	// THE WRITER CHECKS BOTH DECLARED ENDS, never the reader's elision: a
+	// bound sitting on the storage width's own limit is still a bound the
+	// caller can cross, because the caller's value was never loaded through
+	// that width. Writing it would wrap the value the declaration refuses.
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+	}
+	if f.Type.Kind == ir.TBits {
+		// a bits slot is unsigned at EVERY width: an N-bit value is 0..2^N-1,
+		// so a negative value is no more admissible than one past the top, and
+		// a width that fills its storage is no exception.
+		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n",
+			ind, expr, jsIntLit(big.NewInt(0), asBig), expr, jsIntLit(maxv, asBig))
 	}
 }
 
@@ -616,14 +700,114 @@ func fixedFieldChecked(f *ir.Field) bool {
 	return false
 }
 
+// fixedPayloadChecked reports whether an optional's payload carries a check of
+// its own, once the present byte's own wire_damaged check is set aside.
+func fixedPayloadChecked(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	payload := *f
+	payload.Type.Optional = false
+	return fixedFieldChecked(&payload)
+}
+
+// fixedElementChecked reports whether one element of a keyed, fixed or counted
+// array carries a check. The array's own count check is not a reason to emit
+// the element loop, so the array spelling is set aside before asking.
+func fixedElementChecked(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.KeyEnum = ""
+	return fixedFieldChecked(&elem)
+}
+
 // fixedIsFloat is true for a float32 or a float64 leaf.
 func fixedIsFloat(t ir.FieldType) bool { return t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64 }
 
-// emitCheckStruct walks st's text and float fields in view before
-// emitDecodeField writes anything into value (docs/FIXED-FORM-ALGORITHM.md
-// §4.5 fix 11, §5.3): an ill-formed text refuses as text_ill_formed, and a NaN
-// or an infinity on its raw bits as non_finite_float (docs/SPEC-TABLES.md
-// §3.3). Both refusals are total: nothing of the record lands.
+// fixedStructHasDead answers whether any byte of st is DEAD for some record
+// image: an absent optional's payload, a counted array's slots past its count,
+// a text or bytes field's bytes past its used length, or an inactive union arm
+// (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.5; docs/SPEC-TABLES.md §3.4).
+func fixedStructHasDead(st *ir.Struct) bool {
+	if st == nil {
+		return false
+	}
+	return slices.ContainsFunc(st.Fields, fixedFieldHasDead)
+}
+
+// fixedFieldHasDead answers whether f can carry a dead byte. An optional's
+// whole payload is dead under a present byte of 0; a counted array's slots past
+// its count are dead whole; a text or bytes field's unused capacity is dead; a
+// union's inactive arm is dead. A fixed array, an enum-keyed array and a
+// deprecated slot have no dead bytes of their own — their elements are all
+// live — so the question recurses into an element that may.
+func fixedFieldHasDead(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	if f.Type.Optional {
+		payload := *f
+		payload.Type.Optional = false
+		return fixedFieldBytes(&payload) > 0
+	}
+	switch {
+	case f.Array == ir.ArrayCounted:
+		return f.ArrayBound > 0 && fixedElementBytes(f) > 0
+	case f.Array == ir.ArrayFixed || f.KeyEnum != "":
+		return fixedFieldElementHasDead(f)
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		return f.Type.Size > 0
+	case f.Type.Kind == ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedStructHasDead(r)
+		case *ir.Union:
+			return fixedUnionHasDead(r)
+		}
+	}
+	return false
+}
+
+// fixedFieldElementHasDead asks fixedFieldHasDead of the field's ELEMENT, with
+// the array spelling set aside.
+func fixedFieldElementHasDead(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.KeyEnum = ""
+	return fixedFieldHasDead(&elem)
+}
+
+// fixedUnionHasDead is whether a union has an arm span to hold dead: under tag
+// 0 the whole widest arm is dead, and past a narrower taken arm the rest of it
+// is.
+func fixedUnionHasDead(u *ir.Union) bool {
+	if u == nil {
+		return false
+	}
+	widest := int64(0)
+	for _, v := range u.Variants {
+		if v.F == nil {
+			continue
+		}
+		if n := fixedFieldBytes(v.F); n > widest {
+			widest = n
+		}
+	}
+	return widest > 0
+}
+
+// emitCheckStruct walks st's checked fields in view before emitDecodeField
+// writes anything into value (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3):
+// an ill-formed text refuses as text_ill_formed, a NaN or an infinity on its raw
+// bits as non_finite_float (docs/SPEC-TABLES.md §3.3), and a bool or present
+// byte other than 0 or 1 as wire_damaged. Every refusal is total: nothing of
+// the record lands. The dead bytes are the separate CHECK pass above.
 func (g *fixedGen) emitCheckStruct(st *ir.Struct, base string, at int64, ind string) {
 	if !fixedStructChecked(st) {
 		return
@@ -637,14 +821,37 @@ func (g *fixedGen) emitCheckStruct(st *ir.Struct, base string, at int64, ind str
 	}
 }
 
+// emitDeadCheckBody emits <T>FixedCheckDead( view, at, report ): THE CHECK PASS'S
+// DEAD-BYTES HALF, over the RECORD's bytes (docs/FIXED-FORM-ALGORITHM.md §4.1,
+// §4.5, §5.3 step 11; docs/SPEC-TABLES.md §3.4, §13.10). It reads no value and
+// writes nothing; a non-zero dead byte refuses the whole load as wire_damaged.
+// The in-place identity read calls it before the projection.
+func (g *fixedGen) emitDeadCheckBody(st *ir.Struct) {
+	if !fixedStructHasDead(st) {
+		return
+	}
+	outer := g.body.String()
+	g.body.Reset()
+	g.deadLoops = 0
+	g.emitDeadStruct(st, "at", 0, "  ")
+	inner := g.body.String()
+	g.body.Reset()
+	g.body.WriteString(outer)
+	g.pf("export function %sFixedCheckDead(view, at, report) {\n", st.Name)
+	g.body.WriteString(inner)
+	g.pf("}\n\n")
+}
+
 func (g *fixedGen) emitCheckField(f *ir.Field, base string, at int64, ind string) {
 	if f.Type.Optional {
 		g.pf("%s{\n", ind)
 		g.pf("%s  const p = view.getUint8(%s);\n", ind, off(base, at))
 		g.pf("%s  if (p > 1) { report.refused = TableFixedRefusal.WireDamaged; return; }\n", ind)
-		g.pf("%s  if (p !== 0) {\n", ind)
-		g.emitCheckPayload(f, base, at+fixedPresentBytes, ind+"  ")
-		g.pf("%s  }\n", ind)
+		if fixedPayloadChecked(f) {
+			g.pf("%s  if (p !== 0) {\n", ind)
+			g.emitCheckPayload(f, base, at+fixedPresentBytes, ind+"  ")
+			g.pf("%s  }\n", ind)
+		}
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -676,6 +883,9 @@ func (g *fixedGen) emitCheckPayload(f *ir.Field, base string, at int64, ind stri
 }
 
 func (g *fixedGen) emitCheckLoop(f *ir.Field, base string, at int64, count, ind string) {
+	if !fixedElementChecked(f) {
+		return
+	}
 	elem := fixedElementBytes(f)
 	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 	g.emitCheckElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
@@ -719,6 +929,190 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind stri
 			g.pf("%s}\n", ind)
 		}
 	}
+}
+
+// THE CHECK PASS HOLDS EVERY DEAD BYTE TO ZERO (docs/FIXED-FORM-ALGORITHM.md
+// §4.1, §4.5, §5.3 step 11; docs/SPEC-TABLES.md §3.4, §13.10). A present byte,
+// a count, a length and a tag decide which bytes are dead; a non-zero one
+// refuses the whole load as wire_damaged before any destination byte lands.
+func (g *fixedGen) emitDeadField(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Optional {
+		p := g.deadVar()
+		g.pf("%s{\n", ind)
+		g.pf("%s  const %s = view.getUint8(%s);\n", ind, p, off(base, at))
+		payload := *f
+		payload.Type.Optional = false
+		if payloadBytes := fixedFieldBytes(&payload); payloadBytes > 0 {
+			g.pf("%s  if (%s === 0) {\n", ind, p)
+			g.emitDeadZero(ind+"    ", base, at+fixedPresentBytes, payloadBytes)
+			if fixedFieldHasDead(&payload) {
+				g.pf("%s  } else {\n", ind)
+				g.emitDeadPayload(&payload, base, at+fixedPresentBytes, ind+"    ")
+			}
+			g.pf("%s  }\n", ind)
+		}
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitDeadPayload(f, base, at, ind)
+}
+
+func (g *fixedGen) emitDeadPayload(f *ir.Field, base string, at int64, ind string) {
+	switch {
+	case f.KeyEnum != "":
+		g.emitDeadArray(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), base, at, ind)
+	case f.Array == ir.ArrayFixed:
+		g.emitDeadArray(f, strconv.FormatInt(f.ArrayBound, 10), base, at, ind)
+	case f.Array == ir.ArrayCounted:
+		g.emitDeadCounted(f, base, at, ind)
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		g.emitDeadText(f, base, at, ind)
+	default:
+		g.emitDeadElement(f, base, at, ind)
+	}
+}
+
+// emitDeadArray walks a fixed or enum-keyed array whose elements are ALL live:
+// every element is checked for the dead bytes its own shape carries.
+func (g *fixedGen) emitDeadArray(f *ir.Field, count, base string, at int64, ind string) {
+	if !fixedFieldElementHasDead(f) {
+		return
+	}
+	elem := fixedElementBytes(f)
+	i := g.deadVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, i, i, count, i)
+	g.emitDeadElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), i, elem), 0, ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+// emitDeadCounted checks a counted array's whole slots past its live count and
+// then the dead bytes inside its live elements.
+func (g *fixedGen) emitDeadCounted(f *ir.Field, base string, at int64, ind string) {
+	bound := f.ArrayBound
+	elem := fixedElementBytes(f)
+	if bound <= 0 || elem <= 0 {
+		return
+	}
+	n := g.deadVar()
+	g.pf("%s{\n", ind)
+	g.pf("%s  const %s = view.getInt32(%s, true);\n", ind, n, off(base, at))
+	g.pf("%s  if (%s >= 0 && %s <= %d) {\n", ind, n, n, bound)
+	k := g.deadVar()
+	g.pf("%s    for (let %s = %s * %d; %s < %d; %s++) {\n", ind, k, n, elem, k, bound*elem, k)
+	g.pf("%s      if (view.getUint8(%s + %s) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }\n", ind, off(base, at+fixedCountBytes), k)
+	g.pf("%s    }\n", ind)
+	if fixedFieldElementHasDead(f) {
+		i := g.deadVar()
+		g.pf("%s    for (let %s = 0; %s < %s; %s++) {\n", ind, i, i, n, i)
+		g.emitDeadElement(f, fmt.Sprintf("%s + %s * %d", off(base, at+fixedCountBytes), i, elem), 0, ind+"      ")
+		g.pf("%s    }\n", ind)
+	}
+	g.pf("%s  }\n%s}\n", ind, ind)
+}
+
+// emitDeadText checks a text or bytes field's bytes past its used length. Its
+// length is held to the same bound the scatter holds it to, so the slack scan
+// never reads past the record.
+func (g *fixedGen) emitDeadText(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Size <= 0 {
+		return
+	}
+	n := g.deadVar()
+	g.pf("%s{\n", ind)
+	g.pf("%s  const %s = view.getInt32(%s, true);\n", ind, n, off(base, at))
+	g.pf("%s  if (%s < 0 || %s > %d) { report.refused = TableFixedRefusal.LengthOverBound; return; }\n", ind, n, n, f.Type.Size)
+	k := g.deadVar()
+	g.pf("%s  for (let %s = %s; %s < %d; %s++) {\n", ind, k, n, k, f.Type.Size, k)
+	g.pf("%s    if (view.getUint8(%s + %s) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }\n", ind, off(base, at+fixedCountBytes), k)
+	g.pf("%s  }\n%s}\n", ind, ind)
+}
+
+func (g *fixedGen) emitDeadElement(f *ir.Field, base string, at int64, ind string) {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		g.emitDeadText(f, base, at, ind)
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitDeadStruct(r, base, at, ind)
+		case *ir.Union:
+			g.emitDeadUnion(r, base, at, ind)
+		}
+	}
+}
+
+func (g *fixedGen) emitDeadStruct(st *ir.Struct, base string, at int64, ind string) {
+	if !fixedStructHasDead(st) {
+		return
+	}
+	cur := at
+	for _, f := range st.Fields {
+		if fixedFieldHasDead(f) {
+			g.emitDeadField(f, base, cur, ind)
+		}
+		cur += fixedFieldBytes(f)
+	}
+}
+
+// emitDeadUnion checks the bytes outside the taken arm: all of the widest
+// arm's span under tag 0, and the span past a narrower taken arm. The live
+// arm's own dead bytes are checked by the same recursion a field gets.
+func (g *fixedGen) emitDeadUnion(r *ir.Union, base string, at int64, ind string) {
+	if !fixedUnionHasDead(r) {
+		return
+	}
+	tag := fixedUnionTagBytes(r)
+	widest := int64(0)
+	for _, v := range r.Variants {
+		if v.F == nil {
+			continue
+		}
+		if n := fixedFieldBytes(v.F); n > widest {
+			widest = n
+		}
+	}
+	t := g.deadVar()
+	g.pf("%s{\n", ind)
+	g.pf("%s  let %s = 0;\n", ind, t)
+	g.loadTag(ind+"  ", t, off(base, at), tag)
+	g.pf("%s  if (%s === 0) {\n", ind, t)
+	g.emitDeadZero(ind+"    ", base, at+tag, widest)
+	g.pf("%s  } else {\n", ind)
+	g.pf("%s    switch (%s) {\n", ind, t)
+	for i, v := range r.Variants {
+		arm := int64(0)
+		if v.F != nil {
+			arm = fixedFieldBytes(v.F)
+		}
+		g.pf("%s      case %d: {\n", ind, i+1)
+		if arm < widest {
+			g.emitDeadZero(ind+"        ", base, at+tag+arm, widest-arm)
+		}
+		if v.F != nil && fixedFieldHasDead(v.F) {
+			g.emitDeadPayload(v.F, base, at+tag, ind+"        ")
+		}
+		g.pf("%s        break;\n%s      }\n", ind, ind)
+	}
+	g.pf("%s      default: break;\n%s    }\n", ind, ind)
+	g.pf("%s  }\n%s}\n", ind, ind)
+}
+
+// emitDeadZero refuses any non-zero byte in [start, start+n). n is a compile-time
+// span, so the scan is a constant loop.
+func (g *fixedGen) emitDeadZero(ind, base string, start, n int64) {
+	if n <= 0 {
+		return
+	}
+	k := g.deadVar()
+	g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, k, k, n, k)
+	g.pf("%s  if (view.getUint8(%s + %s) !== 0) { report.refused = TableFixedRefusal.WireDamaged; return; }\n", ind, off(base, start), k)
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedGen) deadVar() string {
+	v := fmt.Sprintf("d%d", g.deadLoops)
+	g.deadLoops++
+	return v
 }
 
 // emitDecodeField projects one FIELD out of the image, through the optional

@@ -86,6 +86,7 @@ struct CookCtx {
     open: bool[>..<]&,
     offs: i64[>..<]&,   // each place's offset in the region
     exts: i64[>..<]&,   // each place's extent, as the layout measured it
+    sorted: i64[>..<]&, // the maps' sort stack (map_entry_order)
     refused: bool,
     writing: bool,      // the carve writes the elements it places
     ext_base: i64,      // where the node being carved keeps its extent
@@ -254,10 +255,15 @@ recursive fn cook_edges_value(c: CookCtx&, s: i64, d: const FieldDesc&) {
     }
     if !c.vals[s].made { return; }
     if d.shape == ShapeMap {
+        if c.vals[s].len == 0 { return; }
+        // in the order cook_carve_map lays the entries (§3.1, §2.8)
+        let mark = c.sorted.len;
+        map_entry_order(c.data, c.vals, c.unit.tables[c.vals[c.vals[s].first].tab].fields[0], c.vals[s].first, c.vals[s].len, c.sorted);
         for k in c.vals[s].len {
-            let e = c.vals[s].first + k;
+            let e = c.sorted[mark + k];
             if c.vals[e].made { cook_edges(c, c.vals[e].tab, e); }
         }
+        c.sorted.resize(mark);
         return;
     }
     if d.shape == ShapeArr {
@@ -552,18 +558,27 @@ recursive fn cook_carve_map(c: CookCtx&, s: i64, col: const CookCol&, slot: i64)
     let start = c.at;
     c.at += count * col.stride;
     let array = c.ext_base + start;
+    // the writer derives the order (map_entry_order): the value may hold the
+    // entries in any order, a cook's Find searches them ascending
+    let mark = c.sorted.len;
+    if count > 0 { map_entry_order(c.data, c.vals, c.unit.tables[col.tab].fields[0], c.vals[s].first, count, c.sorted); }
+    var ok = true;
     if c.writing {
         cook_put_at(c, slot, if count > 0 { (array - slot) as! u64 } else { 0 }, 8);
         cook_put_at(c, slot + 8, count as! u64, 4);
-        for k in count {
-            if !cook_record(c, col.tab, c.vals[s].first + k, array + k * col.stride) { return false; }
+        var k: i64 = 0;
+        while ok && k < count {
+            ok = cook_record(c, col.tab, c.sorted[mark + k], array + k * col.stride);
+            k += 1;
         }
     }
-    if !col.eext { return true; }
-    for k in count {
-        if !cook_carve_record(c, col.tab, c.vals[s].first + k, array + k * col.stride) { return false; }
+    var k: i64 = 0;
+    while ok && col.eext && k < count {
+        ok = cook_carve_record(c, col.tab, c.sorted[mark + k], array + k * col.stride);
+        k += 1;
     }
-    return true;
+    c.sorted.resize(mark);
+    return ok;
 }
 
 // cook_carve_text carves ONE unbounded text (§2.13.1): a blob record in the
@@ -695,7 +710,8 @@ fn cook_region_write(unit: LoadUnit, lay: CookUnitLayout, build: u64, root_tab: 
     var open: bool[>..<] = [];
     var offs: i64[>..<] = [];
     var exts: i64[>..<] = [];
-    var c = CookCtx { unit: unit, lay: lay, data: data, vals: vals, nodes: nodes, root_tab: root_tab, root: root, region: out[0..0], big: big, index: index, order: order, open: open, offs: offs, exts: exts, refused: false, writing: false, ext_base: 0, at: 0 };
+    var sorted: i64[>..<] = [];
+    var c = CookCtx { unit: unit, lay: lay, data: data, vals: vals, nodes: nodes, root_tab: root_tab, root: root, region: out[0..0], big: big, index: index, order: order, open: open, offs: offs, exts: exts, sorted: sorted, refused: false, writing: false, ext_base: 0, at: 0 };
     if !cook_shape_ok(c) { return -1; }
     let bytes, align = cook_layout(c);
     if bytes < 0 || c.refused { return -1; }

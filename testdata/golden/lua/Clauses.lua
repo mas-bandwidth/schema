@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local _M = {}
 
@@ -234,9 +234,17 @@ function _M.ZeroW13(value)
   value.ItemsCount = 0
 end
 
--- ReadW13 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadW13 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadW13(stream, value)
+  if not _M.ReadW13Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadW13Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadW13Body(stream, value)
   if not stream:serializeInt(BITS, 0, 12) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -256,9 +264,17 @@ function _M.ZeroW17(value)
   value.ItemsCount = 0
 end
 
--- ReadW17 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadW17 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadW17(stream, value)
+  if not _M.ReadW17Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadW17Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadW17Body(stream, value)
   if not stream:serializeInt(BITS, 0, 9) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -278,9 +294,17 @@ function _M.ZeroW26(value)
   value.ItemsCount = 0
 end
 
--- ReadW26 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadW26 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadW26(stream, value)
+  if not _M.ReadW26Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadW26Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadW26Body(stream, value)
   if not stream:serializeInt(BITS, 0, 6) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -300,9 +324,17 @@ function _M.ZeroW1(value)
   value.ItemsCount = 0
 end
 
--- ReadW1 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadW1 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadW1(stream, value)
+  if not _M.ReadW1Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadW1Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadW1Body(stream, value)
   if not stream:serializeInt(BITS, 0, 20) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -322,9 +354,17 @@ function _M.ZeroW52(value)
   value.ItemsCount = 0
 end
 
--- ReadW52 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadW52 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadW52(stream, value)
+  if not _M.ReadW52Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadW52Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadW52Body(stream, value)
   if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -344,9 +384,17 @@ function _M.ZeroW50(value)
   value.ItemsCount = 0
 end
 
--- ReadW50 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadW50 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadW50(stream, value)
+  if not _M.ReadW50Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadW50Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadW50Body(stream, value)
   if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -365,9 +413,17 @@ function _M.ZeroF13(value)
   end
 end
 
--- ReadF13 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadF13 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadF13(stream, value)
+  if not _M.ReadF13Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadF13Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadF13Body(stream, value)
   for i = 1, 7 do
     if not stream:serializeInt(BITS, 0, 8191) then return false end
     value.Items[i] = BITS.value
@@ -381,9 +437,17 @@ function _M.ZeroTri3(value)
   value.B = 0
 end
 
--- ReadTri3 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTri3 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTri3(stream, value)
+  if not _M.ReadTri3Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTri3Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTri3Body(stream, value)
   if not stream:serializeBits(BITS, 1) then return false end
   value.A = BITS.value
   if not stream:serializeBits(BITS, 2) then return false end
@@ -399,15 +463,23 @@ function _M.ZeroArrTri3(value)
   value.ItemsCount = 0
 end
 
--- ReadArrTri3 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadArrTri3 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadArrTri3(stream, value)
+  if not _M.ReadArrTri3Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadArrTri3Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadArrTri3Body(stream, value)
   if not stream:serializeInt(BITS, 0, 10) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadTri3(stream, value.Items[i]) then return false end
+    if not _M.ReadTri3Body(stream, value.Items[i]) then return false end
   end
   return true
 end
@@ -418,9 +490,17 @@ function _M.ZeroEleven(value)
   value.B = 0
 end
 
--- ReadEleven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadEleven reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadEleven(stream, value)
+  if not _M.ReadElevenBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadElevenBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadElevenBody(stream, value)
   if not stream:serializeBits(BITS, 3) then return false end
   value.A = BITS.value
   if not stream:serializeBits(BITS, 8) then return false end
@@ -435,11 +515,19 @@ function _M.ZeroArrEleven(value)
   end
 end
 
--- ReadArrEleven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadArrEleven reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadArrEleven(stream, value)
+  if not _M.ReadArrElevenBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadArrElevenBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadArrElevenBody(stream, value)
   for i = 1, 9 do
-    if not _M.ReadEleven(stream, value.Items[i]) then return false end
+    if not _M.ReadElevenBody(stream, value.Items[i]) then return false end
   end
   return true
 end
@@ -449,9 +537,17 @@ function _M.ZeroEmptyA(_value)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
--- ReadEmptyA reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
-function _M.ReadEmptyA(_stream, _value)
+-- ReadEmptyA reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
+function _M.ReadEmptyA(stream, value)
+  if not _M.ReadEmptyABody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadEmptyABody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadEmptyABody(_stream, _value)
   -- empty body — presence is the payload (SPEC §4.6)
   return true
 end
@@ -461,9 +557,17 @@ function _M.ZeroEmptyB(_value)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
--- ReadEmptyB reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
-function _M.ReadEmptyB(_stream, _value)
+-- ReadEmptyB reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
+function _M.ReadEmptyB(stream, value)
+  if not _M.ReadEmptyBBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadEmptyBBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadEmptyBBody(_stream, _value)
   -- empty body — presence is the payload (SPEC §4.6)
   return true
 end
@@ -473,18 +577,27 @@ function _M.ZeroEmptyUnion(value)
   value.Type = 0
 end
 
+-- ReadEmptyUnion reads one packet: the union wire (SPEC §4.8), then the end check
+-- (SPEC §5).
 function _M.ReadEmptyUnion(stream, value)
+  if not _M.ReadEmptyUnionBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadEmptyUnionBody reads the union wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadEmptyUnionBody(stream, value)
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.EmptyUnionType.A then
     value.A = _M.NewEmptyA() -- fresh declared defaults on every selection
-    return _M.ReadEmptyA(stream, value.A)
+    return _M.ReadEmptyABody(stream, value.A)
   end
   if value.Type == _M.EmptyUnionType.B then
     value.B = _M.NewEmptyB() -- fresh declared defaults on every selection
-    return _M.ReadEmptyB(stream, value.B)
+    return _M.ReadEmptyBBody(stream, value.B)
   end
   return true -- None
 end
@@ -496,12 +609,20 @@ function _M.ZeroHoldsEmptyUnion(value)
   value.Tail = 0
 end
 
--- ReadHoldsEmptyUnion reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadHoldsEmptyUnion reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadHoldsEmptyUnion(stream, value)
+  if not _M.ReadHoldsEmptyUnionBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadHoldsEmptyUnionBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadHoldsEmptyUnionBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not _M.ReadEmptyUnion(stream, value.U) then return false end
+  if not _M.ReadEmptyUnionBody(stream, value.U) then return false end
   if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
@@ -515,9 +636,17 @@ function _M.ZeroStrs(value)
   value.Tail = 0
 end
 
--- ReadStrs reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadStrs reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadStrs(stream, value)
+  if not _M.ReadStrsBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadStrsBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadStrsBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   do
@@ -553,9 +682,17 @@ function _M.ZeroArrNested(value)
   value.Tail = 0
 end
 
--- ReadArrNested reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadArrNested reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadArrNested(stream, value)
+  if not _M.ReadArrNestedBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadArrNestedBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadArrNestedBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeInt(BITS, 0, 4) then -- the count guards the loop (SPEC §6.3)
@@ -563,7 +700,7 @@ function _M.ReadArrNested(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadEleven(stream, value.Items[i]) then return false end
+    if not _M.ReadElevenBody(stream, value.Items[i]) then return false end
   end
   if not stream:serializeBits(BITS, 3) then return false end
   value.Tail = BITS.value
@@ -575,9 +712,17 @@ function _M.ZeroSole(value)
   value.Only = 0
 end
 
--- ReadSole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSole reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSole(stream, value)
+  if not _M.ReadSoleBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSoleBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSoleBody(stream, value)
   if not stream:serializeBits(BITS, 13) then return false end
   value.Only = BITS.value
   return true
@@ -586,7 +731,7 @@ end
 -- type W13 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW13(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
@@ -598,7 +743,7 @@ end
 -- type W17 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW17(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 131071 then return false end
@@ -610,7 +755,7 @@ end
 -- type W26 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW26(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 67108863 then return false end
@@ -622,7 +767,7 @@ end
 -- type W1 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW1(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 1 then return false end
@@ -634,7 +779,7 @@ end
 -- type W52 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW52(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 4503599627370495 then return false end
@@ -646,7 +791,7 @@ end
 -- type W50 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW50(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 1125899906842623 then return false end
@@ -676,7 +821,7 @@ end
 -- type ArrTri3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrTri3(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteTri3(stream, v.Items[_i]) then return false end
@@ -756,7 +901,7 @@ function _M.WriteArrNested(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end

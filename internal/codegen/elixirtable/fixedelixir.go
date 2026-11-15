@@ -32,6 +32,7 @@ package elixirtable
 
 import (
 	"fmt"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -402,7 +403,7 @@ func (g *fixedGen) writePayload(f *ir.Field, val string) []wseg {
 		// BEAM has no compile-out assert, so a check here is always on.
 		out = append(out, wseg{inline: fmt.Sprintf("byte_size(%s)::little-signed-32", name)})
 		out = append(out, wseg{inline: fmt.Sprintf("%s::binary", name)})
-		out = append(out, wseg{inline: fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size)})
+		out = append(out, wseg{inline: fmt.Sprintf("0::size(%s)-unit(8)", textSlack(f, name))})
 	default:
 		out = append(out, g.writeElement(f, name)...)
 	}
@@ -514,7 +515,25 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 	if f.HasIntRange {
 		return fmt.Sprintf("R.ranged(%s, %s)::little-%s-%d", name, g.rangeAttr(f), sign, width)
 	}
-	return fmt.Sprintf("R.fits(%s, %d, %t)::little-%s-%d", name, width, f.Type.Signed, sign, width)
+	// A bits(N) leaf's DOMAIN is its N bits, not the word it is stored in:
+	// the storage holds 2^N and above, which no reader of a bits(N) admits.
+	domain := width
+	if f.Type.Kind == ir.TBits {
+		domain = int64(f.Type.Width)
+	}
+	return fmt.Sprintf("R.fits(%s, %d, %t)::little-%s-%d", name, domain, f.Type.Signed, sign, width)
+}
+
+// textSlack is the call that sizes a text or bytes leaf's zero slack, and
+// raises ArgumentError when the value is past its bound. A string must also be
+// WELL-FORMED UTF-8 WITH NO ZERO BYTE (docs/SPEC.md §5.1, FixedSave's row 8):
+// the fixed reader refuses either as text_ill_formed, and a writer never
+// produces bytes its own reader refuses. Bytes are any bytes.
+func textSlack(f *ir.Field, name string) string {
+	if f.Type.Kind == ir.TString {
+		return fmt.Sprintf("R.string_slack(%s, %d)", name, f.Type.Size)
+	}
+	return fmt.Sprintf("R.text_slack(%s, %d)", name, f.Type.Size)
 }
 
 // rangeAttr is the module attribute one ranged leaf's DECLARED bounds ride in,
@@ -750,10 +769,12 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 	var out rseg
 	if f.Type.Optional {
 		out.match = append(out.match, "p_"+v+"::unsigned-8")
-		flag := rawf("p_%s != 0", v)
-		out.field(f.Name+"_present", flag)
+		// THE PRESENT BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1
+		// refuses any other byte as damage before the payload is read
+		out.stmt("p_"+v, rawf("R.flag(p_%s)", v))
+		out.field(f.Name+"_present", raw("p_"+v))
 		var payload rseg
-		g.readPayload(&payload, f, v, rawf("p_%s != 0", v))
+		g.readPayload(&payload, f, v, raw("p_"+v))
 		// THE COUNT AND THE DAMAGE FLAG MOVE ONLY WHEN PRESENT: the payload's
 		// statements run against a fork of both, and the fork is kept only if
 		// the flag was set. An absent optional's payload is unspecified (§3.4)
@@ -764,8 +785,8 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 		for _, p := range payload.post {
 			out.post = append(out.post, postStmt{name: forkName(p.name, v), val: forkNode(p.val, v)})
 		}
-		out.stmt("c", rawf("if(p_%s != 0, do: c_%s, else: c)", v, v))
-		out.stmt("m", rawf("if(p_%s != 0, do: m_%s, else: m)", v, v))
+		out.stmt("c", rawf("if(p_%s, do: c_%s, else: c)", v, v))
+		out.stmt("m", rawf("if(p_%s, do: m_%s, else: m)", v, v))
 		out.keys = append(out.keys, payload.keys...)
 		out.vals = append(out.vals, payload.vals...)
 		return out
@@ -833,7 +854,7 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	}
 }
 
-// readText is a string(N) or wstring(N): the length is held to this
+// readText is a string(N): the length is held to this
 // reader's bound, the used units are held to the CONTENT rule, and a payload
 // that is not the text its kind says it is REFUSES BY NAME (`text_ill_formed`,
 // §4.5 fix 11). bytes(N) does not come here.
@@ -1006,9 +1027,14 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`, which is what a form that writes 0 or 1
-		// and reads anything owes a hostile writer.
-		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
+		// A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): R.flag/1 refuses any
+		// other byte as damage, and the whole read with it. An absent
+		// optional's payload is unspecified (§3.4) and takes the present
+		// test (R.flag/2), as a float's does.
+		if g.present != nil {
+			return leafDec{spec: name + "::unsigned-8", wrap: rawf("R.flag(%s, %s)", name, g.present.flat())}
+		}
+		return leafDec{spec: name + "::unsigned-8", wrap: call("R.flag", raw(name))}
 	case ir.TFloat32, ir.TFloat64:
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and
 		// R.f64_value/1 refuse a NaN or an infinity on its raw bits, before
@@ -1040,6 +1066,13 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		spec = fmt.Sprintf("%s::little-signed-%d", name, width)
 	}
 	lo, hi := fixedRangeOf(f)
+	if lo == "nil" && f.Type.Kind == ir.TBits && int64(f.Type.Width) < width {
+		// A bits(N) PAST 2^N - 1 REFUSES out_of_range
+		// (docs/FIXED-FORM-ALGORITHM.md §4.5), declared range or not: its
+		// storage is four or eight bytes, so the bits above N are the wire's
+		// and never the value's. A bits(N) that fills its storage has none.
+		lo, hi = "0", fixedIntLiteral(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)))
+	}
 	if lo == "nil" {
 		return leafDec{spec: spec, wrap: raw(name)}
 	}
@@ -1559,7 +1592,7 @@ func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, sla
 			"acc::binary",
 			fmt.Sprintf("byte_size(%s)::little-signed-32", name),
 			fmt.Sprintf("%s::binary", name),
-			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size),
+			fmt.Sprintf("0::size(%s)-unit(8)", textSlack(f, name)),
 		}
 		if slack > 0 {
 			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
@@ -1763,6 +1796,9 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("    %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<@%s_hash::little-unsigned-64>>", snake)).render(4, 4, 0))
 	g.pf("  end\n\n")
 
+	g.pf("  # A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: an empty batch is refused\n")
+	g.pf("  # before a byte is written, by value and in every build.\n")
+	g.pf("  def %s_fixed_save([]), do: {:error, :invalid_value}\n\n", snake)
 	g.pf("  def %s_fixed_save(values) when is_list(values) do\n", snake)
 	g.emitLines(g.assign("head", binNode{segs: []string{
 		fmt.Sprintf("R.file_header(@%s_hash, byte_size(@%s_layout))::binary", snake, snake),

@@ -1083,13 +1083,14 @@ public final class Driver {
                 byte[] head = (refused ? "refused\n" : "read\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 if (refused) { spill(out, f[1], head); continue; }
                 byte[] saved = writeBackWire(f[2], f[3], codec, value);
-                if (saved == null) return failInt(f[1] + ": save refused the value");
+                // a value the read handed back that the wire writer refuses
+                // (a cycle a sabotaged reader let through) answers the read
+                // line alone: the row goes red, the other rows still answer —
+                // the same contract the text writer's refusal below holds
+                if (saved == null) { spill(out, f[1], head); continue; }
                 spill(out, f[1] + ".wire", saved);
                 if (noValue) { spill(out, f[1], head); continue; }
                 byte[] text = codec.toJson(value);
-                // a value the read handed back that the text writer refuses
-                // (a cycle a sabotaged reader let through) answers the read
-                // line alone: the row goes red, the other rows still answer
                 if (text == null) { spill(out, f[1], head); continue; }
                 byte[] both = new byte[head.length + text.length];
                 System.arraycopy(head, 0, both, 0, head.length);

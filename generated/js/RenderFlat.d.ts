@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // The TypeScript declarations of RenderFlat.js (SPEC §6.3).
 
@@ -12,7 +12,9 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteRenderSpriteFlat(view: DataView, value: RenderSprite): number;
 export declare function ReadRenderSpriteFlat(view: DataView, numBits: number, value: RenderSprite): boolean;
+export declare function ReadRenderSpriteFlatBits(view: DataView, numBits: number, value: RenderSprite): number | false;
 
 export declare function WriteRenderBlockFlat(view: DataView, value: RenderBlock): number;
 export declare function ReadRenderBlockFlat(view: DataView, numBits: number, value: RenderBlock): boolean;
+export declare function ReadRenderBlockFlatBits(view: DataView, numBits: number, value: RenderBlock): number | false;
 

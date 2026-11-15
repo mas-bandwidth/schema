@@ -8,6 +8,7 @@ import (
 // Exercise the real runtime's native and portable storage through the same
 // generated overload, including both signed limits and sign-extension cases.
 func TestCppPortableSigned128Writer(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, "package fixture\nfixed table Root { n uint128 }\n")
 	files, err := New().Generate(u, "cpp", Options{})
 	if err != nil {

@@ -95,12 +95,12 @@ for _, c in cases do
 	local ok = pcall(F.load, T.SDescriptor, fixed, c[2])
 	check(not ok, c[1] .. ": F.load did not raise")
 end
--- THE SLACK RULE (§3.4): an absent optional's payload is slack, never read
+-- AN ABSENT OPTIONAL'S PAYLOAD IS DEAD: a non-zero byte refuses the load
 local absent = forge(25, 0)
 buffer.writei32(absent, rec + 26, 0x7fffffff)
 local ra: any = {}
 local a = F.read(T.SDescriptor, fixed, absent, ra)
-check(a ~= nil and a[1].OPresent == false, "an absent optional over junk slack is refused: " .. tostring(ra.reason))
+check(a == nil, "a non-zero byte in an absent optional's payload was not refused: " .. tostring(ra.reason))
 if fails == 0 then print("ok") end
 `
 
@@ -136,7 +136,8 @@ func fixedStrictRun(t *testing.T, from, to string) string {
 // and 16): a bool or present byte other than 0 or 1 refuses wire_damaged; a
 // ranged scalar outside its range, a bits(N) past 2^N - 1 and an ordinal past
 // the writer's variants refuse out_of_range; each refusal hands back nothing
-// and moves no counter, and an absent optional's slack is never read.
+// and moves no counter. An absent optional's payload is dead: a non-zero byte
+// refuses the load.
 func TestLuauFixedStrictBounds(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")

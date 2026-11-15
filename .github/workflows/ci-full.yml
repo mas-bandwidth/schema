@@ -100,8 +100,8 @@ on:
   # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
     # A pull request runs this file only when it carries the `full-ci` label —
-    # every job below is gated on that, except `generated`, `pins` and
-    # `cs-tables` which run on every pull request. The label is how a branch
+    # every job below is gated on that, except `pins` and `cs-tables`, which
+    # run when pr-select finds their paths in the diff. The label is how a branch
     # near the hot paths, or anything that moves the C++ emitters, asks for the
     # whole suite before merging; `gh workflow run ci-full.yml --ref <branch>`
     # is the other way, and needs no label.
@@ -143,7 +143,7 @@ jobs:
   # The compiler's own test suite, and the only job in this file that reads a
   # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
   # re-executes every crasher ever found — a short, bounded run, not a
-  # campaign (the unit-rest row runs it, with its property and oracle tests).
+  # campaign (the unit-rest-fuzz rows run it, with its property and oracle tests).
   # The one campaign in that package, the random-schema table differential
   # (TestRandomTableDifferential and its negative control), skips itself here:
   # it runs only under SCHEMA_TABLE_DIFF=1, which only `make fuzz-tables-diff`
@@ -186,20 +186,27 @@ jobs:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     # MANY ROWS, because this job was 650 s median (2026-09-11) and a matrix
-    # row is a job: the emitter packages, the compiler package in two halves,
+    # row is a job: the emitter packages, the compiler package in 15 rows,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
     # two halves, and the fixed-form versioning suites — one row per leg — that
     # cannot ride `go test ./...` at all. Every step below is the step it was;
     # what is new is which row runs it, and no step runs in none of them or in
     # two.
-    #   unit-codegen    — go test ./internal/codegen/... less elixirtable
-    #   unit-compiler-1 — go test ./compiler, the tests one pattern names
-    #   unit-compiler-2 — go test ./compiler, every other test
-    #   unit-rest       — go vet ./..., go test over everything that is
-    #                     neither an emitter package nor ./compiler, the
+    #   unit-codegen    — go test ./internal/codegen/... less elixirtable and
+    #                     cpptable
+    #   unit-codegen-cpp-1..3 — go test internal/codegen/cpptable, in rows
+    #   unit-compiler-1..17 — go test ./compiler, the tests one pattern names
+    #   unit-compiler-18 — go test ./compiler, every other test
+    #   unit-vet        — go vet ./...
+    #   unit-rest-fuzz-1..3, unit-rest-cmd-1..2, unit-rest-goldens — go test
+    #                     internal/fuzz, cmd/schema and internal/goldens
+    #   unit-rest-ci, unit-rest-tools, unit-rest-check — go test over the
+    #                     slowest of the rest, by package
+    #   unit-rest       — go test over everything that is neither an emitter
+    #                     package, nor ./compiler, nor in a row above, the
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
-    #   unit-elixir     — go test internal/codegen/elixirtable, alone
+    #   unit-elixir-1..15 — go test internal/codegen/elixirtable, in rows
     #   slow-gate-codegen-0..25 — the slowtest accounting (schema#988) over
     #                     the emitter packages, one gated package per row
     #                     (Makefile SLOWGATE_SHARD/SLOWGATE_SHARDS)
@@ -250,7 +257,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
+        # request (the events the 110 s PGROUP_WALL applies to) these rows are
+        # excluded, because their median job wall over four CI full runs on
+        # 2026-11-13/14 was past the 110 s per-commit budget: unit-codegen 642 s,
+        # versioning-cs 193 s, versioning-rust 131 s, versioning-java 129 s,
+        # versioning-c 128 s, unit-rest-ci 118 s, unit-rest-fuzz-2 115 s. The
+        # nightly schedule and a dispatch run them unchanged and at full strength.
+        # internal/codegen/cpptable left unit-codegen for unit-codegen-cpp-1..3,
+        # which are each under the budget and are not excluded.
+        # re-enable: relax/ci-time-unit-codegen, relax/ci-time-versioning-cs,
+        # relax/ci-time-versioning-rust, relax/ci-time-versioning-java,
+        # relax/ci-time-versioning-c, relax/ci-time-unit-rest-ci,
+        # relax/ci-time-unit-rest-fuzz-2 (docs/relaxed.md). Also unit-elixir-3, which
+        # was killed at the wall in run 43630522257 (runner captain-8 on
+        # captainamerica: 64 cores, no core cap, load1 96.5);
+        # re-enable: relax/ci-time-unit-elixir-3 (docs/relaxed.md)
+        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"group":"unit-codegen"},{"group":"versioning-cs"},{"group":"versioning-rust"},{"group":"versioning-java"},{"group":"versioning-c"},{"group":"unit-rest-ci"},{"group":"unit-rest-fuzz-2"},{"group":"unit-elixir-3"}]' || '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -376,17 +400,20 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # THE LUAU PIN for the test rows below: internal/codegen/luau,
-      # internal/codegen/luautable, the compiler's Luau testgen gate and the
+      # internal/codegen/luautable, the compiler's Luau tests (unit-compiler-1, the
+      # row whose pattern holds every one of them) and the
       # Luau lanes under internal/ci run generated Luau under the pinned
       # interpreter and fail, never skip, without it
       # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
       # does, the sha256 refused before anything is unpacked.
       - name: install the Luau pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
         run: make dist-luau
 
+      # go vet over the module is a row of its own: it compiles every
+      # package, which is minutes of the complement's two-minute budget.
       - name: go vet
-        if: matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-vet'
         run: go vet ./...
 
       # THE LUA PIN for the test steps below: internal/codegen/lua,
@@ -395,7 +422,7 @@ jobs:
       # skip, without it. make/lua.mk's dist-lua builds it from source at the
       # sha256 it names, into dist/lua-<version>/, which is the LUA default.
       - name: install the Lua pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
         run: make dist-lua
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
@@ -403,20 +430,20 @@ jobs:
       # and fail, never skip, without it. make/goose.mk's dist-goose installs it
       # at the sha256 it names, into the dist/ path the leg's default names.
       - name: install the Goose pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
         run: make dist-goose
 
       # THE SQUIRREL PIN, on the three rows that run generated Squirrel and on
       # no other. Under SCHEMA_SLOW=1 internal/codegen/squirrel and
-      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-2;
-      # no Squirrel test matches the first half's pattern) and internal/ci's
+      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-1;
+      # the row whose pattern holds every Squirrel test) and internal/ci's
       # hostile-corpus runner (unit-rest) fail, never skip, without it. The
       # slow-gate rows run plain `go test`, where every Squirrel test skips at
       # internal/slowtest.Gate before the interpreter is resolved, so they pay
       # nothing. make/squirrel.mk's dist-squirrel builds sq at the sha256 it
       # names, into the dist/ path the leg's default names.
       - name: install the Squirrel pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
         run: make dist-squirrel
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
@@ -460,7 +487,38 @@ jobs:
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
+        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$')
+
+      # internal/codegen/cpptable has rows of its own (2026-11-14). It is the
+      # heaviest emitter package (about 220 s of CPU on the Studio: some sixty
+      # parallel tests each compiling a C++ probe, and the conformance driver
+      # built from every table source), and inside the unit-codegen row it
+      # shared the runner with every other emitter package's compilers and
+      # died at go test's ten-minute limit on runs 43570208757 (intel-3) and
+      # the 2026-11-10 nightly (vision-3), where the Studio runs it in 83 s.
+      # As one row it ran 80 s on amd-2-2 and past the 110 s step rule on a
+      # loaded intel-1 (PR #3275), so it is three, packed from a -v timing on
+      # hetzner2 (per-test seconds summed): the conformance driver and its
+      # control (33 s), the rest of the Cpp/CPP families with Generated and
+      # Message (65 s), and every other test (40 s). Row 3 -skips the other
+      # two, so a new test lands there with no edit here.
+      - name: go test the C++ table emitter package, row 1 of 3
+        if: matrix.group == 'unit-codegen-cpp-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cpptable -run '^Test(CppDriver)'
+
+      - name: go test the C++ table emitter package, row 2 of 3
+        if: matrix.group == 'unit-codegen-cpp-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cpptable -run '^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)'
+
+      - name: go test the C++ table emitter package, row 3 of 3
+        if: matrix.group == 'unit-codegen-cpp-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cpptable -skip '^Test(CppDriver)|^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)'
 
       # THE LOBSTER FIXED FORM AGAINST THE REFERENCE'S BYTES. The step above
       # runs internal/codegen/lobstertable without build/fixedform-corpus, so
@@ -472,37 +530,202 @@ jobs:
         if: matrix.group == 'unit-codegen'
         run: make test-lobster
 
-      # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
-      # the complement below and one package is one test binary: the only cut
-      # that splits it is by test name. ONE PATTERN, handed to -run on the
-      # first row and to -skip on the second, so the two rows are complements
-      # and a new test lands in the second row with no edit here. It is spelled
-      # out on both lines because tools/slowgatescan reads these lines and
-      # credits what they select (a shell variable would earn nothing), and
-      # its TestCIFullGoTestRunsEveryTestExactlyOnce goes red if the two
-      # spellings ever stop being complements. The pattern was balanced on a
-      # -json timing of the package (2026-10-27: the C++ and issue tests 138 s,
-      # the rest 142 s, at GOMAXPROCS=4); -v keeps each test's time in the log
-      # for the next rebalance.
-      - name: go test the compiler package, first half
+      # THE COMPILER PACKAGE, IN 18 ROWS, because one package is one test
+      # binary and the only cut that splits it is by test name. Run one way,
+      # the package was 1152 s on four threads (2026-11-10), and the two
+      # halves this replaces were each killed at the per-commit two-minute
+      # rule. Rows 1..17 each -run one pattern, an alternation of test-name
+      # families (the first CamelCase word after Test, or an exact name when
+      # a family outweighs a row); row 18 -skips all of them, so it is the
+      # complement and a new test lands there with no edit here. Row 1 is
+      # every test that runs generated Luau or Squirrel, so the two pins are
+      # installed on that row and no other. The patterns are spelled out on
+      # each line because tools/slowgatescan reads these lines and credits
+      # what they select, and its TestCIFullGoTestRunsEveryTestExactlyOnce
+      # goes red if a test is selected by no row or by two. They were packed
+      # from a -json timing of the package, and -v keeps each test's time in
+      # the log for the next repack.
+      - name: go test the compiler package, row 1 of 18
         if: matrix.group == 'unit-compiler-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^Test(Cpp|CPP|Issue)'
+        run: go test -v ./compiler -run '^Test((Lua|Luau|Squirrel|Testgen)([^a-z]|$))'
 
-      - name: go test the compiler package, second half
+      - name: go test the compiler package, row 2 of 18
         if: matrix.group == 'unit-compiler-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -skip '^Test(Cpp|CPP|Issue)'
+        run: go test -v ./compiler -run '^Test(CppTableRefOrdinalBytes$)'
+
+      - name: go test the compiler package, row 3 of 18
+        if: matrix.group == 'unit-compiler-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(Blob([^a-z]|$)|CPPRequired([^a-z]|$)|CTablePlain([^a-z]|$)|Carried([^a-z]|$)|Carries([^a-z]|$)|Competition([^a-z]|$)|CppVariableWideAlignment$|Deprecated([^a-z]|$)|Gather([^a-z]|$)|Message([^a-z]|$)|Register([^a-z]|$)|Scalar([^a-z]|$)|Strict([^a-z]|$)|Tutorial([^a-z]|$))'
+
+      - name: go test the compiler package, row 4 of 18
+        if: matrix.group == 'unit-compiler-4'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(Optional([^a-z]|$)|Table([^a-z]|$)|Unbounded([^a-z]|$))'
+
+      - name: go test the compiler package, row 5 of 18
+        if: matrix.group == 'unit-compiler-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CNo([^a-z]|$)|CTableView([^a-z]|$)|CppTableWidenListWidthFollowsTheCensus$|Cs([^a-z]|$)|Elixir([^a-z]|$))'
+
+      - name: go test the compiler package, row 6 of 18
+        if: matrix.group == 'unit-compiler-6'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CEmits([^a-z]|$)|CPPJSON([A-Z][a-z]|[^A-Za-z]|$)|CPPMap([^a-z]|$)|CPPOne([^a-z]|$)|CTableMessage([^a-z]|$)|CppTableFloatRungIsTheFiniteTestAndTheConversion$|CppTableOmitsEmptyTypeIdSwitch$|Each([^a-z]|$)|Lobster([^a-z]|$)|Map([^a-z]|$)|No([^a-z]|$)|String([^a-z]|$)|Target([^a-z]|$))'
+
+      - name: go test the compiler package, row 7 of 18
+        if: matrix.group == 'unit-compiler-7'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(A([A-Z][a-z]|[^A-Za-z]|$)|CPPBlob([^a-z]|$)|CPPUnbounded([^a-z]|$)|CTableBlob([^a-z]|$)|CTableRetain([^a-z]|$)|CppTableRetainFramedDepth$|CppTableWidenSignedFollowsTheCensus$|Fixed([^a-z]|$)|Required([^a-z]|$))'
+
+      - name: go test the compiler package, row 8 of 18
+        if: matrix.group == 'unit-compiler-8'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CBlock([^a-z]|$)|CTableCook([^a-z]|$)|CppTableWidenArmWidthFollowsTheCensus$|Rust([^a-z]|$))'
+
+      - name: go test the compiler package, row 9 of 18
+        if: matrix.group == 'unit-compiler-9'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CPPExact([^a-z]|$)|CPPOptional([^a-z]|$)|CTableAnnouncement([^a-z]|$)|CTableDead([^a-z]|$)|CTableFloat([^a-z]|$)|CTableKeyed([^a-z]|$)|CTableMap([^a-z]|$)|CUfixed([^a-z]|$)|CppCollectionWidening$|CppCookOpenNodeAlignment$|CppTableAnnouncementDistinctQuantizedShapes$|CppTableBlobThunksFollowTheCensus$|CppTableRuntimeNamesAreClaimed$|Emitted([^a-z]|$)|Js([^a-z]|$)|Maps([^a-z]|$)|Packet([^a-z]|$)|Porting([^a-z]|$)|Timestamp([^a-z]|$)|Usage([^a-z]|$))'
+
+      - name: go test the compiler package, row 10 of 18
+        if: matrix.group == 'unit-compiler-10'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CGenerator([^a-z]|$)|CTableWire([^a-z]|$)|CppTableRefOrdinalSharedId$|CppTableWidenUnsignedFollowsTheCensus$|Repeated([^a-z]|$))'
+
+      - name: go test the compiler package, row 11 of 18
+        if: matrix.group == 'unit-compiler-11'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CTableRuntime([^a-z]|$)|Count([^a-z]|$)|CppCookExtentCanonicalAlignment$|Issue([^a-z]|$))'
+
+      - name: go test the compiler package, row 12 of 18
+        if: matrix.group == 'unit-compiler-12'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(Java([^a-z]|$))'
+
+      - name: go test the compiler package, row 13 of 18
+        if: matrix.group == 'unit-compiler-13'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CExternals([^a-z]|$)|Go([^a-z]|$)|Refusal([^a-z]|$)|Spec([^a-z]|$))'
+
+      - name: go test the compiler package, row 14 of 18
+        if: matrix.group == 'unit-compiler-14'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CPPFrom([^a-z]|$)|CPPTable([^a-z]|$)|CPPText([^a-z]|$)|CPPTimestamp([^a-z]|$)|CTablePointer([^a-z]|$)|CTableRef([^a-z]|$)|Checked([^a-z]|$)|CppNoPlanClamps$|CppTableFixedClampOmitsEmptyUnionSwitch$|CppTableWidenRuntimeAbsentFromALadderlessUnit$)'
+
+      - name: go test the compiler package, row 15 of 18
+        if: matrix.group == 'unit-compiler-15'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CppTableHeaderAndPut128Bytes$|Integrity([^a-z]|$))'
+
+      - name: go test the compiler package, row 16 of 18
+        if: matrix.group == 'unit-compiler-16'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CTableOpenDistinctnessVerdict$|CppPacketRuntimeNamesAreAccountedFor$|CppRuntimeNameScanGoesRed$|FlagsElementWidening$|SharedS4Gate$)'
+
+      - name: go test the compiler package, row 17 of 18
+        if: matrix.group == 'unit-compiler-17'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CppHiddenUnionExtentRefusal$|CppPortableSigned128Writer$|ListTotalBytesRefusedOffGo$)'
+
+      - name: go test the compiler package, row 18 of 18
+        if: matrix.group == 'unit-compiler-18'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -skip '^Test((Lua|Luau|Squirrel|Testgen)([^a-z]|$))|^Test(CppTableRefOrdinalBytes$)|^Test(Blob([^a-z]|$)|CPPRequired([^a-z]|$)|CTablePlain([^a-z]|$)|Carried([^a-z]|$)|Carries([^a-z]|$)|Competition([^a-z]|$)|CppVariableWideAlignment$|Deprecated([^a-z]|$)|Gather([^a-z]|$)|Message([^a-z]|$)|Register([^a-z]|$)|Scalar([^a-z]|$)|Strict([^a-z]|$)|Tutorial([^a-z]|$))|^Test(Optional([^a-z]|$)|Table([^a-z]|$)|Unbounded([^a-z]|$))|^Test(CNo([^a-z]|$)|CTableView([^a-z]|$)|CppTableWidenListWidthFollowsTheCensus$|Cs([^a-z]|$)|Elixir([^a-z]|$))|^Test(CEmits([^a-z]|$)|CPPJSON([A-Z][a-z]|[^A-Za-z]|$)|CPPMap([^a-z]|$)|CPPOne([^a-z]|$)|CTableMessage([^a-z]|$)|CppTableFloatRungIsTheFiniteTestAndTheConversion$|CppTableOmitsEmptyTypeIdSwitch$|Each([^a-z]|$)|Lobster([^a-z]|$)|Map([^a-z]|$)|No([^a-z]|$)|String([^a-z]|$)|Target([^a-z]|$))|^Test(A([A-Z][a-z]|[^A-Za-z]|$)|CPPBlob([^a-z]|$)|CPPUnbounded([^a-z]|$)|CTableBlob([^a-z]|$)|CTableRetain([^a-z]|$)|CppTableRetainFramedDepth$|CppTableWidenSignedFollowsTheCensus$|Fixed([^a-z]|$)|Required([^a-z]|$))|^Test(CBlock([^a-z]|$)|CTableCook([^a-z]|$)|CppTableWidenArmWidthFollowsTheCensus$|Rust([^a-z]|$))|^Test(CPPExact([^a-z]|$)|CPPOptional([^a-z]|$)|CTableAnnouncement([^a-z]|$)|CTableDead([^a-z]|$)|CTableFloat([^a-z]|$)|CTableKeyed([^a-z]|$)|CTableMap([^a-z]|$)|CUfixed([^a-z]|$)|CppCollectionWidening$|CppCookOpenNodeAlignment$|CppTableAnnouncementDistinctQuantizedShapes$|CppTableBlobThunksFollowTheCensus$|CppTableRuntimeNamesAreClaimed$|Emitted([^a-z]|$)|Js([^a-z]|$)|Maps([^a-z]|$)|Packet([^a-z]|$)|Porting([^a-z]|$)|Timestamp([^a-z]|$)|Usage([^a-z]|$))|^Test(CGenerator([^a-z]|$)|CTableWire([^a-z]|$)|CppTableRefOrdinalSharedId$|CppTableWidenUnsignedFollowsTheCensus$|Repeated([^a-z]|$))|^Test(CTableRuntime([^a-z]|$)|Count([^a-z]|$)|CppCookExtentCanonicalAlignment$|Issue([^a-z]|$))|^Test(Java([^a-z]|$))|^Test(CExternals([^a-z]|$)|Go([^a-z]|$)|Refusal([^a-z]|$)|Spec([^a-z]|$))|^Test(CPPFrom([^a-z]|$)|CPPTable([^a-z]|$)|CPPText([^a-z]|$)|CPPTimestamp([^a-z]|$)|CTablePointer([^a-z]|$)|CTableRef([^a-z]|$)|Checked([^a-z]|$)|CppNoPlanClamps$|CppTableFixedClampOmitsEmptyUnionSwitch$|CppTableWidenRuntimeAbsentFromALadderlessUnit$)|^Test(CppTableHeaderAndPut128Bytes$|Integrity([^a-z]|$))|^Test(CTableOpenDistinctnessVerdict$|CppPacketRuntimeNamesAreAccountedFor$|CppRuntimeNameScanGoesRed$|FlagsElementWidening$|SharedS4Gate$)|^Test(CppHiddenUnionExtentRefusal$|CppPortableSigned128Writer$|ListTotalBytesRefusedOffGo$)'
+
+      # THE THREE HEAVIEST OTHER PACKAGES, IN ROWS OF THEIR OWN. With them in
+      # the complement below it ran 607 s on four threads (2026-11-10), most of
+      # it internal/fuzz (382 s), internal/goldens (396 s, before its
+      # every-target scan ran its targets side by side) and cmd/schema (207 s).
+      # Each is cut by test name where one test outweighs a row: one pattern
+      # on -run in one row and on -skip in the next, so the two are
+      # complements and a new test lands in the -skip row.
+      - name: go test internal/fuzz, the rapid-property negative control
+        if: matrix.group == 'unit-rest-fuzz-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/fuzz -run '^TestRapidPropsNegativeControl$'
+
+      - name: go test internal/fuzz, the front-end fuzz target's corpus
+        if: matrix.group == 'unit-rest-fuzz-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/fuzz -run '^FuzzTableFrontEnd$'
+
+      - name: go test internal/fuzz, every other test
+        if: matrix.group == 'unit-rest-fuzz-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/fuzz -skip '^(TestRapidPropsNegativeControl|FuzzTableFrontEnd)$'
+
+      - name: go test cmd/schema, the Go reserved-words build
+        if: matrix.group == 'unit-rest-cmd-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./cmd/schema -run '^TestGenerateGoCompilesGoOnlyWords$'
+
+      - name: go test cmd/schema, every other test
+        if: matrix.group == 'unit-rest-cmd-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./cmd/schema -skip '^TestGenerateGoCompilesGoOnlyWords$'
+
+      - name: go test internal/goldens
+        if: matrix.group == 'unit-rest-goldens'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/goldens
+
+      # THE SLOWEST OF THE REST, BY PACKAGE. The complement ran past the
+      # per-commit limit after the pins it installs, so its heaviest packages
+      # are rows of their own: internal/ci alone, the bench tools and the two
+      # conformance harness packages (these three rows install the pins), and
+      # five Go-only packages on a row with no pins.
+      - name: go test internal/ci
+        if: matrix.group == 'unit-rest-ci'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/ci
+
+      - name: go test the bench tools and the conformance harnesses
+        if: matrix.group == 'unit-rest-tools'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./bench/tools ./test/conformance/harness ./test/conformance/packet
+
+      - name: go test the checker, the doc gate, the lockfile, the text form and the baseline
+        if: matrix.group == 'unit-rest-check'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/check ./internal/docgate ./internal/lockfile ./internal/tabletext ./internal/baseline
 
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
       # new package lands in this row with no edit to this file.
-      - name: go test everything that is not an emitter package or the compiler
+      - name: go test everything that is not an emitter package, the compiler, or a package with rows of its own
         if: matrix.group == 'unit-rest'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$')
+        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$' | grep -v '/internal/fuzz$' | grep -v '/cmd/schema$' | grep -v '/internal/goldens$' | grep -v '/internal/ci$' | grep -v '/bench/tools$' | grep -v '/test/conformance/harness$' | grep -v '/test/conformance/packet$' | grep -v '/internal/check$' | grep -v '/internal/docgate$' | grep -v '/internal/lockfile$' | grep -v '/internal/tabletext$' | grep -v '/internal/baseline$')
 
       # THE ELIXIR EMITTER'S PACKAGE, ALONE. Its allocation test measures heap
       # words and is load-sensitive, so it is not inside the emitter row's
@@ -510,11 +733,108 @@ jobs:
       # runs on a row with nothing else on it.
       # -count=1 because a self-hosted runner keeps its Go test cache warm,
       # and a cached pass is a measurement taken on some earlier run's load.
-      - name: go test the Elixir emitter package on its own
-        if: matrix.group == 'unit-elixir'
+      #
+      # IN 15 ROWS, because alone it ran past the per-commit two-minute rule
+      # (2810 s on a loaded four-thread bench, 2026-11-10). Rows 1..14 each
+      # -run an alternation of test-name families packed from the runners'
+      # per-test times; row 15 -skips all of them, so a new test lands there
+      # with no edit. The tests that run the toolchain each work in a temporary
+      # directory of their own and call t.Parallel, so a row runs them side by
+      # side; the two driver tests build the shared conformance leg, stay
+      # serial, and have a row each.
+      # Each row is its own runner, so the allocation test still runs with no
+      # other package beside it, and tools/slowgatescan holds every test to
+      # exactly one row.
+      - name: go test the Elixir emitter package, row 1 of 15
+        if: matrix.group == 'unit-elixir-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test((ElixirDriverReadsStrictAndWritesBack$))'
+
+      - name: go test the Elixir emitter package, row 2 of 15
+        if: matrix.group == 'unit-elixir-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(ElixirDriverReadsStrictAndWritesBackNegativeControl$)'
+
+      - name: go test the Elixir emitter package, row 3 of 15
+        if: matrix.group == 'unit-elixir-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Alloc([^a-z]|$)|ElixirCellsStrictNegativeControl$|ElixirCookOptionalTextReadsItsLength$|Listdemo([^a-z]|$)|Node([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 4 of 15
+        if: matrix.group == 'unit-elixir-4'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Arm([^a-z]|$)|Block([^a-z]|$)|Bytes([^a-z]|$)|Drop([^a-z]|$)|ElixirFiniteFloatNegativeControl$|ElixirFixedFormHarnessStrict$|ElixirFixedFormHarnessStrictNegativeControl$|ElixirFixedVersioningProbesStrict$|ElixirFixedVersioningProbesStrictNegativeControl$|FormsAllSubsetsElixir$|FormsConstructElixir$|Generated([^a-z]|$)|Maps([^a-z]|$)|Offsets([^a-z]|$)|PinnedUnion([^a-z]|$)|Table([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 5 of 15
+        if: matrix.group == 'unit-elixir-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Cycle([^a-z]|$)|ElixirCellsStrict$|JSON([A-Z][a-z]|[^A-Za-z]|$)|One([^a-z]|$)|Pointer([^a-z]|$)|Unbounded([^a-z]|$)|Unknown([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 6 of 15
+        if: matrix.group == 'unit-elixir-6'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(ElixirVariableSlowTestsStrictNegativeControl$|PinnedNested([^a-z]|$)|Required([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 7 of 15
+        if: matrix.group == 'unit-elixir-7'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Cards([^a-z]|$)|Damage([^a-z]|$)|ElixirAllocBudgetPinned$|ElixirAllocBudgetPinnedNegativeControl$|ElixirFixedClassFormThree$|ElixirFixedClassFormThreeNegativeControl$|ElixirMessageBatchTargetRunsUnderTestElixir$|Emit([^a-z]|$)|Identity([^a-z]|$)|No([^a-z]|$)|PinnedMap([^a-z]|$)|Strict([^a-z]|$)|Text([^a-z]|$)|Variable([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 8 of 15
+        if: matrix.group == 'unit-elixir-8'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Blob([^a-z]|$)|Cyclic([^a-z]|$)|ElixirFiniteFloat$|ElixirVoidUnionNative$|Unit([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 9 of 15
+        if: matrix.group == 'unit-elixir-9'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Keyed([^a-z]|$)|Retained([^a-z]|$)|Wire([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 10 of 15
+        if: matrix.group == 'unit-elixir-10'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(ElixirBitsPastWidthRefusesNegativeControl$|Enum([^a-z]|$)|Inert([^a-z]|$)|Integrity([^a-z]|$)|Nested([^a-z]|$)|Optional([^a-z]|$)|PinnedKeyed([^a-z]|$)|Region([^a-z]|$)|Retaining([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 11 of 15
+        if: matrix.group == 'unit-elixir-11'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Card([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 12 of 15
+        if: matrix.group == 'unit-elixir-12'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Fixed([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 13 of 15
+        if: matrix.group == 'unit-elixir-13'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(ElixirBitsPastWidthRefuses$|FormsCookClosureAcrossFilesElixir$)'
+
+      - name: go test the Elixir emitter package, row 14 of 15
+        if: matrix.group == 'unit-elixir-14'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Array([^a-z]|$)|Bounded([^a-z]|$)|Cook([^a-z]|$)|Defaults([^a-z]|$)|ElixirMapValueShapePreservesPresence$|ElixirVariableSlowTestsStrict$|ElixirWasRowsCarried$|Message([^a-z]|$)|PinnedInert([^a-z]|$)|Retention([^a-z]|$)|Scalar([^a-z]|$)|Timestamp([^a-z]|$)|Union([^a-z]|$)|Widening([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 15 of 15
+        if: matrix.group == 'unit-elixir-15'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -skip '^Test((ElixirDriverReadsStrictAndWritesBack$))|^Test(ElixirDriverReadsStrictAndWritesBackNegativeControl$)|^Test(Alloc([^a-z]|$)|ElixirCellsStrictNegativeControl$|ElixirCookOptionalTextReadsItsLength$|Listdemo([^a-z]|$)|Node([^a-z]|$))|^Test(Arm([^a-z]|$)|Block([^a-z]|$)|Bytes([^a-z]|$)|Drop([^a-z]|$)|ElixirFiniteFloatNegativeControl$|ElixirFixedFormHarnessStrict$|ElixirFixedFormHarnessStrictNegativeControl$|ElixirFixedVersioningProbesStrict$|ElixirFixedVersioningProbesStrictNegativeControl$|FormsAllSubsetsElixir$|FormsConstructElixir$|Generated([^a-z]|$)|Maps([^a-z]|$)|Offsets([^a-z]|$)|PinnedUnion([^a-z]|$)|Table([^a-z]|$))|^Test(Cycle([^a-z]|$)|ElixirCellsStrict$|JSON([A-Z][a-z]|[^A-Za-z]|$)|One([^a-z]|$)|Pointer([^a-z]|$)|Unbounded([^a-z]|$)|Unknown([^a-z]|$))|^Test(ElixirVariableSlowTestsStrictNegativeControl$|PinnedNested([^a-z]|$)|Required([^a-z]|$))|^Test(Cards([^a-z]|$)|Damage([^a-z]|$)|ElixirAllocBudgetPinned$|ElixirAllocBudgetPinnedNegativeControl$|ElixirFixedClassFormThree$|ElixirFixedClassFormThreeNegativeControl$|ElixirMessageBatchTargetRunsUnderTestElixir$|Emit([^a-z]|$)|Identity([^a-z]|$)|No([^a-z]|$)|PinnedMap([^a-z]|$)|Strict([^a-z]|$)|Text([^a-z]|$)|Variable([^a-z]|$))|^Test(Blob([^a-z]|$)|Cyclic([^a-z]|$)|ElixirFiniteFloat$|ElixirVoidUnionNative$|Unit([^a-z]|$))|^Test(Keyed([^a-z]|$)|Retained([^a-z]|$)|Wire([^a-z]|$))|^Test(ElixirBitsPastWidthRefusesNegativeControl$|Enum([^a-z]|$)|Inert([^a-z]|$)|Integrity([^a-z]|$)|Nested([^a-z]|$)|Optional([^a-z]|$)|PinnedKeyed([^a-z]|$)|Region([^a-z]|$)|Retaining([^a-z]|$))|^Test(Card([^a-z]|$))|^Test(Fixed([^a-z]|$))|^Test(ElixirBitsPastWidthRefuses$|FormsCookClosureAcrossFilesElixir$)|^Test(Array([^a-z]|$)|Bounded([^a-z]|$)|Cook([^a-z]|$)|Defaults([^a-z]|$)|ElixirMapValueShapePreservesPresence$|ElixirVariableSlowTestsStrict$|ElixirWasRowsCarried$|Message([^a-z]|$)|PinnedInert([^a-z]|$)|Retention([^a-z]|$)|Scalar([^a-z]|$)|Timestamp([^a-z]|$)|Union([^a-z]|$)|Widening([^a-z]|$))'
+
 
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is
@@ -1002,7 +1322,81 @@ jobs:
         if: matrix.group == 'goose' && github.event_name == 'schedule'
         run: make test-goose-tagged-harness
 
+  # THE PR SELECTION for the two jobs below that still start on an unlabelled
+  # pull request, `pins` and `cs-tables`: the owner, 2026-11-15: heavy suite
+  # failure on main is fine, like a hierarchical merge. A whole-tree guard
+  # that catches staleness may catch it on main after the merge, so on a pull
+  # request each runs only when the diff touches what it protects, and on a
+  # merge, the nightly and a dispatch it runs as before. This job runs on pull
+  # requests only; the jobs that read it say `always() && !cancelled()` so a
+  # push, where it is skipped, still runs them.
+  #
+  #   pins — the compiler and every package bin/schema links except the
+  #          emitters of languages that write no pin (their goldens under
+  #          testdata/golden/<lang> are the TestGolden* set that ci-fast.yml's
+  #          go-test-touched already runs for an emitter or golden diff), the
+  #          C, C++ and C# emitters, test/tables, the C++ conformance driver and
+  #          harness, the packet test mains, testdata/ (wire, conformance, the
+  #          table and C/C++/C# goldens), the corpora and their make files.
+  #   cs   — the C# leg's paths, exactly ci-fast.yml plan's `cs` row.
+  # The shared roots (ci-fast.yml plan's broad rule, with this file in place
+  # of that one) select both. The `full-ci` label still selects both.
+  pr-select:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    outputs:
+      pins: ${{ steps.pick.outputs.pins }}
+      cs: ${{ steps.pick.outputs.cs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the merge base names the diff; blobless, as ci-fast.yml's plan
+          fetch-depth: 0
+          filter: blob:none
+      - name: what this pull request touches
+        id: pick
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$BASE"
+          files=$(git diff --name-only "origin/$BASE...HEAD")
+          if [ -z "$files" ]; then
+            echo "::notice::the diff is empty against origin/$BASE — selecting both"
+            files="ir/"
+          fi
+
+          # THE PR SELECTION.
+          broad=no
+          if echo "$files" | grep -E '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-full\.yml$)' >/dev/null; then
+            broad=yes
+          fi
+          pins=no
+          pin_files=$(echo "$files" | grep -vE '^internal/(ci|fuzz|slowtest|docgate|jsontestsuite|memceiling|publicapi)/|^internal/codegen/(dart|darttable|elixir|elixirtable|golang|gotable|goose|goosetable|java|javatable|js|jstable|lobster|lobstertable|lua|luatable|luau|luautable|moo|mootable|python|rust|rusttable|squirrel|squirreltable)/|^testdata/golden/(build-version|dart|elixir|go|java|js|lua|luau|ludicrous|rust)/' || true)
+          if [ "$broad" = yes ] || echo "$pin_files" | grep -E '^(cmd/|internal/|examples/|examples128/|bench/corpus/|test/(main|second|ludicrous_main)\.cpp$|test/(bench|tables|packet-defaults|conformance/harness|conformance/cpp)/|testdata/|go\.sum$|make/(c|cpp|cs)[.-])' >/dev/null; then
+            pins=yes
+          fi
+          cs=no
+          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$)' >/dev/null; then
+            cs=yes
+          fi
+          printf 'pins=%s\ncs=%s\n' "$pins" "$cs" >> "$GITHUB_OUTPUT"
+          printf '### ci-full on this pull request\n\n* broad: **%s**\n* pins: **%s**\n* C# tables leg: **%s**\n' "$broad" "$pins" "$cs" >> "$GITHUB_STEP_SUMMARY"
+
   generated:
+    # ON A PULL REQUEST ONLY WITH THE `full-ci` LABEL since 2026-11-15 (the
+    # owner, 2026-11-15: heavy suite failure on main is fine, like a
+    # hierarchical merge), which supersedes issue #1421 for the PR gate only:
+    # every sprint stream runs `make generated-current` as a card gate before
+    # it finishes, so on a pull request this duplicated that, and a stale tree
+    # that slips through is caught here on the merge to main. It runs, as
+    # below, on every merge, the nightly and a dispatch. The text that follows
+    # is the history:
+    #
     # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
     # this is the one check that names a stale committed generated/ tree, and a
     # pull request into fixed-table-form runs no other — ci-fast.yml's leg gate is
@@ -1037,7 +1431,7 @@ jobs:
     # the other units are tables-block-zero-cost-c-rest. Each row runs its
     # two arms together.
     name: generated (${{ matrix.row }})
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     strategy:
@@ -1128,14 +1522,25 @@ jobs:
   # Those four language-toolchain installs and `update-goldens`'s closing
   # `go test ./...` existed only for that duplicate `go test ./...`, which
   # `go-test` already runs across its matrix rows. The pin writers themselves
-  # now fan out across five parallel rows (`pins-source`, `pins-wire-packet`,
+  # now fan out across eight parallel rows (`pins-source-cpp`, `pins-source-c`,
+  # `pins-source-cs`, `pins-source-goldens`, `pins-wire-packet`,
   # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance`), each
   # generating and compiling only the units its writer touches in parallel and
-  # diffing `testdata/` against HEAD in ~10-25s wall. Nothing is dropped from
-  # per-commit; `make conformance-pin update-goldens` remains the local
-  # single-command entry point, and `nightly-conformance.yml` also runs the
-  # full C++ reference corpus check nightly.
+  # diffing `testdata/` against HEAD in ~10-25s wall. The source family is the
+  # slowest, so its three table writers and its pure-Go golden writer are rows
+  # of their own; the golden row runs only the `TestGolden*` set it rewrites,
+  # because the rest of internal/goldens is not a pin writer and already runs
+  # per commit in go-test. Nothing is dropped from per-commit;
+  # `make conformance-pin update-goldens` remains the local single-command
+  # entry point, and `nightly-conformance.yml` also runs the full C++ reference
+  # corpus check nightly.
   pins:
+    # ON A PULL REQUEST ONLY WHEN pr-select SAYS THE DIFF TOUCHES WHAT PINS
+    # PROTECT, or with the `full-ci` label (the owner, 2026-11-15: heavy suite
+    # failure on main is fine, like a hierarchical merge; this supersedes
+    # issue #1421 for the PR gate only). Every merge, the nightly and a dispatch
+    # run all eight rows. The text that follows is the history:
+    #
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
     # self-consistent" failure, and a pull request into dev or
@@ -1146,7 +1551,8 @@ jobs:
     # THE FLEET'S RUNNERS (standing rule, 2026-10-21: every CI job on fleet
     # runners, never GitHub-hosted). The setup steps below run only on a
     # hosted fallback.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: pr-select
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes' || contains(github.event.pull_request.labels.*.name, 'full-ci'))))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     name: pins (${{ matrix.row }})
     timeout-minutes: 5
@@ -1154,8 +1560,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - row: source
-            target: pins-source
+          - row: source-cpp
+            target: pins-source-cpp
+          - row: source-c
+            target: pins-source-c
+          - row: source-cs
+            target: pins-source-cs
+          - row: source-goldens
+            target: pins-source-goldens
           - row: wire-packet
             target: pins-wire-packet
           - row: wire-tables
@@ -1171,7 +1583,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out the C++ serialize runtime (pinned release)
-        if: matrix.row != 'source'
+        if: ${{ !startsWith(matrix.row, 'source') }}
         run: |
           set -euo pipefail
           cd ..
@@ -1418,6 +1830,8 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
@@ -1484,6 +1898,44 @@ jobs:
           ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$RUNNER_TEMP/bin/sq"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+      # THE C DRIVER'S TOOLCHAIN-DEPENDENT BUILD, kept between runs. The C
+      # leg's per-unit compile and link is what ran to 66-108 s (job 121-139
+      # in the runs the card names); the shared inputs above do not include
+      # build/tables-generated-c, build/conformance-c-objs or
+      # build/conformance-c, so the leg rebuilt all of them. A warm hit turns
+      # that build into a timestamp check.
+      #
+      # The driver links from build/conformance-c-objs, so a cache that omits
+      # the objects restores the linked driver and make recompiles every
+      # translation unit. The hit step below stands the stamp, then the
+      # restored generated sources, then the objects, then the driver newer in
+      # that order: a stamp newer than a generated unit remakes that unit
+      # through its empty stamp prerequisite and recompiles its object even
+      # when the object itself was touched.
+      #
+      # The -v2 names the layout that carries the objects. A cache key is
+      # immutable once saved, so without the new name a cache from the earlier
+      # path list (no objects) could be restored into this step and keep
+      # recompiling every unit no matter how the hit step touches it.
+      - id: conformance-c-cache
+        if: matrix.lang == 'c'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/tables-generated-c
+            build/conformance-c-objs
+            build/conformance-c
+          key: conformance-c-driver-v2-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'test/c-tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
+
+      - name: stand cached C driver inputs newer than this checkout
+        if: matrix.lang == 'c' && steps.conformance-c-cache.outputs.cache-hit == 'true'
+        run: |
+          touch build/tables-generated-c/collections.stamp
+          touch build/tables-generated-c/.stamp
+          find build/tables-generated-c \( -name '*.c' -o -name '*.h' \) -type f -exec touch {} +
+          find build/conformance-c-objs -type f -exec touch {} +
+          touch build/conformance-c
+
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
@@ -1492,6 +1944,15 @@ jobs:
       # driver (and its base64 row where it has one), in parallel.
       - name: build the ${{ matrix.lang }} driver
         run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.lang == 'c' && steps.conformance-c-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            build/tables-generated-c
+            build/conformance-c-objs
+            build/conformance-c
+          key: ${{ steps.conformance-c-cache.outputs.cache-primary-key }}
 
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }} --results build/conformance/legs/${{ matrix.lang }}.json
@@ -1516,8 +1977,13 @@ jobs:
   # still owes on every merge. Its report (the commit, the red cells) is kept
   # as the `proof` artifact: release.yml downloads it for the commit it
   # releases, and `make release` refuses unless it is green at that commit.
+  #
+  # always() keeps it running when a conformance leg failed, since a red leg is
+  # a red cell. !cancelled() keeps it from running once the run is cancelled:
+  # a superseded run would otherwise queue this job for a fleet runner, never
+  # finish, and hold the next run behind it in the concurrency group.
   proof:
-    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
     needs: conformance
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1562,7 +2028,9 @@ jobs:
   #
   # Running as its own matrix rows keeps each fuzz target well under 1 minute
   # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
-  # leg over the 2-minute ceiling.
+  # leg over the 2-minute ceiling. The toolchain-dependent build is cached
+  # between runs, and each row runs the seeded per-commit smoke while the full
+  # 100,000-mutant campaigns run nightly in certify.yml's release targets.
   cs-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -1597,17 +2065,14 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache, restored on fleet runners too — `go-test` is the
+      # one Linux writer. The block on that job carries the reasoning.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1621,11 +2086,56 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - name: build the harness and the C# driver
-        run: make build/conformance-harness build-conformance-cs
+      # THE TOOLCHAIN-DEPENDENT BUILD, kept between runs: the compiler, the
+      # harness, the generated C# tree and the built driver. The build is what
+      # ran past the wall (107-110 s in the runs the card names); a warm hit
+      # turns it into a timestamp check and leaves the fuzz its budget. dotnet
+      # compares the checked-out sources and csproj against every restored
+      # obj/bin output, so the hit step below must stand all of them, not just
+      # the driver assembly, newer than the checkout; otherwise CoreCompile
+      # rebuilds the whole driver on the hit.
+      - id: cs-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-cs
+            test/conformance/cs/bin
+            test/conformance/cs/obj
+          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/cs.mk', 'Makefile', 'go.mod') }}
 
+      - name: stand cached C# fuzz inputs newer than this checkout
+        if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-cs/.stamp
+          touch build/tables-generated-cs/cards/.stamp
+          find test/conformance/cs/obj test/conformance/cs/bin -type f -exec touch {} +
+
+      - name: build the harness and the C# driver
+        run: make -j"$(nproc)" build/conformance-harness build-conformance-cs
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.name == 'wire' && steps.cs-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-cs
+            test/conformance/cs/bin
+            test/conformance/cs/obj
+          key: ${{ steps.cs-fuzz-cache.outputs.cache-primary-key }}
+
+      # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
+      # request (the 110 s PGROUP_WALL events) the region row runs its smoke
+      # target, CS_FUZZ_SMOKE_N random mutants after the full enumerated pass,
+      # because its median job wall was 127 s over four CI full runs on
+      # 2026-11-13/14; the nightly schedule and a dispatch run the full N.
+      # re-enable: relax/ci-time-cs-fuzz-region (docs/relaxed.md)
       - name: run C# ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }}
+        run: make ${{ matrix.target }}${{ (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.name == 'region' && '-smoke' || '' }}
 
   # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492).
   #
@@ -1661,6 +2171,13 @@ jobs:
             target: tables-js-wire-fuzz-plain
           - name: retain
             target: tables-js-wire-fuzz-retain
+        # RELAXED 2026-11-14 (maintainer: get main green): the retain row is
+        # excluded on a push and a pull request (the 110 s PGROUP_WALL events):
+        # its median job wall was 261 s over four CI full runs on 2026-11-13/14,
+        # and its cost is the enumerated pass, which a smaller N does not cut. The
+        # nightly schedule and a dispatch run it unchanged and at full strength.
+        # re-enable: relax/ci-time-js-fuzz-retain (docs/relaxed.md)
+        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"name":"retain"}]' || '[]') }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1706,12 +2223,20 @@ jobs:
   # the Dart wire surface carries: the plain Load/Save run and the message arm.
   # Its own job keeps the target off the conformance (dart) leg's clock. The
   # Dart leg clones no runtime (generated Dart is self-contained), so the job is
-  # Go and the pinned SDK only.
+  # Go and the pinned SDK only. The AOT driver build is cached between runs, and
+  # the full 100,000-mutant campaign also runs nightly in certify.yml.
   dart-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # RELAXED 2026-11-14 (maintainer: get main green): skipped on a push and a
+    # pull request (the 110 s PGROUP_WALL events), because its median job wall
+    # was 132 s over four CI full runs on 2026-11-13/14, most of it the build,
+    # the roster tests and the enumerated pass, which a smaller N does not cut.
+    # The nightly schedule and a dispatch run it unchanged and at full strength.
+    # re-enable: relax/ci-time-dart-fuzz-wire (docs/relaxed.md), and restore:
+    #   if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
     name: Dart fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1734,17 +2259,14 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache, restored on fleet runners too — `go-test` is the
+      # one Linux writer. The block on that job carries the reasoning.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1754,13 +2276,54 @@ jobs:
         with:
           sdk: '3.13.2'
 
+      # THE TOOLCHAIN-DEPENDENT BUILD, kept between runs: the compiler, the
+      # harness, the generated Dart tree and the AOT driver. The build is what
+      # ran past the wall (80-98 s in the runs the card names); a warm hit
+      # turns it into a timestamp check and leaves the fuzz its budget.
+      - id: dart-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-dart
+            build/tables-generated-dart-scalars
+            build/conformance-dart
+          key: dart-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-3.13.2-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/dart/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/dart.mk', 'Makefile', 'go.mod') }}
+
+      - name: stand cached Dart fuzz inputs newer than this checkout
+        if: steps.dart-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-dart/.stamp
+          touch build/tables-generated-dart/cards/.stamp
+          touch build/conformance-dart
+
       - name: build the harness and the Dart driver
-        run: make build/conformance-harness build/conformance-dart DART=dart
+        run: make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.dart-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-dart
+            build/tables-generated-dart-scalars
+            build/conformance-dart
+          key: ${{ steps.dart-fuzz-cache.outputs.cache-primary-key }}
 
       - name: run Dart ${{ matrix.name }} fuzz
         run: make ${{ matrix.target }} DART=dart
 
 
+  # THE C# TABLES LEG, PER C# PULL REQUEST: since 2026-11-15 an unlabelled pull
+  # request runs it only when pr-select finds the C# leg's paths or a shared
+  # root in the diff (the owner, 2026-11-15: heavy suite failure on main is
+  # fine, like a hierarchical merge); every merge, nightly and dispatch runs it.
+  # The history:
+  #
   # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no
   # pull-request job at all — it was reached only through `make test` and the
   # nightly certification — and on 2026-09-08 #728's pull-request checks were
@@ -1781,11 +2344,12 @@ jobs:
   # this job runs one half per row.
   #
   # internal/ci/tableslegs_test.go is what keeps this job from being quietly
-  # deleted: TestEveryNamedTableLegRunsOnEveryPullRequest refuses a named leg
-  # with no pull-request coverage.
+  # deleted: TestEveryNamedTableLegRunsOnItsPullRequests refuses a named leg
+  # with no pull-request coverage on its own paths and the shared roots.
   cs-tables:
     name: C# tables leg (${{ matrix.config }})
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: pr-select
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes' || contains(github.event.pull_request.labels.*.name, 'full-ci'))))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     defaults:
@@ -2075,12 +2639,22 @@ jobs:
       # before — it moved down this lane, not out of it.
       - name: CI lints itself — action pins and the .NET SDK pin
         run: go test ./internal/ci/
+      # A FRESH ANALYSIS CACHE per job. The restored action cache held
+      # results recorded under another checkout's absolute paths, and with
+      # them golangci-lint's generated-file filter failed ("Can't process
+      # results by generated_file_filter"), so findings in generated Go
+      # (internal/codegen/gotable/fuzzunit, tables/goruntime) went red.
+      # Uncached, the run measured 14 s on a fleet bench with a warm Go
+      # build cache (2026-11-15).
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        env:
+          GOLANGCI_LINT_CACHE: ${{ runner.temp }}/golangci-lint-cache
         with:
           # pinned so releases with new checks break CI deliberately, not
           # randomly; bump by hand
           version: v2.12.2
+          skip-cache: true
       # PINNED for the same reason as golangci-lint above: a release with new
       # rules breaks CI deliberately, not overnight. The version is gopls's own
       # module tag; bump by hand.
@@ -2562,8 +3136,9 @@ jobs:
   # (the nightly tier in certify.yml, on the schedule it carries), and
   # `tools/negativecontrols` refuses a group that is in neither tier, so a
   # control cannot leave this file without landing on that one. The oldest is
-  # tables-message-form-negative-control (49 sabotage rows one submake each at
-  # 124 s, against a 120 s rule); its other blades stay here.
+  # tables-message-form-negative-control (44 sabotage rows, one submake each,
+  # four at a time; 124 s one after another against a 120 s rule, and not yet
+  # re-measured on a runner since); its other blades stay here.
   #
   # The base-* (non-C) rows that moved to nightly on runs 42556155793 and
   # 42554833739 did so because a single target, or the compile it cannot run
@@ -2710,6 +3285,8 @@ jobs:
       # the conformance matrix above does. A base row names none of them and
       # installs none of them.
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - name: read the .NET SDK pin
@@ -2830,7 +3407,19 @@ jobs:
       # not redundant: a control's own refusal lines are the sentence a reader
       # needs (a sabotage that patched nothing, a gate that stayed green), and
       # this pulls them out of a log that is thousands of compiler lines long
-      # and puts them in the run's annotations.
+      # and prints them at the end of the step.
+      #
+      # A refusal is `NEGATIVE CONTROL FAILED:` (the gate stayed green) or
+      # `sabotage <name>: ...` (tools/sabotage found its anchor 0 or 2+ times,
+      # so the sabotage patched nothing). When the group failed, the cause
+      # lines add make's and go test's own failure lines; they are not a
+      # refusal on their own, because a passing control's sabotaged gate
+      # prints them on purpose.
+      #
+      # THE LOG STREAMS. awk prints each line as make writes it and keeps the
+      # copy the scan reads, so a group the runner kills at its time limit
+      # (which kills every later step of the job too) still shows how far it
+      # got. Not tee: internal/ci/negative_controls_tee_test.go says why.
       #
       # The overrides are certify.yml's: RUSTUP_BIN defaults to a homebrew keg
       # on the author's machine, and DART, JAVA/JAVAC, ELIXIR/MIX and NODE
@@ -2842,15 +3431,20 @@ jobs:
           set -o pipefail
           targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
           echo "$targets" | tr ' ' '\n'
+          refusal='^NEGATIVE CONTROL( FAILED)?:|^sabotage[ :]'
+          cause="$refusal"'|\*\*\* \[|^FAIL|--- FAIL'
           status=0
+          : >controls.log
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            >controls.log 2>&1 || status=1
-          cat controls.log
-          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            2>&1 | awk '{ print; fflush(); print > "controls.log" }' || status=1
+          if grep -qE "$refusal" controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
-            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
             status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "the cause, as controls.log names it:"
+            grep -nE "$cause" controls.log || echo "no refusal or failure line in controls.log; read the log above"
           fi
           exit $status

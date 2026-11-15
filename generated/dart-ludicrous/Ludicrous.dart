@@ -166,11 +166,12 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
 }
 
 // readFixedProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -240,6 +241,17 @@ bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
       return false; // a smuggled offset is refused
     }
     value.samples[i0] = -524288 + v;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -368,11 +380,12 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
 }
 
 // readUnsignedProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -458,6 +471,17 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   v = window & 0xff;
   bitsRead += 8;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -608,11 +632,12 @@ int writeWideProbe(WideProbe value, ByteData view) {
 }
 
 // readWideProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readWideProbe(WideProbe value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -760,6 +785,17 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
   bitsRead += 32;
   hi |= v << 32;
   value.seed = UInt128(hi, lo);
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1027,11 +1063,12 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
 }
 
 // readLudicrousState decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1335,6 +1372,17 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
   } else {
     value.targetId = UInt128.zero;
   }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1397,11 +1445,12 @@ int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
 }
 
 // readDegenerateProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1435,6 +1484,17 @@ bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
   v = window & 0xff;
   bitsRead += 8;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1512,11 +1572,12 @@ int writeFixedVec(FixedVec value, ByteData view) {
 }
 
 // readFixedVec decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readFixedVec(FixedVec value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1569,6 +1630,17 @@ bool readFixedVec(FixedVec value, ByteData view, int numBits) {
     return false; // a smuggled offset is refused
   }
   value.z = -6553600000 + lo;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1653,11 +1725,12 @@ int writeFixedQuat(FixedQuat value, ByteData view) {
 }
 
 // readFixedQuat decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readFixedQuat(FixedQuat value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1721,5 +1794,16 @@ bool readFixedQuat(FixedQuat value, ByteData view, int numBits) {
     return false; // a smuggled offset is refused
   }
   value.w = -1073741824 + v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }

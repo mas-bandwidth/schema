@@ -272,8 +272,8 @@ namespace Tabledemo
             return RootConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RootConfigMeasureMessages(RootConfig[] values) { return TableWire.MessageSave(values, RootConfigTableType(), Span<byte>.Empty, true); }
-        public static long RootConfigSaveMessages(RootConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RootConfigTableType(), bytes, false); }
+        public static long RootConfigMeasureMessages(RootConfig[] values) { long wrote = TableWire.MessageSave(values, RootConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (RootConfig v in values) { System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long RootConfigSaveMessages(RootConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, RootConfigTableType(), bytes, false); if (wrote >= 0) { foreach (RootConfig v in values) { System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict RootConfigLoadMessages(RootConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RootConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long RootConfigCookMeasure(RootConfig value) { return TableWire.Cook(value, RootConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -403,8 +403,8 @@ namespace Tabledemo
             return WeaponConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long WeaponConfigMeasureMessages(WeaponConfig[] values) { return TableWire.MessageSave(values, WeaponConfigTableType(), Span<byte>.Empty, true); }
-        public static long WeaponConfigSaveMessages(WeaponConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, WeaponConfigTableType(), bytes, false); }
+        public static long WeaponConfigMeasureMessages(WeaponConfig[] values) { long wrote = TableWire.MessageSave(values, WeaponConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (WeaponConfig v in values) { System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long WeaponConfigSaveMessages(WeaponConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, WeaponConfigTableType(), bytes, false); if (wrote >= 0) { foreach (WeaponConfig v in values) { System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict WeaponConfigLoadMessages(WeaponConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, WeaponConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long WeaponConfigCookMeasure(WeaponConfig value) { return TableWire.Cook(value, WeaponConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -441,7 +441,7 @@ namespace Tabledemo
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
             int count_6 = v.AttachmentsCount;
-            if (count_6 < 0 || count_6 > 8) return false;
+            System.Diagnostics.Debug.Assert(count_6 >= 0 && count_6 <= 8);
             if (count_6 > 0)
             {
                 if (!ids.Add(0xf901aa0340249a41ul)) return false;
@@ -610,8 +610,8 @@ namespace Tabledemo
             return LoadoutConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long LoadoutConfigMeasureMessages(LoadoutConfig[] values) { return TableWire.MessageSave(values, LoadoutConfigTableType(), Span<byte>.Empty, true); }
-        public static long LoadoutConfigSaveMessages(LoadoutConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, LoadoutConfigTableType(), bytes, false); }
+        public static long LoadoutConfigMeasureMessages(LoadoutConfig[] values) { long wrote = TableWire.MessageSave(values, LoadoutConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (LoadoutConfig v in values) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long LoadoutConfigSaveMessages(LoadoutConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, LoadoutConfigTableType(), bytes, false); if (wrote >= 0) { foreach (LoadoutConfig v in values) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict LoadoutConfigLoadMessages(LoadoutConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, LoadoutConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long LoadoutConfigCookMeasure(LoadoutConfig value) { return TableWire.Cook(value, LoadoutConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -792,8 +792,8 @@ namespace Tabledemo
             return ProfileConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long ProfileConfigMeasureMessages(ProfileConfig[] values) { return TableWire.MessageSave(values, ProfileConfigTableType(), Span<byte>.Empty, true); }
-        public static long ProfileConfigSaveMessages(ProfileConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ProfileConfigTableType(), bytes, false); }
+        public static long ProfileConfigMeasureMessages(ProfileConfig[] values) { long wrote = TableWire.MessageSave(values, ProfileConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (ProfileConfig v in values) { System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long ProfileConfigSaveMessages(ProfileConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, ProfileConfigTableType(), bytes, false); if (wrote >= 0) { foreach (ProfileConfig v in values) { System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict ProfileConfigLoadMessages(ProfileConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ProfileConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long ProfileConfigCookMeasure(ProfileConfig value) { return TableWire.Cook(value, ProfileConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -1098,6 +1098,7 @@ namespace Tabledemo
                 info.RootElemSlots = 12;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1139,6 +1140,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1180,6 +1182,7 @@ namespace Tabledemo
                 info.RootElemSlots = 10;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1222,6 +1225,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1270,6 +1274,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1307,6 +1312,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1343,6 +1349,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -1587,13 +1594,13 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(len_icon <= 16);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), len_icon);
             if (len_icon > 0) { value.Icon.AsSpan(0, len_icon).CopyTo(b.Slice(40)); }
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), (int)value.Experience);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), unchecked((int)value.Experience));
             b.Slice(60)[0] = unchecked((byte)value.Tilt);
             BinaryPrimitives.WriteInt16LittleEndian(b.Slice(61), (short)value.Heading);
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(63), (long)value.Timestamp);
             b.Slice(71)[0] = unchecked((byte)value.Badge);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(72), (short)value.Port);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(74), (long)value.Epoch);
+            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(72), unchecked((short)value.Port));
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(74), unchecked((long)value.Epoch));
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(82), value.Precision);
             if (value.Ratings != null) { TableFixedWire.WriteLittle<float>(value.Ratings.AsSpan(0, Math.Min(value.Ratings.Length, 4)), b.Slice(90)); }
             b.Slice(106)[0] = (byte)(value.HasLoadout ? 1 : 0);
@@ -1730,6 +1737,107 @@ namespace Tabledemo
             }
         }
 
+        // Debuff's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void DebuffFixedWriteCheckBody(Debuff value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Amount < 0 || value.Amount > 100) { clamped++; }
+        }
+
+        // WeaponConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void WeaponConfigFixedWriteCheckBody(WeaponConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Penetration < 0 || value.Penetration > 10) { clamped++; }
+            // bits(6) width clamp
+            if (value.Channel > 63) { clamped++; }
+            if (value.Effect != null)
+            {
+                if ((ulong)value.Effect.Type > 2) { clamped++; }
+                switch (value.Effect.Type)
+                {
+                    case EffectType.Debuff:
+                        {
+                            DebuffFixedWriteCheckBody(value.Effect.Debuff, ref clamped);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+        }
+
+        // Attachment's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void AttachmentFixedWriteCheckBody(Attachment value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Slot < 0 || value.Slot > 7) { clamped++; }
+        }
+
+        // LoadoutConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void LoadoutConfigFixedWriteCheckBody(LoadoutConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.Grade > 3) { clamped++; }
+            if (value.Grades != null)
+            {
+                for (int i = 0; i < value.GradesCount && i < value.Grades.Length; ++i)
+                {
+                    if ((ulong)value.Grades[i] > 3) { clamped++; }
+                }
+            }
+            if (value.Podium != null)
+            {
+                for (int i = 0; i < 3 && i < value.Podium.Length; ++i)
+                {
+                    if ((ulong)value.Podium[i] > 3) { clamped++; }
+                }
+            }
+            WeaponConfigFixedWriteCheckBody(value.Primary, ref clamped);
+            if (value.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
+                {
+                    WeaponConfigFixedWriteCheckBody(value.Backups[i], ref clamped);
+                }
+            }
+            if (value.Attachments != null)
+            {
+                for (int i = 0; i < value.AttachmentsCount && i < value.Attachments.Length; ++i)
+                {
+                    AttachmentFixedWriteCheckBody(value.Attachments[i], ref clamped);
+                }
+            }
+        }
+
+        // ProfileConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void ProfileConfigFixedWriteCheckBody(ProfileConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Name != null && value.NameLength >= 0 && value.NameLength <= value.Name.Length && !TableWire.TextValid(value.Name.AsSpan(0, value.NameLength))) { clamped++; }
+            LoadoutConfigFixedWriteCheckBody(value.Loadout, ref clamped);
+        }
+
+        // RootConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void RootConfigFixedWriteCheckBody(RootConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.VersionNote != null && value.VersionNoteLength >= 0 && value.VersionNoteLength <= value.VersionNote.Length && !TableWire.TextValid(value.VersionNote.AsSpan(0, value.VersionNoteLength))) { clamped++; }
+            if (value.Weapons != null)
+            {
+                for (int i = 0; i < value.WeaponsCount && i < value.Weapons.Length; ++i)
+                {
+                    WeaponConfigFixedWriteCheckBody(value.Weapons[i], ref clamped);
+                }
+            }
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    ProfileConfigFixedWriteCheckBody(value.Profiles[i], ref clamped);
+                }
+            }
+        }
+
         // Buff's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string BuffFixedFiniteBody(Buff value)
@@ -1858,11 +1966,21 @@ namespace Tabledemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RootConfigFixedClamp(RootConfig value, TableReport report)
+        public static bool RootConfigFixedClamp(RootConfig value, TableReport report)
         {
             int clamped = 0;
             RootConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this RootConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool RootConfigFixedWriteAdmits(RootConfig value)
+        {
+            int bad = 0;
+            RootConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- RootConfig, the fixed form ----
@@ -2036,7 +2154,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[0].Damage = (float)d, reset: (t) => { t.Weapons[0].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[0].Speed = (float)d, reset: (t) => { t.Weapons[0].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[0].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Channel = (uint)v, reset: (t) => { t.Weapons[0].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[0].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Homing = v != 0, reset: (t) => { t.Weapons[0].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -2044,7 +2162,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[1].Damage = (float)d, reset: (t) => { t.Weapons[1].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[1].Speed = (float)d, reset: (t) => { t.Weapons[1].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[1].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Channel = (uint)v, reset: (t) => { t.Weapons[1].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[1].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Homing = v != 0, reset: (t) => { t.Weapons[1].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -2052,7 +2170,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[2].Damage = (float)d, reset: (t) => { t.Weapons[2].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[2].Speed = (float)d, reset: (t) => { t.Weapons[2].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[2].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Channel = (uint)v, reset: (t) => { t.Weapons[2].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[2].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Homing = v != 0, reset: (t) => { t.Weapons[2].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[2].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[2].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[2].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[2].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[2].Effect.Buff.Multiplier = 1.0f; }),
@@ -2060,7 +2178,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[3].Damage = (float)d, reset: (t) => { t.Weapons[3].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[3].Speed = (float)d, reset: (t) => { t.Weapons[3].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[3].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Channel = (uint)v, reset: (t) => { t.Weapons[3].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[3].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Homing = v != 0, reset: (t) => { t.Weapons[3].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[3].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[3].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[3].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[3].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[3].Effect.Buff.Multiplier = 1.0f; }),
@@ -2068,7 +2186,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[4].Damage = (float)d, reset: (t) => { t.Weapons[4].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[4].Speed = (float)d, reset: (t) => { t.Weapons[4].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[4].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Channel = (uint)v, reset: (t) => { t.Weapons[4].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[4].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Homing = v != 0, reset: (t) => { t.Weapons[4].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[4].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[4].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[4].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[4].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[4].Effect.Buff.Multiplier = 1.0f; }),
@@ -2076,7 +2194,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[5].Damage = (float)d, reset: (t) => { t.Weapons[5].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[5].Speed = (float)d, reset: (t) => { t.Weapons[5].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[5].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Channel = (uint)v, reset: (t) => { t.Weapons[5].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[5].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Homing = v != 0, reset: (t) => { t.Weapons[5].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[5].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[5].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[5].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[5].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[5].Effect.Buff.Multiplier = 1.0f; }),
@@ -2084,7 +2202,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[6].Damage = (float)d, reset: (t) => { t.Weapons[6].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[6].Speed = (float)d, reset: (t) => { t.Weapons[6].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[6].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Channel = (uint)v, reset: (t) => { t.Weapons[6].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[6].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Homing = v != 0, reset: (t) => { t.Weapons[6].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[6].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[6].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[6].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[6].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[6].Effect.Buff.Multiplier = 1.0f; }),
@@ -2092,7 +2210,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[7].Damage = (float)d, reset: (t) => { t.Weapons[7].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[7].Speed = (float)d, reset: (t) => { t.Weapons[7].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Penetration = unchecked((int)v), reset: (t) => { t.Weapons[7].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Channel = (uint)v, reset: (t) => { t.Weapons[7].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Channel = unchecked((uint)v), reset: (t) => { t.Weapons[7].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Homing = v != 0, reset: (t) => { t.Weapons[7].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Weapons[7].Effect.Type = (EffectType)v; }, reset: (t) => { t.Weapons[7].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Weapons[7].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Weapons[7].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Weapons[7].Effect.Buff.Multiplier = 1.0f; }),
@@ -2120,7 +2238,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Profiles[0].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Profiles[0].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Profiles[0].Loadout.Primary.Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Profiles[0].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Channel = unchecked((uint)v), reset: (t) => { t.Profiles[0].Loadout.Primary.Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Profiles[0].Loadout.Primary.Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[0].Loadout.Primary.Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
@@ -2128,7 +2246,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Profiles[0].Loadout.Backups[0].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Profiles[0].Loadout.Backups[0].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[0].Loadout.Backups[0].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Profiles[0].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[0].Loadout.Backups[0].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Profiles[0].Loadout.Backups[0].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[0].Loadout.Backups[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -2136,7 +2254,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Profiles[0].Loadout.Backups[1].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Profiles[0].Loadout.Backups[1].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[0].Loadout.Backups[1].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Profiles[0].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[0].Loadout.Backups[1].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Profiles[0].Loadout.Backups[1].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[0].Loadout.Backups[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -2180,7 +2298,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Profiles[1].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Profiles[1].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Profiles[1].Loadout.Primary.Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Profiles[1].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Channel = unchecked((uint)v), reset: (t) => { t.Profiles[1].Loadout.Primary.Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Profiles[1].Loadout.Primary.Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[1].Loadout.Primary.Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
@@ -2188,7 +2306,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Profiles[1].Loadout.Backups[0].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Profiles[1].Loadout.Backups[0].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[1].Loadout.Backups[0].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Profiles[1].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[1].Loadout.Backups[0].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Profiles[1].Loadout.Backups[0].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[1].Loadout.Backups[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -2196,7 +2314,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Profiles[1].Loadout.Backups[1].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Profiles[1].Loadout.Backups[1].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[1].Loadout.Backups[1].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Profiles[1].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[1].Loadout.Backups[1].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Profiles[1].Loadout.Backups[1].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[1].Loadout.Backups[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -2240,7 +2358,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Profiles[2].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Profiles[2].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Profiles[2].Loadout.Primary.Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Profiles[2].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Channel = unchecked((uint)v), reset: (t) => { t.Profiles[2].Loadout.Primary.Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Profiles[2].Loadout.Primary.Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[2].Loadout.Primary.Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
@@ -2248,7 +2366,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Profiles[2].Loadout.Backups[0].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Profiles[2].Loadout.Backups[0].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[2].Loadout.Backups[0].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Profiles[2].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[2].Loadout.Backups[0].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Profiles[2].Loadout.Backups[0].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[2].Loadout.Backups[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -2256,7 +2374,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Profiles[2].Loadout.Backups[1].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Profiles[2].Loadout.Backups[1].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[2].Loadout.Backups[1].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Profiles[2].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[2].Loadout.Backups[1].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Profiles[2].Loadout.Backups[1].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[2].Loadout.Backups[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -2300,7 +2418,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Profiles[3].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Profiles[3].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Profiles[3].Loadout.Primary.Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Profiles[3].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Channel = unchecked((uint)v), reset: (t) => { t.Profiles[3].Loadout.Primary.Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Profiles[3].Loadout.Primary.Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[3].Loadout.Primary.Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
@@ -2308,7 +2426,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Profiles[3].Loadout.Backups[0].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Profiles[3].Loadout.Backups[0].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[3].Loadout.Backups[0].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Profiles[3].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[3].Loadout.Backups[0].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Profiles[3].Loadout.Backups[0].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[3].Loadout.Backups[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -2316,7 +2434,7 @@ namespace Tabledemo
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Profiles[3].Loadout.Backups[1].Damage = 21.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Profiles[3].Loadout.Backups[1].Speed = 500.0f; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Profiles[3].Loadout.Backups[1].Penetration = 1; }),
-            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Profiles[3].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Channel = unchecked((uint)v), reset: (t) => { t.Profiles[3].Loadout.Backups[1].Channel = 0; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Profiles[3].Loadout.Backups[1].Homing = false; }),
             new TableFixedSlot<RootConfig>(setRawReport: (t, v, rep) => { t.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Profiles[3].Loadout.Backups[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<RootConfig>(setRaw: (t, v) => t.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -2349,7 +2467,7 @@ namespace Tabledemo
                 case 3: t.Weapons[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 4: t.Weapons[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 5: t.Weapons[0].Penetration = unchecked((int)v); break;
-                case 6: t.Weapons[0].Channel = (uint)v; break;
+                case 6: t.Weapons[0].Channel = unchecked((uint)v); break;
                 case 7: t.Weapons[0].Homing = v != 0; break;
                 case 8: { t.Weapons[0].Effect.Type = (EffectType)v; } break;
                 case 9: t.Weapons[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2357,7 +2475,7 @@ namespace Tabledemo
                 case 11: t.Weapons[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 12: t.Weapons[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 13: t.Weapons[1].Penetration = unchecked((int)v); break;
-                case 14: t.Weapons[1].Channel = (uint)v; break;
+                case 14: t.Weapons[1].Channel = unchecked((uint)v); break;
                 case 15: t.Weapons[1].Homing = v != 0; break;
                 case 16: { t.Weapons[1].Effect.Type = (EffectType)v; } break;
                 case 17: t.Weapons[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2365,7 +2483,7 @@ namespace Tabledemo
                 case 19: t.Weapons[2].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 20: t.Weapons[2].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 21: t.Weapons[2].Penetration = unchecked((int)v); break;
-                case 22: t.Weapons[2].Channel = (uint)v; break;
+                case 22: t.Weapons[2].Channel = unchecked((uint)v); break;
                 case 23: t.Weapons[2].Homing = v != 0; break;
                 case 24: { t.Weapons[2].Effect.Type = (EffectType)v; } break;
                 case 25: t.Weapons[2].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2373,7 +2491,7 @@ namespace Tabledemo
                 case 27: t.Weapons[3].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 28: t.Weapons[3].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 29: t.Weapons[3].Penetration = unchecked((int)v); break;
-                case 30: t.Weapons[3].Channel = (uint)v; break;
+                case 30: t.Weapons[3].Channel = unchecked((uint)v); break;
                 case 31: t.Weapons[3].Homing = v != 0; break;
                 case 32: { t.Weapons[3].Effect.Type = (EffectType)v; } break;
                 case 33: t.Weapons[3].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2381,7 +2499,7 @@ namespace Tabledemo
                 case 35: t.Weapons[4].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 36: t.Weapons[4].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 37: t.Weapons[4].Penetration = unchecked((int)v); break;
-                case 38: t.Weapons[4].Channel = (uint)v; break;
+                case 38: t.Weapons[4].Channel = unchecked((uint)v); break;
                 case 39: t.Weapons[4].Homing = v != 0; break;
                 case 40: { t.Weapons[4].Effect.Type = (EffectType)v; } break;
                 case 41: t.Weapons[4].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2389,7 +2507,7 @@ namespace Tabledemo
                 case 43: t.Weapons[5].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 44: t.Weapons[5].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 45: t.Weapons[5].Penetration = unchecked((int)v); break;
-                case 46: t.Weapons[5].Channel = (uint)v; break;
+                case 46: t.Weapons[5].Channel = unchecked((uint)v); break;
                 case 47: t.Weapons[5].Homing = v != 0; break;
                 case 48: { t.Weapons[5].Effect.Type = (EffectType)v; } break;
                 case 49: t.Weapons[5].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2397,7 +2515,7 @@ namespace Tabledemo
                 case 51: t.Weapons[6].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 52: t.Weapons[6].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 53: t.Weapons[6].Penetration = unchecked((int)v); break;
-                case 54: t.Weapons[6].Channel = (uint)v; break;
+                case 54: t.Weapons[6].Channel = unchecked((uint)v); break;
                 case 55: t.Weapons[6].Homing = v != 0; break;
                 case 56: { t.Weapons[6].Effect.Type = (EffectType)v; } break;
                 case 57: t.Weapons[6].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2405,7 +2523,7 @@ namespace Tabledemo
                 case 59: t.Weapons[7].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 60: t.Weapons[7].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 61: t.Weapons[7].Penetration = unchecked((int)v); break;
-                case 62: t.Weapons[7].Channel = (uint)v; break;
+                case 62: t.Weapons[7].Channel = unchecked((uint)v); break;
                 case 63: t.Weapons[7].Homing = v != 0; break;
                 case 64: { t.Weapons[7].Effect.Type = (EffectType)v; } break;
                 case 65: t.Weapons[7].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2428,7 +2546,7 @@ namespace Tabledemo
                 case 87: t.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 88: t.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 89: t.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v); break;
-                case 90: t.Profiles[0].Loadout.Primary.Channel = (uint)v; break;
+                case 90: t.Profiles[0].Loadout.Primary.Channel = unchecked((uint)v); break;
                 case 91: t.Profiles[0].Loadout.Primary.Homing = v != 0; break;
                 case 92: { t.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)v; } break;
                 case 93: t.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2436,7 +2554,7 @@ namespace Tabledemo
                 case 95: t.Profiles[0].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 96: t.Profiles[0].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 97: t.Profiles[0].Loadout.Backups[0].Penetration = unchecked((int)v); break;
-                case 98: t.Profiles[0].Loadout.Backups[0].Channel = (uint)v; break;
+                case 98: t.Profiles[0].Loadout.Backups[0].Channel = unchecked((uint)v); break;
                 case 99: t.Profiles[0].Loadout.Backups[0].Homing = v != 0; break;
                 case 100: { t.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
                 case 101: t.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2444,7 +2562,7 @@ namespace Tabledemo
                 case 103: t.Profiles[0].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 104: t.Profiles[0].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 105: t.Profiles[0].Loadout.Backups[1].Penetration = unchecked((int)v); break;
-                case 106: t.Profiles[0].Loadout.Backups[1].Channel = (uint)v; break;
+                case 106: t.Profiles[0].Loadout.Backups[1].Channel = unchecked((uint)v); break;
                 case 107: t.Profiles[0].Loadout.Backups[1].Homing = v != 0; break;
                 case 108: { t.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
                 case 109: t.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2483,7 +2601,7 @@ namespace Tabledemo
                 case 147: t.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 148: t.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 149: t.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v); break;
-                case 150: t.Profiles[1].Loadout.Primary.Channel = (uint)v; break;
+                case 150: t.Profiles[1].Loadout.Primary.Channel = unchecked((uint)v); break;
                 case 151: t.Profiles[1].Loadout.Primary.Homing = v != 0; break;
                 case 152: { t.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)v; } break;
                 case 153: t.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2491,7 +2609,7 @@ namespace Tabledemo
                 case 155: t.Profiles[1].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 156: t.Profiles[1].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 157: t.Profiles[1].Loadout.Backups[0].Penetration = unchecked((int)v); break;
-                case 158: t.Profiles[1].Loadout.Backups[0].Channel = (uint)v; break;
+                case 158: t.Profiles[1].Loadout.Backups[0].Channel = unchecked((uint)v); break;
                 case 159: t.Profiles[1].Loadout.Backups[0].Homing = v != 0; break;
                 case 160: { t.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
                 case 161: t.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2499,7 +2617,7 @@ namespace Tabledemo
                 case 163: t.Profiles[1].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 164: t.Profiles[1].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 165: t.Profiles[1].Loadout.Backups[1].Penetration = unchecked((int)v); break;
-                case 166: t.Profiles[1].Loadout.Backups[1].Channel = (uint)v; break;
+                case 166: t.Profiles[1].Loadout.Backups[1].Channel = unchecked((uint)v); break;
                 case 167: t.Profiles[1].Loadout.Backups[1].Homing = v != 0; break;
                 case 168: { t.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
                 case 169: t.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2538,7 +2656,7 @@ namespace Tabledemo
                 case 207: t.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 208: t.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 209: t.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v); break;
-                case 210: t.Profiles[2].Loadout.Primary.Channel = (uint)v; break;
+                case 210: t.Profiles[2].Loadout.Primary.Channel = unchecked((uint)v); break;
                 case 211: t.Profiles[2].Loadout.Primary.Homing = v != 0; break;
                 case 212: { t.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)v; } break;
                 case 213: t.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2546,7 +2664,7 @@ namespace Tabledemo
                 case 215: t.Profiles[2].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 216: t.Profiles[2].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 217: t.Profiles[2].Loadout.Backups[0].Penetration = unchecked((int)v); break;
-                case 218: t.Profiles[2].Loadout.Backups[0].Channel = (uint)v; break;
+                case 218: t.Profiles[2].Loadout.Backups[0].Channel = unchecked((uint)v); break;
                 case 219: t.Profiles[2].Loadout.Backups[0].Homing = v != 0; break;
                 case 220: { t.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
                 case 221: t.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2554,7 +2672,7 @@ namespace Tabledemo
                 case 223: t.Profiles[2].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 224: t.Profiles[2].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 225: t.Profiles[2].Loadout.Backups[1].Penetration = unchecked((int)v); break;
-                case 226: t.Profiles[2].Loadout.Backups[1].Channel = (uint)v; break;
+                case 226: t.Profiles[2].Loadout.Backups[1].Channel = unchecked((uint)v); break;
                 case 227: t.Profiles[2].Loadout.Backups[1].Homing = v != 0; break;
                 case 228: { t.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
                 case 229: t.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2593,7 +2711,7 @@ namespace Tabledemo
                 case 267: t.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 268: t.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 269: t.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v); break;
-                case 270: t.Profiles[3].Loadout.Primary.Channel = (uint)v; break;
+                case 270: t.Profiles[3].Loadout.Primary.Channel = unchecked((uint)v); break;
                 case 271: t.Profiles[3].Loadout.Primary.Homing = v != 0; break;
                 case 272: { t.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)v; } break;
                 case 273: t.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2601,7 +2719,7 @@ namespace Tabledemo
                 case 275: t.Profiles[3].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 276: t.Profiles[3].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 277: t.Profiles[3].Loadout.Backups[0].Penetration = unchecked((int)v); break;
-                case 278: t.Profiles[3].Loadout.Backups[0].Channel = (uint)v; break;
+                case 278: t.Profiles[3].Loadout.Backups[0].Channel = unchecked((uint)v); break;
                 case 279: t.Profiles[3].Loadout.Backups[0].Homing = v != 0; break;
                 case 280: { t.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
                 case 281: t.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -2609,7 +2727,7 @@ namespace Tabledemo
                 case 283: t.Profiles[3].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 284: t.Profiles[3].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 285: t.Profiles[3].Loadout.Backups[1].Penetration = unchecked((int)v); break;
-                case 286: t.Profiles[3].Loadout.Backups[1].Channel = (uint)v; break;
+                case 286: t.Profiles[3].Loadout.Backups[1].Channel = unchecked((uint)v); break;
                 case 287: t.Profiles[3].Loadout.Backups[1].Homing = v != 0; break;
                 case 288: { t.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
                 case 289: t.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -3178,12 +3296,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RootConfigFixedSetBytes(dst, p.Dst, wide, need);
@@ -3245,12 +3363,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RootConfigFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -3269,6 +3387,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             RootConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -3706,6 +3825,10 @@ namespace Tabledemo
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RootConfigFixedHash);
@@ -3834,7 +3957,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -3860,6 +3983,7 @@ namespace Tabledemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RootConfigFixedSlots, values[k]); }
                 RootConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RootConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RootConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -3875,12 +3999,16 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RootConfigFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RootConfigFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -3924,11 +4052,21 @@ namespace Tabledemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void WeaponConfigFixedClamp(WeaponConfig value, TableReport report)
+        public static bool WeaponConfigFixedClamp(WeaponConfig value, TableReport report)
         {
             int clamped = 0;
             WeaponConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this WeaponConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool WeaponConfigFixedWriteAdmits(WeaponConfig value)
+        {
+            int bad = 0;
+            WeaponConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- WeaponConfig, the fixed form ----
@@ -3971,7 +4109,7 @@ namespace Tabledemo
             new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Damage = (float)d, reset: (t) => { t.Damage = 21.0f; }),
             new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Speed = (float)d, reset: (t) => { t.Speed = 500.0f; }),
             new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Penetration = unchecked((int)v), reset: (t) => { t.Penetration = 1; }),
-            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Channel = (uint)v, reset: (t) => { t.Channel = 0; }),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Channel = unchecked((uint)v), reset: (t) => { t.Channel = 0; }),
             new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Homing = v != 0, reset: (t) => { t.Homing = false; }),
             new TableFixedSlot<WeaponConfig>(setRawReport: (t, v, rep) => { t.Effect.Type = (EffectType)v; }, reset: (t) => { t.Effect.Type = EffectType.None; }),
             new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Effect.Buff.Multiplier = 1.0f; }),
@@ -3985,7 +4123,7 @@ namespace Tabledemo
                 case 0: t.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 1: t.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 2: t.Penetration = unchecked((int)v); break;
-                case 3: t.Channel = (uint)v; break;
+                case 3: t.Channel = unchecked((uint)v); break;
                 case 4: t.Homing = v != 0; break;
                 case 5: { t.Effect.Type = (EffectType)v; } break;
                 case 6: t.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -4123,12 +4261,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             WeaponConfigFixedSetBytes(dst, p.Dst, wide, need);
@@ -4190,12 +4328,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 WeaponConfigFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -4214,6 +4352,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             WeaponConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4294,6 +4433,10 @@ namespace Tabledemo
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), WeaponConfigFixedHash);
@@ -4422,7 +4565,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -4448,6 +4591,7 @@ namespace Tabledemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), WeaponConfigFixedSlots, values[k]); }
                 WeaponConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, WeaponConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = WeaponConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -4463,12 +4607,16 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                WeaponConfigFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!WeaponConfigFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -4512,11 +4660,21 @@ namespace Tabledemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void LoadoutConfigFixedClamp(LoadoutConfig value, TableReport report)
+        public static bool LoadoutConfigFixedClamp(LoadoutConfig value, TableReport report)
         {
             int clamped = 0;
             LoadoutConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this LoadoutConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool LoadoutConfigFixedWriteAdmits(LoadoutConfig value)
+        {
+            int bad = 0;
+            LoadoutConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- LoadoutConfig, the fixed form ----
@@ -4630,7 +4788,7 @@ namespace Tabledemo
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Primary.Damage = (float)d, reset: (t) => { t.Primary.Damage = 21.0f; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Primary.Speed = (float)d, reset: (t) => { t.Primary.Speed = 500.0f; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Primary.Penetration = 1; }),
-            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Channel = (uint)v, reset: (t) => { t.Primary.Channel = 0; }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Channel = unchecked((uint)v), reset: (t) => { t.Primary.Channel = 0; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Homing = v != 0, reset: (t) => { t.Primary.Homing = false; }),
             new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { t.Primary.Effect.Type = (EffectType)v; }, reset: (t) => { t.Primary.Effect.Type = EffectType.None; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Primary.Effect.Buff.Multiplier = 1.0f; }),
@@ -4638,7 +4796,7 @@ namespace Tabledemo
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[0].Damage = (float)d, reset: (t) => { t.Backups[0].Damage = 21.0f; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[0].Speed = (float)d, reset: (t) => { t.Backups[0].Speed = 500.0f; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Backups[0].Penetration = 1; }),
-            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Channel = (uint)v, reset: (t) => { t.Backups[0].Channel = 0; }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Channel = unchecked((uint)v), reset: (t) => { t.Backups[0].Channel = 0; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Homing = v != 0, reset: (t) => { t.Backups[0].Homing = false; }),
             new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { t.Backups[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Backups[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -4646,7 +4804,7 @@ namespace Tabledemo
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[1].Damage = (float)d, reset: (t) => { t.Backups[1].Damage = 21.0f; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[1].Speed = (float)d, reset: (t) => { t.Backups[1].Speed = 500.0f; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Backups[1].Penetration = 1; }),
-            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Channel = (uint)v, reset: (t) => { t.Backups[1].Channel = 0; }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Channel = unchecked((uint)v), reset: (t) => { t.Backups[1].Channel = 0; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Homing = v != 0, reset: (t) => { t.Backups[1].Homing = false; }),
             new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { t.Backups[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Backups[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -4680,7 +4838,7 @@ namespace Tabledemo
                 case 5: t.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 6: t.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 7: t.Primary.Penetration = unchecked((int)v); break;
-                case 8: t.Primary.Channel = (uint)v; break;
+                case 8: t.Primary.Channel = unchecked((uint)v); break;
                 case 9: t.Primary.Homing = v != 0; break;
                 case 10: { t.Primary.Effect.Type = (EffectType)v; } break;
                 case 11: t.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -4688,7 +4846,7 @@ namespace Tabledemo
                 case 13: t.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 14: t.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 15: t.Backups[0].Penetration = unchecked((int)v); break;
-                case 16: t.Backups[0].Channel = (uint)v; break;
+                case 16: t.Backups[0].Channel = unchecked((uint)v); break;
                 case 17: t.Backups[0].Homing = v != 0; break;
                 case 18: { t.Backups[0].Effect.Type = (EffectType)v; } break;
                 case 19: t.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -4696,7 +4854,7 @@ namespace Tabledemo
                 case 21: t.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 22: t.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 23: t.Backups[1].Penetration = unchecked((int)v); break;
-                case 24: t.Backups[1].Channel = (uint)v; break;
+                case 24: t.Backups[1].Channel = unchecked((uint)v); break;
                 case 25: t.Backups[1].Homing = v != 0; break;
                 case 26: { t.Backups[1].Effect.Type = (EffectType)v; } break;
                 case 27: t.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -4905,12 +5063,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             LoadoutConfigFixedSetBytes(dst, p.Dst, wide, need);
@@ -4972,12 +5130,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 LoadoutConfigFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -4996,6 +5154,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             LoadoutConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -5148,6 +5307,10 @@ namespace Tabledemo
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), LoadoutConfigFixedHash);
@@ -5276,7 +5439,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5302,6 +5465,7 @@ namespace Tabledemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), LoadoutConfigFixedSlots, values[k]); }
                 LoadoutConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, LoadoutConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = LoadoutConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -5317,12 +5481,16 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                LoadoutConfigFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!LoadoutConfigFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -5366,11 +5534,21 @@ namespace Tabledemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void ProfileConfigFixedClamp(ProfileConfig value, TableReport report)
+        public static bool ProfileConfigFixedClamp(ProfileConfig value, TableReport report)
         {
             int clamped = 0;
             ProfileConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this ProfileConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool ProfileConfigFixedWriteAdmits(ProfileConfig value)
+        {
+            int bad = 0;
+            ProfileConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- ProfileConfig, the fixed form ----
@@ -5529,7 +5707,7 @@ namespace Tabledemo
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Primary.Damage = (float)d, reset: (t) => { t.Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Primary.Speed = (float)d, reset: (t) => { t.Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Loadout.Primary.Penetration = 1; }),
-            new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Channel = unchecked((uint)v), reset: (t) => { t.Loadout.Primary.Channel = 0; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Homing = v != 0, reset: (t) => { t.Loadout.Primary.Homing = false; }),
             new TableFixedSlot<ProfileConfig>(setRawReport: (t, v, rep) => { t.Loadout.Primary.Effect.Type = (EffectType)v; }, reset: (t) => { t.Loadout.Primary.Effect.Type = EffectType.None; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
@@ -5537,7 +5715,7 @@ namespace Tabledemo
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Loadout.Backups[0].Damage = 21.0f; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Loadout.Backups[0].Speed = 500.0f; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Loadout.Backups[0].Penetration = 1; }),
-            new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Channel = unchecked((uint)v), reset: (t) => { t.Loadout.Backups[0].Channel = 0; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Loadout.Backups[0].Homing = false; }),
             new TableFixedSlot<ProfileConfig>(setRawReport: (t, v, rep) => { t.Loadout.Backups[0].Effect.Type = (EffectType)v; }, reset: (t) => { t.Loadout.Backups[0].Effect.Type = EffectType.None; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
@@ -5545,7 +5723,7 @@ namespace Tabledemo
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Loadout.Backups[1].Damage = 21.0f; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Loadout.Backups[1].Speed = 500.0f; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Loadout.Backups[1].Penetration = 1; }),
-            new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Channel = unchecked((uint)v), reset: (t) => { t.Loadout.Backups[1].Channel = 0; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Loadout.Backups[1].Homing = false; }),
             new TableFixedSlot<ProfileConfig>(setRawReport: (t, v, rep) => { t.Loadout.Backups[1].Effect.Type = (EffectType)v; }, reset: (t) => { t.Loadout.Backups[1].Effect.Type = EffectType.None; }),
             new TableFixedSlot<ProfileConfig>(setRaw: (t, v) => t.Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
@@ -5590,7 +5768,7 @@ namespace Tabledemo
                 case 19: t.Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 20: t.Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 21: t.Loadout.Primary.Penetration = unchecked((int)v); break;
-                case 22: t.Loadout.Primary.Channel = (uint)v; break;
+                case 22: t.Loadout.Primary.Channel = unchecked((uint)v); break;
                 case 23: t.Loadout.Primary.Homing = v != 0; break;
                 case 24: { t.Loadout.Primary.Effect.Type = (EffectType)v; } break;
                 case 25: t.Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -5598,7 +5776,7 @@ namespace Tabledemo
                 case 27: t.Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 28: t.Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 29: t.Loadout.Backups[0].Penetration = unchecked((int)v); break;
-                case 30: t.Loadout.Backups[0].Channel = (uint)v; break;
+                case 30: t.Loadout.Backups[0].Channel = unchecked((uint)v); break;
                 case 31: t.Loadout.Backups[0].Homing = v != 0; break;
                 case 32: { t.Loadout.Backups[0].Effect.Type = (EffectType)v; } break;
                 case 33: t.Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -5606,7 +5784,7 @@ namespace Tabledemo
                 case 35: t.Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 36: t.Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 37: t.Loadout.Backups[1].Penetration = unchecked((int)v); break;
-                case 38: t.Loadout.Backups[1].Channel = (uint)v; break;
+                case 38: t.Loadout.Backups[1].Channel = unchecked((uint)v); break;
                 case 39: t.Loadout.Backups[1].Homing = v != 0; break;
                 case 40: { t.Loadout.Backups[1].Effect.Type = (EffectType)v; } break;
                 case 41: t.Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -5833,12 +6011,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             ProfileConfigFixedSetBytes(dst, p.Dst, wide, need);
@@ -5900,12 +6078,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 ProfileConfigFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -5924,6 +6102,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             ProfileConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -6104,6 +6283,10 @@ namespace Tabledemo
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ProfileConfigFixedHash);
@@ -6232,7 +6415,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -6258,6 +6441,7 @@ namespace Tabledemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ProfileConfigFixedSlots, values[k]); }
                 ProfileConfigFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, ProfileConfigFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = ProfileConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -6273,12 +6457,16 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                ProfileConfigFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!ProfileConfigFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);

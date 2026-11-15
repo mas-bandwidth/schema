@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -80,7 +79,7 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 func armTags(tags []string) string {
 	quoted := make([]string, len(tags))
 	for i, tag := range tags {
-		quoted[i] = strconv.Quote(tag)
+		quoted[i] = csQuote(tag)
 	}
 	return "new string[] " + csList(quoted, ", ")
 }

@@ -89,7 +89,7 @@ enum Live
     C
 }
 
-table Keyed
+table KeyedSlots
 {
     slots [Live]int32
 }

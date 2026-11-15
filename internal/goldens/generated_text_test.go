@@ -58,7 +58,7 @@ func machineWords(t *testing.T) []string {
 	// runtimes use as an ordinary word (the fixed-form plan runner); its home
 	// directory, below, still names that machine
 	if u, err := user.Current(); err == nil && u.Username != "" &&
-		!(os.Getenv("RUNNER_ENVIRONMENT") == "github-hosted" && u.Username == "runner") {
+		(os.Getenv("RUNNER_ENVIRONMENT") != "github-hosted" || u.Username != "runner") {
 		words = append(words, u.Username)
 	}
 	if root, err := filepath.Abs("../.."); err == nil {
@@ -86,49 +86,55 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 	}
 	units := textUnits(t)
 	for _, target := range schema.Targets() {
-		emitted := 0
-		for _, dir := range units {
-			paths, err := compiler.GatherPaths([]string{dir})
-			if err != nil {
-				t.Fatal(err)
-			}
-			u, err := schema.Load(paths)
-			if err != nil {
-				t.Fatalf("%s does not compile: %v", dir, err)
-			}
-			files, err := schema.Generate(u, target, nil)
-			if err != nil {
-				continue
-			}
-			emitted++
-			names := make([]string, 0, len(files))
-			for name := range files {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				text := files[name]
-				where := target + " " + dir + " " + name
-				report := func(m *regexp.Regexp, what string) {
-					for _, at := range m.FindAllIndex(text, -1) {
-						start := bytes.LastIndexByte(text[:at[0]], '\n') + 1
-						end := bytes.IndexByte(text[at[0]:], '\n')
-						if end < 0 {
-							end = len(text) - at[0]
+		// each target is its own subtest, run side by side: the work is
+		// generating every unit and scanning its text, and no target's
+		// output depends on another's
+		t.Run(target, func(t *testing.T) {
+			t.Parallel()
+			emitted := 0
+			for _, dir := range units {
+				paths, err := compiler.GatherPaths([]string{dir})
+				if err != nil {
+					t.Fatal(err)
+				}
+				u, err := schema.Load(paths)
+				if err != nil {
+					t.Fatalf("%s does not compile: %v", dir, err)
+				}
+				files, err := schema.Generate(u, target, nil)
+				if err != nil {
+					continue
+				}
+				emitted++
+				names := make([]string, 0, len(files))
+				for name := range files {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				for _, name := range names {
+					text := files[name]
+					where := target + " " + dir + " " + name
+					report := func(m *regexp.Regexp, what string) {
+						for _, at := range m.FindAllIndex(text, -1) {
+							start := bytes.LastIndexByte(text[:at[0]], '\n') + 1
+							end := bytes.IndexByte(text[at[0]:], '\n')
+							if end < 0 {
+								end = len(text) - at[0]
+							}
+							line := bytes.Count(text[:at[0]], []byte("\n")) + 1
+							t.Errorf("%s:%d %s: %s", where, line, what, strings.TrimSpace(string(text[start:at[0]+end])))
 						}
-						line := bytes.Count(text[:at[0]], []byte("\n")) + 1
-						t.Errorf("%s:%d %s: %s", where, line, what, strings.TrimSpace(string(text[start:at[0]+end])))
+					}
+					report(bannedTerm, "uses the banned term")
+					report(absolutePath, "carries an absolute path")
+					for _, m := range machine {
+						report(m, "names the machine that ran the compiler")
 					}
 				}
-				report(bannedTerm, "uses the banned term")
-				report(absolutePath, "carries an absolute path")
-				for _, m := range machine {
-					report(m, "names the machine that ran the compiler")
-				}
 			}
-		}
-		if emitted == 0 {
-			t.Errorf("target %s emitted no unit, so nothing of its output was checked", target)
-		}
+			if emitted == 0 {
+				t.Errorf("target %s emitted no unit, so nothing of its output was checked", target)
+			}
+		})
 	}
 }

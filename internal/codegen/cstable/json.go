@@ -76,11 +76,15 @@ public static class TableJson
 {
     public const int MaxDepth = 128;
 
-    // A key longer than this cannot name a field, so it is skipped as unknown.
+    // A schema-name string is capped at 255 bytes (§16.2): a longer one is a
+    // name this form refuses, in every object and inside a skipped value.
+    public const int MaxName = 255;
+
+    // A map key's spelling buffer. A map key is data, never a schema name.
     public const int MaxKey = 256;
 
-    // The longest numeric token the walk will convert. Anything longer is a
-    // value no field can hold and counts as a kind mismatch.
+    // The working size of a numeric token's stack scratch. A longer token is
+    // kept whole on the heap: its LENGTH is never why a read refuses (§16.2).
     public const int MaxNumber = 512;
 
     const string Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -485,10 +489,10 @@ public static class TableJson
         if (value < 0)
         {
             o.Put((byte)'-');
-            WriteUnsigned(ref o, 0ul - (ulong)value);
+            WriteUnsigned(ref o, unchecked(0ul - (ulong)value));
             return;
         }
-        WriteUnsigned(ref o, (ulong)value);
+        WriteUnsigned(ref o, unchecked((ulong)value));
     }
 
     // C's "%.*g" for a finite double, spelled out into chars: the exponent form
@@ -627,9 +631,9 @@ public static class TableJson
     {
         if (f.TextList)
         {
-            object child=f.GetChild(owner,index);TableFieldInfo text=f.Table.Fields[0];
-            if(text.Optional&&!text.GetPresent(child)){o.Text("null");return true;}
-            return WriteField(ref o,child,text,depth);
+            object child = f.GetChild(owner, index); TableFieldInfo text = f.Table.Fields[0];
+            if (text.Optional && !text.GetPresent(child)) { o.Text("null"); return true; }
+            return WriteField(ref o, child, text, depth);
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
@@ -727,7 +731,7 @@ public static class TableJson
             case 3:
             case 4:
             case 5:
-                WriteSigned(ref o, (long)f.GetRaw(owner, index));
+                WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
                 return true;
             default:
                 WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -737,11 +741,12 @@ public static class TableJson
 
     static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
     {
-        if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
+        if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)
         {
-            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
+            // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
+            // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
@@ -870,14 +875,18 @@ public static class TableJson
                 if (next == '/')
                 {
                     input.Pos += 2;
+                    int start = input.Pos;
                     while (input.Pos < text.Length && text[input.Pos] != '\n') { input.Pos++; }
+                    if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                     continue;
                 }
                 if (next == '*')
                 {
                     input.Pos += 2;
+                    int start = input.Pos;
                     while (input.Pos + 1 < text.Length && !(text[input.Pos] == '*' && text[input.Pos + 1] == '/')) { input.Pos++; }
                     if (input.Pos + 1 >= text.Length) { input.Bad = true; return; }
+                    if (!TableWire.TextValid(text.Slice(start, input.Pos - start))) { input.Bad = true; return; }
                     input.Pos += 2;
                     continue;
                 }
@@ -975,7 +984,23 @@ public static class TableJson
     {
         input.Bad = true;
         input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+        // A NAMED REFUSAL IS THE PUBLIC VERDICT (docs/SPEC-TABLES.md §16.2): a
+        // changed kind, an out-of-range value, a count or length past its
+        // bound, or text that cannot be stored refuses the load. The rest of
+        // the walk's failures are damage.
+        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+        {
+            input.Report.Refused = true;
+        }
         return false;
+    }
+    // THE REPORT CARRIES THE READ'S ANSWER (docs/SPEC-TABLES.md §16.2): a
+    // refusal names itself, damage names itself, and a read is Ok. The return
+    // value is the same answer, so a caller reading either one agrees.
+    static bool TextVerdict(ref In input, TableWire.Verdict verdict)
+    {
+        input.Report.Verdict = verdict;
+        return verdict == TableWire.Verdict.Ok;
     }
     // A decoded string body for the base64 and timestamp readers
     // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
@@ -1101,8 +1126,9 @@ public static class TableJson
                     return RefuseText(ref input, "string_not_utf8");
                 }
             }
-            // Only stored text rejects NUL; skipped values and object field
-            // names still accept that escape. Map keys opt in before length checks.
+            // A placed string, an object key and a skipped value take one
+            // rule (docs/SPEC-TABLES.md §16.3): a text that decodes to U+0000
+            // refuses the read. Map keys opt in before length checks.
             if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
             if (measure)
             {
@@ -1180,20 +1206,104 @@ public static class TableJson
         return true;
     }
 
-    // the same production, with the token kept for conversion. The token is
-    // ASCII by that grammar, so it widens into chars a digit at a time and the
-    // conversions below need no encoder.
-    static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> token, out int length, out bool integral)
+    // the same production, with the token's extent kept for conversion. The
+    // token is ASCII by that grammar, so it widens into chars a digit at a time
+    // and the conversions below need no encoder. A token longer than the
+    // scratch is kept whole in the document: its own size bounds it, and its
+    // LENGTH is never the reason a read refuses (§16.2 Numbers).
+    static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> scratch, out int length, out bool integral)
     {
         length = 0;
         Space(text, ref input);
         int start = input.Pos;
         if (!WalkNumber(text, ref input, out integral)) { return false; }
         int count = input.Pos - start;
-        if (count <= 0 || count >= token.Length) { return false; }
-        for (int i = 0; i < count; i++) { token[i] = (char)text[start + i]; }
+        if (count <= 0) { return false; }
         length = count;
+        if (count <= scratch.Length)
+        {
+            for (int i = 0; i < count; i++) { scratch[i] = (char)text[start + i]; }
+        }
         return true;
+    }
+
+    // A token's value does not depend on how many digits spell its mantissa
+    // (§16.2 Numbers). A long token folds its insignificant zeros into one
+    // exponent and keeps its significant digits inside a conversion's working
+    // precision, with a sticky digit when more followed: the result denotes the
+    // same exact decimal value.
+    static string BoundedFloatToken(ReadOnlySpan<char> token)
+    {
+        const int limit = 799;
+        int i = 0;
+        bool negative = false;
+        if (i < token.Length && token[i] == '-') { negative = true; i++; }
+        int intAt = i;
+        while (i < token.Length && token[i] >= '0' && token[i] <= '9') { i++; }
+        int intEnd = i;
+        int fracAt = i;
+        int fracLength = 0;
+        if (i < token.Length && token[i] == '.')
+        {
+            i++;
+            fracAt = i;
+            while (i < token.Length && token[i] >= '0' && token[i] <= '9') { i++; }
+            fracLength = i - fracAt;
+        }
+        long exp = 0;
+        if (i < token.Length && (token[i] == 'e' || token[i] == 'E'))
+        {
+            i++;
+            bool expNegative = false;
+            if (i < token.Length && (token[i] == '-' || token[i] == '+')) { expNegative = token[i] == '-'; i++; }
+            while (i < token.Length && token[i] >= '0' && token[i] <= '9')
+            {
+                if (exp < 100000) { exp = exp * 10 + (token[i] - '0'); }
+                i++;
+            }
+            if (expNegative) { exp = -exp; }
+        }
+        int intLength = intEnd - intAt;
+        int total = intLength + fracLength;
+        exp -= fracLength;
+        int first = 0;
+        while (first < total)
+        {
+            char c = first < intLength ? token[intAt + first] : token[fracAt + first - intLength];
+            if (c != '0') { break; }
+            first++;
+        }
+        if (first == total) { return negative ? "-0" : "0"; }
+        int last = total;
+        while (last > first)
+        {
+            char c = last - 1 < intLength ? token[intAt + last - 1] : token[fracAt + last - 1 - intLength];
+            if (c != '0') { break; }
+            last--;
+        }
+        exp += total - last;
+        int count = last - first;
+        Span<char> text = stackalloc char[limit + 40];
+        int n = 0;
+        if (negative) { text[n++] = '-'; }
+        int keep = count < limit ? count : limit;
+        for (int k = 0; k < keep; k++)
+        {
+            char c = first + k < intLength ? token[intAt + first + k] : token[fracAt + first + k - intLength];
+            text[n++] = c;
+        }
+        if (count > limit)
+        {
+            text[n++] = '1';
+            exp += count - limit - 1;
+        }
+        text[n++] = 'e';
+        if (exp < 0) { text[n++] = '-'; exp = -exp; }
+        Span<char> digits = stackalloc char[20];
+        int dn = 0;
+        do { digits[dn++] = (char)('0' + (int)(exp % 10)); exp /= 10; } while (exp != 0);
+        for (int k = dn - 1; k >= 0; k--) { text[n++] = digits[k]; }
+        return new string(text.Slice(0, n));
     }
 
     // the token's exact double, through the runtime's own converter — under the
@@ -1201,10 +1311,17 @@ public static class TableJson
     // crosses a locale's own
     static double TokenDouble(ReadOnlySpan<char> token, bool single)
     {
+        ReadOnlySpan<char> bounded = token;
+        string spill = null;
+        if (token.Length > MaxNumber)
+        {
+            spill = BoundedFloatToken(token);
+            bounded = spill;
+        }
         if (single)
         {
             float narrow;
-            if (!float.TryParse(token, System.Globalization.NumberStyles.Float,
+            if (!float.TryParse(bounded, System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out narrow))
             {
                 return double.NaN;
@@ -1212,7 +1329,7 @@ public static class TableJson
             return narrow;
         }
         double value;
-        if (!double.TryParse(token, System.Globalization.NumberStyles.Float,
+        if (!double.TryParse(bounded, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out value))
         {
             return double.NaN;
@@ -1266,7 +1383,11 @@ public static class TableJson
         if (depth > MaxDepth) { input.Bad = true; return false; }
         input.Pos++; // the opening bracket
         bool first = true;
-        Span<byte> key = stackalloc byte[MaxKey];
+        Span<byte> key = stackalloc byte[MaxName];
+        // a skipped object's keys are held to the layer's rule too: a repeated
+        // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
+        // §16.12), the objects this walk skips included
+        System.Collections.Generic.HashSet<string> keys = null;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1274,9 +1395,11 @@ public static class TableJson
             if (c == 0) { input.Bad = true; return false; }
             if (close == '}')
             {
-                if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
+                keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
                 if (used > 0 && key[0] == '&' && input.Labels != null)
                 {
                     if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
@@ -1307,7 +1430,7 @@ public static class TableJson
             case (byte)'"':
                 {
                     int ignored;
-                    return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                    return ScanString(text, ref input, Span<byte>.Empty, false, out ignored, stored: true);
                 }
             case (byte)'t': return Literal(text, ref input, "true");
             case (byte)'f': return Literal(text, ref input, "false");
@@ -1354,12 +1477,12 @@ public static class TableJson
     // place one scalar at one storage slot
     static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
-        if(f.TextList)
+        if (f.TextList)
         {
-            object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
-            if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
-            if(field.Optional){field.SetPresent(child,true);}
-            return ReadField(text,ref input,child,field,depth);
+            object child = f.GetChild(owner, index); TableFieldInfo field = f.Table.Fields[0]; f.Table.Reset(child);
+            if (field.Optional && ValueShape(text, ref input) == 'z') { return Literal(text, ref input, "null"); }
+            if (field.Optional) { field.SetPresent(child, true); }
+            return ReadField(text, ref input, child, field, depth);
         }
         if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
@@ -1372,9 +1495,9 @@ public static class TableJson
             input.Pos++;
             f.Arms.SetTag(union, 0);
             if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-            Span<byte> key = stackalloc byte[MaxKey];
+            Span<byte> key = stackalloc byte[MaxName];
             int keyLength;
-            if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+            if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
             input.Pos++;
             int tag = 0;
@@ -1430,7 +1553,7 @@ public static class TableJson
         }
         if (IsEnum(f))
         {
-            Span<byte> name = stackalloc byte[MaxKey];
+            Span<byte> name = stackalloc byte[MaxName];
             int nameLength;
             if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
             for (int v = 0; v <= f.EnumMax; v++)
@@ -1452,7 +1575,7 @@ public static class TableJson
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
             ulong bits = 0;
-            Span<byte> name = stackalloc byte[MaxKey];
+            Span<byte> name = stackalloc byte[MaxName];
             for (; ; )
             {
                 byte c = Peek(text, ref input);
@@ -1471,6 +1594,8 @@ public static class TableJson
                     {
                         if (Same(name.Slice(0, nameLength), f.EnumName((ulong)bit)))
                         {
+                            // A KNOWN FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+                            if ((bits & (1ul << bit)) != 0) { return RefuseText(ref input, "duplicate"); }
                             bits |= 1ul << bit;
                             found = true;
                             break;
@@ -1495,19 +1620,30 @@ public static class TableJson
             f.SetRaw(owner, index, 0);
             return true;
         }
-        Span<char> token = stackalloc char[MaxNumber];
+        Span<char> scratch = stackalloc char[MaxNumber];
         int length;
         bool tokenIntegral;
-        if (!ScanNumber(text, ref input, token, out length, out tokenIntegral))
+        if (!ScanNumber(text, ref input, scratch, out length, out tokenIntegral))
         {
             input.Bad = true;
             return false;
         }
-        if (f.GetWide != null) { return ReadWide(token.Slice(0, length), ref input, owner, f, index); }
+        if (length <= scratch.Length)
+        {
+            return ReadNumber(scratch.Slice(0, length), tokenIntegral, ref input, owner, f, index);
+        }
+        return ReadNumber(System.Text.Encoding.ASCII.GetString(text.Slice(input.Pos - length, length)), tokenIntegral, ref input, owner, f, index);
+    }
+
+    // one number token at one field: the token's VALUE decides what lands, not
+    // how many bytes spelled it (§16.2 Numbers).
+    static bool ReadNumber(ReadOnlySpan<char> token, bool tokenIntegral, ref In input, object owner, TableFieldInfo f, int index)
+    {
+        if (f.GetWide != null) { return ReadWide(token, ref input, owner, f, index); }
         if (f.Kind == 10 || f.Kind == 11)
         {
             bool single = f.Kind == 10;
-            double value = TokenDouble(token.Slice(0, length), single);
+            double value = TokenDouble(token, single);
             // A magnitude the field's format cannot hold is the WRONG SHAPE for
             // the kind, and it never reaches storage: 1e400 is not a float64
             // and 1e300 is not a float32. Storing the infinity the conversion
@@ -1548,11 +1684,11 @@ public static class TableJson
         long value2 = 0;
         if (tokenIntegral)
         {
-            value2 = TokenInteger(token.Slice(0, length), isSigned, out saturated);
+            value2 = TokenInteger(token, isSigned, out saturated);
         }
         else
         {
-            double d = TokenDouble(token.Slice(0, length), false);
+            double d = TokenDouble(token, false);
             if (!Finite(d))
             {
                 return RefuseText(ref input, "kind_mismatch");
@@ -1656,9 +1792,9 @@ public static class TableJson
         if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
         if (f.Unbounded)
         {
-            if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
-            if(!TableWire.TextValid(body)){return RefuseText(ref input,"text_holds_zero");}
-            f.EnsureCount(value,body.Length);body.CopyTo(f.GetBuffer(value));f.SetCount(value,body.Length);return true;
+            if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+            if (!TableWire.TextValid(body)) { return RefuseText(ref input, "text_holds_zero"); }
+            f.EnsureCount(value, body.Length); body.CopyTo(f.GetBuffer(value)); f.SetCount(value, body.Length); return true;
         }
         if (f.Kind == 12 && !f.TextList)
         {
@@ -1701,6 +1837,22 @@ public static class TableJson
                 // the field keeps its default and the event is counted
                 return RefuseText(ref input, "kind_mismatch");
             }
+            // The writer's spelling is padded standard base64 with zero pad
+            // bits (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above
+            // accepts decodable unpadded input, so hold the text to that exact
+            // spelling before placing any bytes.
+            bool canonical = symbols % 4 == 0;
+            if (pad == 1)
+            {
+                int last = Base64Decode[body[body.Length - 2]];
+                canonical = last >= 0 && (last & 0x03) == 0;
+            }
+            else if (pad == 2)
+            {
+                int last = Base64Decode[body[body.Length - 3]];
+                canonical = last >= 0 && (last & 0x0f) == 0;
+            }
+            if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
             byte[] storage = f.GetBuffer(value);
             Array.Clear(storage, 0, f.ArrayBound);
             PutCount(value, f, 0);
@@ -1747,7 +1899,7 @@ public static class TableJson
             int words = (f.ArrayBound + 63) / 64;
             Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
             seen.Clear();
-            Span<byte> key = stackalloc byte[MaxKey];
+            Span<byte> key = stackalloc byte[MaxName];
             System.Collections.Generic.HashSet<string> unplaced = null;
             for (; ; )
             {
@@ -1755,7 +1907,7 @@ public static class TableJson
                 if (c == '}') { input.Pos++; break; }
                 if (c == 0) { input.Bad = true; return false; }
                 int keyLength;
-                if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
                 int slot = -1;
@@ -1832,10 +1984,11 @@ public static class TableJson
                 {
                     if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                     if (!ReadScalar(text, ref input, value, f, placed, depth + 1)) { return false; }
-                    if(f.TextTotal>0){
-                        object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
-                        int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                        if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){return false;}
+                    if (f.TextTotal > 0)
+                    {
+                        object child = f.GetChild(value, placed); TableFieldInfo element = f.Table.Fields[0];
+                        int length = element.Optional && !element.GetPresent(child) ? 0 : Count(child, element);
+                        if (!TableWire.TextTotalKeep(f, length, ref textSpent, input.Report)) { return false; }
                     }
                     placed++;
                 }
@@ -1875,7 +2028,7 @@ public static class TableJson
         int words = (info.NumFields + 63) / 64;
         Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
-        Span<byte> key = stackalloc byte[MaxKey];
+        Span<byte> key = stackalloc byte[MaxName];
         System.Collections.Generic.HashSet<string> unknown = null;
         for (; ; )
         {
@@ -1883,7 +2036,7 @@ public static class TableJson
             if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
             if (c == 0) { input.Bad = true; return false; }
             int keyLength;
-            if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+            if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
             input.Pos++;
             int index = -1;
@@ -1986,16 +2139,16 @@ public static class TableJson
             Space(text, ref input);
             if (input.Pos != text.Length) { input.Bad = true; }
         }
-        if (input.Report.Refused) { info.Reset(value); return false; }
+        if (input.Report.Refused) { info.Reset(value); return TextVerdict(ref input, TableWire.Verdict.Refused); }
         if (input.Bad || !ok)
         {
             // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
             // the walk placed before the damage is handed back.
             input.Report.Damaged = true;
             info.Reset(value);
-            return false;
+            return TextVerdict(ref input, TableWire.Verdict.Damaged);
         }
-        return true;
+        return TextVerdict(ref input, TableWire.Verdict.Ok);
     }
 
     public static long Write(object value, TableTypeInfo info, Span<byte> buffer, bool measuring)

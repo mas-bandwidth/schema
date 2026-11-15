@@ -32,7 +32,7 @@ fixed table Holder {
 		t.Errorf("bits(12) does not clamp at 2^12-1 and count:\n%s", body)
 	}
 
-	clamp := csFn(src, "public static void HolderFixedClamp(")
+	clamp := csFn(src, "public static bool HolderFixedClamp(")
 	if clamp == "" {
 		t.Fatal("the root has no bounds entry point")
 	}
@@ -44,7 +44,7 @@ fixed table Holder {
 	if load == "" {
 		t.Fatal("HolderFixedLoad was not emitted")
 	}
-	if !strings.Contains(load, "HolderFixedClamp(values[k], report);") {
+	if !strings.Contains(load, "if (!HolderFixedClamp(values[k], report)) { refused = true; }") {
 		t.Error("the record loop does not run the bounds pass: §5.3 step 11 is hash check, prefill, run, BOUNDS")
 	}
 	run := strings.Index(load, "TableFixedWire.Run(")
@@ -113,7 +113,7 @@ func TestFixedCompiledUnionLandsNoneFirst(t *testing.T) {
 		t.Fatal("the compiler has no union case")
 	}
 	rest := tableFixedWireSource[at:]
-	none := strings.Index(rest, "c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));")
+	none := strings.Index(rest, "c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, their_arms, meta: c.ArgW));")
 	if none < 0 {
 		t.Fatal("the compiled union never lands None: only the guarded arm consts are pushed")
 	}

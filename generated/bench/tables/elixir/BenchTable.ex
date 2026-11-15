@@ -416,7 +416,7 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableHitEvent.t(), non_neg_integer()} | :error
   def read_table_hit_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -528,7 +528,7 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableChatEvent.t(), non_neg_integer()} | :error
   def read_table_chat_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -630,7 +630,7 @@ defmodule Benchtable.BenchTable do
   def read_table_pickup_event_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -835,7 +835,7 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableEvent.t(), non_neg_integer()} | :error
   def read_table_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

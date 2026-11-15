@@ -246,7 +246,10 @@ public final class Ludicrous {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readFixedProbeBits(
             FixedProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -256,7 +259,7 @@ public final class Ludicrous {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 156 > numBits) {
+        if ((long) bitsRead + 156 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
@@ -302,9 +305,21 @@ public final class Ludicrous {
     }
 
     // readFixedProbe decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readFixedProbe(FixedProbe value, byte[] data, int numBits) {
-        return readFixedProbeBits(value, data, 0, numBits) >= 0;
+        final int end = readFixedProbeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type UnsignedProbe
@@ -423,7 +438,10 @@ public final class Ludicrous {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readUnsignedProbeBits(
             UnsignedProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -433,7 +451,7 @@ public final class Ludicrous {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 196 > numBits) {
+        if ((long) bitsRead + 196 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
@@ -484,9 +502,21 @@ public final class Ludicrous {
     }
 
     // readUnsignedProbe decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readUnsignedProbe(UnsignedProbe value, byte[] data, int numBits) {
-        return readUnsignedProbeBits(value, data, 0, numBits) >= 0;
+        final int end = readUnsignedProbeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type WideProbe
@@ -625,7 +655,10 @@ public final class Ludicrous {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readWideProbeBits(WideProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -636,7 +669,7 @@ public final class Ludicrous {
         long v;
         long lo;
         long hi;
-        if (bitsRead + 403 > numBits) {
+        if ((long) bitsRead + 403 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -707,9 +740,21 @@ public final class Ludicrous {
     }
 
     // readWideProbe decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readWideProbe(WideProbe value, byte[] data, int numBits) {
-        return readWideProbeBits(value, data, 0, numBits) >= 0;
+        final int end = readWideProbeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type LudicrousState
@@ -831,7 +876,10 @@ public final class Ludicrous {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readLudicrousStateBits(
             LudicrousState value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -842,7 +890,7 @@ public final class Ludicrous {
         long v;
         long lo;
         long hi;
-        if (bitsRead + 561 > numBits) {
+        if ((long) bitsRead + 561 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -856,7 +904,7 @@ public final class Ludicrous {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -865,7 +913,7 @@ public final class Ludicrous {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.keysCount = (int) v;
-        if (bitsRead + value.keysCount * 128L > numBits) {
+        if ((long) bitsRead + value.keysCount * 128L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.keysCount; i0++) {
@@ -883,14 +931,14 @@ public final class Ludicrous {
             hi |= v << 32;
             value.keys[i0] = new UInt128(hi, lo);
         }
-        if (bitsRead + 1 > numBits) {
+        if ((long) bitsRead + 1 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.hasTarget = v != 0;
         if (value.hasTarget) {
-            if (bitsRead + 128 > numBits) {
+            if ((long) bitsRead + 128 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -913,9 +961,21 @@ public final class Ludicrous {
     }
 
     // readLudicrousState decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readLudicrousState(LudicrousState value, byte[] data, int numBits) {
-        return readLudicrousStateBits(value, data, 0, numBits) >= 0;
+        final int end = readLudicrousStateBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type DegenerateProbe
@@ -996,7 +1056,10 @@ public final class Ludicrous {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDegenerateProbeBits(
             DegenerateProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1005,7 +1068,7 @@ public final class Ludicrous {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 8 > numBits) {
+        if ((long) bitsRead + 8 > numBits) {
             return -1;
         }
         value.lockedFixed = -196608;
@@ -1018,9 +1081,21 @@ public final class Ludicrous {
     }
 
     // readDegenerateProbe decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDegenerateProbe(DegenerateProbe value, byte[] data, int numBits) {
-        return readDegenerateProbeBits(value, data, 0, numBits) >= 0;
+        final int end = readDegenerateProbeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type FixedVec
@@ -1115,7 +1190,10 @@ public final class Ludicrous {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readFixedVecBits(FixedVec value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1125,7 +1203,7 @@ public final class Ludicrous {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 102 > numBits) {
+        if ((long) bitsRead + 102 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1162,9 +1240,21 @@ public final class Ludicrous {
     }
 
     // readFixedVec decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readFixedVec(FixedVec value, byte[] data, int numBits) {
-        return readFixedVecBits(value, data, 0, numBits) >= 0;
+        final int end = readFixedVecBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type FixedQuat
@@ -1252,7 +1342,10 @@ public final class Ludicrous {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readFixedQuatBits(FixedQuat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1261,7 +1354,7 @@ public final class Ludicrous {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1292,8 +1385,20 @@ public final class Ludicrous {
     }
 
     // readFixedQuat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readFixedQuat(FixedQuat value, byte[] data, int numBits) {
-        return readFixedQuatBits(value, data, 0, numBits) >= 0;
+        final int end = readFixedQuatBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

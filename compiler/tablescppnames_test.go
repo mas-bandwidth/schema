@@ -107,6 +107,7 @@ func cppCorpus(t *testing.T) (files map[string][]byte, packages map[string]strin
 // vocabulary is declared in. The scan recognises no declaration syntax, so the
 // only mistake it can make is to over-collect, and that mistake is safe.
 func TestCppTableRuntimeNamesAreClaimed(t *testing.T) {
+	t.Parallel()
 	files, _ := cppCorpus(t)
 	emitted := cppEmittedNames(files)
 	if len(emitted) == 0 {

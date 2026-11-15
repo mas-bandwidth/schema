@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // at every field, literal constant widths and masks, monomorphic
@@ -35,7 +35,7 @@ public final class Constants {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long PROTOCOL_ID = 0xeb26c970fde3fd71L;
+    public static final long PROTOCOL_ID = 0xf35accd0582cdd84L;
 
     public static final int POSITION_UNITS = 1024;
 

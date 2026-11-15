@@ -13,6 +13,7 @@ import (
 // this emitter. The native BEAM probe also checks empty roots, strict refusal of out-of-range values and
 // wrong root shapes rather than crediting declarations or successful compile.
 func TestArrayRootElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir array-root runtime")
 	bin := elixirBinary(t)
 	u := unitFrom(t, `package featurewitnesses

@@ -6,25 +6,32 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// The bool kind: one wire bit, a Ref[bool], and a write that refuses an int.
+// The bool kind: one wire bit, a reusable Ref[bool], and a write that refuses
+// an int.
 func init() {
 	registerKind(&kindEmitter{
 		name: "bool",
 		read: func(c *emitCtx, f *ir.Field, target string) {
-			local := c.local()
-			c.m.needSerialize("Ref")
-			c.line("%s = Ref(False)", local)
-			c.line("if not stream.serialize_bool(%s):", local)
+			rb := c.ref("_s_rb", "False")
+			op := c.streamOp("serialize_bool")
+			c.line("if not %s(%s):", op, rb)
 			c.line("    return False")
-			c.line("%s = %s.value", target, local)
+			c.line("%s = %s.value", target, rb)
 		},
 		write: func(c *emitCtx, f *ir.Field, expr string) {
-			c.m.needSerialize("Ref")
-			c.line("stream.serialize_bool(Ref(%s))", expr)
+			rb := c.ref("_s_rb", "False")
+			op := c.streamOp("serialize_bool")
+			c.line("%s.value = %s", rb, expr)
+			c.line("%s(%s)", op, rb)
 		},
 		validate: func(c *emitCtx, f *ir.Field, expr, path string) {
 			c.m.needSchema("validate_bool")
-			c.line("validate_bool(%s, %s)", expr, fieldPath(path, f.Name))
+			tp := c.bind("_s_type", "type")
+			bt := c.bind("_s_bool", "bool")
+			v := c.local()
+			c.line("%s = %s", v, expr)
+			c.line("if %s(%s) is not %s:", tp, v, bt)
+			c.line("    validate_bool(%s, %s)", v, fieldPath(path, f.Name))
 		},
 		zero: func(c *emitCtx, f *ir.Field, target string) {
 			c.line("%s = False", target)

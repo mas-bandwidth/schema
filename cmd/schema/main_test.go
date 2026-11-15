@@ -307,11 +307,11 @@ func TestSubprocessTestsAreGated(t *testing.T) {
 		t.Fatal("buildCLI not found")
 	}
 	rest := text[start:]
-	end := strings.Index(rest, "\n}\n")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "\n}\n")
+	if !ok {
 		t.Fatal("buildCLI body not found")
 	}
-	if !strings.Contains(rest[:end], "slowtest.Gate(") {
+	if !strings.Contains(before, "slowtest.Gate(") {
 		t.Errorf("buildCLI spawns a subprocess but does not call slowtest.Gate")
 	}
 }

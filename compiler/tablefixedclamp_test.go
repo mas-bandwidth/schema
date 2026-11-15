@@ -75,6 +75,7 @@ func extractFn(src, name string) string {
 }
 
 func TestCppTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
+	t.Parallel()
 	without, files := deadCppHeader(t, clampTagOnlySrc)
 	body := extractFn(without, "CfgFixedClampBody")
 	if !strings.Contains(body, "value.effect.type = EffectType::None") {

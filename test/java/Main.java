@@ -602,9 +602,9 @@ public final class Main {
 
         expectAssert(() -> {
             final Types.ShipCreate bad = new Types.ShipCreate();
-            bad.shipType = 99; // enum headroom above the wire range
+            bad.shipType = 99; // an enum value above the wire range
             Types.writeShipCreate(bad, writeBuf);
-        }, "enum headroom above the wire range must trip the writer contract");
+        }, "an enum value above the wire range must trip the writer contract");
     }
 
     static void testNames() {
@@ -617,7 +617,7 @@ public final class Main {
         check(Enums.flagNamesShipFlags(Enums.SHIP_FLAGS_AIMING | (1L << 63))
                 .equals("Aiming|0x8000000000000000"), "flagNames renders unknown high bits as hex");
         check(Wire.enumNameWeapon(Wire.Weapon.RAILGUN).equals("Railgun"), "enumName names a variant");
-        check(Wire.enumNameWeapon(15).equals("???"), "enumName is headroom-safe");
+        check(Wire.enumNameWeapon(16).equals("???"), "enumName is out-of-range safe");
     }
 
     static void testBenchCorpus() {

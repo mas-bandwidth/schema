@@ -38,6 +38,7 @@ table Root
 `
 
 func TestCppTableOmitsEmptyTypeIdSwitch(t *testing.T) {
+	t.Parallel()
 	empty, files := deadCppHeader(t, emptyNodeSrc)
 	// The cycle check also dispatches the root itself, so a root-only switch
 	// with a case is valid. C4065 is specifically a switch with no case.

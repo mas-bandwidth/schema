@@ -203,6 +203,11 @@ impl<'a> TableVocabulary<'a> {
 
 // ---- the read ---------------------------------------------------------------
 
+/// The reader's id-table distinctness bound and open-addressing probe capacity
+/// (docs/SPEC-TABLES.md §3).
+const ID_TABLE_PROBE_BOUND: usize = 4096;
+const ID_TABLE_PROBE_SLOTS: usize = 8192;
+
 /// The announcement's byte count and the copy that hands it out (§3.3): both
 /// are the constant, never a walk. Nothing here allocates.
 pub fn announce_measure() -> usize {
@@ -269,14 +274,35 @@ fn announce_read_once(
         report.damaged = true;
         return false;
     }
+    // "THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format
+    // fact" (§3): the announcement is an ordinary form-1 FILE, so a reader
+    // refuses an id table over 4096 whatever the buffer would hold, before any
+    // distinctness work.
+    if trailer_count > ID_TABLE_PROBE_BOUND as u64 {
+        report.damaged = true;
+        return false;
+    }
     let end = data.len() - 8 - (trailer_count as usize) * 8;
-    // "a table carrying one id twice" is the whole wire malformed (§3.3).
-    for i in 0..trailer_count {
-        for j in 0..i {
-            if read_u64(data, end + (i as usize) * 8) == read_u64(data, end + (j as usize) * 8) {
+    // "a table carrying one id twice" is the whole wire malformed (§3.3),
+    // proved with the open-addressing probe over a fixed 8192-slot stack table
+    // rather than a pairwise scan (§3).
+    let mut probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];
+    let mut probe_used = [0u64; ID_TABLE_PROBE_SLOTS / 64];
+    for i in 0..trailer_count as usize {
+        let id = read_u64(data, end + i * 8);
+        let mut h = ((id.wrapping_mul(0x9e3779b97f4a7c15) >> 51) as usize) & (ID_TABLE_PROBE_SLOTS - 1);
+        loop {
+            let bit = 1u64 << (h & 63);
+            if (probe_used[h >> 6] & bit) == 0 {
+                probe_used[h >> 6] |= bit;
+                probe_slots[h] = id;
+                break;
+            }
+            if probe_slots[h] == id {
                 report.damaged = true;
                 return false;
             }
+            h = (h + 1) & (ID_TABLE_PROBE_SLOTS - 1);
         }
     }
     let body = &data[1..end];
@@ -331,7 +357,7 @@ fn announce_read_once(
                 return false;
             }
             let (framed, ok) = read_leb(body, &mut at);
-            if !ok || at + (framed as usize) > body.len() {
+            if !ok || at > body.len() || framed > (body.len() - at) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -344,7 +370,7 @@ fn announce_read_once(
             }
             let mut vat = begin + 1;
             let (length, ok) = read_leb(body, &mut vat);
-            if !ok || vat + (length as usize) != end_at {
+            if !ok || vat > end_at || length != (end_at - vat) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -534,12 +560,12 @@ fn kind_bits(kind: u8) -> u64 {
 /// (§3.3): the step count, the delta and the width. False is a non-conforming
 /// triple, which on the announcement is a hostile width.
 fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
-    if qmin.is_nan() || qmax.is_nan() || qmin >= qmax || qres.is_nan() || qres <= 0.0 {
+    if !qmin.is_finite() || !qmax.is_finite() || !qres.is_finite() || qmin >= qmax || qres <= 0.0 {
         return (0, 0.0, 0, false);
     }
     let delta = qmax - qmin;
     let mut values = delta / qres;
-    if delta.is_nan() || values.is_nan() {
+    if !delta.is_finite() || !values.is_finite() {
         return (0, 0.0, 0, false);
     }
     if values.is_nan() || values < 1.0 {
@@ -719,7 +745,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         // wide string's length is its BYTE count (§3).
         12 | 13 | 14 | 16 | 31 | 32 => {
             let (n, ok) = read_leb(bytes, at);
-            if !ok || *at + (n as usize) > bytes.len() {
+            if !ok || n > (bytes.len() - *at) as u64 {
                 return false;
             }
             *at += n as usize;
@@ -740,7 +766,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
             }
             *at += 1;
             let (n, ok) = read_leb(bytes, at);
-            if !ok || *at + (n as usize) > bytes.len() {
+            if !ok || n > (bytes.len() - *at) as u64 {
                 return false;
             }
             *at += n as usize;
@@ -1053,7 +1079,13 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             if !r.align() {
                 return false;
             }
-            r.skip(n * 8)
+            let start = (r.offset / 8) as usize;
+            if !r.skip(n * 8) {
+                return false;
+            }
+            // a skipped string's bytes are held to the text rule a named read
+            // applies to them, and ill-formed text is damage (§3.3, §4)
+            table_message_utf8(&r.buffer[start..start + n as usize])
         }
         31 => {
             if !r.align() {
@@ -1078,12 +1110,26 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 }
                 return r.skip(n * w);
             }
-            for _ in 0..n {
+            for i in 0..n {
                 if e.kind == 16 && !r.skip(v.ref_bits as u64) {
                     return false;
                 }
+                let at = r.offset;
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
+                }
+                // A WALKED ELEMENT THAT CONSUMED NO BITS — a nested array
+                // whose inner run is itself zero-width — is the same run in a
+                // shape the arithmetic above cannot see (§3.3). Every element
+                // after it consumes nothing too, so the rest of the run is
+                // stepped in one, and a remaining count the bits left could
+                // not back is damage. The walk is bounded by the batch's bits
+                // whatever the count says.
+                if r.offset == at {
+                    if n - i - 1 > (r.buffer.len() as u64) * 8 - r.offset {
+                        return false;
+                    }
+                    return true;
                 }
             }
             true

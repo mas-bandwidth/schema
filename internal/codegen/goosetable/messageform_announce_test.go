@@ -40,8 +40,7 @@ func goAnnounceVerdict(data []byte, maxEntries int) string {
 	err := v.AnnounceRead(data, &rep)
 	reason := "ok"
 	if err != nil {
-		var refusal *tablewire.MessageRefusal
-		if errors.As(err, &refusal) {
+		if refusal, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
 			reason = refusal.Reason.String()
 		} else if !tablewire.ReadRefusal(err) {
 			return "error " + err.Error()

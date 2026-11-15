@@ -125,6 +125,8 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
 
       # the .NET SDK, from the pin every C# project's TargetFramework
       # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
@@ -375,6 +377,8 @@ jobs:
           cache: false
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
 
       # the .NET SDK, from the pin every C# project's TargetFramework
       # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
@@ -546,6 +550,8 @@ jobs:
       # always have.
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
 
       # the .NET SDK, from the pin every C# project's TargetFramework
       # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
@@ -819,6 +825,8 @@ jobs:
       # way ci.yml's leg and the conformance matrix key theirs. A base row names
       # none of them and installs none of them.
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - name: read the .NET SDK pin
@@ -905,22 +913,29 @@ jobs:
       # ONE make invocation for the whole group, with -k so a control that
       # refuses does not hide the ones behind it, and the same log scan ci.yml
       # runs: a control's own refusal lines are the sentence a reader needs, and
-      # this pulls them out of a log thousands of compiler lines long.
+      # this pulls them out of a log thousands of compiler lines long. The
+      # refusals, the cause lines and the streamed log are ci-full.yml's; the
+      # block on its step says why each is what it is.
       - name: every negative control in the ${{ matrix.name }} group
         run: |
           set -o pipefail
           targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
           echo "$targets" | tr ' ' '\n'
+          refusal='^NEGATIVE CONTROL( FAILED)?:|^sabotage[ :]'
+          cause="$refusal"'|\*\*\* \[|^FAIL|--- FAIL'
           status=0
+          : >controls.log
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            >controls.log 2>&1 || status=1
-          cat controls.log
-          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            2>&1 | awk '{ print; fflush(); print > "controls.log" }' || status=1
+          if grep -qE "$refusal" controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
-            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
             status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "the cause, as controls.log names it:"
+            grep -nE "$cause" controls.log || echo "no refusal or failure line in controls.log; read the log above"
           fi
           exit $status
 

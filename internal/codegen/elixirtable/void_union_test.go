@@ -15,6 +15,7 @@ import (
 )
 
 func TestElixirVoidUnionNative(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "native void union compilation and round trips")
 	elixirBin := elixirBinary(t)
 	strict, err := filepath.Abs("../../../make/elixir-strict.sh")

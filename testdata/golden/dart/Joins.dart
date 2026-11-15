@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import 'dart:typed_data';
 
@@ -80,11 +80,12 @@ int writeArmsAgree(ArmsAgree value, ByteData view) {
 }
 
 // readArmsAgree decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArmsAgree(ArmsAgree value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -144,6 +145,17 @@ bool readArmsAgree(ArmsAgree value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -219,11 +231,12 @@ int writeArmsDisagree(ArmsDisagree value, ByteData view) {
 }
 
 // readArmsDisagree decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArmsDisagree(ArmsDisagree value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -292,6 +305,17 @@ bool readArmsDisagree(ArmsDisagree value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -357,11 +381,12 @@ int writeArmEmpty(ArmEmpty value, ByteData view) {
 }
 
 // readArmEmpty decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArmEmpty(ArmEmpty value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -418,6 +443,17 @@ bool readArmEmpty(ArmEmpty value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -514,11 +550,12 @@ int writeArmsNested(ArmsNested value, ByteData view) {
 }
 
 // readArmsNested decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -618,6 +655,17 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
   v = window & 0x3f;
   bitsRead += 6;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -740,11 +788,12 @@ int writeArmAlign(ArmAlign value, ByteData view) {
 }
 
 // readArmAlign decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArmAlign(ArmAlign value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -847,6 +896,17 @@ bool readArmAlign(ArmAlign value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -973,11 +1033,12 @@ int writeArmArray(ArmArray value, ByteData view) {
 }
 
 // readArmArray decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArmArray(ArmArray value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1084,6 +1145,17 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1128,11 +1200,12 @@ int writeNarrow(Narrow value, ByteData view) {
 }
 
 // readNarrow decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readNarrow(Narrow value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1160,6 +1233,17 @@ bool readNarrow(Narrow value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   value.n = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1204,11 +1288,12 @@ int writeWide(Wide value, ByteData view) {
 }
 
 // readWide decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readWide(Wide value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1236,6 +1321,17 @@ bool readWide(Wide value, ByteData view, int numBits) {
   lo = window & 0x1fffffffff;
   bitsRead += 37;
   value.w = lo;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1316,11 +1412,12 @@ int writeUneven(Uneven value, ByteData view) {
 }
 
 // readUneven decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readUneven(Uneven value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1379,6 +1476,17 @@ bool readUneven(Uneven value, ByteData view, int numBits) {
       lo = window & 0x1fffffffff;
       bitsRead += 37;
       value.wide.w = lo;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -1445,11 +1553,12 @@ int writeHoldsUneven(HoldsUneven value, ByteData view) {
 }
 
 // readHoldsUneven decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readHoldsUneven(HoldsUneven value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1526,6 +1635,17 @@ bool readHoldsUneven(HoldsUneven value, ByteData view, int numBits) {
   v = window & 0x7ff;
   bitsRead += 11;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1630,11 +1750,12 @@ int writeArrUneven(ArrUneven value, ByteData view) {
 }
 
 // readArrUneven decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1725,6 +1846,17 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1906,11 +2038,12 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
 }
 
 // readRegainAfterAlign decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2050,5 +2183,16 @@ bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
   v = (window >>> 48) & 0xf;
   bitsRead += 4;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
