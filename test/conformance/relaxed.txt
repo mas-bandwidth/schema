@@ -143,7 +143,6 @@ squirrel cook-write root_full-be relax/cook-dead-slots-zero-ports
 # str-zero-escape-unknown-key, and write-refusal-json jref_zero_byte, to
 # refused (json-base64-canonical, skipped-value-is-validated, the text writer
 # refuses a zero byte); these legs still read or write them.
-c json-hostile str-zero-escape-unknown-key relax/hostile-rows-c
 cpp json-hostile base64-unpadded relax/hostile-rows-cpp
 cpp json-hostile str-zero-escape-unknown-key relax/hostile-rows-cpp
 cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs
