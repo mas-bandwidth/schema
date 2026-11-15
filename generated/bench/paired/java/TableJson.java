@@ -52,6 +52,11 @@ public final class TableJson {
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
                     if (names[i].equals(name)) {
+                        // A KNOWN VARIANT NAMED TWICE refuses the read, as a repeated
+                        // key does (docs/SPEC-TABLES.md §16.2).
+                        if ((bits & (1L << i)) != 0) {
+                            in.rep.refuse("text_damaged");
+                        }
                         bits |= 1L << i;
                         found = true;
                         break;
@@ -281,6 +286,7 @@ public final class TableJson {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
+            assert c != 0 : "zero byte is not text";
             switch (c) {
                 case '"':
                     b.append("\\\"");

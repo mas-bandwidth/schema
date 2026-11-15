@@ -21,7 +21,7 @@
 //
 // -gotable-extras adds the two make rows go-test-touched has always run when
 // gotable is selected (schema#1376): tables-go-fixedform and
-// conformance-go-rows, each a row of its own.
+// conformance-go-rows-a and -b, each a row of its own.
 //
 // The table is .github/go-test-rows.txt; it says how it was measured.
 package main
@@ -75,7 +75,9 @@ func main() {
 	}
 	rows := plan(t, pkgs, *short, *budget)
 	if *extras {
-		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows"})
+		// the two conformance halves are rows of their own: whole, the target ran
+		// 156 s on a loaded bench, past the two-minute cap
+		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows-a"}, Row{Make: "conformance-go-rows-b"})
 	}
 	for i := range rows {
 		rows[i].Row = fmt.Sprintf("%d/%d", i+1, len(rows))

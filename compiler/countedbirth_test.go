@@ -123,7 +123,7 @@ var assertsInDebug = map[string][]string{
 	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
-	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
+	"lobster": {"assert v·.WindowCount >= 2 and v·.WindowCount <= 8"},
 	"rust":    {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
@@ -161,7 +161,7 @@ var goneFromRelease = map[string][]string{
 	"cs":      {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 	"dart":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"java":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"lobster": {"if v.WindowCount < 2 or v.WindowCount > 8: return false"},
+	"lobster": {"if v·.WindowCount < 2 or v·.WindowCount > 8: return false"},
 	"rust":    {"if value.window_count < 2 || value.window_count > 8 {"},
 }
 

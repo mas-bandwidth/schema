@@ -449,7 +449,6 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 	g.usesTypeData = true
 	g.resetFn()
 	g.emitReadItems(items, "value", "  ", false)
-	g.emitReadEnd()
 	body := g.fn.String()
 
 	g.bpf("// read%s decodes value from the first numBits of view — the family read\n", name)
@@ -457,8 +456,23 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 	g.bpf("// and a whole byte or unused final-byte bits left after the object);\n")
 	g.bpf("// hostile bytes never throw. No slack past the payload is required.\n")
 	g.emitSignature("bool", "read"+name, []string{name + " value", "ByteData view", "int numBits"})
+	g.bpf("  final bitsRead = read%sBits(value, view, numBits, 0);\n", name)
+	g.bpf("  if (bitsRead < 0) return false;\n")
+	g.emitReadEnd()
+	g.bpf("  return true;\n")
+	g.bpf("}\n\n")
+
+	g.bpf("// read%sBits decodes value starting at bit bitOffset of view, reading no\n", name)
+	g.bpf("// further than numBits, and returns the bits it consumed (SPEC §5) — or -1\n")
+	g.bpf("// when it refuses the wire, exactly as read%s does. It is the framing\n", name)
+	g.bpf("// entry: it runs no end-of-packet check, so several objects read in turn\n")
+	g.bpf("// from one buffer, each at the previous offset plus its bits consumed.\n")
+	g.emitSignature("int", "read"+name+"Bits", []string{name + " value", "ByteData view", "int numBits", "int bitOffset"})
 	g.bpf("  if (numBits < 0 || numBits > view.lengthInBytes * 8) {\n")
-	g.bpf("    return false; // a read faces untrusted wire: refuse negative or past-buffer counts\n")
+	g.bpf("    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts\n")
+	g.bpf("  }\n")
+	g.bpf("  if (bitOffset < 0 || bitOffset > numBits) {\n")
+	g.bpf("    return -1; // the start lies inside the bits the caller vouches for\n")
 	g.bpf("  }\n")
 	if g.usesRead {
 		g.bpf("  // the final 64-bit window, assembled once so every load stays inside\n")
@@ -474,7 +488,11 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("    }\n")
 		g.bpf("  }\n")
 	}
-	g.bpf("  var bitsRead = 0;\n")
+	// an empty body reads nothing and returns 0, so it declares no cursor
+	// (the strict analyze gate refuses an unused local)
+	if g.usesRead || strings.Contains(body, "bitsRead") {
+		g.bpf("  var bitsRead = bitOffset;\n")
+	}
 	if g.usesRead {
 		g.bpf("  var window = 0;\n")
 	}
@@ -488,27 +506,28 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("  var hi = 0;\n")
 	}
 	g.body.WriteString(body)
-	g.bpf("  return true;\n")
+	if g.usesRead {
+		g.bpf("  return bitsRead - bitOffset;\n")
+	} else {
+		g.bpf("  return 0; // empty body — presence is the payload (SPEC §4.6)\n")
+	}
 	g.bpf("}\n\n")
 }
 
-// emitReadEnd closes a read function with the packet end check (SPEC §5):
-// after the top-level object, the bits consumed rounded up to a whole byte
-// equal the length the read was given, and the final byte's unused bits are
-// zero. A nested type is inlined into this body, so the check runs once, at
-// the end of the public one-packet read, and never inside a nested read.
+// emitReadEnd closes the public one-packet read with the packet end check
+// (SPEC §5). The framing read reports consumed bits without ending the packet.
 func (g *gen) emitReadEnd() {
-	g.pf("  final endByte = (numBits + 7) >>> 3;\n")
-	g.pf("  if (((bitsRead + 7) >>> 3) != endByte) {\n")
-	g.pf("    return false; // a whole byte is left after the object (SPEC §5)\n")
-	g.pf("  }\n")
-	g.pf("  if (bitsRead < endByte * 8) {\n")
-	g.pf("    final unusedBits = endByte * 8 - bitsRead;\n")
-	g.pf("    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);\n")
-	g.pf("    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {\n")
-	g.pf("      return false; // non-zero unused bits in the final byte (SPEC §5)\n")
-	g.pf("    }\n")
-	g.pf("  }\n")
+	g.bpf("  final endByte = (numBits + 7) >>> 3;\n")
+	g.bpf("  if (((bitsRead + 7) >>> 3) != endByte) {\n")
+	g.bpf("    return false; // a whole byte is left after the object (SPEC §5)\n")
+	g.bpf("  }\n")
+	g.bpf("  if (bitsRead < endByte * 8) {\n")
+	g.bpf("    final unusedBits = endByte * 8 - bitsRead;\n")
+	g.bpf("    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);\n")
+	g.bpf("    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {\n")
+	g.bpf("      return false; // non-zero unused bits in the final byte (SPEC §5)\n")
+	g.bpf("    }\n")
+	g.bpf("  }\n")
 }
 
 // emitZeroFunction emits the §5 zero form for a class — all-zero storage,
@@ -793,6 +812,26 @@ func (g *gen) emitWriteWide64(expr string, bits int64, ind string) {
 	g.chunkAdd(maskedPiece(expr, bits), bits, ind)
 }
 
+// emitBitsWidthAssert asserts a bits(N) value is in [0, 2^N - 1] when the
+// Dart storage can hold a wider one (SPEC §5.1 row 2). A scalar, and a field
+// of an array element, is a bit-transparent int: 64 bits. A bits array
+// element sits in a Uint32List when N <= 32 and a Uint64List otherwise.
+// Storage that holds exactly N bits gets no assert. The mask on the write
+// stays; the assert is debug-only, like the other write asserts.
+func (g *gen) emitBitsWidthAssert(f *ir.Field, name, ind string) {
+	w := int64(f.Type.Width)
+	storage := int64(64)
+	if f.Array != ir.ArrayNone && w <= 32 {
+		storage = 32
+	}
+	if w >= storage {
+		return
+	}
+	hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+	g.pf("%sassert(%s >= 0);\n", ind, name)
+	g.pf("%sassert(%s <= %s);\n", ind, name, dartIntLit(hi))
+}
+
 // emitWriteWide128 queues the low `bits` bits (1..128) of a (hi, lo) pair
 // expression: the lo lane, then the hi remainder — 32-bit groups least
 // significant first on the wire, exactly as before, because each lane's
@@ -814,6 +853,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
+		g.emitBitsWidthAssert(f, name, ind)
 		g.emitWriteWide64(name, int64(f.Type.Width), ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
@@ -873,7 +913,7 @@ func (g *gen) emitWriteFloat32Bits(name, ind string) {
 // the subnormals included.
 func (g *gen) emitReadFloat32Bits(name, ind string) {
 	g.pf("%sif ((v & 0x7f800000) == 0x7f800000) {\n", ind)
-	g.pf("%s  return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)\n", ind)
+	g.pf("%s  return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)\n", ind)
 	g.pf("%s}\n", ind)
 	g.pf("%sSchema.u32[0] = v;\n", ind)
 	g.pf("%s%s = Schema.f32[0];\n", ind, name)
@@ -886,18 +926,21 @@ func f32lit(v float64) string {
 }
 
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization
-// with the declaration folded: round to float32, normalize, clamp (which
-// also grounds NaN), quantize — every step through _fround (SPEC §4.3).
+// with the declaration folded: round to float32, check the value is finite and
+// inside [min, max], normalize, clamp, quantize — every step through _fround
+// (SPEC §4.3, §5.1 row 10).
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind) // statement-form merge: v is computed in a block
 	g.useRuntime()
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
-	deltaF := float32(f.FMax) - minF
+	maxF := float32(f.FMax)
+	deltaF := maxF - minF
 	mivF := float32(maxInt)
 	g.pf("%s{\n", ind)
 	g.pf("%s  final x = Schema.fround(%s);\n", ind, name)
 	g.pf("%s  assert(x.isFinite);\n", ind)
+	g.pf("%s  assert(x >= %s && x <= %s); // SPEC §5.1 row 10\n", ind, f32lit(float64(minF)), f32lit(float64(maxF)))
 	// x - min, spelled exactly: subtracting a negative min is adding its
 	// magnitude, and x - 0.0 is x itself (already a float32, -0.0 included)
 	shifted := "x"
@@ -1049,6 +1092,30 @@ func (g *gen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	g.assertRange(length, big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+	if f.Type.Kind == ir.TString {
+		g.useRuntime()
+		check := fmt.Sprintf("%sassert(Schema.utf8Valid(%s, %s));", ind, name, length)
+		if len(check) <= 80 {
+			g.pf("%s\n", check)
+		} else {
+			g.pf("%sassert(\n%s  Schema.utf8Valid(\n%s    %s,\n%s    %s,\n%s  ),\n%s);\n",
+				ind, ind, ind, name, ind, length, ind, ind)
+		}
+		g.pf("%s// an interior null is content the write refuses (SPEC §4.7)\n", ind)
+		iv := fmt.Sprintf("i%d", g.loopDepth)
+		g.loopDepth++
+		hi := g.scratchHi
+		g.emitByteReadLoop(ind, iv, length)
+		g.scratchHi = hi
+		one := fmt.Sprintf("%s  assert(%s[%s] != 0);", ind, name, iv)
+		if len(one) <= 80 {
+			g.pf("%s\n", one)
+		} else {
+			g.pf("%s  assert(\n%s    %s[%s] != 0,\n%s  );\n", ind, ind, name, iv, ind)
+		}
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	}
 	g.emitWriteOffset(length, big.NewInt(0), big.NewInt(f.Type.Size), ind)
 	g.emitWriteAlign(ind)
 	g.emitWriteByteRun(f, name, length, f.Type.Size, false, ind)
@@ -1214,7 +1281,7 @@ func (g *gen) emitReadItems(items []ir.Item, path, ind string, bounded bool) {
 				j++
 			}
 			if !bounded && total > 0 {
-				g.pf("%sif (bitsRead + %d > numBits) {\n%s  return false;\n%s}\n", ind, total, ind, ind)
+				g.pf("%sif (bitsRead + %d > numBits) {\n%s  return -1;\n%s}\n", ind, total, ind, ind)
 			}
 			for ; i < j; i++ {
 				g.emitReadStaticItem(items[i], path, ind)
@@ -1290,10 +1357,10 @@ func (g *gen) emitReadAlign(ind string) {
 	g.pf("%s  final pad = bitsRead & 7;\n", ind)
 	g.pf("%s  if (pad != 0) {\n", ind)
 	g.pf("%s    if (bitsRead + (8 - pad) > numBits) {\n", ind)
-	g.pf("%s      return false;\n", ind)
+	g.pf("%s      return -1;\n", ind)
 	g.pf("%s    }\n", ind)
 	g.pf("%s    if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {\n", ind)
-	g.pf("%s      return false; // nonzero padding is refused (SPEC §4.3)\n", ind)
+	g.pf("%s      return -1; // nonzero padding is refused (SPEC §4.3)\n", ind)
 	g.pf("%s    }\n", ind)
 	g.pf("%s    bitsRead += 8 - pad;\n", ind)
 	g.pf("%s  }\n", ind)
@@ -1309,11 +1376,11 @@ func (g *gen) emitReadRaw(value *big.Int, bits int64, isConst bool, ind string) 
 	masked := new(big.Int).And(value, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
 	if bits <= 32 {
 		g.readR(bits, ind)
-		g.pf("%sif (v != %s) {\n%s  return false; // %s (SPEC §4.3)\n%s}\n", ind, dartIntLit(masked), ind, what, ind)
+		g.pf("%sif (v != %s) {\n%s  return -1; // %s (SPEC §4.3)\n%s}\n", ind, dartIntLit(masked), ind, what, ind)
 		return
 	}
 	g.emitReadWide64(bits, ind)
-	g.pf("%sif (lo != %s) {\n%s  return false; // %s (SPEC §4.3)\n%s}\n", ind, dartIntLit(masked), ind, what, ind)
+	g.pf("%sif (lo != %s) {\n%s  return -1; // %s (SPEC §4.3)\n%s}\n", ind, dartIntLit(masked), ind, what, ind)
 }
 
 func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
@@ -1381,11 +1448,11 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		count := name + "Count"
 		countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
 		if countBits > 0 {
-			g.pf("%sif (bitsRead + %d > numBits) {\n%s  return false;\n%s}\n", ind, countBits, ind, ind)
+			g.pf("%sif (bitsRead + %d > numBits) {\n%s  return -1;\n%s}\n", ind, countBits, ind, ind)
 			g.readR(countBits, ind)
 			diff := f.ArrayBound - f.ArrayMin
 			if diff != (int64(1)<<countBits)-1 {
-				g.pf("%sif (v > %d) {\n%s  return false; // the count guards the loop — reject, never clamp\n%s}\n", ind, diff, ind, ind)
+				g.pf("%sif (v > %d) {\n%s  return -1; // the count guards the loop — reject, never clamp\n%s}\n", ind, diff, ind, ind)
 			}
 			if f.ArrayMin == 0 {
 				g.pf("%s%s = v;\n", ind, count)
@@ -1400,7 +1467,7 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		g.invalidateWindow()
 		if elemBits, ok := g.staticBitsScalar(f); ok {
 			if elemBits > 0 {
-				g.pf("%sif (bitsRead + %s * %d > numBits) {\n%s  return false;\n%s}\n", ind, count, elemBits, ind, ind)
+				g.pf("%sif (bitsRead + %s * %d > numBits) {\n%s  return -1;\n%s}\n", ind, count, elemBits, ind, ind)
 			}
 			if k := groupK(elemBits, 57); k >= 2 {
 				// grouped: k elements per iteration share one window load
@@ -1460,10 +1527,10 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-	g.pf("%sif (bitsRead + %d > numBits) {\n%s  return false;\n%s}\n", ind, lenBits, ind, ind)
+	g.pf("%sif (bitsRead + %d > numBits) {\n%s  return -1;\n%s}\n", ind, lenBits, ind, ind)
 	g.readR(lenBits, ind)
 	if f.Type.Size != (int64(1)<<lenBits)-1 {
-		g.pf("%sif (v > %d) {\n%s  return false; // the length guards the slice — reject, never clamp\n%s}\n", ind, f.Type.Size, ind, ind)
+		g.pf("%sif (v > %d) {\n%s  return -1; // the length guards the slice — reject, never clamp\n%s}\n", ind, f.Type.Size, ind, ind)
 	}
 	g.pf("%s%s = v;\n", ind, length)
 	g.emitReadAlign(ind)
@@ -1473,7 +1540,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	} else {
 		g.pf("%sif (bitsRead + %s * 8 >\n%s    numBits) {\n", ind, length, ind)
 	}
-	g.pf("%s  return false;\n%s}\n", ind, ind)
+	g.pf("%s  return -1;\n%s}\n", ind, ind)
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
 	g.pf("%s{\n", ind)
@@ -1497,10 +1564,10 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 		} else {
 			g.pf("%sif (!Schema.utf8Valid(\n%s  %s,\n%s  %s,\n%s)) {\n", ind, ind, name, ind, length, ind)
 		}
-		g.pf("%s  return false;\n%s}\n", ind, ind)
+		g.pf("%s  return -1;\n%s}\n", ind, ind)
 		g.emitByteReadLoop(ind, iv, length)
 		g.pf("%s  if (%s[%s] == 0) {\n", ind, name, iv)
-		g.pf("%s    return false; // an interior null is content the read refuses (SPEC §4.7)\n", ind)
+		g.pf("%s    return -1; // an interior null is content the read refuses (SPEC §4.7)\n", ind)
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 	}
@@ -1599,7 +1666,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		// an all-ones exponent is a NaN or an infinity: refused on the raw
 		// bits, before the field is written (SPEC §4.3)
 		g.pf("%sif ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {\n", ind)
-		g.pf("%s  return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)\n", ind)
+		g.pf("%s  return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%s%s = Schema.doubleFromFloat64Bits(lo);\n", ind, name)
 	case ir.TNamed:
@@ -1613,7 +1680,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			}
 			g.readR(bits, ind)
 			if ref.Max != (int64(1)<<bits)-1 {
-				g.pf("%sif (v > %d) {\n%s  return false; // headroom above the wire range is refused\n%s}\n", ind, ref.Max, ind, ind)
+				g.pf("%sif (v > %d) {\n%s  return -1; // headroom above the wire range is refused\n%s}\n", ind, ref.Max, ind, ind)
 			}
 			// the extension type wraps the wire value as is: a headroom
 			// value up to the declared max is a value of the enum too
@@ -1643,7 +1710,7 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
 	mivF := float32(maxInt)
 	g.readR(bits, ind)
 	if maxInt != (uint64(1)<<bits)-1 {
-		g.pf("%sif (v > %d) {\n%s  return false; // headroom above the quantum count is refused\n%s}\n", ind, maxInt, ind, ind)
+		g.pf("%sif (v > %d) {\n%s  return -1; // headroom above the quantum count is refused\n%s}\n", ind, maxInt, ind, ind)
 	}
 	// two statements, each a pure float32 step: q = fround(fround(v) / miv),
 	// then fround(fround(q * delta) + min). Adding a negative min is spelled
@@ -1705,10 +1772,10 @@ func (g *gen) emitReadOffset(name string, min, max *big.Int, bits int64, ind str
 	if diff.Cmp(full) != 0 {
 		if bits == 64 {
 			g.useRuntime()
-			g.pf("%sif (Schema.unsignedLessThan(%s, %s)) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
+			g.pf("%sif (Schema.unsignedLessThan(%s, %s)) {\n%s  return -1; // a smuggled offset is refused\n%s}\n",
 				ind, dartIntLit(diff), src, ind, ind)
 		} else {
-			g.pf("%sif (%s > %s) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
+			g.pf("%sif (%s > %s) {\n%s  return -1; // a smuggled offset is refused\n%s}\n",
 				ind, src, dartIntLit(diff), ind, ind)
 		}
 	}
@@ -1794,10 +1861,10 @@ func (g *gen) emitRead128Ranged(signed bool, assign string, min, max *big.Int, b
 		if diff.Cmp(full) != 0 {
 			if bits == 64 {
 				g.useRuntime()
-				g.pf("%sif (Schema.unsignedLessThan(%s, %s)) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
+				g.pf("%sif (Schema.unsignedLessThan(%s, %s)) {\n%s  return -1; // a smuggled offset is refused\n%s}\n",
 					ind, dartIntLit(new(big.Int).And(diff, maxUint64Big)), src, ind, ind)
 			} else {
-				g.pf("%sif (%s > %s) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
+				g.pf("%sif (%s > %s) {\n%s  return -1; // a smuggled offset is refused\n%s}\n",
 					ind, src, dartIntLit(diff), ind, ind)
 			}
 		}
@@ -1810,7 +1877,7 @@ func (g *gen) emitRead128Ranged(signed bool, assign string, min, max *big.Int, b
 		g.pf("%s{\n", ind)
 		g.pf("%s  const diff = %s;\n", ind, g.pairCtor(false, diff))
 		g.pf("%s  if (diff < UInt128(hi, lo)) {\n", ind)
-		g.pf("%s    return false; // a smuggled offset is refused\n", ind)
+		g.pf("%s    return -1; // a smuggled offset is refused\n", ind)
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 	}
@@ -1852,11 +1919,11 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	if !bounded {
-		g.pf("%sif (bitsRead + %d > numBits) {\n%s  return false;\n%s}\n", ind, bits, ind, ind)
+		g.pf("%sif (bitsRead + %d > numBits) {\n%s  return -1;\n%s}\n", ind, bits, ind, ind)
 	}
 	g.readR(bits, ind)
 	if u.Max != (int64(1)<<bits)-1 {
-		g.pf("%sif (v > %d) {\n%s  return false; // not a wire-legal tag (SPEC §4.8)\n%s}\n", ind, u.Max, ind, ind)
+		g.pf("%sif (v > %d) {\n%s  return -1; // not a wire-legal tag (SPEC §4.8)\n%s}\n", ind, u.Max, ind, ind)
 	}
 	g.pf("%s%s.type = %sType(v);\n", ind, expr, u.Name)
 	g.pf("%sswitch (%s.type) {\n", ind, expr)

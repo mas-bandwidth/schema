@@ -570,7 +570,7 @@ func t04GoR18(t *testing.T) {
 	if !strings.Contains(rsrc, "func TFixedBounds(") {
 		t.Error("R18: a ranged table emitted no clamp pass")
 	}
-	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoad(")), "if !TFixedBounds(&values[k]) {") {
+	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoad(")), "if !TFixedBounds(&values[k : k+1][0]) {") {
 		t.Error("R18: the load does not run the bounds pass for a ranged table")
 	}
 	if !strings.Contains(rsrc, "return tableFixedRefuse(report, TableRefuseOutOfRange.Error())") {
