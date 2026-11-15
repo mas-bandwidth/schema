@@ -25,11 +25,6 @@
     },
     {
       "row": "surface json-hostile",
-      "lang": "dart",
-      "slug": "relax/hostile-rows-dart"
-    },
-    {
-      "row": "surface json-hostile",
       "lang": "elixir",
       "slug": "relax/hostile-rows-elixir"
     },
