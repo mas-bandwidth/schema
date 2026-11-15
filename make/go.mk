@@ -100,15 +100,17 @@ test-go: tables-go-shared-runtime
 # THE TWO HALVES feed ci-full.yml's go-test versioning matrix, one row each,
 # so each row runs about half the Go conformance rows in parallel (the single
 # target ran 116 s alone on main, over the 110 s per-commit budget). The
-# umbrella target below keeps `make test-go` and the local run whole.
+# umbrella target below keeps `make test-go` and the local run whole. Each
+# half runs ONLY its own rows (-run, anchored): before, both halves ran the
+# whole package and the names were only checked, so the split saved nothing.
 conformance-go-rows-a: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19' \
-		./rows/ -count=1 -timeout 600s
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR20' \
+		./rows/ -count=1 -timeout 600s -run '^(TestRowC12|TestRowC13|TestRowC14|TestRowC14WriterRefusesOutOfRange|TestRowC7|TestRowC8|TestRowC8WriterRefusesOutOfRange|TestRowCountedArraysValidData|TestRowE5|TestRowF12|TestRowF8|TestRowF8NegativeControl|TestRowF8RaggedTailByName|TestRowFloat32ValuesNonFiniteRefused|TestRowFloat32ValuesValidData|TestRowP2|TestRowP3|TestRowR10|TestRowR14|TestRowR14LayoutRecordTooLargeByName|TestRowR15|TestRowR17|TestRowR19|TestRowR20)$$'
 conformance-go-rows-b: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
-		'TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
-		./rows/ -count=1 -timeout 600s
+		'TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s -run '^(TestRowR19NegativeControl|TestRowR20AddedFieldDefault|TestRowR20DroppedFieldUnknown|TestRowR20NarrowIntWidensExactly|TestRowR20SameWidthBaseline|TestRowR20ShortStringSlackZeros|TestRowR20VocabularyIdentity|TestRowR22|TestRowR26|TestRowR26NegativeControl|TestRowR27|TestRowR31|TestRowR6|TestRowR7|TestRowW12|TestRowW12NegativeControl|TestRowW13|TestRowW2|TestRowW2WriterRefusesTheOldPayload|TestRowW3|TestRowW4|TestRowW7)$$'
 conformance-go-rows: conformance-go-rows-a conformance-go-rows-b
 test-go: conformance-go-rows
 
