@@ -38,6 +38,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -314,6 +315,8 @@ var wireSurfaces = []string{"wire", "report", "retain", "retain-save"}
 // surfaces answers what the C++ reference and the generated reports pin.
 func TestGooseTableWireMatchesTheCorpus(t *testing.T) {
 	t.Parallel()
+	// the units run under the slow gate; without it the comparison holds no rows
+	slowtest.Gate(t, "the Goose toolchain")
 	c := readWireCorpus(t)
 	got := runWireSurfaces(t, c, wireSurfaces, nil)
 	for _, s := range wireSurfaces {
@@ -359,6 +362,7 @@ func sabotage(t *testing.T, file, from, to string) map[string][]byte {
 //     red.
 func TestGooseTableWireNegativeControl(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Goose toolchain")
 	c := readWireCorpus(t)
 	// The verdict pin no longer carries a widened counter. The widen that still
 	// leaves a value is the map key (map_key_widen reads). Dropping that accept
