@@ -326,14 +326,19 @@ class _UnionArray:
                 f"{fd.name} carries element kind {element_kind}, not 15",
             )
         count = sub.varint()
-        if count > _COUNT_CAP:
-            raise Refused("count_over_extent_cap", "a collection count above the int32 storage cap")
         # As the engine reads (internal/tablewire/decode.go, arrayBody): a
         # count past a fixed or counted array's bound is count_over_bound; a
         # counted array below its minimum and a fixed array short of its
         # bound are read as they stand, the fixed one over its born slots.
-        # The minimum binds the writer (save refuses it).
-        if fd.array_kind != 3 and count > fd.bound:
+        # The minimum binds the writer (save refuses it). A count past the
+        # int32 storage cap is past every bound too; the refusal path's file
+        # walk (load._check_file) names it count_over_extent_cap, as the
+        # engine's wire check does. An unbounded array has no bound, so it
+        # names the cap here.
+        if fd.array_kind == 3:
+            if count > _COUNT_CAP:
+                raise Refused("count_over_extent_cap", "a collection count above the int32 storage cap")
+        elif count > fd.bound:
             raise Refused("count_over_bound", f"{fd.name} counts {count}, past its bound {fd.bound}")
         if count > sub.end - sub.pos:
             raise Refused("wire_damaged", "a count the array body cannot cover")
