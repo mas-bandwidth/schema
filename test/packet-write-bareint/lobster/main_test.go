@@ -61,7 +61,7 @@ func readBareIntCases(t *testing.T) []bareIntCase {
 		t.Fatal(err)
 	}
 	var cases []bareIntCase
-	for _, raw := range strings.Split(string(data), "\n") {
+	for raw := range strings.SplitSeq(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
