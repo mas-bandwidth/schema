@@ -17,17 +17,9 @@ name: Squirrel runs the hostile corpus
 # alone so a plant that stops going red is named every night.
 
 on:
+  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-squirrel-runs-hostile-corpus.mk'
-      - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
-      - 'internal/ci/schema_squirrel_runs_hostile_corpus_test.go'
-      - 'internal/ci/hostilecorpus/**'
-      - 'internal/codegen/squirrel/**'
-      - 'internal/codegen/squirreltable/**'
-      - 'docs/HOSTILE-CORPUS.md'
-  pull_request:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-squirrel-runs-hostile-corpus.mk'
       - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
