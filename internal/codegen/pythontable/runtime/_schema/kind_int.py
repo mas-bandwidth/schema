@@ -51,6 +51,9 @@ class _Int:
             raise InvalidValue(path, f"{value} is outside [{fd.lo}, {fd.hi}]")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         width = _width(fd)
         raw = int.from_bytes(r.take(width), "little", signed=fd.lo < 0)
         if raw < fd.lo or raw > fd.hi:
@@ -58,9 +61,12 @@ class _Int:
         return raw
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        width = _width(fd)
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
+        self.write_element(w, fd, value, ctx)
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        width = _width(fd)
         w.raw(int(value).to_bytes(width, "little", signed=fd.lo < 0))
 
 
