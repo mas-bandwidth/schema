@@ -1570,6 +1570,17 @@ func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 // length never changes the value it lands (§16.2 Numbers).
 const maxFloatDecimalDigits = 799
 
+// maxNumberExponent bounds the exponent a number token accumulates before its
+// mantissa is folded. No document holds enough digits to bring a value back
+// from overflow or underflow past it, so a long mantissa can still cancel a
+// long exponent (§16.2 Numbers).
+const maxNumberExponent = 100000000000000000
+
+// maxFloatDecimalExponent is the final decimal scale a float conversion is
+// handed. 10^100000 overflows and 10^-100000 underflows every width this walk
+// holds, whatever the mantissa contributes.
+const maxFloatDecimalExponent = 100000
+
 // boundedFloatToken rewrites a valid JSON number token to the same exact
 // decimal value with its insignificant zeros folded into one exponent and its
 // significant digits capped at maxFloatDecimalDigits plus a sticky digit.
@@ -1599,7 +1610,7 @@ func boundedFloatToken(token string) string {
 		}
 		fracDigits = token[fracAt:i]
 	}
-	exp := 0
+	exp := int64(0)
 	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
 		i++
 		expNegative := false
@@ -1608,8 +1619,8 @@ func boundedFloatToken(token string) string {
 			i++
 		}
 		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
-			if exp < 100000 {
-				exp = exp*10 + int(token[i]-'0')
+			if exp < maxNumberExponent {
+				exp = exp*10 + int64(token[i]-'0')
 			}
 		}
 		if expNegative {
@@ -1617,7 +1628,7 @@ func boundedFloatToken(token string) string {
 		}
 	}
 	digits := intDigits + fracDigits
-	exp -= len(fracDigits)
+	exp -= int64(len(fracDigits))
 	digits = strings.TrimLeft(digits, "0")
 	if digits == "" {
 		if negative {
@@ -1626,19 +1637,25 @@ func boundedFloatToken(token string) string {
 		return "0"
 	}
 	trimmed := strings.TrimRight(digits, "0")
-	exp += len(digits) - len(trimmed)
+	exp += int64(len(digits) - len(trimmed))
 	digits = trimmed
 	if len(digits) > maxFloatDecimalDigits {
 		drop := len(digits) - maxFloatDecimalDigits
 		// The sticky digit keeps a nonzero tail from looking like an exact
 		// shorter decimal; the exponent carries the digits dropped.
 		digits = digits[:maxFloatDecimalDigits] + "1"
-		exp += drop - 1
+		exp += int64(drop - 1)
+	}
+	if exp > maxFloatDecimalExponent {
+		exp = maxFloatDecimalExponent
+	}
+	if exp < -maxFloatDecimalExponent {
+		exp = -maxFloatDecimalExponent
 	}
 	if negative {
-		return "-" + digits + "e" + strconv.Itoa(exp)
+		return "-" + digits + "e" + strconv.FormatInt(exp, 10)
 	}
-	return digits + "e" + strconv.Itoa(exp)
+	return digits + "e" + strconv.FormatInt(exp, 10)
 }
 
 // placeFloat converts a number token into a float field. A magnitude the
