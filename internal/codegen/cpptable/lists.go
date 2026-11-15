@@ -807,18 +807,25 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 	g.pf("%s    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's\n", ind)
 	g.pf("%s    // element-kind rule: the field reads EMPTY and one kind_mismatch counts\n", ind)
+	elidesList := !f.Required && !f.Type.Optional
 	if widenableElement(f) {
 		// THE WIDENING BRANCH at a list's element kind (§4), inside the
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
 		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = kind_mismatch;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
+		if elidesList {
+			g.pf("%[1]s        if ( counted_ok && count == 0 )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind)
+		}
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
 	} else {
 		g.pf("%[1]s    else if ( elem_kind != %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind, elemKind)
 	}
 	g.pf("%s    else\n%s    {\n", ind, ind)
+	if elidesList {
+		g.pf("%[1]s        if ( counted_ok && count == 0 )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind)
+	}
 	g.emitListFill(f, elemKind, ind, false)
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
