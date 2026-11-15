@@ -131,6 +131,7 @@
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
         "packet-finite-go-negative-control",
+        "packet-write-cfloat-c-negative-control",
         "packet-end-c-negative-control"
       ]
     },
@@ -3328,6 +3329,10 @@
     {
       "target": "packet-utf8-moo-negative-control",
       "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-end-moo-negative-control",
+      "reason": "the moo leg's one-packet end-check control (make/moo-packet.mk, SPEC §5 'Read termination'): the emitted public read's end call is dropped, so trailing data and non-zero final-byte padding must both fail by name. It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",
