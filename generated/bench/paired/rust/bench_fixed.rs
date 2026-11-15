@@ -37,6 +37,7 @@ use crate::*;
 /// they stay the template's zeros, which this function reaches by not
 /// touching them (§3.4).
 pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
+    debug_assert!(value.tag <= 3, "MixedEvent tag outside its arm set");
     b[0] = value.tag;
     match value.tag {
         1 => {
@@ -122,6 +123,51 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
     }
 }
 
+/// MixedEvent: true when a DEAD byte of this union image is not zero.
+pub fn mixed_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    let tag = b[0] as u64;
+    if tag == 0 {
+        return b[1..14].iter().any(|&x| x != 0);
+    }
+    match tag {
+        1 => {
+            {
+                let at = 1;
+                if mixed_hit_event_fixed_dead(&b[at..at + 13]) {
+                    return true;
+                }
+            }
+            false
+        }
+        2 => {
+            if b[9..14].iter().any(|&x| x != 0) {
+                return true;
+            }
+            {
+                let at = 1;
+                if mixed_chat_event_fixed_dead(&b[at..at + 8]) {
+                    return true;
+                }
+            }
+            false
+        }
+        3 => {
+            if b[9..14].iter().any(|&x| x != 0) {
+                return true;
+            }
+            {
+                let at = 1;
+                if mixed_pickup_event_fixed_dead(&b[at..at + 8]) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
 /// MixedEvent's read-side bounds: the arm THE TAG NAMES, and no other — the
 /// overlay behind a narrower arm is bytes nobody wrote.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -154,26 +200,37 @@ pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, oor: &mut i32, da
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
 pub fn mixed_entity_fixed_write_body(b: &mut [u8], value: &MixedEntityRow) {
+    debug_assert!(value.entity_id <= 4095, "entity_id exceeds bits(12) width");
     let at = 0;
     b[at..at + 4].copy_from_slice(&value.entity_id.to_le_bytes());
+    debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
     let at = 4;
     b[at..at + 4].copy_from_slice(&(value.pos_x as u32).to_le_bytes());
+    debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
     let at = 8;
     b[at..at + 4].copy_from_slice(&(value.pos_y as u32).to_le_bytes());
+    debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
     let at = 12;
     b[at..at + 4].copy_from_slice(&(value.pos_z as u32).to_le_bytes());
+    debug_assert!(value.yaw <= 511, "yaw exceeds bits(9) width");
     let at = 16;
     b[at..at + 4].copy_from_slice(&value.yaw.to_le_bytes());
+    debug_assert!(value.pitch <= 511, "pitch exceeds bits(9) width");
     let at = 20;
     b[at..at + 4].copy_from_slice(&value.pitch.to_le_bytes());
+    debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
     let at = 24;
     b[at..at + 4].copy_from_slice(&(value.vel_x as u32).to_le_bytes());
+    debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
     let at = 28;
     b[at..at + 4].copy_from_slice(&(value.vel_y as u32).to_le_bytes());
+    debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
     let at = 32;
     b[at..at + 4].copy_from_slice(&(value.vel_z as u32).to_le_bytes());
+    debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
     let at = 36;
     b[at..at + 4].copy_from_slice(&(value.health as u32).to_le_bytes());
+    debug_assert!(value.weapon <= 15, "weapon ordinal exceeds the enum's extent");
     let at = 40;
     b[at..at + 1].copy_from_slice(&value.weapon.to_le_bytes());
     let at = 41;
@@ -272,6 +329,12 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     }
 }
 
+/// MixedEntity: true when a DEAD byte of this record image is not zero.
+pub fn mixed_entity_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -303,8 +366,10 @@ pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, oor: &mut i32, 
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
 pub fn mixed_stat_fixed_write_body(b: &mut [u8], value: &MixedStatRow) {
+    debug_assert!(value.stat_id <= 255, "stat_id exceeds bits(8) width");
     let at = 0;
     b[at..at + 4].copy_from_slice(&value.stat_id.to_le_bytes());
+    debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
     let at = 4;
     b[at..at + 4].copy_from_slice(&(value.delta as u32).to_le_bytes());
 }
@@ -328,6 +393,12 @@ pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut
     }
 }
 
+/// MixedStat: true when a DEAD byte of this record image is not zero.
+pub fn mixed_stat_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -343,10 +414,13 @@ pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, oor: &mut i32, dama
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
 pub fn mixed_hit_event_fixed_write_body(b: &mut [u8], value: &MixedHitEventRow) {
+    debug_assert!(value.target_id <= 4095, "target_id exceeds bits(12) width");
     let at = 0;
     b[at..at + 4].copy_from_slice(&value.target_id.to_le_bytes());
+    debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
     let at = 4;
     b[at..at + 4].copy_from_slice(&(value.damage as u32).to_le_bytes());
+    debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
     let at = 8;
     b[at..at + 4].copy_from_slice(&(value.hit_kind as u32).to_le_bytes());
     let at = 12;
@@ -384,6 +458,12 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
     }
 }
 
+/// MixedHitEvent: true when a DEAD byte of this record image is not zero.
+pub fn mixed_hit_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -401,8 +481,10 @@ pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, oor: &mut 
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
 pub fn mixed_chat_event_fixed_write_body(b: &mut [u8], value: &MixedChatEventRow) {
+    debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
     let at = 0;
     b[at..at + 4].copy_from_slice(&(value.channel as u32).to_le_bytes());
+    debug_assert!(value.speaker <= 4095, "speaker exceeds bits(12) width");
     let at = 4;
     b[at..at + 4].copy_from_slice(&value.speaker.to_le_bytes());
 }
@@ -426,6 +508,12 @@ pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, r
     }
 }
 
+/// MixedChatEvent: true when a DEAD byte of this record image is not zero.
+pub fn mixed_chat_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -441,8 +529,10 @@ pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, oor: &mu
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
 pub fn mixed_pickup_event_fixed_write_body(b: &mut [u8], value: &MixedPickupEventRow) {
+    debug_assert!(value.item_id <= 1023, "item_id exceeds bits(10) width");
     let at = 0;
     b[at..at + 4].copy_from_slice(&value.item_id.to_le_bytes());
+    debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
     let at = 4;
     b[at..at + 4].copy_from_slice(&(value.amount as u32).to_le_bytes());
 }
@@ -466,6 +556,12 @@ pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRo
     }
 }
 
+/// MixedPickupEvent: true when a DEAD byte of this record image is not zero.
+pub fn mixed_pickup_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -481,8 +577,10 @@ pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, oor:
 /// The zeros are the template, and they are also what fills every byte of
 /// declared slack without this function touching it (§3.4).
 pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
+    debug_assert!(value.sequence <= 65535, "sequence exceeds bits(16) width");
     let at = 0;
     b[at..at + 4].copy_from_slice(&value.sequence.to_le_bytes());
+    debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
     let at = 4;
     b[at..at + 4].copy_from_slice(&(value.ack_sequence as u32).to_le_bytes());
     let at = 8;
@@ -493,10 +591,13 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
     b[at..at + 4].copy_from_slice(&value.client_id.to_le_bytes());
     let at = 24;
     b[at..at + 8].copy_from_slice(&value.nonce.to_le_bytes());
+    debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
     let at = 32;
     b[at..at + 8].copy_from_slice(&(value.world_time as u64).to_le_bytes());
+    debug_assert!(value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
     let at = 40;
     b[at..at + 8].copy_from_slice(&value.frame_tick.to_le_bytes());
+    debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
     let at = 48;
     b[at..at + 4].copy_from_slice(&(value.server_time as u32).to_le_bytes());
     debug_assert!(
@@ -530,6 +631,7 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
     b[1126..1130].copy_from_slice(&(value.player_name_length as u32).to_le_bytes());
     {
         let n = value.player_name_length.clamp(0, 15) as usize;
+        debug_assert!(table_utf8_valid(&value.player_name[..n]), "player_name is ill-formed text");
         b[1130..1130 + n].copy_from_slice(&value.player_name[..n]);
     }
     debug_assert!(
@@ -553,16 +655,21 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
     b[at..at + 8].copy_from_slice(&value.drift.to_le_bytes());
     let at = 1189;
     b[at..at + 16].copy_from_slice(&value.wide_key.0.to_le_bytes());
+    debug_assert!(value.flux.0 >= -1267650600228229401496703205376 && value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
     let at = 1205;
     b[at..at + 16].copy_from_slice(&value.flux.0.to_le_bytes());
+    debug_assert!(value.ping <= 64000, "ping raw value out of range <= 64000");
     let at = 1221;
     b[at..at + 2].copy_from_slice(&value.ping.to_le_bytes());
+    debug_assert!(value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
     let at = 1223;
     b[at..at + 4].copy_from_slice(&value.crc_hint.to_le_bytes());
     let at = 1227;
     b[at] = u8::from(value.has_extra);
+    debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
     let at = 1228;
     b[at..at + 4].copy_from_slice(&(value.extra as u32).to_le_bytes());
+    debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
     let at = 1232;
     b[at..at + 4].copy_from_slice(&(value.idle_ticks as u32).to_le_bytes());
 }
@@ -743,6 +850,61 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     }
 }
 
+/// BenchMixed: true when a DEAD byte of this record image is not zero.
+pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    {
+        let count = i32::from_le_bytes(b[52..56].try_into().expect("four bytes")).clamp(0, 8) as usize;
+        if b[56 + count * 51..464].iter().any(|&x| x != 0) {
+            return true;
+        }
+        for i in 0..count {
+            {
+                let at = 56 + i * 51;
+                if mixed_entity_fixed_dead(&b[at..at + 51]) {
+                    return true;
+                }
+            }
+        }
+    }
+    {
+        let count = i32::from_le_bytes(b[464..468].try_into().expect("four bytes")).clamp(0, 80) as usize;
+        if b[468 + count * 8..1108].iter().any(|&x| x != 0) {
+            return true;
+        }
+        for i in 0..count {
+            {
+                let at = 468 + i * 8;
+                if mixed_stat_fixed_dead(&b[at..at + 8]) {
+                    return true;
+                }
+            }
+        }
+    }
+    {
+        let at = 1108;
+        if mixed_event_fixed_dead(&b[at..at + 14]) {
+            return true;
+        }
+    }
+    for i in 0..4 {
+        let _ = i;
+    }
+    {
+        let used = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes")).clamp(0, 15) as usize;
+        if b[1130 + used..1145].iter().any(|&x| x != 0) {
+            return true;
+        }
+    }
+    {
+        let used = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes")).clamp(0, 16) as usize;
+        if b[1149 + used..1165].iter().any(|&x| x != 0) {
+            return true;
+        }
+    }
+    false
+}
+
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -772,10 +934,19 @@ pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, oor: &mut i32, da
     }
     *oor += ((value.aim_x < -1.0_f32) | (value.aim_x > 1.0_f32)) as i32;
     value.aim_x = value.aim_x.clamp(-1.0_f32, 1.0_f32);
+    if value.aim_x == 0.0_f32 {
+        value.aim_x = 0.0_f32;
+    }
     *oor += ((value.aim_y < -1.0_f32) | (value.aim_y > 1.0_f32)) as i32;
     value.aim_y = value.aim_y.clamp(-1.0_f32, 1.0_f32);
+    if value.aim_y == 0.0_f32 {
+        value.aim_y = 0.0_f32;
+    }
     *oor += ((value.aim_z < -1.0_f32) | (value.aim_z > 1.0_f32)) as i32;
     value.aim_z = value.aim_z.clamp(-1.0_f32, 1.0_f32);
+    if value.aim_z == 0.0_f32 {
+        value.aim_z = 0.0_f32;
+    }
     *oor += ((value.flux.0 < -1267650600228229401496703205376_i128) | (value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
     value.flux.0 = value.flux.0.clamp(-1267650600228229401496703205376_i128, 1267650600228229401496703205376_i128);
     *oor += (value.ping > 64000_u16) as i32;

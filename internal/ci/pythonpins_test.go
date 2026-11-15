@@ -99,6 +99,7 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 		"internal/codegen/python/*.go",
 		"internal/codegen/pythontable/*.go",
 		"test/conformance/python/*",
+		"test/conformance/python/surfaces/*",
 		"compiler/*python*.go",
 	} {
 		matches, err := filepath.Glob(filepath.Join(root, pattern))
@@ -119,6 +120,11 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 		rel, err := filepath.Rel(root, f)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if info, err := os.Stat(f); err != nil {
+			t.Fatal(err)
+		} else if info.IsDir() {
+			continue
 		}
 		if filepath.ToSlash(rel) == "make/python-toolchain-check.sh" {
 			continue
