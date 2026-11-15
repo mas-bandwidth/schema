@@ -1707,7 +1707,9 @@ class NodeRecord:
 
 // scan_node_records is THE AUTHORITATIVE RECORD SCAN (§3.1; Go's
 // scanNodeRecords): records until the payload is consumed, and a node_count
-// that disagrees with the scan is malformed.
+// that disagrees with the scan is malformed. A RESERVED ID IN ANY BODY BUT
+// THE ONE WHOSE TRANSPORT IT IS, IS MALFORMED: a record typed by the
+// node-table, build-version or vocabulary id refuses the load.
 def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
     let data = st.data
     let declared, first, ok = read_leb(data, plo, phi)
@@ -1719,12 +1721,15 @@ def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
         let ref, next, good = read_leb(data, off, phi)
         if not good or ref == 0 or ult(length(st.ids), ref):
             return [], false
+        let tid = st.ids[ref - 1]
+        if tid == node_table_id or tid == build_version_id or tid == message_vocabulary_id:
+            return [], false
         let size, after, lgood = read_leb(data, next, phi)
         if not lgood:
             return [], false
         if size < 0 or size > phi - after:
             return [], false
-        push(records, NodeRecord { tid: st.ids[ref - 1], lo: after, hi: after + size })
+        push(records, NodeRecord { tid: tid, lo: after, hi: after + size })
         off = after + size
     if off != phi or declared != length(records):
         return [], false
