@@ -129,7 +129,10 @@ local function check_directory(h, dir)
     if i == 1 and (e.offset ~= 0 or st == nil) then return "bad_layout" end
     if e.offset < prev_end then return "bad_layout" end
     if e.offset % align ~= 0 then return "bad_layout" end
-    if e.offset + size > h.data_length then return "bad_layout" end
+    -- the fit compares without adding, unsigned, as array_extent does: an
+    -- offset at or past data_length refuses, then a size past what is left
+    if not math.ult(e.offset, h.data_length) then return "bad_layout" end
+    if math.ult(h.data_length - e.offset, size) then return "bad_layout" end
     prev_end = e.offset + size
   end
   return nil
