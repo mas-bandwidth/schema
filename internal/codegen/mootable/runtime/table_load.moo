@@ -218,6 +218,7 @@ end
 -- THE LINK: each descriptor learns its fields by id, once (§3, §8.1).
 local byIdCache: { [any]: { [string]: any } } = {}
 local typeCache: { [any]: { [string]: any } } = {}
+local declaredCache: { [any]: { [string]: boolean } } = {}
 
 local function fields_by_id(desc: any): { [string]: any }
 	local m = byIdCache[desc]
@@ -243,6 +244,23 @@ local function place_types(desc: any): { [string]: any }
 			end
 		end
 		typeCache[desc] = built
+		return built
+	end
+	return m
+end
+
+-- THE TYPES THIS READER DECLARES (§3.1): every table of the unit, reachable
+-- from this root or not, so a record it placed no storage for is still told
+-- apart from a newer writer's type. A record of one that a pointer names at
+-- the wrong type is damage; only a type outside this set reads null.
+local function declared_types(desc: any): { [string]: boolean }
+	local m = declaredCache[desc]
+	if m == nil then
+		local built: { [string]: boolean } = {}
+		for _, id in desc.declared do
+			built[id] = true
+		end
+		declaredCache[desc] = built
 		return built
 	end
 	return m
@@ -1388,6 +1406,7 @@ local function resolve(report: any)
 	if not _numberingGood then
 		return
 	end
+	local declared = declared_types(_rootDesc)
 	local landed: { [any]: boolean } = {}
 	for _, p in _pending do
 		local value: any = nil
@@ -1427,6 +1446,23 @@ local function resolve(report: any)
 						value = n.v
 					else
 						report.kindChanged += 1
+					end
+				elseif n ~= nil then
+					-- A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the
+					-- reader cannot name at all it reads null, counted unknown
+					-- once; of a type the reader DECLARES, or a blob, that is
+					-- not the slot's target it is a wrong-type pointer target,
+					-- damage (§6.5).
+					local want: string = ""
+					if p.d.s == "sblob" then
+						want = StringBlobId
+					elseif p.d.s == "bblob" then
+						want = BytesBlobId
+					else
+						want = S.lookup(p.d.t).id
+					end
+					if n.tid ~= want and (declared[n.tid] or n.tid == StringBlobId or n.tid == BytesBlobId) then
+						report.bodyDamaged = true
 					end
 				end
 			end
@@ -1805,7 +1841,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 				if not V.utf8(rec.body, 0, buffer.len(rec.body)) then
 					-- §3.1: a refused record KEEPS ITS INDEX as a placeholder
 					report.bodyDamaged = true
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "s", blob = rec.body }
 				end
@@ -1818,7 +1854,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 					if _retain ~= nil then
 						_retain.lost(report) -- a node record of a type this build cannot place (§6.6)
 					end
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = nc.new(), body = rec.body }
 				end
