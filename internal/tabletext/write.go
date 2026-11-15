@@ -616,9 +616,10 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 }
 
 // writeString emits one JSON string. Every string that reaches it is text:
-// the writers ask CheckValue first and refuse ill-formed UTF-8 invalid_value
-// (docs/SPEC-TABLES.md §16.3), and a key or a name is the declaration's. So a
-// byte at or past 0x80 is written raw, and the text is valid UTF-8.
+// the writers ask CheckValue first and refuse ill-formed UTF-8 or a zero byte
+// invalid_value (docs/SPEC-TABLES.md §16.3), and a key or a name is the
+// declaration's. So a byte at or past 0x80 is written raw, and the text is
+// valid UTF-8.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
 	w.put('"')
@@ -766,7 +767,7 @@ func (m *Model) WriteValue(fv *Field) ([]byte, error) {
 	if err := ValidateRequiredValue(fv); err != nil {
 		return nil, err
 	}
-	if err := m.checkField("", fv, &checkWalk{seen: map[*Instance]bool{}}); err != nil {
+	if err := m.checkField("", fv, &checkWalk{seen: map[*Instance]bool{}, binaryText: true}); err != nil {
 		return nil, err
 	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
@@ -785,7 +786,7 @@ func (m *Model) WriteElement(fv *Field, slot int) ([]byte, error) {
 	bad := func(format string, a ...any) error {
 		return &InvalidValue{Field: fv.Def.Name, Detail: fmt.Sprintf(format, a...)}
 	}
-	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, &checkWalk{seen: map[*Instance]bool{}}, bad); err != nil {
+	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, &checkWalk{seen: map[*Instance]bool{}, binaryText: true}, bad); err != nil {
 		return nil, err
 	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}

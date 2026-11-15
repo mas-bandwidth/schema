@@ -221,13 +221,11 @@ func TestPacketCarrier(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s: generate: %v", l.name, err)
 				}
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					t.Run("build-"+l.name, func(t *testing.T) {
 						drivers[i] = l.build(t, filepath.Join(work, l.name), generated, rt)
 					})
-				}()
+				})
 			}
 			wg.Wait()
 			if t.Failed() {

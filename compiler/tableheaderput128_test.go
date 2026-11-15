@@ -434,6 +434,7 @@ int main()
 // main's emitter wrote, over values that ride BOTH arms of the field header and
 // carry 128-bit fields under every framing the emitter has for them.
 func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
@@ -504,12 +505,17 @@ func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
 	headerProbeSame(t, out, want)
 
 	// header and put128 against the calls they replaced, which the pin cannot
-	// see because main's emitter has neither
-	headerProbeRun(t, cxx, runtime, dir, "arms", headerProbeArmDriver)
+	// see because main's emitter has neither. It and the control below are
+	// independent compiles into different binaries, so they run side by side.
+	t.Run("arms", func(t *testing.T) {
+		t.Parallel()
+		headerProbeRun(t, cxx, runtime, dir, "arms", headerProbeArmDriver)
+	})
 
 	// THE NEGATIVE CONTROL: the same driver against a writer whose two-byte arm
 	// puts the kind byte first. It must not reproduce the pin.
 	t.Run("swapped header bytes go red", func(t *testing.T) {
+		t.Parallel()
 		bad := t.TempDir()
 		for name, data := range files {
 			text := string(data)

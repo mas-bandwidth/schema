@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import 'dart:typed_data';
 
@@ -92,8 +92,8 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -270,8 +270,8 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)

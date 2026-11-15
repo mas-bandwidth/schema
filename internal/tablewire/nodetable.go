@@ -116,7 +116,11 @@ type nodeRecord struct {
 // from `node_count` before the scan has confirmed it.
 //
 // A type id REFERENCE of `0` is malformed, because `0` names no id and a record
-// must say what it is (§3).
+// must say what it is (§3). A type id REFERENCE that resolves to one of the
+// three ids the language holds back is malformed too: a reserved id is damage
+// anywhere but the body whose transport it is (§3.1, §3.3), so it cannot be a
+// record's type. The two blob type ids are a blob record's lawful type and are
+// not among them (§2.5).
 func scanNodeRecords(payload []byte, ids []uint64) ([]nodeRecord, bool) {
 	declared, off, ok := readLeb(payload, 0)
 	if !ok {
@@ -137,7 +141,11 @@ func scanNodeRecords(payload []byte, ids []uint64) ([]nodeRecord, bool) {
 		if length > uint64(len(payload)-off) {
 			return nil, false // a record whose length runs past its field
 		}
-		records = append(records, nodeRecord{TypeId: ids[ref-1], Body: payload[off : off+int(length)]})
+		id := ids[ref-1]
+		if reserved(id) {
+			return nil, false // a reserved id in a record's TYPE position
+		}
+		records = append(records, nodeRecord{TypeId: id, Body: payload[off : off+int(length)]})
 		off += int(length)
 	}
 	if off != len(payload) {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -307,7 +307,7 @@ namespace Example
             for (int i = 0; i < 2; i++)
             {
                 {
-                    ulong rawValue = (ulong)value.Values[i];
+                    ulong rawValue = unchecked((ulong)value.Values[i]);
                     if (!batch.SerializeBits64(ref rawValue, 64))
                     {
                         return false;
@@ -337,7 +337,7 @@ namespace Example
                     {
                         return false;
                     }
-                    value.Values[i] = (long)rawValue;
+                    value.Values[i] = unchecked((long)rawValue);
                 }
             }
             return true;
@@ -436,7 +436,7 @@ namespace Example
                     {
                         return false;
                     }
-                    value.Values[i] = (ushort)rawValue;
+                    value.Values[i] = unchecked((ushort)rawValue);
                 }
             }
             return true;

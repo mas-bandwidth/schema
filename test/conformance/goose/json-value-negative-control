@@ -10,17 +10,18 @@
 #                                       json-write red; wire, json-read and
 #                                       json-hostile green
 #   json-value-negative-control share   a reference reads null instead of the
-#                                       node its label defined: json-read red;
-#                                       wire, json-write and json-hostile green
+#                                       node its label defined, over listdemo
+#                                       (whose one hostile row carries no
+#                                       reference): json-read red; wire,
+#                                       json-write and json-hostile green
 #   json-value-negative-control total   a text list's read never meets its
 #                                       total (§2.13), over featurewitnesses:
 #                                       json-hostile red; wire, json-read and
 #                                       json-write green
 #   json-value-negative-control count   an element past [..N] goes uncounted
-#                                       once the total is reached (§2.13),
-#                                       over featurewitnesses: json-hostile
-#                                       red (text-total-and-count); wire,
-#                                       json-read and json-write green
+#                                       (§2.13), over tabledemo's
+#                                       array-past-bound: json-hostile red;
+#                                       wire, json-read and json-write green
 set -eu
 mode=${1:-}
 root=$(pwd)
@@ -42,7 +43,7 @@ share)
 	to='        jr_null(c, s);'
 	want="json-read "
 	green="wire json-write json-hostile"
-	unit=graphdemo
+	unit=listdemo
 	;;
 total)
 	from='            if total > 0 && n > total - spent {'
@@ -52,11 +53,26 @@ total)
 	unit=featurewitnesses
 	;;
 count)
-	from='            if seen > bound { c.jr.rep.oor += 1; }'
-	to='            if seen < 0 { c.jr.rep.oor += 1; }'
+	# The count past [..N] lives in both text walks now: the flat value
+	# table (json_value.goose) and the typed accessor (schema_json.goose).
+	# tabledemo answers its hostile rows through both, so the sabotage takes
+	# the count out of each: a row past the bound drops its excess and reads
+	# instead of refusing.
+	source=internal/codegen/goosetable/runtime/json_value.goose
+	from='        if placed >= bound {
+            c.jr.rep.oor += 1;
+            if !jr_skip(c, depth + 1) { ok = false; break; }'
+	to='        if placed >= bound {
+            if !jr_skip(c, depth + 1) { ok = false; break; }'
+	source2=internal/codegen/goosetable/runtime/schema_json.goose
+	from2='        if placed >= bound {
+            jr.rep.oor += 1;
+            if !json_skip_value(jr, depth + 1) { return false; }'
+	to2='        if placed >= bound {
+            if !json_skip_value(jr, depth + 1) { return false; }'
 	want="json-hostile "
 	green="wire json-read json-write"
-	unit=featurewitnesses
+	unit=tabledemo
 	;;
 *)
 	echo "usage: json-value-negative-control label|share|total|count" >&2
@@ -70,7 +86,15 @@ FROM=$from TO=$to perl -0pe 'BEGIN { $c = 0 } $c += s/\Q$ENV{FROM}\E/$ENV{TO}/g;
 	echo "NEGATIVE CONTROL FAILED: the $mode clause must occur exactly once in $source" >&2
 	exit 1
 }
-printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+if [ -n "${source2:-}" ]; then
+	FROM=$from2 TO=$to2 perl -0pe 'BEGIN { $c = 0 } $c += s/\Q$ENV{FROM}\E/$ENV{TO}/g; END { exit($c == 1 ? 0 : 1) }' "$source2" > "$out/runtime2.goose" || {
+		echo "NEGATIVE CONTROL FAILED: the $mode clause must occur exactly once in $source2" >&2
+		exit 1
+	}
+	printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose","%s/%s":"%s/%s/runtime2.goose"}}\n' "$root" "$source" "$root" "$out" "$root" "$source2" "$root" "$out" > "$out/overlay.json"
+else
+	printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+fi
 go build -tags schema_leg_goose -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
 # one unit localises the clause; the ordinary conformance gate runs the corpus
 awk -v u="$unit" '($1 == "unit" && $2 == u) || (($1 == "instance" || $1 == "json-hostile") && $3 == u)' testdata/conformance/tables/MANIFEST.txt > "$out/manifest.txt"

@@ -878,6 +878,11 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	}
 	// the buffer-level entry: the FORM BYTE, the ROOT BODY and the ID TABLE,
 	// which is the whole of a saved table (docs/SPEC-TABLES.md §3)
+	if a := g.writeAdmits(st); a != "" {
+		// declared here, ahead of every writer that asserts it; defined in
+		// the fixed form beside the read-side bounds it shares a walk with
+		g.pf("inline bool %s( const %s & value );\n\n", a, st.Name)
+	}
 	g.pf("inline int64_t %sMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    TableIds ids;\n")
 	g.pf("    const int64_t body = %sMeasureBody( ids, value );\n", st.Name)
@@ -3084,7 +3089,11 @@ func (g *tableGen) emitTagsStatic(name string, tags []string, qualifier, indent 
 	if len(tags) == 0 {
 		return
 	}
-	g.pf("%s%s char * const %s[] = { %s };\n", indent, qualifier, name, ir.QuotedTags(tags))
+	literals := make([]string, len(tags))
+	for i, tag := range tags {
+		literals[i] = cStringLit([]byte(tag))
+	}
+	g.pf("%s%s char * const %s[] = { %s };\n", indent, qualifier, name, strings.Join(literals, ", "))
 }
 
 // annotationColumns renders a row's doc, num_tags and tags columns: the
@@ -3092,7 +3101,7 @@ func (g *tableGen) emitTagsStatic(name string, tags []string, qualifier, indent 
 func annotationColumns(doc string, tags []string, tagsName string) string {
 	docColumn := "TableDocNone"
 	if doc != "" {
-		docColumn = ir.QuoteDoc(doc)
+		docColumn = cStringLit([]byte(doc))
 	}
 	list := "NULL"
 	if len(tags) > 0 {
@@ -3110,7 +3119,7 @@ const tableZeroId = "+[]( uint64_t ) -> uint64_t { return 0; }"
 // of a union are the same row, differing only in how the storage is spelled.
 func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	id := tableFieldWireId(f)
-	jsonKey := fmt.Sprintf("\"%s\"", ir.TableFieldJsonKey(f))
+	jsonKey := cStringLit([]byte(ir.TableFieldJsonKey(f)))
 	if sp.outside {
 		id, jsonKey = 0, "NULL"
 	}
@@ -3325,7 +3334,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	// by name without the schema files
 	keyTypeName, keyName, keyId := "NULL", "NULL", "NULL"
 	if f.KeyEnum != "" {
-		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
+		keyTypeName = cStringLit([]byte(f.KeyEnum))
 		keyName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.KeyEnum)
 		keyId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.KeyEnum)
 		if sp.outside {
@@ -3391,28 +3400,6 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 // elided exactly as a scalar at its default is, and an absent field reads as
 // it (docs/SPEC-TABLES.md §4). A field with no default keeps the empty and
 // zero forms it always had, emitted by the same lines as before.
-
-// cStringLit renders bytes as a C++ string literal: printable ASCII as
-// itself, a quote and a backslash escaped, and every other byte as a
-// three-digit octal escape, which no following digit can extend.
-func cStringLit(b []byte) string {
-	var sb strings.Builder
-	sb.WriteByte('"')
-	for _, c := range b {
-		switch {
-		case c == '"':
-			sb.WriteString(`\"`)
-		case c == '\\':
-			sb.WriteString(`\\`)
-		case c >= 0x20 && c < 0x7f:
-			sb.WriteByte(c)
-		default:
-			fmt.Fprintf(&sb, "\\%03o", c)
-		}
-	}
-	sb.WriteByte('"')
-	return sb.String()
-}
 
 // byteListLit renders bytes as a braced list of hex octets, the initializer
 // a uint8_t array takes.

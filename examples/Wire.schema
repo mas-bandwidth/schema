@@ -14,10 +14,10 @@ const HalfTurn float64 = 180.0
 const TickRate float32 = 60.0
 const SpinRate         = 1.5
 
-// enum headroom: the wire range is [0, 15] whatever the variant count, and
-// non-variant values are wire-legal (SPEC §4.2, §6.1)
-enum Weapon | max = 15
-{ Laser, Missile, Railgun }
+// enum wire range [0, variant count]: the width derives from the variants
+// alone, so naming all fifteen keeps the 4-bit field (SPEC §4.2, §6.1)
+enum Weapon
+{ Laser, Missile, Railgun, Flak, Beam, Plasma, Torpedo, Mine, Drone, Swarm, Pulse, Lance, Comet, Quake, Arc }
 
 // flags widening: 8 wire bits with three named so far (SPEC §4.2)
 flags ProbeFlags | max = 8

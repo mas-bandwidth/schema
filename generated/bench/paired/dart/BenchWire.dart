@@ -24,6 +24,14 @@ const int _kTypeMixedPickupEvent = 4432242110510439820; // fnv1a64("MixedPickupE
 const int _kTypeBenchMixed = -1476952163658023588; // fnv1a64("BenchMixed")
 const int _kTypeFixedTable = -8800255099513911629; // fnv1a64("FixedTable")
 
+// THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4, binary_max_depth): a
+// root body or a node record is level 0, and each structural payload inside
+// it is one level deeper. Every walk of the binary form holds it.
+const int _kBinaryMaxDepth = 128;
+
+// _structuralKind is a kind whose payload nests one level (§4): a table
+// body, an array, a keyed or map body, and a union.
+bool _structuralKind(int kind) => kind == 13 || kind == 14 || kind == 16 || kind == 15;
 
 final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
 bool _requiredCollectionKind(TableWireReader r, int expected) {
@@ -100,6 +108,29 @@ final class _TableWireCountRefusal implements Exception {
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
+final class _WireGraphEdge {
+  final int typeId;
+  final Object identity;
+  final Object value;
+  final bool blob;
+
+  const _WireGraphEdge.table(this.typeId, Object obj)
+      : identity = obj, value = obj, blob = false;
+  const _WireGraphEdge.blob(this.typeId, this.identity, this.value) : blob = true;
+}
+
+final class _WireGraphNode {
+  final int typeId;
+  final Object obj;
+  const _WireGraphNode(this.typeId, this.obj);
+}
+
+final class _WireGraphFrame {
+  final Object owner;
+  int next = 0;
+  _WireGraphFrame(this.owner);
+}
+
 final class WireState {
   // Immutable strings may be canonicalized. Metadata belongs weakly to
   // decoded owners; node tokens carry no payload or input-buffer references.
@@ -137,8 +168,13 @@ final class WireState {
   final List<int> nodeTypes = <int>[];
   final List<List<int>> nodes = <List<int>>[];
   final List<Object?> nodeObjs = <Object?>[];
-  final Map<Object, int> _objIndex = <Object, int>{};
+  final Map<Object, int> _objIndex = Map<Object, int>.identity();
   final Map<Object, int> _blobIndex = Map<Object, int>.identity();
+  bool _collectingNumbers = false;
+  late Object _numberOwner;
+  final Map<Object, List<_WireGraphEdge>> _numberEdges = Map<Object, List<_WireGraphEdge>>.identity();
+  final Set<Object> _numberSeen = Set<Object>.identity();
+  final List<_WireGraphNode> _numberNodes = <_WireGraphNode>[];
   // A save is STRICT about a blob two slots name (§2.5): the wire writer
   // refuses it by name, blob_shared. The cook numbers the same graph and does not.
   bool refuseSharedBlob = false;
@@ -158,6 +194,75 @@ final class WireState {
 
   void indexRoot(Object v) {
     _objIndex[v] = 1;
+  }
+
+  // Number table references without following a pointer on the Dart stack.
+  // The first pass records each owner's edges; the explicit DFS below assigns
+  // the preorder node numbers required by docs/SPEC-TABLES.md §3.1.
+  void numberGraph(Object root, void Function(Object obj) numberNode) {
+    _collectingNumbers = true;
+    _numberEdges.clear();
+    _numberSeen.clear();
+    _numberNodes.clear();
+    _objIndex.clear();
+    _blobIndex.clear();
+    nodes.clear();
+    nodeTypes.clear();
+    nodeObjs.clear();
+    _numberSeen.add(root);
+    _objIndex[root] = 1;
+    _numberOwner = root;
+    numberNode(root);
+    for (var i = 0; i < _numberNodes.length; i++) {
+      final node = _numberNodes[i];
+      _numberOwner = node.obj;
+      numberNode(node.obj);
+    }
+    _collectingNumbers = false;
+    final active = Set<Object>.identity()..add(root);
+    final frames = <_WireGraphFrame>[_WireGraphFrame(root)];
+    while (frames.isNotEmpty) {
+      final frame = frames.last;
+      final edges = _numberEdges[frame.owner] ?? const <_WireGraphEdge>[];
+      if (frame.next >= edges.length) {
+        frames.removeLast();
+        active.remove(frame.owner);
+        continue;
+      }
+      final edge = edges[frame.next++];
+      if (edge.blob) {
+        if (_blobIndex.containsKey(edge.identity)) {
+          if (refuseSharedBlob) {
+            throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
+          }
+          continue;
+        }
+        nodeTypes.add(edge.typeId);
+        nodes.add(edge.value is String ? utf8.encode(edge.value as String) : List<int>.from(edge.value as List<int>));
+        nodeObjs.add(null);
+        _blobIndex[edge.identity] = nodes.length + 1;
+        continue;
+      }
+      final obj = edge.value;
+      if (active.contains(obj)) {
+        throw StateError('data cycle: a pointer reaches a node still open (docs/SPEC-TABLES.md §3.1)');
+      }
+      if (_objIndex.containsKey(obj)) continue;
+      _objIndex[obj] = nodes.length + 2;
+      nodeTypes.add(edge.typeId);
+      nodes.add(<int>[]);
+      nodeObjs.add(obj);
+      active.add(obj);
+      frames.add(_WireGraphFrame(obj));
+    }
+  }
+
+  void countTextPointers(void Function(Object obj) see) {
+    for (final edges in _numberEdges.values) {
+      for (final edge in edges) {
+        if (!edge.blob) see(edge.value);
+      }
+    }
   }
 
   int refFor(int id) {
@@ -200,6 +305,10 @@ final class WireState {
   // reassignment from multiple slots resolving one incoming node.
   int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
     final identity = _blobIdentity(blob, owner, field);
+    if (_collectingNumbers) {
+      (_numberEdges[_numberOwner] ??= <_WireGraphEdge>[]).add(_WireGraphEdge.blob(typeId, identity, blob));
+      return 0;
+    }
     final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
@@ -230,6 +339,11 @@ final class WireState {
   // to a node still open is a cycle and save refuses it. A node already
   // numbered and closed is shared: one index, no second record.
   void noteTable(int typeId, Object obj, Set<Object> open, void Function(Set<Object> open) descend) {
+    if (_collectingNumbers) {
+      (_numberEdges[_numberOwner] ??= <_WireGraphEdge>[]).add(_WireGraphEdge.table(typeId, obj));
+      if (_numberSeen.add(obj)) _numberNodes.add(_WireGraphNode(typeId, obj));
+      return;
+    }
     if (open.contains(obj)) {
       throw StateError('data cycle: a pointer reaches a node still open (docs/SPEC-TABLES.md §3.1)');
     }
@@ -532,6 +646,17 @@ bool _lebValid(Uint8List d, int off, int len) {
   } catch (_) {
     return false;
   }
+}
+
+// _decodeText decodes one validated text payload and keeps every code point
+// of its bytes: utf8.decode drops a byte-order mark at the head of its input,
+// while U+FEFF is an ordinary code point on the wire (§3, §16.14).
+String _decodeText(Uint8List d, int start, int end) {
+  final s = utf8.decode(d.sublist(start, end));
+  if (end - start >= 3 && d[start] == 0xEF && d[start + 1] == 0xBB && d[start + 2] == 0xBF) {
+    return '\uFEFF' + s;
+  }
+  return s;
 }
 
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
@@ -889,7 +1014,7 @@ final class TableWireReader {
     } else {
       final b = resolveBlob(idx, _kStringBlobId, stringBlob);
       if (b != null) {
-        value = utf8.decode(b);
+        value = _decodeText(b, 0, b.length);
         decoded[rec] = value;
       }
     }
@@ -920,21 +1045,23 @@ final class TableWireReader {
     return b;
   }
 
-  // _placedNode is true for a node record the node table scan placed: a
-  // table this root can name, or a blob of a kind some pointer below the root
-  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
-  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
-  // other record — counted unknown, or a refused text blob — is an empty node.
+  // _placedNode is true for a node record whose type this reader can name: a
+  // table the unit declares, or one of the two reserved blob ids (docs/
+  // SPEC-TABLES.md §2.5, §3.1). A record of a type the unit does not declare,
+  // or a refused text blob, is an empty node: it counts one unknown and every
+  // pointer naming it reads null. A placed record of any other type under a
+  // slot is a wrong-type pointer target and refuses the load.
   bool _placedNode(int typeId) =>
       knownTypes.contains(typeId) ||
-      (typeId == _kStringBlobId && stringBlob) ||
-      (typeId == _kBytesBlobId && bytesBlob);
+      typeId == _kStringBlobId ||
+      typeId == _kBytesBlobId;
 
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
   // own type. A record is decoded once and stored before its body is read, so
-  // a second slot names the same object. A type this reader cannot place, or
-  // a type other than the field's target, is a kind mismatch and reads null.
+  // a second slot names the same object. A record of a type this reader cannot
+  // name reads null; one of a type it names that is not the field's target is
+  // a wrong-type pointer target and refuses the whole load.
   Object? resolveTable(int idx, int wantType) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
@@ -1044,8 +1171,8 @@ final class TableWireReader {
   // a field it cannot skip — stops the gather and keeps the table found so far,
   // as nodeTableBytes does. Only the gathered payload is scanned, on its own
   // length: a count the scan does not match, a type reference of 0 or above the
-  // entry count, or a record length past the payload is damage and reads
-  // nothing (§3.1). A record whose type id is the *string blob stores its
+  // entry count or naming a reserved id, or a record length past the payload
+  // is damage and reads nothing (§3.1). A record whose type id is the *string blob stores its
   // bytes; any other type id keeps its index, counts one unknown at the
   // record, and every pointer naming it reads null (§3.1). A string blob that
   // is not well-formed UTF-8 without NUL is damage and reads null too.
@@ -1106,6 +1233,12 @@ final class TableWireReader {
     while (pos < tableEnd) {
       final typeRef = readLeb();
       if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
+        framed = false;
+        break;
+      }
+      // a RESERVED id in a record's TYPE position is damage (§3.1, §3.3)
+      final rid = refToId[typeRef];
+      if (rid == _kNodeTableId || rid == _kBuildVersionId || rid == _kVocabularyId) {
         framed = false;
         break;
       }
@@ -1252,20 +1385,23 @@ final class TableWireReader {
     return false;
   }
 
-  // _wireLeb reads one LEB128 value at off in buf: (value, next), or
-  // null when it runs past the buffer.
+  // _wireLeb reads one canonical LEB128 value at off in buf: (value, next),
+  // or null when it is truncated, past ten bytes or non-minimal — the same
+  // rule as readLeb (§3), so every walk over this wire agrees.
   (int, int)? _wireLeb(Uint8List buf, int off) {
     var v = 0;
-    var shift = 0;
-    var i = off;
-    while (i < buf.length && shift < 63) {
-      final b = buf[i];
-      i++;
-      v |= (b & 0x7F) << shift;
-      if (b & 0x80 == 0) return (v, i);
-      shift += 7;
+    var p = off;
+    for (var i = 0; ; i++) {
+      if (p >= buf.length || i >= 10) return null;
+      final b = buf[p];
+      p++;
+      if (i == 9 && b > 1) return null;
+      v |= (b & 0x7F) << (7 * i);
+      if ((b & 0x80) == 0) {
+        if (i > 0 && b == 0) return null;
+        return (v, p);
+      }
     }
-    return null;
   }
 
   // _wireScalar checks one fixed-width payload's content rules that the
@@ -1324,16 +1460,23 @@ final class TableWireReader {
         return p.$2;
       case 30:
         final p = _wireLeb(buf, off);
-        return p == null ? -1 : p.$2;
+        if (p == null || p.$1 < 0 || p.$1 > entryCount) return -1;
+        return p.$2;
       case 15:
         final arm = _wireLeb(buf, off);
-        if (arm == null || arm.$1 > entryCount) return -1;
+        if (arm == null || arm.$1 < 0 || arm.$1 > entryCount) return -1;
         if (arm.$1 == 0) return arm.$2;
         if (arm.$2 >= buf.length) return -1;
         final akind = buf[arm.$2];
         final alen = _wireLeb(buf, arm.$2 + 1);
-        if (alen == null || alen.$1 > buf.length - alen.$2) return -1;
+        if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
+        // A union whose arm is a table, an array, a keyed or map body or
+        // another union is one level deeper; a scalar arm adds none (§4).
+        if (_structuralKind(akind)) {
+          if (depth >= _kBinaryMaxDepth) return -1;
+          return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
+        }
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
       case 12:
       case 13:
@@ -1342,7 +1485,7 @@ final class TableWireReader {
       case 31:
       case 32:
         final p = _wireLeb(buf, off);
-        if (p == null || p.$1 > buf.length - p.$2) return -1;
+        if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
         final end = p.$2 + p.$1;
         return _wireContent(buf.sublist(p.$2, end), kind, out, depth) ? end : -1;
     }
@@ -1359,11 +1502,11 @@ final class TableWireReader {
       case 32:
         return kind != 32 || b.isEmpty;
       case 13:
-        return depth < 64 && _wireBody(b, false, out, depth + 1);
+        return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
-        if (head == null) return false;
+        if (head == null || head.$1 < 0) return false;
         var off = head.$2;
         for (var i = 0; i < head.$1; i++) {
           off = _wirePayload(b, off, b[0], out, depth + 1);
@@ -1371,16 +1514,16 @@ final class TableWireReader {
         }
         return off == b.length;
       case 16:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
-        if (head == null) return false;
+        if (head == null || head.$1 < 0) return false;
         var off = head.$2;
         final seenKeys = <int>{};
         for (var i = 0; i < head.$1; i++) {
           final key = _wireLeb(b, off);
-          if (key == null || key.$1 == 0 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
+          if (key == null || key.$1 < 1 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
           final len = _wireLeb(b, key.$2);
-          if (len == null || len.$1 > b.length - len.$2) return false;
+          if (len == null || len.$1 < 0 || len.$1 > b.length - len.$2) return false;
           if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1)) return false;
           off = len.$2 + len.$1;
         }
@@ -1417,7 +1560,7 @@ final class TableWireReader {
         // kind 12 (internal/tablewire/wirecheck.go body).
         if (!root || kind != 12) return false;
         final len = _wireLeb(buf, off);
-        if (len == null || len.$1 > buf.length - len.$2) return false;
+        if (len == null || len.$1 < 0 || len.$1 > buf.length - len.$2) return false;
         off = len.$2 + len.$1;
         continue;
       }
@@ -1472,6 +1615,58 @@ final class TableWireReader {
     }
     for (var rec = 0; rec < nodes.length; rec++) {
       if (!seen.contains(rec + 2)) return true;
+    }
+    return false;
+  }
+
+  // wireCycle reports whether the wire-alone pointer graph has a cycle
+  // (docs/SPEC-TABLES.md §3.1, §6.5; internal/tablewire/wirecheck.go graph):
+  // a walk from the root over every kind-17 payload, in fields this reader
+  // declares and in fields it only skips, that meets a node whose descent is
+  // still open (the root included) is damage. The walk keeps its own stack,
+  // so a long legal chain costs no recursion. An index past the node table is
+  // wireBadPointerIndex's to judge and is passed over here.
+  bool wireCycle() {
+    final children = _wireGraph();
+    if (children == null) return false;
+    final n = children.length;
+    final mark = List<int>.filled(n, 0);
+    final stackNode = <int>[0];
+    final stackNext = <int>[0];
+    mark[0] = 1;
+    while (stackNode.isNotEmpty) {
+      final top = stackNode.length - 1;
+      final out = children[stackNode[top]];
+      final next = stackNext[top];
+      if (next == out.length) {
+        mark[stackNode[top]] = 2;
+        stackNode.removeLast();
+        stackNext.removeLast();
+        continue;
+      }
+      stackNext[top] = next + 1;
+      final index = out[next];
+      if (index <= 0 || index > n) continue;
+      final t = index - 1;
+      if (mark[t] == 1) return true;
+      if (mark[t] == 2) continue;
+      mark[t] = 1;
+      stackNode.add(t);
+      stackNext.add(0);
+    }
+    return false;
+  }
+
+  // wireStringBlobBad reports whether any string blob record on the wire is
+  // not well-formed UTF-8 or holds a zero byte (docs/SPEC-TABLES.md §2.5,
+  // §6.5; internal/tablewire/wirecheck.go checkBody): the reserved type id is
+  // known to every reader, so the rule holds wherever the record is reached
+  // from, a field this reader only skips included.
+  bool wireStringBlobBad() {
+    for (var rec = 0; rec < nodes.length; rec++) {
+      if (nodeTypes[rec] == _kStringBlobId && !_lebValid(nodes[rec], 0, nodes[rec].length)) {
+        return true;
+      }
     }
     return false;
   }
@@ -1818,8 +2013,9 @@ List<int>? _retainRaw(TableWireReader r, int n) {
 // it) and returns it with every reference widened to its 64-bit id (§6.6).
 // Null means the field is an excluded class — kind 17, a reserved id, or a
 // damaged walk — and the caller counts one retainLost and re-skips the field.
+// depth is the level of the body or content holding the payload, counted as
+// the binary nesting bound counts it (§4): a root body is level 0.
 List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
-  if (depth > 64) return null;
   final w = _retainWidth(kind);
   if (w != 0) return _retainRaw(r, w);
   switch (kind) {
@@ -1854,7 +2050,9 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainFramed(r, ak, depth);
+      // A union whose arm is structural is one level deeper (§4).
+      if (_structuralKind(ak) && depth >= _kBinaryMaxDepth) return null;
+      final sub = _retainFramed(r, ak, _structuralKind(ak) ? depth + 1 : depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -1867,22 +2065,23 @@ List<int>? _retainFramed(TableWireReader r, int kind, int depth) {
   if (n == null || !r.has(n)) return null;
   final end = r.pos + n;
   final sub = TableWireReader.sub(r, r.pos, end);
-  final content = _retainContent(sub, kind, depth + 1);
+  final content = _retainContent(sub, kind, depth);
   if (content == null || sub.pos != end) return null;
   r.pos = end;
   return <int>[..._u64le(content.length), ...content];
 }
 
 List<int>? _retainContent(TableWireReader r, int kind, int depth) {
-  if (depth > 64) return null;
   switch (kind) {
     case 17:
       return null;
     case 13:
-      return _retainBody(r, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainBody(r, depth + 1);
     case 14:
     case 16:
-      return _retainArray(r, kind, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainArray(r, kind, depth + 1);
     case 15:
     case 30:
       return _retainResolve(r, kind, depth);
@@ -1905,7 +2104,7 @@ List<int>? _retainBody(TableWireReader r, int depth) {
     if (id == null) return null;
     if (!r.has(1)) return null;
     final kind = r.readByte();
-    final sub = _retainResolve(r, kind, depth + 1);
+    final sub = _retainResolve(r, kind, depth);
     if (sub == null) return null;
     out.addAll(_u64le(id));
     out.add(kind);
@@ -1925,12 +2124,12 @@ List<int>? _retainArray(TableWireReader r, int kind, int depth) {
       if (ref == null) return null;
       final id = _retainId(r, ref);
       if (id == null) return null;
-      final framed = _retainFramed(r, ek, depth + 1);
+      final framed = _retainFramed(r, ek, depth);
       if (framed == null) return null;
       out.addAll(_u64le(id));
       out.addAll(framed);
     } else {
-      final sub = _retainResolve(r, ek, depth + 1);
+      final sub = _retainResolve(r, ek, depth);
       if (sub == null) return null;
       out.addAll(sub);
     }
@@ -1968,8 +2167,8 @@ List<int>? _retainEmit(WireState state, int kind, List<int> resolved) {
   return out;
 }
 
+// depth counts as _retainResolve counts it (§4).
 List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int depth) {
-  if (depth > 64) return null;
   final w = _retainWidth(kind);
   if (w != 0) {
     if (c.at + w > c.b.length) return null;
@@ -2020,7 +2219,8 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitFramed(state, ak, c, depth);
+      if (_structuralKind(ak) && depth >= _kBinaryMaxDepth) return null;
+      final sub = _retainEmitFramed(state, ak, c, _structuralKind(ak) ? depth + 1 : depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -2037,7 +2237,7 @@ List<int>? _retainEmitFramed(WireState state, int kind, _RetainCursor c, int dep
   if (len == null) return null;
   final end = c.at + len;
   if (end > c.b.length) return null;
-  final content = _retainEmitContent(state, kind, c, end, depth + 1);
+  final content = _retainEmitContent(state, kind, c, end, depth);
   if (content == null || c.at != end) return null;
   final o = <int>[];
   _lebOut(o, content.length);
@@ -2050,10 +2250,12 @@ List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int en
     case 17:
       return null;
     case 13:
-      return _retainEmitBody(state, c, end, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainEmitBody(state, c, end, depth + 1);
     case 14:
     case 16:
-      return _retainEmitArray(state, kind, c, end, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainEmitArray(state, kind, c, end, depth + 1);
     case 15:
     case 30:
       return _retainEmitPayload(state, kind, c, depth);
@@ -2075,7 +2277,7 @@ List<int>? _retainEmitBody(WireState state, _RetainCursor c, int end, int depth)
     if (ref == 0) return null;
     final kind = c.byte();
     if (kind == null) return null;
-    final sub = _retainEmitPayload(state, kind, c, depth + 1);
+    final sub = _retainEmitPayload(state, kind, c, depth);
     if (sub == null) return null;
     _lebOut(o, ref);
     o.add(kind);
@@ -2096,12 +2298,12 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
       if (keyId == null) return null;
       final ref = state.retainRefFor(keyId);
       if (ref == 0) return null;
-      final framed = _retainEmitFramed(state, ek, c, depth + 1);
+      final framed = _retainEmitFramed(state, ek, c, depth);
       if (framed == null) return null;
       _lebOut(o, ref);
       o.addAll(framed);
     } else {
-      final sub = _retainEmitPayload(state, ek, c, depth + 1);
+      final sub = _retainEmitPayload(state, ek, c, depth);
       if (sub == null) return null;
       o.addAll(sub);
     }
@@ -2197,6 +2399,17 @@ void _loadNodeBody(TableWireReader r, int typeId, Object obj) {
     case _kTypeBenchMixed: benchMixedWireLoadBody(r, obj as BenchMixed, true); break;
     case _kTypeFixedTable: fixedTableWireLoadBody(r, obj as FixedTable, true); break;
   }
+}
+
+void _numberNode(WireState s, Object obj) {
+  if (obj is MixedEntity) { mixedEntityNumber(s, obj, <Object>{}); return; }
+  if (obj is MixedStat) { mixedStatNumber(s, obj, <Object>{}); return; }
+  if (obj is MixedHitEvent) { mixedHitEventNumber(s, obj, <Object>{}); return; }
+  if (obj is MixedChatEvent) { mixedChatEventNumber(s, obj, <Object>{}); return; }
+  if (obj is MixedPickupEvent) { mixedPickupEventNumber(s, obj, <Object>{}); return; }
+  if (obj is BenchMixed) { benchMixedNumber(s, obj, <Object>{}); return; }
+  if (obj is FixedTable) { fixedTableNumber(s, obj, <Object>{}); return; }
+  throw StateError('no node numberer for ${obj.runtimeType} (docs/SPEC-TABLES.md §3.1)');
 }
 
 void _nodeEdges(TableWireReader r, int owner, int typeId, Object obj) {
@@ -4189,7 +4402,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.playerName = ''; r.pos += len; break; }
           final keep = _textBoundary(r.data, r.pos, len, 15);
           if (keep != len) { r.report.refuse('length_over_bound'); return; }
-          v.playerName = utf8.decode(r.data.sublist(r.pos, r.pos + keep));
+          v.playerName = _decodeText(r.data, r.pos, r.pos + keep);
           r.pos += len;
         }
         break;
@@ -4653,9 +4866,7 @@ void fixedTableEdges(TableWireReader r, int owner, FixedTable v) {
 
 Uint8List fixedTableWireSave(FixedTable v) {
   final state = WireState()..refuseSharedBlob = true;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  fixedTableNumber(state, v, open);
+  state.numberGraph(v, (obj) { _numberNode(state, obj); });
   final w = TableWireWriter(state);
   w.putByte(1);
   fixedTableWireSaveBodyFields(w, v);
@@ -4704,6 +4915,8 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   }
   if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
   if (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }
+  if (r.wireCycle()) { r.report.refuse('wire_damaged'); }
+  if (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }
   if (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }
   if (r.wireBlobShared()) { r.report.refuse('blob_shared'); }
   if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
@@ -4856,6 +5069,7 @@ int fixedTableWireMeasure(Uint8List data) {
       final blen = r.readLeb();
       if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
       final tid = r.refToId[typeRef] ?? 0;
+      if (tid == _kNodeTableId || tid == _kBuildVersionId || tid == _kVocabularyId) return 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
@@ -5063,6 +5277,61 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
   return def;
 }
 
+// _JNumParts is one JSON number token split into its sign, its significant
+// digits and the point's place: the value is digits × 10^(point - digits.length).
+// Leading and trailing zeros are dropped with two index scans, never one copy
+// per digit, so a long token is read in one pass (§16.2).
+final class _JNumParts {
+  final bool negative;
+  final String digits;
+  final int point;
+  _JNumParts(this.negative, this.digits, this.point);
+}
+
+_JNumParts _jsonNumberParts(String token) {
+  var i = 0;
+  var negative = false;
+  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
+    negative = token[i] == '-';
+    i++;
+  }
+  final intStart = i;
+  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) i++;
+  final intDigits = token.substring(intStart, i);
+  var fracDigits = '';
+  if (i < token.length && token[i] == '.') {
+    i++;
+    final fracStart = i;
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) i++;
+    fracDigits = token.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
+    i++;
+    var expNegative = false;
+    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
+      expNegative = token[i] == '-';
+      i++;
+    }
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (expNegative) exp = -exp;
+  }
+  final all = intDigits + fracDigits;
+  var start = 0;
+  var point = intDigits.length + exp;
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
+    point--;
+  }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  if (start == end) return _JNumParts(false, '', point);
+  return _JNumParts(negative, all.substring(start, end), point);
+}
+
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
 // float, placed and range-checked; anything else is a kind mismatch. lo and hi
 // are the declared range, or the storage width below 64 bits; an unsigned
@@ -5071,7 +5340,9 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
 // token in an unsigned field, an integral float) is placed EXACTLY as the
 // engine places it (internal/tabletext interpretInteger, integerInDomain): its
 // sign and magnitude, saturated at 2^64-1 and counted; the declared range;
-// then the 64-bit storage domain, each move counted.
+// then the 64-bit storage domain, each move counted. The range is decided from
+// the token's significant digits before any parse, so a long token stays
+// linear (§16.2, §16.12).
 int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
   if (val is int && (!unsigned || val >= 0)) {
     var v = val;
@@ -5088,7 +5359,27 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   if (val is int) {
     wide = BigInt.from(val);
   } else if (val is _JNum && val.integral) {
-    wide = BigInt.parse(val.token);
+    // a token whose magnitude a double rounds to infinity is past every
+    // integer storage domain: refuse it by value, never an Error, without
+    // materializing a BigInt from an arbitrarily long token
+    // (docs/SPEC-TABLES.md §16.2)
+    if (!val.d.isFinite) {
+      r.refuse('out_of_range');
+      return def;
+    }
+    final parts = _jsonNumberParts(val.token);
+    if (parts.digits.isEmpty) {
+      wide = BigInt.zero;
+    } else if (parts.point > 20) {
+      r.refuse('out_of_range');
+      return def;
+    } else {
+      wide = BigInt.parse(parts.digits);
+      if (parts.negative) wide = -wide;
+      if (parts.point > parts.digits.length) {
+        wide *= BigInt.from(10).pow(parts.point - parts.digits.length);
+      }
+    }
   } else {
     final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
     if (!d.isFinite || d != d.truncateToDouble()) {
@@ -5349,42 +5640,27 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
 }
 
 int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
-  var i = 0;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) i++;
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i++]);
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i++]);
+  final parts = _jsonNumberParts(token);
+  if (parts.digits.isEmpty) return -1;
+  // The midpoint is n × 2^e2 with n below 2^53, so at the float32 widths
+  // this helper is reached from its decimal spelling has fewer than 200
+  // significant digits. A longer token is decided by its first 512 digits
+  // and whether any digit follows them (§16.2): BigInt.parse stays bounded
+  // and the compare stays linear in the token.
+  const keep = 512;
+  var sig = parts.digits;
+  var sticky = false;
+  if (sig.length > keep) {
+    for (var k = keep; k < sig.length; k++) {
+      if (sig.codeUnitAt(k) != 0x30) {
+        sticky = true;
+        break;
+      }
     }
+    sig = sig.substring(0, keep);
   }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var neg = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) neg = token[i++] == '-';
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (neg) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
-  if (digits.isEmpty) return -1;
-  final e10 = point - digits.length;
-  var lhs = BigInt.parse(digits);
+  final e10 = parts.point - sig.length;
+  var lhs = BigInt.parse(sig);
   var rhs = n;
   final ten = BigInt.from(10);
   if (e10 >= 0) {
@@ -5397,7 +5673,9 @@ int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
   } else {
     lhs <<= -e2;
   }
-  return lhs.compareTo(rhs);
+  final cmp = lhs.compareTo(rhs);
+  if (cmp == 0 && sticky) return 1;
+  return cmp;
 }
 
 double? _narrowF32(double d, String token) {
@@ -5532,7 +5810,11 @@ String _jsonPrepare(String text, TableTextReport r) {
     if (c == 0x2c) {
       var j = i + 1;
       while (j < stripped.length && stripped[j] <= 0x20) j++;
-      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) continue;
+      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) {
+        var k = i - 1;
+        while (k >= 0 && stripped[k] <= 0x20) k--;
+        if (k >= 0 && stripped[k] != 0x7b && stripped[k] != 0x5b && stripped[k] != 0x2c && stripped[k] != 0x3a) continue;
+      }
     }
     clean.add(c);
   }
@@ -5599,11 +5881,45 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
+// _jsonSkipNames walks a value the read skips and holds every object key in it
+// to the same 255-byte cap (§16.2): an unknown key's value is still an object
+// whose keys are schema names, however deep it sits.
+void _jsonSkipNames(dynamic val, TableTextReport r) {
+  final entries = _jsonEntries(val);
+  if (entries != null) {
+    for (final entry in entries) {
+      _jsonName(entry.key, r);
+      _jsonSkipNames(entry.value, r);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipNames(item, r);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
 dynamic _jsonDecodeExact(String text) {
   final p = _JParse(text);
+  // a leading U+FEFF is a byte-order mark (docs/SPEC-TABLES.md §16.2, §16.12):
+  // skipped once at the very start, and nowhere else.
+  if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) p.i = 1;
   p.ws();
   final v = p.value(0);
   p.ws();
@@ -5696,16 +6012,39 @@ final class _JParse {
       i += 4;
       return null;
     }
-    final number = RegExp(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?').matchAsPrefix(s, i);
-    if (number == null) throw FormatException('unexpected character', s, i);
-    i = number.end;
+    // scan the token in ONE pass over its code units, in the grammar
+    // -?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?, so a token of any
+    // length costs bounded stack and linear time (docs/SPEC-TABLES.md §16.2)
+    final start = i;
+    if (i < s.length && s.codeUnitAt(i) == 0x2D) i++;
+    if (i >= s.length || s.codeUnitAt(i) < 0x30 || s.codeUnitAt(i) > 0x39) {
+      throw FormatException('unexpected character', s, start);
+    }
+    if (s.codeUnitAt(i) == 0x30) {
+      i++;
+    } else {
+      while (i < s.length && s.codeUnitAt(i) >= 0x30 && s.codeUnitAt(i) <= 0x39) i++;
+    }
+    if (i + 1 < s.length && s.codeUnitAt(i) == 0x2E && s.codeUnitAt(i + 1) >= 0x30 && s.codeUnitAt(i + 1) <= 0x39) {
+      i += 2;
+      while (i < s.length && s.codeUnitAt(i) >= 0x30 && s.codeUnitAt(i) <= 0x39) i++;
+    }
+    if (i < s.length && (s.codeUnitAt(i) == 0x65 || s.codeUnitAt(i) == 0x45)) {
+      var j = i + 1;
+      if (j < s.length && (s.codeUnitAt(j) == 0x2B || s.codeUnitAt(j) == 0x2D)) j++;
+      if (j < s.length && s.codeUnitAt(j) >= 0x30 && s.codeUnitAt(j) <= 0x39) {
+        j++;
+        while (j < s.length && s.codeUnitAt(j) >= 0x30 && s.codeUnitAt(j) <= 0x39) j++;
+        i = j;
+      }
+    }
     if (i < s.length) {
       final next = s.codeUnitAt(i);
       if (next != 0x2C && next != 0x5D && next != 0x7D && next != 0x20 && next != 0x09 && next != 0x0A && next != 0x0D) {
         throw FormatException('invalid JSON number', s, i);
       }
     }
-    final token = number.group(0)!;
+    final token = s.substring(start, i);
     // -0 stays a _JNum: an int has no negative zero, and a float field owes
     // the sign the token spells (§16.2)
     if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
@@ -5741,6 +6080,7 @@ final class _JParse {
       if (i >= s.length) throw const FormatException('unterminated string');
       final c = s.codeUnitAt(i++);
       if (c == 0x22) return b.toString();
+      if (c < 0x20) throw FormatException('control character in string', s, i - 1);
       if (c != 0x5C) {
         b.writeCharCode(c);
         continue;
@@ -5828,48 +6168,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('kind_mismatch');
     return def;
   }
-  var i = 0;
-  var negative = false;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-    negative = token[i] == '-';
-    i++;
-  }
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i]);
-    i++;
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i]);
-      i++;
-    }
-  }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var expNegative = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-      expNegative = token[i] == '-';
-      i++;
-    }
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (expNegative) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  final parts = _jsonNumberParts(token);
+  final digits = parts.digits;
+  final point = parts.point;
+  final negative = parts.negative;
   final domainLo = signed ? -(BigInt.one << 127) : BigInt.zero;
   final domainHi = signed ? (BigInt.one << 127) - BigInt.one : (BigInt.one << 128) - BigInt.one;
   BigInt raw;
@@ -5879,6 +6181,12 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('out_of_range');
     return def;
   } else if (point < -40) {
+    r.refuse('kind_mismatch');
+    return def;
+  } else if (point < digits.length && digits.length - point > frac) {
+    // A fraction with more significant digits than the Q I.F grid has
+    // fraction bits cannot be exact; decide it before any big arithmetic,
+    // so BigInt.parse only ever sees a bounded string (§16.2).
     r.refuse('kind_mismatch');
     return def;
   } else {
@@ -5920,7 +6228,8 @@ bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
-      final b = base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
       if (b.length > bound) {
         r.refuse('length_over_bound');
         return def;
@@ -5946,7 +6255,9 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
+      return b;
     } on FormatException {
       r.refuse('kind_mismatch');
       return null;
@@ -6000,10 +6311,12 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
       r.unknown++;
+      _jsonSkipNames(entry.value, r);
       continue;
     }
     if (!seen.add(slot)) r.refuse('text_damaged');
@@ -6094,15 +6407,16 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     if (expNeg) exp = -exp;
   }
   if (i != k.length) throw const FormatException('invalid integer map key');
-  var digits = intDigits + fracDigits;
+  final all = intDigits + fracDigits;
+  var start = 0;
   var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
-    digits = digits.substring(1);
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
     point--;
   }
-  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  final digits = all.substring(start, end);
   BigInt mag;
   if (digits.isEmpty) {
     mag = BigInt.zero;
@@ -6161,6 +6475,7 @@ String mixedWeaponName(int v) {
 
 MixedWeapon mixedWeaponFromName(dynamic val, TableTextReport r, [MixedWeapon? def]) {
   if (val is! String) { r.refuse('kind_mismatch'); return def ?? MixedWeapon.none; }
+  if (!_jsonName(val, r)) return def ?? MixedWeapon.none;
   switch (val) {
     case "None": return MixedWeapon.none;
     case "Fists": return MixedWeapon.fists;
@@ -6204,16 +6519,17 @@ int _mixedDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
   if (val is! List) { r.refuse('kind_mismatch'); return def; }
   var bits = 0;
   for (final item in val) {
+    if (item is String && !_jsonName(item, r)) return def;
     switch (item) {
-      case "Bleeding": bits |= 1;
-      case "Burning": bits |= 2;
-      case "Stunned": bits |= 4;
-      case "Slowed": bits |= 8;
-      case "Poisoned": bits |= 16;
-      case "Shielded": bits |= 32;
-      case "Airborne": bits |= 64;
-      case "Downed": bits |= 128;
-      default: r.unknown++;
+      case "Bleeding": if (bits & 1 != 0) { r.refuse('text_damaged'); return def; } bits |= 1;
+      case "Burning": if (bits & 2 != 0) { r.refuse('text_damaged'); return def; } bits |= 2;
+      case "Stunned": if (bits & 4 != 0) { r.refuse('text_damaged'); return def; } bits |= 4;
+      case "Slowed": if (bits & 8 != 0) { r.refuse('text_damaged'); return def; } bits |= 8;
+      case "Poisoned": if (bits & 16 != 0) { r.refuse('text_damaged'); return def; } bits |= 16;
+      case "Shielded": if (bits & 32 != 0) { r.refuse('text_damaged'); return def; } bits |= 32;
+      case "Airborne": if (bits & 64 != 0) { r.refuse('text_damaged'); return def; } bits |= 64;
+      case "Downed": if (bits & 128 != 0) { r.refuse('text_damaged'); return def; } bits |= 128;
+      default: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }
     }
   }
   return bits;
@@ -6261,6 +6577,7 @@ MixedEvent _mixedEventFromJson(dynamic val, TableTextReport r, _Share sh, [Mixed
   final v = MixedEvent();
   if (entries.isEmpty) return v;
   if (entries.length != 1) throw const FormatException('union has two keys');
+  if (!_jsonName(entries.first.key, r)) return v;
   final item = entries.first.value;
   switch (entries.first.key) {
     case "hit":
@@ -6286,6 +6603,7 @@ MixedEvent _mixedEventFromJson(dynamic val, TableTextReport r, _Share sh, [Mixed
       }
     default:
       r.unknown++;
+      _jsonSkipNames(item, r);
   }
   return v;
 }
@@ -6482,6 +6800,7 @@ void mixedEntityFromJsonFields(MixedEntity v, dynamic obj, TableTextReport r, _S
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -6545,6 +6864,7 @@ void mixedEntityFromJsonFields(MixedEntity v, dynamic obj, TableTextReport r, _S
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -6585,6 +6905,7 @@ void mixedStatFromJsonFields(MixedStat v, dynamic obj, TableTextReport r, _Share
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -6600,6 +6921,7 @@ void mixedStatFromJsonFields(MixedStat v, dynamic obj, TableTextReport r, _Share
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -6652,6 +6974,7 @@ void mixedHitEventFromJsonFields(MixedHitEvent v, dynamic obj, TableTextReport r
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -6675,6 +6998,7 @@ void mixedHitEventFromJsonFields(MixedHitEvent v, dynamic obj, TableTextReport r
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -6715,6 +7039,7 @@ void mixedChatEventFromJsonFields(MixedChatEvent v, dynamic obj, TableTextReport
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -6730,6 +7055,7 @@ void mixedChatEventFromJsonFields(MixedChatEvent v, dynamic obj, TableTextReport
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -6770,6 +7096,7 @@ void mixedPickupEventFromJsonFields(MixedPickupEvent v, dynamic obj, TableTextRe
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -6785,6 +7112,7 @@ void mixedPickupEventFromJsonFields(MixedPickupEvent v, dynamic obj, TableTextRe
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7017,6 +7345,7 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7156,6 +7485,7 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7191,6 +7521,7 @@ void fixedTableFromJsonFields(FixedTable v, dynamic obj, TableTextReport r, _Sha
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7203,13 +7534,16 @@ void fixedTableFromJsonFields(FixedTable v, dynamic obj, TableTextReport r, _Sha
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
 
 String fixedTableToJson(FixedTable v) {
+  final state = WireState();
+  state.numberGraph(v, (obj) { _numberNode(state, obj); });
   final sh = _Share();
-  fixedTableCount(sh, v);
+  state.countTextPointers((obj) { sh.see(obj); });
   final out = _JOut();
   fixedTableToJsonBody(out, v, 0, sh);
   out.raw('\n');

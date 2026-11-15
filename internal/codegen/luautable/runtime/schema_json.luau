@@ -8,7 +8,7 @@
 -- Every value is written in DECLARATION order, defaults included, pretty-printed
 -- with a two-space indent and one trailing newline (§16.1). The reader accepts
 -- comments and trailing commas and never writes them; unknown keys are skipped
--- and counted, a repeated key is refused as malformed, and a value of the wrong
+-- and counted, a repeated key is last-wins and counted, and a value of the wrong
 -- JSON type is a kind mismatch, never coerced (§16.2). A node named by more than
 -- one pointer slot is DEFINED once as `{ "&node": N, ... }` and REFERENCED by
 -- `{ "&node": N }` after that (§16.7).
@@ -303,10 +303,10 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
-  -- A repeated key in a skipped object is malformed, exactly as in a read
+  -- A DUPLICATE KEY IN A SKIPPED OBJECT IS MALFORMED, exactly as in a read
   -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
   -- value rather than guessing which occurrence wins.
-  local seen: { [string]: boolean } = {}
+  local keys: { [string]: boolean } = {}
   while true do
     local c = peek(inp)
     if c == close then inp.p = inp.p + 1; return true end
@@ -316,8 +316,8 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       local scanned, _, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
       local key = scanned :: string -- an ok scan returns its string
-      if seen[key] then inp.bad = true; return false end
-      seen[key] = true
+      if keys[key] then inp.bad = true; return false end
+      keys[key] = true
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
       if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
@@ -909,7 +909,10 @@ local function place_wide(fd: any, token: string, report: any): any
   return integer.tonumber(raw.lo)
 end
 
--- one map key: the token is the whole string and must be a JSON number
+-- one map key: the token is the whole string and must be a JSON number, and
+-- the key is exactly the integer it names: a token that placement moves (past
+-- the key kind's range, or negative for an unsigned kind) is no key of the map
+-- (§16.2 map[K]V row; read.go readMap)
 local function map_int_key(fd: any, key: string): (any, string?)
   local probe = new_in(key)
   local token = scan_number(probe)
@@ -917,8 +920,9 @@ local function map_int_key(fd: any, key: string): (any, string?)
   local integral = not (token:find("[%.eE]") ~= nil)
   local _, _, finite, frac = norm_digits(token, integral)
   if not finite or frac then return false, "mismatch" end
-  local v = place_integer(fd, token, integral, { kindMismatch = 0, clamped = 0 })
-  if v == nil then return false, "mismatch" end
+  local placed = { kindMismatch = 0, clamped = 0 }
+  local v = place_integer(fd, token, integral, placed)
+  if v == nil or placed.kindMismatch > 0 or placed.clamped > 0 then return false, "mismatch" end
   return v, nil
 end
 
@@ -1641,6 +1645,19 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         local tie = f32_tie(x, token)
         x = tie ~= nil and tie or narrow
       end
+    end
+    if d.lo ~= nil then
+      -- a compressed float holds its DECLARED range on the value at its own
+      -- width (§16.2 Numbers, §3.3): a finite value past an end is clamped
+      -- and counted, which the plain read refuses, and its -0 lands as +0
+      if x < d.lo then
+        x = d.lo
+        report.clamped = report.clamped + 1
+      elseif x > d.hi then
+        x = d.hi
+        report.clamped = report.clamped + 1
+      end
+      if x == 0 then x = 0 end
     end
     holder[key] = x
     return true

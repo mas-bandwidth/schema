@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 #pragma once
 
@@ -24,6 +24,18 @@ enum class Weapon : uint8_t
     Laser = 1,
     Missile = 2,
     Railgun = 3,
+    Flak = 4,
+    Beam = 5,
+    Plasma = 6,
+    Torpedo = 7,
+    Mine = 8,
+    Drone = 9,
+    Swarm = 10,
+    Pulse = 11,
+    Lance = 12,
+    Comet = 13,
+    Quake = 14,
+    Arc = 15,
     Max = 15, // the exported extent (SPEC §4.2)
 };
 
@@ -36,7 +48,18 @@ inline const char * EnumName( Weapon value )
         case Weapon::Laser: return "Laser";
         case Weapon::Missile: return "Missile";
         case Weapon::Railgun: return "Railgun";
-        case Weapon::Max:
+        case Weapon::Flak: return "Flak";
+        case Weapon::Beam: return "Beam";
+        case Weapon::Plasma: return "Plasma";
+        case Weapon::Torpedo: return "Torpedo";
+        case Weapon::Mine: return "Mine";
+        case Weapon::Drone: return "Drone";
+        case Weapon::Swarm: return "Swarm";
+        case Weapon::Pulse: return "Pulse";
+        case Weapon::Lance: return "Lance";
+        case Weapon::Comet: return "Comet";
+        case Weapon::Quake: return "Quake";
+        case Weapon::Arc: return "Arc";
         default: return "???";
     }
 }

@@ -21,6 +21,7 @@ public final class MixedHitEventMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.targetId != 0) {
                 w.put(45L, 7);
@@ -49,7 +50,29 @@ public final class MixedHitEventMessage {
         return !w.overflow;
     }
 
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedHitEventFixed.Value v) {
+        assert v != null;
+        assert v.targetId >= 0 && v.targetId <= 4095L;
+        assert v.damage >= 0L;
+        assert v.damage <= 0xfffL;
+        assert v.hitKind >= 0L;
+        assert v.hitKind <= 0x7L;
+        return true;
+    }
+
     public static boolean loadMessageBody(TableMessage.Reader r, MixedHitEventFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, MixedHitEventFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -59,6 +82,10 @@ public final class MixedHitEventMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;

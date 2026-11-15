@@ -14,6 +14,7 @@ import (
 )
 
 func TestOptionalMapConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir optional-map native wire, retain, JSON and cook")
 	bin := elixirBinary(t)
 	base := "../../../testdata/conformance/feature-witnesses/optional-map/"

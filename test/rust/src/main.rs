@@ -629,7 +629,7 @@ fn main() {
     // untouched: it validates in every build, and its tests are elsewhere in
     // this file. ----
     {
-        // enum headroom: Weapon(200) against wire [0, 15]
+        // an out-of-range enum value: Weapon(200) against wire [0, 15]
         expect_assert(
             || {
                 let mut sample = ProbeSample::new();

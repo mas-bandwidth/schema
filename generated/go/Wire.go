@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 // The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
@@ -37,6 +37,18 @@ const (
 	WeaponLaser   Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponRailgun Weapon = 3
+	WeaponFlak    Weapon = 4
+	WeaponBeam    Weapon = 5
+	WeaponPlasma  Weapon = 6
+	WeaponTorpedo Weapon = 7
+	WeaponMine    Weapon = 8
+	WeaponDrone   Weapon = 9
+	WeaponSwarm   Weapon = 10
+	WeaponPulse   Weapon = 11
+	WeaponLance   Weapon = 12
+	WeaponComet   Weapon = 13
+	WeaponQuake   Weapon = 14
+	WeaponArc     Weapon = 15
 	WeaponMax     Weapon = 15
 )
 
@@ -52,6 +64,30 @@ func (v Weapon) String() string {
 		return "Missile"
 	case WeaponRailgun:
 		return "Railgun"
+	case WeaponFlak:
+		return "Flak"
+	case WeaponBeam:
+		return "Beam"
+	case WeaponPlasma:
+		return "Plasma"
+	case WeaponTorpedo:
+		return "Torpedo"
+	case WeaponMine:
+		return "Mine"
+	case WeaponDrone:
+		return "Drone"
+	case WeaponSwarm:
+		return "Swarm"
+	case WeaponPulse:
+		return "Pulse"
+	case WeaponLance:
+		return "Lance"
+	case WeaponComet:
+		return "Comet"
+	case WeaponQuake:
+		return "Quake"
+	case WeaponArc:
+		return "Arc"
 	}
 	return "???"
 }
@@ -137,6 +173,9 @@ const ProbeHeaderMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeHeader(stream *serialize.WriteStream, value *ProbeHeader) error {
+	if value.Version > 7 { // a value above the bits(3) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(171) & 0xff // const(171, 8)
 	f1 := uint64(value.Version) & 0x7
 	f2 := uint64(0) & 0x1f // reserved(5) — zeros on the wire
@@ -194,6 +233,12 @@ const ProbeBitsMaxBytes = 32
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeBits(stream *serialize.WriteStream, value *ProbeBits) error {
+	if value.Small > 511 { // a value above the bits(9) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Boundary > 8589934591 { // a value above the bits(33) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Small) & 0x1ff
 	f1 := value.Boundary & 0x1ffffffff
 	f2 := value.Wide
@@ -297,7 +342,12 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f1 = uint64(uint32(float32(normalizedValue*36000.0)+0.5)) & 0xffff
+	integerValue := uint32(float32(normalizedValue*36000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 36000 {
+		integerValue = 36000
+	}
+	f1 = uint64(integerValue) & 0xffff
 	f2 := uint64(value.RawDelta) & 0xffffffff
 	f3 := uint64(value.BigDelta)
 	w0 := f0 | f1<<1 | f2<<17 | f3<<49
@@ -1115,6 +1165,15 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	if value.C < -100 || value.C > 150 {
 		return serialize.ErrValueOutOfRange
 	}
+	if value.D > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.E > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.A+100) & 0xff
 	f1 := uint64(value.B+100) & 0xff
 	f2 := uint64(value.C+100) & 0xff
@@ -1159,7 +1218,12 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f12 = uint64(uint32(float32(normalizedValue*1000.0)+0.5)) & 0x3ff
+	integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 1000 {
+		integerValue = 1000
+	}
+	f12 = uint64(integerValue) & 0x3ff
 	f13 := math.Float64bits(value.DoubleValue)
 	f14 := uint64(value.Int8Value) & 0xff
 	f15 := uint64(value.Int16Value) & 0xffff
@@ -1352,7 +1416,12 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f0 = uint64(uint32(float32(normalizedValue*1000.0)+0.5)) & 0x3ff
+	integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 1000 {
+		integerValue = 1000
+	}
+	f0 = uint64(integerValue) & 0x3ff
 	f1 := uint64(0)
 	normalizedValue2 := (value.Offset + 5.0) / 10.0
 	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -1360,7 +1429,12 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 	} else if !(normalizedValue2 <= 1) {
 		normalizedValue2 = 1
 	}
-	f1 = uint64(uint32(float32(normalizedValue2*10000.0)+0.5)) & 0x3fff
+	integerValue2 := uint32(float32(normalizedValue2*10000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue2 > 10000 {
+		integerValue2 = 10000
+	}
+	f1 = uint64(integerValue2) & 0x3fff
 	w0 := uint32(f0 | f1<<10)
 	stream.SerializeBits(&w0, 24)
 	return stream.Err()

@@ -897,7 +897,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 // value or moves a counter.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 	t.Skip("layer 3: the file_reserved_* wires are form-1 files under fixed-declared roots, refused as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
-	m, model, _ := backend(t)
+	_, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {
 		for _, row := range []struct {
@@ -927,6 +927,15 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestTheReservedIdsInAnAnnouncement is the announcement half of
+// TestTheThreeReservedIdsWhereTheyDoNotBelong, which is skipped for its file
+// half (the file_reserved_* wires, re-pinned at layer 3): a vocabulary
+// carrying the announcement's own two ids, or the node-table id twice, is
+// malformed whole and sets nothing, and the unit's own announcement reads.
+func TestTheReservedIdsInAnAnnouncement(t *testing.T) {
+	m, _, _ := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
 	for _, row := range []string{"build_version", "vocabulary", "second_node_table"} {
 		wire := wireBytes(t, "testdata/wire/tables/announce_reserved_"+row+".bin")

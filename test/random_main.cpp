@@ -331,7 +331,7 @@ static void fill( Rng & r, ProbeSample & p )
     p.orientation = r.realf( -180, 180 );
     p.raw_delta = (int32_t) r.next();
     p.big_delta = (int64_t) r.next();
-    p.weapon = (Weapon) r.range( 0, 15 ); // headroom: non-variant values are wire-legal
+    p.weapon = (Weapon) r.range( 0, 15 ); // the whole wire range [0, 15]; every value names a variant
     p.has_target = r.coin();
     p.target_id = (uint16_t) r.range( 0, 65535 );
     p.idle_ticks = (uint32_t) r.next();

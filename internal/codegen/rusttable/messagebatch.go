@@ -394,11 +394,21 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
+	// or unknown: the ids this body has carried are held in a fixed stack set,
+	// and the vector only owns ids past its capacity, so every id is covered
+	// without an allocation for an ordinary body.
+	m.pf("    let mut seen_ids = [0u64; 64];\n")
+	m.pf("    let mut seen_count = 0usize;\n")
+	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
 	m.pf("    loop {\n")
 	m.pf("        let Some(reference) = r.get(v.ref_bits) else %s;\n", msgBad)
 	m.pf("        if reference == 0 { return true; }\n")
 	m.pf("        let Some(entry) = v.entry(reference).copied() else %s;\n", msgBad)
 	m.pf("        if entry.id >= 0xffff_ffff_ffff_fffd %s\n", msgBad)
+	m.pf("        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) %s\n", msgBad)
+	m.pf("        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }\n")
+	m.pf("        seen_count += 1;\n")
 	m.pf("        match entry.id {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -551,14 +561,16 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
 		// become a value (docs/SPEC-TABLES.md §3.3), as a file read refuses it:
 		// the read names the field and the batch refuses as non_finite_float,
-		// so the 0.0 that stands in is never delivered. A QUANTIZED float rides
-		// an index, and the value an index names is finite; every finite
-		// float32 widens exactly through the ordinary conversion (§4).
+		// so the 0.0 that stands in is never delivered. A DEQUANTIZED VALUE IS
+		// A FLOAT READ LIKE ANY OTHER: the peer's announced triple can name a
+		// top step past the largest float32, so the finite test cannot ride the
+		// announced packing. Every finite float32 widens exactly through the
+		// ordinary conversion (§4).
 		owner := floatOwnerIn(m.u, m.origOf(f))
 		if f.Type.Kind == ir.TFloat32 {
-			m.pf("%slet mut x = if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner)
+			m.pf("%slet mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, owner)
 		} else {
-			m.pf("%slet mut x = if %s.kind == 10 { if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, entry, owner, owner)
+			m.pf("%slet mut x = if %s.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner, owner)
 		}
 		if f.HasFloatRange {
 			var lo, hi string
@@ -612,9 +624,17 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	e := msgElement(f)
 	m.orig[e] = m.origOf(f)
 	if f.KeyEnum != "" {
+		// A KEYED SLOT TWICE IN ONE KEYED ARRAY IS DAMAGE (docs/SPEC-TABLES.md
+		// §3.2, §3.3): the slots this array has named are held in a fixed set.
+		m.pf("%s    let mut seen_keys = [0u64; 64];\n", ind)
+		m.pf("%s    let mut seen_key_count = 0usize;\n", ind)
+		m.pf("%s    let mut seen_key_more: Vec<u64> = Vec::new();\n", ind)
 		m.pf("%s    for _ in 0..n {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
 		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
+		m.pf("%s        if seen_keys[..core::cmp::min(seen_key_count, seen_keys.len())].contains(&id) || seen_key_more.contains(&id) %s\n", ind, msgBad)
+		m.pf("%s        if seen_key_count < seen_keys.len() { seen_keys[seen_key_count] = id; } else { seen_key_more.push(id); }\n", ind)
+		m.pf("%s        seen_key_count += 1;\n", ind)
 		m.pf("%s        let key: usize = match id {", ind)
 		for i := range f.KeyEnumRef.Variants {
 			m.pf(" 0x%016x => %d,", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i+1)
@@ -1046,7 +1066,13 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             if !r.align() {
                 return false;
             }
-            r.skip(n * 8)
+            let start = (r.offset / 8) as usize;
+            if !r.skip(n * 8) {
+                return false;
+            }
+            // a skipped string's bytes are held to the text rule a named read
+            // applies to them, and ill-formed text is damage (§3.3, §4)
+            table_message_utf8(&r.buffer[start..start + n as usize])
         }
         31 => {
             if !r.align() {
@@ -1071,12 +1097,26 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 }
                 return r.skip(n * w);
             }
-            for _ in 0..n {
+            for i in 0..n {
                 if e.kind == 16 && !r.skip(v.ref_bits as u64) {
                     return false;
                 }
+                let at = r.offset;
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
+                }
+                // A WALKED ELEMENT THAT CONSUMED NO BITS — a nested array
+                // whose inner run is itself zero-width — is the same run in a
+                // shape the arithmetic above cannot see (§3.3). Every element
+                // after it consumes nothing too, so the rest of the run is
+                // stepped in one, and a remaining count the bits left could
+                // not back is damage. The walk is bounded by the batch's bits
+                // whatever the count says.
+                if r.offset == at {
+                    if n - i - 1 > (r.buffer.len() as u64) * 8 - r.offset {
+                        return false;
+                    }
+                    return true;
                 }
             }
             true

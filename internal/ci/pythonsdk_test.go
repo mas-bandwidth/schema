@@ -30,7 +30,7 @@ func TestDistPythonStagesTheFleetSDK(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin := func(name string) string {
-		for _, line := range strings.Split(string(mk), "\n") {
+		for line := range strings.SplitSeq(string(mk), "\n") {
 			if f := strings.Fields(line); len(f) == 3 && f[0] == name && f[1] == ":=" {
 				return f[2]
 			}

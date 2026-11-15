@@ -306,6 +306,159 @@ func TestProofFindsAGateControlByName(t *testing.T) {
 	}
 }
 
+// TestProofReportsAPortInProgressAndGatesTheRest: a red cell in the column of
+// a port declared in progress is reported in progress with its reason and the
+// port's issue, and is not red; the same red in another column stays red.
+// Its negative control drops the declaration and the cell goes red again.
+func TestProofReportsAPortInProgressAndGatesTheRest(t *testing.T) {
+	in := fixture()
+	delete(in.Results.Results["aa"]["wire"].Cases, "beta")
+	delete(in.Results.Results["bb"]["wire"].Cases, "alpha")
+	in.InProgress = map[string]Port{"bb": {Lang: "bb", Issue: "#7", Plan: "docs/PORT-BB.md"}}
+	p := Compute(in)
+	c := mustCell(t, p, "surface wire", "bb")
+	if c.Status != StatusInProgress || !strings.Contains(c.Why, "wire/alpha") || !strings.Contains(c.Port, "#7") {
+		t.Errorf("surface wire / bb = %+v, want in progress naming wire/alpha and #7", c)
+	}
+	if c := mustCell(t, p, "surface wire", "aa"); c.Status != StatusRed {
+		t.Errorf("surface wire / aa = %+v: a port at parity was not gated", c)
+	}
+	for _, r := range p.Red() {
+		if r.Lang == "bb" {
+			t.Errorf("an in-progress cell is red: %+v", r)
+		}
+	}
+	if c := mustCell(t, p, "surface wire", "bb"); !slices.ContainsFunc(p.InProgress(), func(x Cell) bool { return x == c }) {
+		t.Error("the in-progress cell is not reported")
+	}
+	if got := AtParity(p, in.InProgress); len(got) != 0 {
+		t.Errorf("AtParity = %v, want none while bb has a cell in progress", got)
+	}
+	// the negative control: without the declaration the cell is red again
+	in.InProgress = nil
+	if c := mustCell(t, Compute(in), "surface wire", "bb"); c.Status != StatusRed {
+		t.Errorf("undeclared, surface wire / bb = %+v, want red", c)
+	}
+}
+
+// TestProofRefusesADeclaredPortAtParity: a declared port whose column has no
+// cell left in progress is at parity, and the proof and the release refuse
+// until the declaration is removed; a declared port with no column is not.
+func TestProofRefusesADeclaredPortAtParity(t *testing.T) {
+	ports := map[string]Port{
+		"bb": {Lang: "bb", Issue: "#7", Plan: "docs/PORT-BB.md"},
+		"zz": {Lang: "zz", Issue: "#8", Plan: "docs/PORT-ZZ.md"},
+	}
+	p := Proof{Langs: []string{"aa", "bb"}, Rows: []string{"r1", "r2"}, Cells: []Cell{
+		{Row: "r1", Lang: "aa", Status: StatusRed, Why: "x"},
+		{Row: "r1", Lang: "bb", Status: StatusProven},
+		{Row: "r2", Lang: "aa", Status: StatusProven},
+		{Row: "r2", Lang: "bb", Status: StatusNA},
+	}}
+	got := AtParity(p, ports)
+	if !slices.Equal(got, []string{"bb"}) {
+		t.Fatalf("AtParity = %v, want [bb]", got)
+	}
+	// one cell still in progress and bb is not at parity
+	p.Cells[1].Status = StatusInProgress
+	if open := AtParity(p, ports); len(open) != 0 {
+		t.Errorf("AtParity = %v with a bb cell in progress, want none", open)
+	}
+	rep := Report{Commit: "c", Cells: len(p.Cells), Parity: parityError(got)}
+	if err := VerifyRelease(rep, "c"); err == nil || !strings.Contains(err.Error(), "bb declared in progress but at parity") {
+		t.Errorf("VerifyRelease = %v, want a refusal naming bb at parity", err)
+	}
+}
+
+// TestProofRelaxesANamedCellAndRefusesAStaleOne: a red cell the relaxed list
+// names is relaxed, not red, and holds a release; the same red in another
+// column stays red; a relaxed cell that is no longer red refuses. Its negative
+// control drops the entry and the cell goes red again.
+func TestProofRelaxesANamedCellAndRefusesAStaleOne(t *testing.T) {
+	in := fixture()
+	delete(in.Results.Results["aa"]["wire"].Cases, "beta")
+	delete(in.Results.Results["bb"]["wire"].Cases, "alpha")
+	in.Relaxed = map[string]RelaxedCell{"surface wire/bb": {Row: "surface wire", Lang: "bb", Slug: "relax/x"}}
+	p := Compute(in)
+	c := mustCell(t, p, "surface wire", "bb")
+	if c.Status != StatusRelaxed || !strings.Contains(c.Why, "wire/alpha") || !strings.Contains(c.Relaxed, "relax/x") {
+		t.Errorf("surface wire / bb = %+v, want relaxed naming wire/alpha and relax/x", c)
+	}
+	if c := mustCell(t, p, "surface wire", "aa"); c.Status != StatusRed {
+		t.Errorf("surface wire / aa = %+v: an unlisted cell was relaxed", c)
+	}
+	if got := StaleRelaxed(p, in.Relaxed); len(got) != 0 {
+		t.Errorf("StaleRelaxed = %v, want none while the cell is red", got)
+	}
+	rep := Report{Commit: "c", Cells: len(p.Cells), Relaxed: p.Relaxed()}
+	if err := VerifyRelease(rep, "c"); err == nil || !strings.Contains(err.Error(), "relaxed cell") {
+		t.Errorf("VerifyRelease = %v, want a refusal naming the relaxed cell", err)
+	}
+	// stale: the cell's fix lands and the entry must go
+	in.Results.Results["bb"]["wire"].Cases["alpha"] = in.Results.Results["aa"]["wire"].Cases["alpha"]
+	if got := StaleRelaxed(Compute(in), in.Relaxed); !slices.Equal(got, []string{"surface wire/bb"}) {
+		t.Errorf("StaleRelaxed = %v, want [surface wire/bb] once the cell is no longer red", got)
+	}
+	// the negative control: without the entry the red cell is red again
+	delete(in.Results.Results["bb"]["wire"].Cases, "alpha")
+	in.Relaxed = nil
+	if c := mustCell(t, Compute(in), "surface wire", "bb"); c.Status != StatusRed {
+		t.Errorf("unlisted, surface wire / bb = %+v, want red", c)
+	}
+}
+
+// TestLoadRelaxedRefusesABadEntry: a relaxed cell with no slug, a slug that
+// docs/relaxed.md does not list, or a cell named twice is refused.
+func TestLoadRelaxedRefusesABadEntry(t *testing.T) {
+	for name, body := range map[string]string{
+		"no slug":  `{"relaxed":[{"row":"surface wire","lang":"py","slug":""}]}`,
+		"unlisted": `{"relaxed":[{"row":"surface wire","lang":"py","slug":"relax/nope"}]}`,
+		"twice":    `{"relaxed":[{"row":"surface wire","lang":"py","slug":"relax/a"},{"row":"surface wire","lang":"py","slug":"relax/a"}]}`,
+	} {
+		root := t.TempDir()
+		for p, data := range map[string]string{inProgressPath: body, relaxedPath: "- `relax/a`"} {
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, p), []byte(data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := LoadRelaxed(root); err == nil {
+			t.Errorf("%s: LoadRelaxed accepted %s", name, body)
+		}
+	}
+	if _, err := LoadRelaxed(testRoot(t)); err != nil {
+		t.Errorf("the tree's relaxed list: %v", err)
+	}
+}
+
+// TestLoadPortsRefusesABadDeclaration: a port with no issue, no design page in
+// the tree, or declared twice is refused.
+func TestLoadPortsRefusesABadDeclaration(t *testing.T) {
+	for name, body := range map[string]string{
+		"no issue": `{"ports":[{"lang":"py","issue":"","plan":"docs/P.md"}]}`,
+		"no plan":  `{"ports":[{"lang":"py","issue":"#1","plan":"docs/NOPE.md"}]}`,
+		"twice":    `{"ports":[{"lang":"py","issue":"#1","plan":"docs/P.md"},{"lang":"py","issue":"#2","plan":"docs/P.md"}]}`,
+	} {
+		root := t.TempDir()
+		for p, data := range map[string]string{inProgressPath: body, "docs/P.md": "x"} {
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, p), []byte(data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := LoadPorts(root); err == nil {
+			t.Errorf("%s: LoadPorts accepted %s", name, body)
+		}
+	}
+	if _, err := LoadPorts(testRoot(t)); err != nil {
+		t.Errorf("the tree's %s: %v", inProgressPath, err)
+	}
+}
+
 // TestLoadResultsOrdersLikeTheRegistry: per-leg files (CI) and one combined
 // file (make conformance) give the same columns, the reference first.
 func TestLoadResultsOrdersLikeTheRegistry(t *testing.T) {
@@ -363,6 +516,14 @@ func TestTheCommittedProofIsWellFormed(t *testing.T) {
 		case StatusRed:
 			if c.Why == "" {
 				t.Errorf("%s cell %s is red with no reason", proofPath, key)
+			}
+		case StatusInProgress:
+			if c.Why == "" || c.Port == "" {
+				t.Errorf("%s cell %s is in progress with no reason or no port", proofPath, key)
+			}
+		case StatusRelaxed:
+			if c.Why == "" || !strings.Contains(c.Relaxed, "relax/") {
+				t.Errorf("%s cell %s is relaxed with no reason or no slug", proofPath, key)
 			}
 		default:
 			t.Errorf("%s cell %s has status %q", proofPath, key, c.Status)

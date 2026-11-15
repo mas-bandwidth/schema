@@ -2,12 +2,21 @@ package goosetable
 
 // THE ANNOUNCEMENT'S ID TABLE IS A FILE'S (docs/SPEC-TABLES.md §3.3: the
 // announcement is a form-1 file; §3, THE DISTINCTNESS CHECK IS BOUNDED WORK):
-// every connection golden with its id table grown to exactly 4096 distinct
-// entries, to 4097, and to 4096 with one repeat, read by announce_read and
-// held to the Go reference (tablewire.Vocabulary.AnnounceRead) verdict for
-// verdict. The appended entries are named by no reference, so the 4096 table
-// announces as the golden does, and the other two are malformed. The control
-// widens the Goose bound by one and requires exactly the 4097 cases red.
+// every MESSAGE-FORM connection golden with its id table grown to exactly 4096
+// distinct entries, to 4097, and to 4096 with one repeat, read by
+// announce_read and held to the Go reference (tablewire.Vocabulary.AnnounceRead)
+// verdict for verdict. The appended entries are named by no reference, so the
+// 4096 table announces as the golden does, and the other two are malformed.
+// The control widens the Goose bound by one and requires exactly the 4097
+// cases red.
+//
+// The form is a FIXED table's (§3.3), so a connection golden whose unit is a
+// variable table is not a message-form announcement and its id table is not
+// one this test grows: map_conn is `mapdemo`'s, and its vocabulary is the
+// variable form's, outside the message closure the message form announces.
+// That exclusion is checked, not assumed: if the reference ever announces the
+// golden again (a repaired vocabulary) the test says so and the golden is
+// grown with the rest rather than silently dropped from the battery.
 
 import (
 	"encoding/binary"
@@ -17,6 +26,10 @@ import (
 	"strings"
 	"testing"
 )
+
+// nonMessageFormConn is the connection golden whose announcement is a
+// VARIABLE table's vocabulary.
+const nonMessageFormConn = "map_conn.bin"
 
 // announceGrown is an announcement whose id table is padded to n entries with
 // ids it does not carry (splitmix64 of a counter); a repeat makes the last
@@ -60,6 +73,17 @@ func announceIdBoundCases(t *testing.T) (cases [][]byte, names []string) {
 			t.Fatal(err)
 		}
 		base := filepath.Base(path)
+		if base == nonMessageFormConn {
+			// `mapdemo` is a VARIABLE table: the message form is a fixed
+			// table's (§3.3), and this connection announcement is the
+			// variable form's vocabulary, not a message-closure one. The
+			// reference must still call it damaged; a golden the reference
+			// announces is a message-form announcement and belongs below.
+			if fields := strings.Fields(goAnnounceVerdict(golden, 4096)); fields[2] != "1" {
+				t.Fatalf("%s is a message-form announcement again (%q); grow it with the rest", base, strings.Join(fields, " "))
+			}
+			continue
+		}
 		cases = append(cases, announceGrown(t, golden, 4096, false), announceGrown(t, golden, 4097, false), announceGrown(t, golden, 4096, true))
 		names = append(names, base+" ids 4096", base+" ids 4097", base+" ids 4096 repeat")
 	}

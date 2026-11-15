@@ -52,7 +52,18 @@ func TestIssue710UnpackPaths(t *testing.T) {
 	c := New()
 	for _, key := range []string{"../escape", "..", "a/b", `a\b`, "C:drive", "a\x00b"} {
 		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
-			u := unitFromSource(t, "package p\ntable Root { x int32 | json = \""+key+"\" }\n")
+			src := "package p\ntable Root { x int32 | json = \"" + key + "\" }\n"
+			if key == "a\x00b" {
+				path := filepath.Join(t.TempDir(), "Root.schema")
+				if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := c.Load([]string{path}); err == nil || !strings.Contains(err.Error(), "U+0000") {
+					t.Fatalf("json key with U+0000 must refuse at compile time: %v", err)
+				}
+				return
+			}
+			u := unitFromSource(t, src)
 			m := tabletext.NewModel(u)
 			wire, err := tablewire.Encode(m, m.New(u.Tables["Root"]))
 			if err != nil {
@@ -112,13 +123,14 @@ func issue710Wire(body []byte, ids ...uint64) []byte {
 }
 
 func TestIssue710TableRecovery(t *testing.T) {
+	t.Parallel()
 	src := `package p
  table Text { label string(32) = "untitled"; past int32 }
  table Element { value int32 = 7 }
  table Rows { items [..2]Element; past int32 }
  table Mapping { items map[uint32]Element; past int32 }
  enum Key { First, Second }
- table Keyed { items [Key]Element; past int32 }
+ table KeyedList { items [Key]Element; past int32 }
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))
@@ -139,8 +151,8 @@ func TestIssue710TableRecovery(t *testing.T) {
 			`RowsBuilder b; TableReport r; if (RowsLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 2;`},
 		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId),
 			`MappingBuilder b; TableReport r; if (MappingLoadBuilder(b,wire,sizeof(wire),&r) || !r.damaged || r.refuse_reason != wire_damaged) return 3;`},
-		{"keyed", "Keyed", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("Keyed", 0), fieldID("Keyed", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))),
-			`KeyedBuilder b; TableReport r; if (KeyedLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 4;`},
+		{"keyed", "KeyedList", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("KeyedList", 0), fieldID("KeyedList", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))),
+			`KeyedListBuilder b; TableReport r; if (KeyedListLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 4;`},
 	}
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})
@@ -195,7 +207,7 @@ func TestIssue710TableRecovery(t *testing.T) {
 		`uint8_t region[4096]; TableReport r={0}; if(text_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 11;`,
 		`uint8_t region[4096]; TableReport r={0}; if(rows_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 12;`,
 		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 13; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); mapping_builder_shutdown(&b); if(ok || !r.refused) return 14;`,
-		`uint8_t region[4096]; TableReport r={0}; if(keyed_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 15;`,
+		`uint8_t region[4096]; TableReport r={0}; if(keyed_list_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 15;`,
 	}
 	var csrc strings.Builder
 	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
@@ -243,6 +255,7 @@ func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 // allocation is reused for both scans, freed before the next language runs,
 // and omitted by go test -short. No packet or consumer process is involved.
 func TestIssue710PacketStringBounds(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("INT32_MAX string helper boundary requires a 2 GiB allocation")
 	}
@@ -328,6 +341,7 @@ int main(void) {
 }
 
 func TestIssue710ListRefusal(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, "package p\ntable Lists { items []int32\n past int32 }\ntable Nested { child Lists\n past int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n past int32 }\n")
 	m := tabletext.NewModel(u)
 	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("past"), ir.TableWireId("child"), ir.TableWireId(u.Enums["Key"].VariantWireName(0))}

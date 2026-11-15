@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xeb26c970fde3fd71
+# package example — protocol id 0xf35accd0582cdd84
 
 # Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 defmodule Example.Weapon do
@@ -11,7 +11,23 @@ defmodule Example.Weapon do
   An unnamed value up to the declared max is the integer itself.
   """
 
-  @type t :: :none | :laser | :missile | :railgun | 4..15
+  @type t ::
+          :none
+          | :laser
+          | :missile
+          | :railgun
+          | :flak
+          | :beam
+          | :plasma
+          | :torpedo
+          | :mine
+          | :drone
+          | :swarm
+          | :pulse
+          | :lance
+          | :comet
+          | :quake
+          | :arc
 
   @doc "The wire value of a Weapon value; anything else raises ArgumentError."
   @spec to_int(t()) :: 0..15
@@ -19,7 +35,18 @@ defmodule Example.Weapon do
   def to_int(:laser), do: 1
   def to_int(:missile), do: 2
   def to_int(:railgun), do: 3
-  def to_int(v) when is_integer(v) and v > 3 and v <= 15, do: v
+  def to_int(:flak), do: 4
+  def to_int(:beam), do: 5
+  def to_int(:plasma), do: 6
+  def to_int(:torpedo), do: 7
+  def to_int(:mine), do: 8
+  def to_int(:drone), do: 9
+  def to_int(:swarm), do: 10
+  def to_int(:pulse), do: 11
+  def to_int(:lance), do: 12
+  def to_int(:comet), do: 13
+  def to_int(:quake), do: 14
+  def to_int(:arc), do: 15
 
   def to_int(v) do
     raise ArgumentError, "not a Weapon value: #{inspect(v)}"
@@ -31,7 +58,18 @@ defmodule Example.Weapon do
   def from_int(1), do: {:ok, :laser}
   def from_int(2), do: {:ok, :missile}
   def from_int(3), do: {:ok, :railgun}
-  def from_int(v) when is_integer(v) and v > 3 and v <= 15, do: {:ok, v}
+  def from_int(4), do: {:ok, :flak}
+  def from_int(5), do: {:ok, :beam}
+  def from_int(6), do: {:ok, :plasma}
+  def from_int(7), do: {:ok, :torpedo}
+  def from_int(8), do: {:ok, :mine}
+  def from_int(9), do: {:ok, :drone}
+  def from_int(10), do: {:ok, :swarm}
+  def from_int(11), do: {:ok, :pulse}
+  def from_int(12), do: {:ok, :lance}
+  def from_int(13), do: {:ok, :comet}
+  def from_int(14), do: {:ok, :quake}
+  def from_int(15), do: {:ok, :arc}
   def from_int(_), do: :error
 
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
@@ -416,6 +454,30 @@ defmodule Example.Wire do
       2 -> "Missile"
       :railgun -> "Railgun"
       3 -> "Railgun"
+      :flak -> "Flak"
+      4 -> "Flak"
+      :beam -> "Beam"
+      5 -> "Beam"
+      :plasma -> "Plasma"
+      6 -> "Plasma"
+      :torpedo -> "Torpedo"
+      7 -> "Torpedo"
+      :mine -> "Mine"
+      8 -> "Mine"
+      :drone -> "Drone"
+      9 -> "Drone"
+      :swarm -> "Swarm"
+      10 -> "Swarm"
+      :pulse -> "Pulse"
+      11 -> "Pulse"
+      :lance -> "Lance"
+      12 -> "Lance"
+      :comet -> "Comet"
+      13 -> "Comet"
+      :quake -> "Quake"
+      14 -> "Quake"
+      :arc -> "Arc"
+      15 -> "Arc"
       _ -> "???"
     end
   end
@@ -543,7 +605,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeHeader.t(), non_neg_integer()} | :error
   def read_probe_header_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -697,7 +759,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeBits.t(), non_neg_integer()} | :error
   def read_probe_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -872,7 +934,7 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_probe_sample_samples(value_samples, data, scratch, scratch_bits)
+      wZprobe_sampleZsamples(value_samples, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -899,7 +961,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeSample.t(), non_neg_integer()} | :error
   def read_probe_sample_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -964,7 +1026,7 @@ defmodule Example.Wire do
       v = rv &&& 0x7
       n = v + 1
       if bits_read + 3 + n * 16 > num_bits, do: throw(:invalid)
-      {bits_read, v_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read + 3)
+      {bits_read, v_samples} = rZprobe_sampleZsamplesZalign(n, [], data, num_bits, bits_read + 3)
 
       value = %Example.ProbeSample{
         active: v_active,
@@ -1050,7 +1112,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeRing.t(), non_neg_integer()} | :error
   def read_probe_ring_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1147,7 +1209,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeSlab.t(), non_neg_integer()} | :error
   def read_probe_slab_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1297,7 +1359,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeShape.t(), non_neg_integer()} | :error
   def read_probe_shape_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1523,7 +1585,7 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      w_probe_collider_extras(value_extras, data, scratch, scratch_bits)
+      wZprobe_colliderZextras(value_extras, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -1550,7 +1612,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeCollider.t(), non_neg_integer()} | :error
   def read_probe_collider_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1647,7 +1709,7 @@ defmodule Example.Wire do
       # the count guards the loop — reject, never clamp
       if v > 2, do: throw(:invalid)
       n = v
-      {bits_read, v_extras} = r_probe_collider_extras(n, [], data, num_bits, bits_read + 2)
+      {bits_read, v_extras} = rZprobe_colliderZextras(n, [], data, num_bits, bits_read + 2)
 
       value = %Example.ProbeCollider{
         armor: v_armor,
@@ -1735,7 +1797,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeConfig.t(), non_neg_integer()} | :error
   def read_probe_config_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1807,7 +1869,7 @@ defmodule Example.Wire do
     scratch = 0
 
     {data, scratch, scratch_bits} =
-      w_probe_array_samples(value_samples, <<>>, scratch, scratch_bits)
+      wZprobe_arrayZsamples(value_samples, <<>>, scratch, scratch_bits)
 
     %{retries: value_config_retries, preferred: value_config_preferred} = value_config
     v = value_config_retries &&& 0xFFFFFFFF
@@ -1845,12 +1907,12 @@ defmodule Example.Wire do
           {:ok, Example.ProbeArray.t(), non_neg_integer()} | :error
   def read_probe_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
-      {bits_read, v_samples} = r_probe_array_samples(2, [], data, num_bits, 0)
+      {bits_read, v_samples} = rZprobe_arrayZsamples(2, [], data, num_bits, 0)
       if bits_read + 36 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 36)
       v = rv &&& 0xFFFFFFFF
@@ -1930,7 +1992,7 @@ defmodule Example.Wire do
           {:ok, Example.Heartbeat.t(), non_neg_integer()} | :error
   def read_heartbeat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2050,7 +2112,7 @@ defmodule Example.Wire do
           {:ok, Example.Test.t(), non_neg_integer()} | :error
   def read_test_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2161,7 +2223,7 @@ defmodule Example.Wire do
           {:ok, Example.Block.t(), non_neg_integer()} | :error
   def read_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2261,7 +2323,7 @@ defmodule Example.Wire do
           {:ok, Example.Chat.t(), non_neg_integer()} | :error
   def read_chat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2431,7 +2493,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeReport.t(), non_neg_integer()} | :error
   def read_probe_report_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2628,7 +2690,7 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< 1
     data = <<sc0::little-size(6)-unit(8)>>
     scratch_bits = 6
-    {data, scratch, scratch_bits} = w_test_data_items(value_items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZtest_dataZitems(value_items, data, scratch, scratch_bits)
     v = f32_bits(value_float_value)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2743,7 +2805,7 @@ defmodule Example.Wire do
     scratch = 0
 
     {data, scratch, scratch_bits} =
-      w_test_data_fixed_bytes(value_fixed_bytes, data, scratch, scratch_bits)
+      wZtest_dataZfixed_bytes(value_fixed_bytes, data, scratch, scratch_bits)
 
     if byte_size(value_text) > 255 do
       raise ArgumentError, "value.text longer than the declared 255-byte bound"
@@ -2785,7 +2847,7 @@ defmodule Example.Wire do
           {:ok, Example.TestData.t(), non_neg_integer()} | :error
   def read_test_data_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2819,7 +2881,7 @@ defmodule Example.Wire do
       if v > 16, do: throw(:invalid)
       n = v
       if 54 + n * 8 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_test_data_items_align(n, [], data, num_bits, 54)
+      {bits_read, v_items} = rZtest_dataZitemsZalign(n, [], data, num_bits, 54)
       if bits_read + 355 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
@@ -2894,7 +2956,7 @@ defmodule Example.Wire do
       if bits_read + 136 > num_bits, do: throw(:invalid)
 
       {bits_read, v_fixed_bytes} =
-        r_test_data_fixed_bytes_align(17, [], data, num_bits, bits_read)
+        rZtest_dataZfixed_bytesZalign(17, [], data, num_bits, bits_read)
 
       if bits_read + 8 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
@@ -3023,7 +3085,7 @@ defmodule Example.Wire do
           {:ok, Example.CompressedProbe.t(), non_neg_integer()} | :error
   def read_compressed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -3058,9 +3120,9 @@ defmodule Example.Wire do
     end
   end
 
-  defp w_probe_sample_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZprobe_sampleZsamples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_probe_sample_samples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZprobe_sampleZsamples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -3081,10 +3143,10 @@ defmodule Example.Wire do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_probe_sample_samples(rest, data, scratch, scratch_bits)
+    wZprobe_sampleZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp w_probe_sample_samples([e | rest], data, scratch, scratch_bits) do
+  defp wZprobe_sampleZsamples([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -3092,13 +3154,13 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_probe_sample_samples(rest, data, scratch, scratch_bits)
+    wZprobe_sampleZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp r_probe_sample_samples(0, acc, _data, _num_bits, bits_read),
+  defp rZprobe_sampleZsamples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+  defp rZprobe_sampleZsamples(remaining, acc, data, num_bits, bits_read)
        when remaining >= 3 do
     rv = rdw(data, bits_read, 48)
     v = rv &&& 0xFFFF
@@ -3107,17 +3169,17 @@ defmodule Example.Wire do
     e2 = v
     v = rv >>> 32
     e3 = v
-    r_probe_sample_samples(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 48)
+    rZprobe_sampleZsamples(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 48)
   end
 
-  defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read) do
+  defp rZprobe_sampleZsamples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 16)
     v = rv
     e = v
-    r_probe_sample_samples(remaining - 1, [e | acc], data, num_bits, bits_read + 16)
+    rZprobe_sampleZsamples(remaining - 1, [e | acc], data, num_bits, bits_read + 16)
   end
 
-  defp r_probe_sample_samples_align(remaining, acc, data, num_bits, bits_read)
+  defp rZprobe_sampleZsamplesZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3125,15 +3187,15 @@ defmodule Example.Wire do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_probe_sample_samples_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZprobe_sampleZsamplesZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+          rZprobe_sampleZsamples(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_probe_sample_samples_fast(
+          rZprobe_sampleZsamplesZfast(
             remaining,
             acc,
             data,
@@ -3145,15 +3207,15 @@ defmodule Example.Wire do
           )
 
         _ ->
-          r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+          rZprobe_sampleZsamples(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_probe_sample_samples_align(remaining, acc, data, num_bits, bits_read),
-    do: r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+  defp rZprobe_sampleZsamplesZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZprobe_sampleZsamples(remaining, acc, data, num_bits, bits_read)
 
-  defp r_probe_sample_samples_fast(
+  defp rZprobe_sampleZsamplesZfast(
          remaining,
          acc,
          data,
@@ -3176,7 +3238,7 @@ defmodule Example.Wire do
     e4 = v
 
     {bits_read, tail} =
-      r_probe_sample_samples_fast(
+      rZprobe_sampleZsamplesZfast(
         remaining - 4,
         acc,
         data,
@@ -3190,12 +3252,12 @@ defmodule Example.Wire do
     {bits_read, [e1, e2, e3, e4 | tail]}
   end
 
-  defp r_probe_sample_samples_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+  defp rZprobe_sampleZsamplesZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZprobe_sampleZsamples(remaining, acc, data, num_bits, bits_read)
 
-  defp w_probe_collider_extras([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZprobe_colliderZextras([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_probe_collider_extras([e | rest], data, scratch, scratch_bits) do
+  defp wZprobe_colliderZextras([e | rest], data, scratch, scratch_bits) do
     v =
       case e do
         nil ->
@@ -3258,13 +3320,13 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
       end
 
-    w_probe_collider_extras(rest, data, scratch, scratch_bits)
+    wZprobe_colliderZextras(rest, data, scratch, scratch_bits)
   end
 
-  defp r_probe_collider_extras(0, acc, _data, _num_bits, bits_read),
+  defp rZprobe_colliderZextras(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_probe_collider_extras(remaining, acc, data, num_bits, bits_read) do
+  defp rZprobe_colliderZextras(remaining, acc, data, num_bits, bits_read) do
     if bits_read + 2 > num_bits, do: throw(:invalid)
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x3
@@ -3301,12 +3363,12 @@ defmodule Example.Wire do
           {bits_read, nil}
       end
 
-    r_probe_collider_extras(remaining - 1, [e | acc], data, num_bits, bits_read)
+    rZprobe_colliderZextras(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
-  defp w_probe_array_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZprobe_arrayZsamples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_probe_array_samples([e | rest], data, scratch, scratch_bits) do
+  defp wZprobe_arrayZsamples([e | rest], data, scratch, scratch_bits) do
     %{
       active: e_active,
       orientation: e_orientation,
@@ -3404,14 +3466,14 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    {data, scratch, scratch_bits} = w_probe_sample_samples(e_samples, data, scratch, scratch_bits)
-    w_probe_array_samples(rest, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZprobe_sampleZsamples(e_samples, data, scratch, scratch_bits)
+    wZprobe_arrayZsamples(rest, data, scratch, scratch_bits)
   end
 
-  defp r_probe_array_samples(0, acc, _data, _num_bits, bits_read),
+  defp rZprobe_arrayZsamples(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_probe_array_samples(remaining, acc, data, num_bits, bits_read) do
+  defp rZprobe_arrayZsamples(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x1
     e_active = v == 1
@@ -3471,7 +3533,7 @@ defmodule Example.Wire do
     v = rv &&& 0x7
     n = v + 1
     if bits_read + 3 + n * 16 > num_bits, do: throw(:invalid)
-    {bits_read, e_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read + 3)
+    {bits_read, e_samples} = rZprobe_sampleZsamplesZalign(n, [], data, num_bits, bits_read + 3)
 
     e = %Example.ProbeSample{
       active: e_active,
@@ -3485,12 +3547,12 @@ defmodule Example.Wire do
       samples: e_samples
     }
 
-    r_probe_array_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
+    rZprobe_arrayZsamples(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
-  defp w_test_data_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZtest_dataZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_test_data_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZtest_dataZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -3542,10 +3604,10 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_test_data_items(rest, data, scratch, scratch_bits)
+    wZtest_dataZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp w_test_data_items([e | rest], data, scratch, scratch_bits) do
+  defp wZtest_dataZitems([e | rest], data, scratch, scratch_bits) do
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -3561,12 +3623,12 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_test_data_items(rest, data, scratch, scratch_bits)
+    wZtest_dataZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp w_test_data_fixed_bytes([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZtest_dataZfixed_bytes([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_test_data_fixed_bytes([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZtest_dataZfixed_bytes([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3583,10 +3645,10 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_test_data_fixed_bytes(rest, data, scratch, scratch_bits)
+    wZtest_dataZfixed_bytes(rest, data, scratch, scratch_bits)
   end
 
-  defp w_test_data_fixed_bytes([e | rest], data, scratch, scratch_bits) do
+  defp wZtest_dataZfixed_bytes([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3594,12 +3656,12 @@ defmodule Example.Wire do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_test_data_fixed_bytes(rest, data, scratch, scratch_bits)
+    wZtest_dataZfixed_bytes(rest, data, scratch, scratch_bits)
   end
 
-  defp r_test_data_items(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZtest_dataZitems(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_test_data_items(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZitems(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
@@ -3610,17 +3672,17 @@ defmodule Example.Wire do
     e3 = v
     v = rv >>> 24
     e4 = v
-    r_test_data_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
+    rZtest_dataZitems(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
-  defp r_test_data_items(remaining, acc, data, num_bits, bits_read) do
+  defp rZtest_dataZitems(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
     e = v
-    r_test_data_items(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
+    rZtest_dataZitems(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
-  defp r_test_data_items_align(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZitemsZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 9 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3628,26 +3690,26 @@ defmodule Example.Wire do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_test_data_items_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZtest_dataZitemsZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_test_data_items(remaining, acc, data, num_bits, bits_read)
+          rZtest_dataZitems(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_test_data_items_fast(remaining, acc, data, num_bits, bits_read, rest, b0 >>> q, 8 - q)
+          rZtest_dataZitemsZfast(remaining, acc, data, num_bits, bits_read, rest, b0 >>> q, 8 - q)
 
         _ ->
-          r_test_data_items(remaining, acc, data, num_bits, bits_read)
+          rZtest_dataZitems(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_test_data_items_align(remaining, acc, data, num_bits, bits_read),
-    do: r_test_data_items(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZitemsZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZtest_dataZitems(remaining, acc, data, num_bits, bits_read)
 
-  defp r_test_data_items_fast(
+  defp rZtest_dataZitemsZfast(
          remaining,
          acc,
          data,
@@ -3680,7 +3742,7 @@ defmodule Example.Wire do
     e9 = v
 
     {bits_read, tail} =
-      r_test_data_items_fast(
+      rZtest_dataZitemsZfast(
         remaining - 9,
         acc,
         data,
@@ -3694,13 +3756,13 @@ defmodule Example.Wire do
     {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
   end
 
-  defp r_test_data_items_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_test_data_items(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZitemsZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZtest_dataZitems(remaining, acc, data, num_bits, bits_read)
 
-  defp r_test_data_fixed_bytes(0, acc, _data, _num_bits, bits_read),
+  defp rZtest_dataZfixed_bytes(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZfixed_bytes(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
@@ -3711,17 +3773,17 @@ defmodule Example.Wire do
     e3 = v
     v = rv >>> 24
     e4 = v
-    r_test_data_fixed_bytes(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
+    rZtest_dataZfixed_bytes(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
-  defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read) do
+  defp rZtest_dataZfixed_bytes(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
     e = v
-    r_test_data_fixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
+    rZtest_dataZfixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
-  defp r_test_data_fixed_bytes_align(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZfixed_bytesZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 9 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3729,15 +3791,15 @@ defmodule Example.Wire do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_test_data_fixed_bytes_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZtest_dataZfixed_bytesZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+          rZtest_dataZfixed_bytes(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_test_data_fixed_bytes_fast(
+          rZtest_dataZfixed_bytesZfast(
             remaining,
             acc,
             data,
@@ -3749,15 +3811,15 @@ defmodule Example.Wire do
           )
 
         _ ->
-          r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+          rZtest_dataZfixed_bytes(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_test_data_fixed_bytes_align(remaining, acc, data, num_bits, bits_read),
-    do: r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZfixed_bytesZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZtest_dataZfixed_bytes(remaining, acc, data, num_bits, bits_read)
 
-  defp r_test_data_fixed_bytes_fast(
+  defp rZtest_dataZfixed_bytesZfast(
          remaining,
          acc,
          data,
@@ -3790,7 +3852,7 @@ defmodule Example.Wire do
     e9 = v
 
     {bits_read, tail} =
-      r_test_data_fixed_bytes_fast(
+      rZtest_dataZfixed_bytesZfast(
         remaining - 9,
         acc,
         data,
@@ -3804,6 +3866,6 @@ defmodule Example.Wire do
     {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
   end
 
-  defp r_test_data_fixed_bytes_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+  defp rZtest_dataZfixed_bytesZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZtest_dataZfixed_bytes(remaining, acc, data, num_bits, bits_read)
 end

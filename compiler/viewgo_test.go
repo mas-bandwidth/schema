@@ -13,6 +13,7 @@ import (
 )
 
 func TestGoUnitViewCorpus(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain, once per corpus unit")
 	printer, err := os.ReadFile("../test/tables/view_go.gotext")
 	if err != nil {

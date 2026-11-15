@@ -126,19 +126,30 @@ func (in *reader) space() {
 		// whitespace is, and a lone slash is not JSON.
 		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '/' {
 			in.pos += 2
+			start := in.pos
 			for in.pos < len(in.text) && in.text[in.pos] != '\n' {
 				in.pos++
+			}
+			if !utf8.Valid(in.text[start:in.pos]) || bytes.IndexByte(in.text[start:in.pos], 0) >= 0 {
+				in.bad = true
+				return
 			}
 			continue
 		}
 		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '*' {
-			end := bytes.Index(in.text[in.pos+2:], []byte("*/"))
+			start := in.pos + 2
+			end := bytes.Index(in.text[start:], []byte("*/"))
 			if end < 0 {
 				in.bad = true
 				in.pos = len(in.text)
 				return
 			}
-			in.pos += 2 + end + 2
+			comment := in.text[start : start+end]
+			if !utf8.Valid(comment) || bytes.IndexByte(comment, 0) >= 0 {
+				in.bad = true
+				return
+			}
+			in.pos = start + end + 2
 			continue
 		}
 		if c == '/' {
@@ -405,14 +416,43 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 	}
 }
 
+// zeroMode is what a string scan does with a U+0000 it decodes
+// (docs/SPEC-TABLES.md §16.3).
+type zeroMode int
+
+const (
+	// zeroNone is a string the walk only COMPARES: an enum, flag or union
+	// name, a base64 body, a timestamp. A U+0000 there is not the placed-text
+	// rule; the value's own row decides.
+	zeroNone zeroMode = iota
+	// zeroStored is a string the walk PLACES in text storage: a string(N) or
+	// *string value, a text-list element, a map key. A U+0000 refuses the read
+	// and names the field that held it.
+	zeroStored
+	// zeroSkipped is an object key or a string the walk only SKIPS: the value
+	// of an unknown key. On the table walk it is held to the placed-text rule
+	// and a U+0000 refuses the read; the JSON LAYER (§16.12) parses a whole
+	// value with no table and is not the table walk, so a U+0000 there stays.
+	zeroSkipped
+)
+
 // scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
 // escape's encoding, or a UTF-8 sequence read whole. capacity < 0 is
 // unbounded; the returned bool is whether the scan succeeded, and over whether
 // the string is longer than capacity, which the caller refuses.
-// scanString is for a string the walk only COMPARES or SKIPS — an object key,
-// an enum, flag or union name, a skipped value — and stores nothing.
+// scanString is for a string the walk only COMPARES — an enum, flag or union
+// name, a base64 body, a timestamp — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, false)
+	return in.scanText(capacity, zeroNone)
+}
+
+// scanKey reads an object key or a string the walk only SKIPS, and holds it to
+// the U+0000 rule a placed string is held to (docs/SPEC-TABLES.md §16.2,
+// §16.3): a skipped value and every object key are held to the text rules of a
+// placed value, so a key or skipped string that decodes to U+0000 refuses the
+// read. No field holds it, so the refusal is plain malformed.
+func (in *reader) scanKey(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, zeroSkipped)
 }
 
 // scanStored scans a string the walk PLACES in text storage: a string(N) or
@@ -425,10 +465,10 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 // \u0000 escape can produce one; a raw control byte is already not JSON. The
 // generated Go walk's scanText holds the same rule.
 func (in *reader) scanStored(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, true)
+	return in.scanText(capacity, zeroStored)
 }
 
-func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, ok bool) {
+func (in *reader) scanText(capacity int, zero zeroMode) (out []byte, clamped bool, ok bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return nil, false, false
@@ -442,8 +482,11 @@ func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, 
 		if done {
 			break
 		}
-		if store && len(unit) == 1 && unit[0] == 0 {
-			in.zero = true // §16.3: a zero bound for text storage
+		if len(unit) == 1 && unit[0] == 0 &&
+			(zero == zeroStored || (zero == zeroSkipped && in.m != nil)) {
+			if zero == zeroStored {
+				in.zero = true // §16.3: a zero bound for text storage
+			}
 			in.bad = true
 			return nil, false, false
 		}
@@ -543,7 +586,7 @@ func (in *reader) skipValue(depth int) bool {
 	case '[':
 		return in.skipContainer(']', depth)
 	case '"':
-		_, _, ok := in.scanString(0)
+		_, _, ok := in.scanKey(0)
 		return ok
 	case 't':
 		return in.literal("true")
@@ -589,9 +632,12 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// not hold, and the numbering has to survive the drop (§16.7).
 			// Anywhere but first, the prefix is the reserved key out of place
 			// — in a pointered root; a fixed root skips the value whole.
-			key, _, ok := in.scanString(maxJsonKey)
+			key, tooLong, ok := in.scanKey(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			if in.peek() != ':' {
 				in.bad = true
@@ -700,7 +746,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				return false
 			}
 			var ok, tooLong bool
-			key, tooLong, ok = in.scanString(maxJsonKey)
+			key, tooLong, ok = in.scanKey(maxJsonKey)
 			if !ok {
 				return false
 			}
@@ -941,7 +987,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		in.bad = true
 		return false
 	}
-	key, tooLong, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
 	}
@@ -1102,6 +1148,21 @@ func (in *reader) readBase64(fv *Field) bool {
 	}
 	if malformed {
 		return in.fail("base64_damaged: " + fv.Def.Name)
+	}
+	// JSON bytes use the same canonical spelling as the writer: padded
+	// standard base64 with zero pad bits (§16.2). The walk above deliberately
+	// accepts decodable unpadded input, so distinguish it from damaged input.
+	canonical := symbols%4 == 0
+	switch pad {
+	case 1:
+		last := strings.IndexByte(alphabet, raw[len(raw)-2])
+		canonical = last >= 0 && last&0x03 == 0
+	case 2:
+		last := strings.IndexByte(alphabet, raw[len(raw)-3])
+		canonical = last >= 0 && last&0x0f == 0
+	}
+	if !canonical {
+		return in.fail("base64_not_canonical: " + fv.Def.Name)
 	}
 	var out []byte
 	var accumulator uint32
@@ -1343,7 +1404,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, tooLong, ok := in.scanString(maxJsonKey)
+		key, tooLong, ok := in.scanKey(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1412,9 +1473,12 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.readTable(cell.Tab, depth+1)
 	}
 	if e := EnumOf(f); e != nil {
-		name, _, ok := in.scanString(maxJsonKey)
+		name, tooLong, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
+		}
+		if tooLong {
+			return in.fail("length_over_bound: JSON key")
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
 			if VariantDeprecated(e, v) {
@@ -1498,6 +1562,85 @@ func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 	return true
 }
 
+// maxFloatDecimalDigits bounds the significant digits a platform float
+// conversion is handed. Binary64's correctly rounded value is decided by far
+// fewer digits than this; the extra room lets a truncated mantissa carry one
+// sticky digit past the digits that decide it. The bound also keeps the whole
+// mantissa inside the conversion's own fixed working precision, so a token's
+// length never changes the value it lands (§16.2 Numbers).
+const maxFloatDecimalDigits = 799
+
+// boundedFloatToken rewrites a valid JSON number token to the same exact
+// decimal value with its insignificant zeros folded into one exponent and its
+// significant digits capped at maxFloatDecimalDigits plus a sticky digit.
+// strconv reads the result correctly where an unbounded token can exceed its
+// working precision.
+func boundedFloatToken(token string) string {
+	if len(token) <= maxFloatDecimalDigits {
+		return token // shorter than the conversion's working precision
+	}
+	i := 0
+	negative := false
+	if i < len(token) && token[i] == '-' {
+		negative = true
+		i++
+	}
+	intAt := i
+	for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+		i++
+	}
+	intDigits := token[intAt:i]
+	fracDigits := ""
+	if i < len(token) && token[i] == '.' {
+		i++
+		fracAt := i
+		for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+			i++
+		}
+		fracDigits = token[fracAt:i]
+	}
+	exp := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		expNegative := false
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			expNegative = token[i] == '-'
+			i++
+		}
+		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+			if exp < 100000 {
+				exp = exp*10 + int(token[i]-'0')
+			}
+		}
+		if expNegative {
+			exp = -exp
+		}
+	}
+	digits := intDigits + fracDigits
+	exp -= len(fracDigits)
+	digits = strings.TrimLeft(digits, "0")
+	if digits == "" {
+		if negative {
+			return "-0"
+		}
+		return "0"
+	}
+	trimmed := strings.TrimRight(digits, "0")
+	exp += len(digits) - len(trimmed)
+	digits = trimmed
+	if len(digits) > maxFloatDecimalDigits {
+		drop := len(digits) - maxFloatDecimalDigits
+		// The sticky digit keeps a nonzero tail from looking like an exact
+		// shorter decimal; the exponent carries the digits dropped.
+		digits = digits[:maxFloatDecimalDigits] + "1"
+		exp += drop - 1
+	}
+	if negative {
+		return "-" + digits + "e" + strconv.Itoa(exp)
+	}
+	return digits + "e" + strconv.Itoa(exp)
+}
+
 // placeFloat converts a number token into a float field. A magnitude the
 // field's format cannot hold is the WRONG SHAPE for the kind and never reaches
 // storage: storing the infinity the conversion produced would leave an
@@ -1516,7 +1659,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 	if single {
 		bits = 32
 	}
-	value, err := strconv.ParseFloat(token, bits)
+	value, err := strconv.ParseFloat(boundedFloatToken(token), bits)
 	if err != nil && !errors.Is(err, strconv.ErrRange) {
 		in.bad = true
 		return false
@@ -1599,9 +1742,12 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		in.pos++
 		return true
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
+	}
+	if tooLong {
+		return in.fail("length_over_bound: JSON key")
 	}
 	if in.peek() != ':' {
 		in.bad = true
@@ -1704,9 +1850,12 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		if c != '"' {
 			return in.fail("kind_mismatch: " + fl.Name)
 		} else {
-			name, _, ok := in.scanString(maxJsonKey)
+			name, tooLong, ok := in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			found := false
 			for bit, v := range fl.Variants {
@@ -1798,7 +1947,7 @@ func interpretInteger(token string, integral bool) jsonInteger {
 		}
 		return out
 	}
-	d, err := strconv.ParseFloat(token, 64)
+	d, err := strconv.ParseFloat(boundedFloatToken(token), 64)
 	if (err != nil && !errors.Is(err, strconv.ErrRange)) || math.IsInf(d, 0) || math.IsNaN(d) {
 		out.finite = false
 		return out

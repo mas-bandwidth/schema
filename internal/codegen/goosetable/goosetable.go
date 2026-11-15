@@ -369,7 +369,7 @@ func emitFile(g *goose.Gen, reach map[string]bool) {
 func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 	var placeable []string
 	for _, r := range ir.PointerReachable(t) {
-		placeable = append(placeable, fmt.Sprintf("%q", r.Name))
+		placeable = append(placeable, stringLit(r.Name))
 		requireHome(g, r.Name)
 	}
 	sort.Strings(placeable)
@@ -388,7 +388,7 @@ func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(t)
 	g.Declare(t.Name + "Descriptor")
 	var lit lit
-	lit.add("name", fmt.Sprintf("%q", t.Name))
+	lit.add("name", stringLit(t.Name))
 	lit.add("id", fmt.Sprintf("0x%016x", ir.TableWireId(t.WireName())))
 	lit.flag("table", t.IsTable)
 	lit.flag("fixed", t.FixedDeclared)
@@ -417,7 +417,7 @@ func emitUnionDescriptor(g *goose.Gen, un *ir.Union) {
 		if v.Void() {
 			var l lit
 			l.add("id", fmt.Sprintf("0x%016x", ir.TableWireId(v.WireName())))
-			l.add("name", fmt.Sprintf("%q", v.Name))
+			l.add("name", stringLit(v.Name))
 			l.add("shape", fmt.Sprintf("%s::ShapeVoid", goose.RuntimeNamespace))
 			l.add("tag", fmt.Sprint(i+1))
 			annotate(g, &l, tagsName(un.Name, i), v.Doc, v.Tags)
@@ -432,7 +432,7 @@ func emitUnionDescriptor(g *goose.Gen, un *ir.Union) {
 	g.Pf("let _%sArms: %s::FieldDesc[%d] = [\n    %s,\n];\n", un.Name, goose.RuntimeNamespace, len(entries), strings.Join(entries, ",\n    "))
 	g.Declare(un.Name + "Descriptor")
 	g.Pf("// %sDescriptor — union %s as data: one entry per arm, tag order (§2.6)\n", un.Name, un.Name)
-	g.Pf("let %sDescriptor: %s::UnionDesc = %s::UnionDesc { name: %q, arms: _%sArms };\n\n", un.Name, goose.RuntimeNamespace, goose.RuntimeNamespace, un.Name, un.Name)
+	g.Pf("let %sDescriptor: %s::UnionDesc = %s::UnionDesc { name: %s, arms: _%sArms };\n\n", un.Name, goose.RuntimeNamespace, goose.RuntimeNamespace, stringLit(un.Name), un.Name)
 }
 
 // requireHome imports the table module that declares a descriptor, so a
@@ -495,9 +495,9 @@ func fieldDescWire(g *goose.Gen, owner string, f *ir.Field, ordinal, tag int, wi
 		id, json = 0, ""
 	}
 	l.add("id", fmt.Sprintf("0x%016x", id))
-	l.add("name", fmt.Sprintf("%q", f.Name))
-	l.add("slot", fmt.Sprintf("%q", ir.GoExportName(f.Name)))
-	l.add("json", fmt.Sprintf("%q", json))
+	l.add("name", stringLit(f.Name))
+	l.add("slot", stringLit(ir.GoExportName(f.Name)))
+	l.add("json", stringLit(json))
 	l.add("ordinal", fmt.Sprint(ordinal))
 	l.add("kind", fmt.Sprint(ir.TableWireFieldKind(f)))
 	v := valueFacts(g, f, true)
@@ -588,7 +588,7 @@ func (v facts) write(l *lit) {
 // writeRest renders the facts after bound, in FieldDesc order.
 func (v facts) writeRest(l *lit) {
 	if v.ref != "" {
-		l.add("ref", fmt.Sprintf("%q", v.ref))
+		l.add("ref", stringLit(v.ref))
 	}
 	if v.variants != "" {
 		l.add("variants", v.variants)
@@ -662,7 +662,7 @@ func valueFacts(g *goose.Gen, f *ir.Field, def bool) facts {
 			v.shape, v.ek = "ShapeBytes", fmt.Sprint(ir.TableKindU8)
 		}
 		if def && f.HasDefault {
-			v.hasDef, v.defS = true, fmt.Sprintf("%q", string(f.DefBytes))
+			v.hasDef, v.defS = true, stringLit(string(f.DefBytes))
 		}
 		return v
 	case t.Kind == ir.TBool:
@@ -718,7 +718,7 @@ func enumVariants(g *goose.Gen, e *ir.Enum) string {
 	g.Declare(name)
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
-		parts[i] = fmt.Sprintf("%s::VariantDesc { name: %q, id: 0x%016x }", goose.RuntimeNamespace, e.Variants[i], ir.TableWireId(e.VariantWireName(i)))
+		parts[i] = fmt.Sprintf("%s::VariantDesc { name: %s, id: 0x%016x }", goose.RuntimeNamespace, stringLit(e.Variants[i]), ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.Pf("let %s: %s::VariantDesc[%d] = [%s];\n", name, goose.RuntimeNamespace, len(parts), strings.Join(parts, ", "))
 	return name

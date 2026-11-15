@@ -256,8 +256,7 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 		}
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		units, flavour := f.Type.Size, fixedTextUtf8
-		switch f.Type.Kind {
-		case ir.TBytes:
+		if f.Type.Kind == ir.TBytes {
 			flavour = fixedTextBytes
 		}
 		// THE FLAVOUR RIDES ON `meta` AND NOT ON `arg`, which is where this

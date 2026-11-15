@@ -53,10 +53,18 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMess
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 {
+ uint8_t seen[512]; /* one bit a reference, as the file form's body skip keeps */
  if(r->skip_depth>128)return 0;
- for(;;) {const TableMessageEntry * entry;
+ memset(seen,0,sizeof(seen));
+ for(;;) {const TableMessageEntry * entry;int64_t ref;
   if(!table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
+     reference is bounded where the file form bounds it, so the bitset fits. */
+  ref=entry-r->vocabulary->entries+1;
+  if(ref<1||ref>4096)return 0;
+  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
   if(!table_message_skip(r,entry))return 0;
  }
 }
@@ -67,7 +75,7 @@ static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const 
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
- uint64_t n,i;const TableMessageEntry * entry;int saved,ok;
+ uint64_t n,i;const TableMessageEntry * entry;const uint8_t * text;int saved,ok;
  if(r->skip_depth>128)return 0;
  switch(e->kind) {
  case 0:case 32:return 1;
@@ -78,23 +86,67 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
   if(!table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && table_message_skip_deeper(r,entry));
  case 12:
+  /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
+     is inside the announced bound and its bytes are well-formed UTF-8 with no
+     zero byte. table_wire_utf8 is the check a named read applies. */
   if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max))||!table_bit_align_read(&r->bits))return 0;
-  return table_message_skip_run(r,n,8);
+  if(n>(uint64_t)e->max || n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))return 0;
+  text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))return 0;
+  r->bits.offset+=(int64_t)n*8;
+  return 1;
  case 31:
   if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
   return table_message_skip_run(r,n,8);
+ case 10:
+  /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+     (§3.3): the same raw-bits rule a named float read applies. */
+  if(!table_bit_get(&r->bits,&n,e->value_bits))return 0;
+  if(e->packing==2)return n<=(uint64_t)e->qcount;
+  return table_bits_finite32((uint32_t)n);
+ case 11:
+  if(!table_bit_get(&r->bits,&n,64))return 0;
+  return table_bits_finite64(n);
  case 14:case 16: {
   TableMessageEntry elem=table_message_element(e);
   if(!table_message_count(r,e,&n))return 0;
-  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
-   int64_t width=elem.value_bits>0?elem.value_bits:0;
-   if(e->kind==16)width+=r->vocabulary->ref_bits;
-   return table_message_skip_run(r,n,width);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
+  if(n>(uint64_t)e->max)return 0;
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
+     a quantized element carries a value condition, so it is walked; a keyed
+     entry carries a key reference, so it is walked too. */
+  if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
+   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
+    return table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
-  for(i=0;i<n;i++) {
-   if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
-   if(!table_message_skip_deeper(r,&elem))return 0;
-  }return 1;
+  {
+   uint8_t seen[512];int64_t before;
+   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
+   if(e->kind==16)memset(seen,0,sizeof(seen));
+   for(i=0;i<n;i++) {
+    before=r->bits.offset;
+    if(e->kind==16) {
+     int64_t key;
+     if(!table_message_ref(r,&entry,1)||entry==NULL)return 0;
+     key=entry-r->vocabulary->entries+1;
+     if(key<1||key>4096)return 0;
+     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
+     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+    }
+    /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
+       its own value conditions at the array body's level; only a string, a
+       table, a nested array or keyed body, a union or an enum is walked one
+       level deeper. */
+    if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
+     if(!table_message_skip(r,&elem))return 0;
+    } else if(!table_message_skip_deeper(r,&elem))return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
+    if(r->bits.offset==before)return 0;
+   }
+   return 1;
+  }
  }
  default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
  }
@@ -134,7 +186,7 @@ static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const Tab
  uint64_t count;
  memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
  if(bytes<1 || buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return -1;}
- if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
+ if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;report->refuse_reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM;return -1;}
  if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
  r->bits=table_bit_reader(buffer+1,bytes-1);
  if(!table_bit_get(&r->bits,&count,8)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return -1;}
@@ -382,7 +434,7 @@ func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages"), st.Name)
 	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;memset(report,0,sizeof(*report));\n if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}capacity=*count;*count=0;\n")
 	if st.Integrity != "" {
-		g.pf(" if(bytes<1||buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
+		g.pf(" if(bytes<1||buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;report->refuse_reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
 	}
 	g.pf(" bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok||table_report_finish(report,ok)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
 

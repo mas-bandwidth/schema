@@ -129,6 +129,12 @@ public final class TableMessage {
         public long at;
         public boolean err;
 
+        // THE IDS ONE BODY HAS CARRIED, in a reusable stack so a nested body
+        // takes its own region and a body allocates nothing (docs/SPEC-TABLES.md
+        // §4, §5).
+        private long[] seenIds = new long[64];
+        private int seenUsed;
+
         public Reader(
                 byte[] buf, int startByte, TableVocabulary vocab, TableVocabulary.Report report) {
             this.buf = buf;
@@ -136,6 +142,27 @@ public final class TableMessage {
             this.vocab = vocab;
             this.report = report;
             this.at = (long) startByte << 3;
+        }
+
+        int seenMark() {
+            return seenUsed;
+        }
+
+        void seenRollback(int mark) {
+            seenUsed = mark;
+        }
+
+        boolean seenAdd(int mark, long id) {
+            for (int i = mark; i < seenUsed; i++) {
+                if (seenIds[i] == id) {
+                    return false;
+                }
+            }
+            if (seenUsed == seenIds.length) {
+                seenIds = java.util.Arrays.copyOf(seenIds, seenIds.length * 2);
+            }
+            seenIds[seenUsed++] = id;
+            return true;
         }
 
         public long get(int n) {
@@ -382,7 +409,10 @@ public final class TableMessage {
                     if (r.err || !r.align()) {
                         return false;
                     }
-                    return r.skipBits(n * 8L);
+                    // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes
+                    // this reader does not keep are still damage when ill-formed.
+                    final int start = r.atByte();
+                    return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
                 }
             case 31:
                 {
@@ -410,6 +440,7 @@ public final class TableMessage {
                         return skipRun(r, n, run);
                     }
                     for (long i = 0; i < n; i++) {
+                        long at = r.at;
                         if (s.kind == 16) {
                             long kref = r.get(r.vocab.refBits);
                             if (r.err || kref < 0L || kref > (long) r.vocab.count) {
@@ -419,6 +450,20 @@ public final class TableMessage {
                         }
                         if (!skipAt(r, elem, null, depth + 1)) {
                             return false;
+                        }
+                        // A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array
+                        // whose inner run is itself zero-width, steps the rest of
+                        // the run in one (docs/SPEC-TABLES.md §3.3). A remaining
+                        // count the bits left could not back is damage, so a
+                        // hostile count is refused here rather than walked, and
+                        // the skip is bounded by the batch's bits whatever the
+                        // count says.
+                        if (r.at == at) {
+                            if (n - i - 1 > r.totalBits - r.at) {
+                                r.err = true;
+                                return false;
+                            }
+                            return true;
                         }
                     }
                     return true;

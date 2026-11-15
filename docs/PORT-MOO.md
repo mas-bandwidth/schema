@@ -80,8 +80,10 @@ and union, against serialize.moo's streams; there is no private bit writer.
   the reason (`past_end`, `value_out_of_range`, `non_finite_float`,
   `embedded_nul`, `invalid_utf8`, `nonzero_padding`), or, for a rule only
   schema knows (`const`, `reserved`), by returning
-  `false` unlatched. Hostile bytes never raise. A packet reader calls
-  `stream:serializeEnd()` after the top-level read.
+  `false` unlatched. Hostile bytes never raise. The generated `Read<T>` calls
+  `stream:serializeEnd()` once, after the top-level object, refusing a whole
+  byte left over (`trailing_data`) or non-zero unused bits in the final byte
+  (`nonzero_padding`); a nested type's read does not end (SPEC §5).
 - **Constants are built once.** Wide literals and Float32 declarations live in a
   module-level pool (`K1`, `K2`, …) built at load; a compressed float's steps
   come from `serialize.compressedFloatParams` once per declaration, in the

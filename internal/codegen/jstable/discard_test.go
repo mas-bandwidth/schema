@@ -157,10 +157,10 @@ console.log("ok");
 //     The same wires undamaged load, so a reader that refused everything would
 //     be red here too.
 //   - framing: every `framing` row of the conformance manifest whose verdict is
-//     refused (docs/LAYERS/1-framing.md) and whose bytes carry the variable
-//     form, through Load and LoadRetain of the row's root, answers null with
-//     the store empty. A row whose first byte is another form is the form
-//     gate's, not this one's.
+//     refused (docs/LAYERS/1-framing.md), through Load and LoadRetain of the
+//     row's root, answers null with the store empty. A form byte the root does
+//     not carry refuses the whole read for a fixed-class root and a
+//     variable-class root alike (docs/SPEC-TABLES.md §3, §4, §6.5).
 //
 // The message batch's half is TestMessageFormBatchJavaScript/damage: a damaged
 // batch delivers no body. Red if any read hands back what it decoded.
@@ -243,17 +243,10 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 
 			if _, ok := units[fs[2]]; !ok {
 				t.Fatalf("framing row %s names unit %s, which this gate does not load: add it", fs[1], fs[2])
 			}
-			// This gate walks the VARIABLE form: a row whose first byte names
-			// another form is the form gate's, and a fixed-class root answers
-			// its defaults there rather than discarding (§3).
+			// Every refused row is this gate's, whatever form byte it names:
+			// the variable-form loader refuses a form it does not carry (a
+			// fixed-class root included), and that refusal hands back null.
 			wirePath := filepath.Join(repo, fs[4])
-			first, err := os.ReadFile(wirePath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(first) != 0 && first[0] != 1 {
-				continue
-			}
 			rows[fs[2]] = append(rows[fs[2]], row{fs[1], fs[3], wirePath})
 		}
 		if err := sc.Err(); err != nil {

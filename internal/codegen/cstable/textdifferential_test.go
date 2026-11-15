@@ -19,9 +19,9 @@ package cstable
 // fixture proof: RootReset alone.
 //
 // The probe is compiled the way the t10 harness compiles its probes: the SDK's
-// Roslyn csc and dotnet exec, one build, one run, no csproj, no NuGet; the
-// nested plain type lives in the packet-form file, so the sibling serialize.cs
-// runtime sources compile in beside it. It is a functional test (a foreign toolchain), so it
+// Roslyn csc and dotnet exec, one build, one run, no csproj, no NuGet. The
+// nested type is a fixed table, so the unit is all table form and needs no
+// packet runtime beside it. It is a functional test (a foreign toolchain), so it
 // sits behind internal/slowtest.Gate, skips by name without dotnet, and fails
 // by name under SCHEMA_REQUIRE_CORPUS=1. The make targets are
 // tables-cs-json-differential and tables-cs-json-differential-negative-control
@@ -47,11 +47,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// csTextDifferentialSchema is the Go leg's float-only unit, byte for byte: a
-// float32, a float64, a nested type, a bounded float32 array and a bounded
-// float64 array under a fixed table.
+// csTextDifferentialSchema is the Go leg's float-only unit: a float32, a
+// float64, a nested fixed table, a bounded float32 array and a bounded float64
+// array under a fixed table. Every type is table form, so the unit compiles
+// with no packet runtime.
 const csTextDifferentialSchema = `package probe
-type Sample {
+fixed table Sample {
  s float32
  d float64
 }
@@ -182,7 +183,6 @@ const (
 // a parallel caller never races on package state (the T13/T18 lesson).
 type csTextDiffToolchain struct {
 	dotnet, csc, refDir, refVersion string
-	runtime                         []string // the sibling serialize.cs sources
 }
 
 func csTextDiffDiscover(t *testing.T) csTextDiffToolchain {
@@ -220,21 +220,6 @@ func csTextDiffDiscover(t *testing.T) csTextDiffToolchain {
 	}
 	tc.refDir = refs[0]
 	tc.refVersion = filepath.Base(filepath.Dir(filepath.Dir(refs[0])))
-	// the unit's nested type is a plain `type`, which the csharp backend emits
-	// into the packet-form file, and that file needs the serialize.cs runtime:
-	// the sibling checkout beside the repository, where the fixed-form
-	// versioning harnesses name it
-	runtime, err := filepath.Abs("../../../../serialize.cs")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"Serialize.cs", "Int128Pair.cs"} {
-		path := filepath.Join(runtime, "src", name)
-		if _, err := os.Stat(path); err != nil {
-			miss("no sibling serialize.cs runtime: %v", err)
-		}
-		tc.runtime = append(tc.runtime, path)
-	}
 	return tc
 }
 
@@ -285,7 +270,6 @@ func runCsTextDifferential(t *testing.T, tc csTextDiffToolchain, edit func(map[s
 	}
 	args = append(args, filepath.Join(dir, "ProbeMain.cs"))
 	args = append(args, genFiles...)
-	args = append(args, tc.runtime...)
 	env := append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	build := exec.Command(tc.dotnet, args...)
 	build.Dir = dir
@@ -311,7 +295,14 @@ func runCsTextDifferential(t *testing.T, tc csTextDiffToolchain, edit func(map[s
 		return b, fmt.Errorf("probe: %w", err)
 	}
 
-	m := tabletext.NewModel(u)
+	// The leg's RootSave writes FORM 1, the variable form, even at a fixed
+	// root, and the strict read refuses a form-1 file at a fixed root as
+	// previous_form before it reads a byte (docs/SPEC-TABLES.md §3.4). The
+	// engine reads these wires through the same declarations as a variable
+	// table, the class whose file form is form 1: the fields, and so the text,
+	// are the same.
+	mu := unitFrom(t, strings.Replace(csTextDifferentialSchema, "fixed table Root", "table Root", 1))
+	m := tabletext.NewModel(mu)
 	msgs, err := compareCsTextDifferential(m, out, csTextDifferentialN)
 	if err != nil {
 		return nil, err

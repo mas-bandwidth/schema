@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -166,7 +166,10 @@ public final class Render {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRenderSpriteBits(
             RenderSprite value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -176,7 +179,7 @@ public final class Render {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 138 > numBits) {
+        if ((long) bitsRead + 138 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -303,7 +306,10 @@ public final class Render {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRenderBlockBits(
             RenderBlock value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -312,7 +318,7 @@ public final class Render {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -321,7 +327,7 @@ public final class Render {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.spriteCountHint = v;
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -330,7 +336,7 @@ public final class Render {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.spritesCount = (int) v;
-        if (bitsRead + value.spritesCount * 138L > numBits) {
+        if ((long) bitsRead + value.spritesCount * 138L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.spritesCount; i0++) {

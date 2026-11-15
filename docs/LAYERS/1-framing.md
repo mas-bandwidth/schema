@@ -206,7 +206,9 @@ OF ITS PAYLOAD, and that holds for a kind `13` field, an array element, a map
 entry and an arm whose payload is a body alike. The zero reference is the last
 byte of the payload's `L`. A terminator that arrives earlier leaves bytes
 inside `L` that no field claims, and a terminator that does not arrive by `L`
-leaves the body unended; both are damage" (§3, §4).
+leaves the body unended; both are damage" (§3, §4). A node record's body is a
+body on the same rule: `node_record_bytes_after_terminator` holds a record
+whose body reaches its terminator with a further byte still inside its `L`.
 
 **L4. A length that runs past the body carrying it is damage (D1).** §3: "A
 LENGTH THAT RUNS PAST THE BODY CARRYING IT IS DAMAGE, at any depth, the root
@@ -221,7 +223,10 @@ count's elements are damage (D1).** §4: "bytes left inside an array's, keyed
 array's or map's `L` after its count's elements (an `L` of 3 holding the
 element kind, a count of 0 and one byte more)" is damage, decidable from the
 wire alone (§6.5). No writer emits them. Held by `tla/Framing.tla` (layer 1, #2799)
-`EveryCaseRuled` and its witness `MCFramingTrailingElements`.
+`EveryCaseRuled` and its witness `MCFramingTrailingElements`, and by
+`array_elements_past_count`, `keyed_slots_past_count` and
+`map_entries_past_count`, each an `L` holding a further complete element
+(or entry, or slot, or triple) after the count's last.
 
 ## D. Arrays, maps and keyed arrays: the header inside the body
 
