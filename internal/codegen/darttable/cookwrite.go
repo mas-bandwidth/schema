@@ -140,7 +140,22 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		g.pf("%sif (out != null) out.setUint8(at + %d, %sPresent ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, expr)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
+		// the element's declared default is, so the payload rides only when the
+		// field is present.
+		g.pf("%sif (%sPresent) {\n", ind, expr)
+		g.emitCookFixedFieldPayload(f, offset, expr, ind+"  ")
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.emitCookFixedFieldPayload(f, offset, expr, ind)
+}
+
+// emitCookFixedFieldPayload writes one field's storage pieces, presence and
+// its companions aside (§7.2).
+func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind string) {
+	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		bound := f.ArrayBound
 		if f.KeyEnum != "" {
@@ -1044,7 +1059,13 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 	if f.Type.Optional {
 		owner := expr[:lastDot(expr)]
 		g.pf("%sout?.setUint8(at + %d, %s.%s ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, owner, hasMember(f))
-		g.emitCookVariableField(nonOptional(f), offset, expr, ind)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
+		// the element's declared default is, so the payload rides only when the
+		// field is present.
+		g.pf("%sif (%s.%s) {\n", ind, owner, hasMember(f))
+		g.emitCookVariableField(nonOptional(f), offset, expr, ind+"  ")
+		g.pf("%s}\n", ind)
 		return
 	}
 	switch {
