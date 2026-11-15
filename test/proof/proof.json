@@ -1163,7 +1163,7 @@
       "row": "surface json-hostile",
       "lang": "java",
       "status": "relaxed",
-      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
+      "why": "30 case(s) fail: json-hostile/base64-empty, json-hostile/base64-padding-none, json-hostile/base64-padding-one and 27 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-java (docs/relaxed.md)"
     },
     {

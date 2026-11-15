@@ -784,6 +784,19 @@ defmodule Example.Degenerate do
     scratch_bits = 0
     scratch = 0
     {data, scratch, scratch_bits} = wZspan_tailZvalues(value_values, <<>>, scratch, scratch_bits)
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 4_294_967_295 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
+
     v = value_tail &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1780,6 +1793,18 @@ defmodule Example.Degenerate do
   defp wZspan_u64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_u64Zvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1813,6 +1838,18 @@ defmodule Example.Degenerate do
   defp wZspan_i64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_i64Zvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1846,6 +1883,18 @@ defmodule Example.Degenerate do
   defp wZspan_oneZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_oneZvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1879,15 +1928,66 @@ defmodule Example.Degenerate do
   defp wZspan_chunkZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZspan_chunkZvalues([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e2 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e3 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e4 &&& 0xFFFF
     sc0 = scratch
     fl0 = scratch_bits >>> 3
@@ -1903,6 +2003,18 @@ defmodule Example.Degenerate do
   end
 
   defp wZspan_chunkZvalues([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16

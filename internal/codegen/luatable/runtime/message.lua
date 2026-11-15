@@ -45,11 +45,11 @@ end
 -- a triple SPEC.md calls non-conforming.
 local function quant_facts(qmin, qmax, qres)
   local mn, mx, rs = f32(qmin), f32(qmax), f32(qres)
-  if not (mn < mx) or not (rs > 0) then return 0, 0, false, mn end
+  if mn ~= mn or mx ~= mx or rs ~= rs or mn >= mx or rs <= 0 then return 0, 0, false, mn end
   local delta = f32(mx - mn)
   local values = f32(delta / rs)
   if delta - delta ~= 0 or values - values ~= 0 then return 0, 0, false, mn end
-  if not (values >= 1) then
+  if values < 1 then
     values = 1
   elseif values > 4294967040.0 then
     values = 4294967040.0
@@ -61,9 +61,9 @@ local function quantize(qmin, qmax, qres, value)
   local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
   if not ok then return 0 end
   local normalized = f32(f32(f32(value) - mn) / delta)
-  if not (normalized >= 0) then
+  if normalized ~= normalized or normalized < 0 then
     normalized = 0
-  elseif not (normalized <= 1) then
+  elseif normalized > 1 then
     normalized = 1
   end
   local scaled = f32(normalized * f32(count))
@@ -251,14 +251,14 @@ local function entry_matches_field(e, f)
     end
     return e.packing == nil
   elseif f.shape == "wide" then
-    if f.lo ~= nil and f.hi ~= nil then
-      return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi)
-    end
+    if f.lo ~= nil and f.hi ~= nil then return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi) end
     return e.packing == nil
   elseif f.shape == "array" then
     -- A FIXED array announces [bound, bound]; a counted one [min, bound].
     local lo, hi = f.min or 0, f.bound or 0
-    if f.fixed then lo, hi = f.bound or 0, f.bound or 0 end
+    if f.fixed then
+      lo, hi = f.bound or 0, f.bound or 0
+    end
     return (e.max or 0) == hi and (e.min or 0) == lo and (e.elem or 0) == (f.elem_kind or 0)
   elseif f.shape == "flags" then
     return (e.bits or 0) == (f.bits or 0)
@@ -325,9 +325,9 @@ end
 -- A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE (docs/SPEC-TABLES.md §3.3,
 -- "-0 IS A VALUE, AND IT RIDES"): the elision compares BIT PATTERNS, never
 -- ==, because -0 == +0 under == and a -0 must ride the message form too.
-local function same_float(f32, a, b)
+local function same_float(is_f32, a, b)
   if type(a) ~= "number" or type(b) ~= "number" then return a == b end
-  if f32 then return string.pack("<f", a) == string.pack("<f", b) end
+  if is_f32 then return string.pack("<f", a) == string.pack("<f", b) end
   return string.pack("<d", a) == string.pack("<d", b)
 end
 
@@ -994,9 +994,7 @@ load_fields = function(R, T, name, value, ctx)
       local retired = (ctx.retiredVariants or 0) ~= retiredBefore
       -- PRESENCE IS A WIRE FACT (§3.3): a field reference that arrives is a
       -- present optional, whatever its payload holds, so the record says so.
-      if f.optional then
-        value[f.name .. "_present"] = true
-      end
+      if f.optional then value[f.name .. "_present"] = true end
       -- An explicit default is refused where this reader knows it exactly:
       -- the same announced shape at the same build version (§3.3 (a)). An
       -- enum's default is the VARIANT the wire names, since a deprecated
@@ -1014,9 +1012,7 @@ load_fields = function(R, T, name, value, ctx)
           atDefault = not rides(T, f, value[f.name])
         end
       end
-      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then
-        return false
-      end
+      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then return false end
     end
   end
 end

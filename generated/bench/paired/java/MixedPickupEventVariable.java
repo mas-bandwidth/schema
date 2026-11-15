@@ -986,7 +986,7 @@ public final class MixedPickupEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x3ffL);
+                        long placed = in.integer(false, false, 0L, 0x3ffL);
                         if (!in.rejected) {
                             v.itemId = (int) placed;
                         }
@@ -1007,7 +1007,7 @@ public final class MixedPickupEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 255);
+                        long placed = in.integer(true, false, 0, 255);
                         if (!in.rejected) {
                             v.amount = (int) placed;
                         }

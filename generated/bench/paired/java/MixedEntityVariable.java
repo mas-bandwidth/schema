@@ -1764,7 +1764,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xfffL);
+                        long placed = in.integer(false, false, 0L, 0xfffL);
                         if (!in.rejected) {
                             v.entityId = (int) placed;
                         }
@@ -1785,7 +1785,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, false, -16383, 16383);
                         if (!in.rejected) {
                             v.posX = (int) placed;
                         }
@@ -1806,7 +1806,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, false, -16383, 16383);
                         if (!in.rejected) {
                             v.posY = (int) placed;
                         }
@@ -1827,7 +1827,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, false, -16383, 16383);
                         if (!in.rejected) {
                             v.posZ = (int) placed;
                         }
@@ -1848,7 +1848,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1ffL);
+                        long placed = in.integer(false, false, 0L, 0x1ffL);
                         if (!in.rejected) {
                             v.yaw = (int) placed;
                         }
@@ -1869,7 +1869,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1ffL);
+                        long placed = in.integer(false, false, 0L, 0x1ffL);
                         if (!in.rejected) {
                             v.pitch = (int) placed;
                         }
@@ -1890,7 +1890,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.velX = (int) placed;
                         }
@@ -1911,7 +1911,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.velY = (int) placed;
                         }
@@ -1932,7 +1932,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.velZ = (int) placed;
                         }
@@ -1953,7 +1953,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 1000);
+                        long placed = in.integer(true, false, 0, 1000);
                         if (!in.rejected) {
                             v.health = (int) placed;
                         }
