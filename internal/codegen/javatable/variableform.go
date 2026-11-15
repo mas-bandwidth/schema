@@ -6662,52 +6662,18 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 	b.WriteString("    }\n\n")
 }
 
-// writeVariableGraphFieldOnce emits the checks and order a field answers once,
-// before its elements are numbered: the declared range, a map's key order, and
-// the text-list bounds.
+// writeVariableGraphFieldOnce emits what a field answers once, before its
+// elements are numbered: a required ranged float's range (row 10, every build
+// in Java, docs/SPEC.md §5.1) and a map's key order. Rows 1-5 and 8 (a ranged
+// integer, a text list's count, an element's length, the list's total) are
+// not here: Java is an assert leg, and checkWrite asserts them (debug only).
 func writeVariableGraphFieldOnce(b *strings.Builder, f *ir.Field, pad string) {
 	m := varMember(f)
-	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" {
-		if f.HasIntRange && !variableWide(f) {
-			min, max := jsonIntRange(f)
-			switch {
-			case f.Type.Signed && f.Type.Kind == ir.TInt:
-				fmt.Fprintf(b, "%sif ((long) v.%s < %s || (long) v.%s > %s) return false;\n", pad, m, min, m, max)
-			case f.Type.Width <= 32:
-				fmt.Fprintf(b, "%sif (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", pad, m, min, m, max)
-			default:
-				fmt.Fprintf(b, "%sif (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", pad, m, min, m, max)
-			}
-		} else if f.HasFloatRange {
-			fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
-		}
+	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" && f.HasFloatRange {
+		fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
 	}
 	if f.IsMap() {
 		fmt.Fprintf(b, "%sv.%s = order_%s(v.%s);\n", pad, m, m, m)
-	}
-	if isStructArray(f) && f.IsTextList() {
-		target := f.Type.Ref.(*ir.Struct)
-		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "%sif (v.%s.size() > %d) return false;\n", pad, m, f.ArrayBound)
-		}
-		if f.TextTotal > 0 {
-			fmt.Fprintf(b, "%slong spent_%s = 0;\n", pad, m)
-		}
-		fmt.Fprintf(b, "%sfor (int ti = 0, tn = v.%s.size(); ti < tn; ti++) {\n", pad, m)
-		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(ti);\n", pad, target.Name, m)
-		if ir.TextListOptional(f) {
-			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
-		} else {
-			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
-		}
-		if !ir.TextListUnbounded(f) {
-			fmt.Fprintf(b, "%s    if (elemBytes > %dL) return false;\n", pad, ir.TextListValue(f).Type.Size)
-		}
-		if f.TextTotal > 0 {
-			fmt.Fprintf(b, "%s    spent_%s += elemBytes;\n", pad, m)
-			fmt.Fprintf(b, "%s    if (spent_%s > %dL) return false;\n", pad, m, f.TextTotal)
-		}
-		fmt.Fprintf(b, "%s}\n", pad)
 	}
 }
 

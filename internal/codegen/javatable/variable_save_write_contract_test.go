@@ -12,16 +12,21 @@ import (
 )
 
 // TestJavaVariableSaveWriteContract holds the variable-form save to the Java
-// row of the write contract (docs/SPEC.md §5.1): rows 1-5 and 8 are a debug
-// assert, so under -ea the save throws AssertionError and without it the
-// save does not throw (an assert leg's release build is not required to
-// check a write); rows 6, 7 and 10 are refused (null) in both builds, row 10
-// on every shape that holds a ranged float. Every refused case has a lawful
-// twin at the same boundary that
-// saves and loads back equal in both builds, so a save that refused
-// everything fails. Each row is held on every field shape the variable writer
-// handles: a scalar, an array element, a map key and value, a union arm's
-// payload, an inline table, and a table reached through a pointer.
+// line of the write contract (docs/SPEC.md §5.1, "1–5 and 8 debug; 6–7
+// every build; 9 unchecked; 10 every build"): rows 1-5 and 8 are a debug
+// assert and nothing else, so under -ea the save throws AssertionError and
+// without it the value is WRITTEN, never refused (Java is an assert leg: its
+// release build carries no write-side refusal for those rows); rows 6, 7 and
+// 10 are refused (null) in both builds, row 10 on every shape that holds a
+// ranged float; a cycle stays the graph's own refusal in both builds. Every
+// refused case has a lawful twin at the same boundary that saves and loads
+// back equal in both builds, so a save that refused everything fails. Each
+// row is held on every field shape the variable writer handles: a scalar, an
+// array element, a map key and value, a union arm's payload, an inline table,
+// a text list's elements, count and total, a required ranged integer, and a
+// table reached through a pointer, the contract walk's work list. The
+// retaining writer, saveRetain and measureRetain, owes the same verdict on
+// every case.
 func TestJavaVariableSaveWriteContract(t *testing.T) {
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
@@ -68,9 +73,9 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 
 	// the verdict each case owes, per build: debug (-ea) and release
 	type owed struct{ debug, release string }
-	refusedDebug := owed{"assert", "no-throw"} // rows 1-5 and 8
-	refusedAlways := owed{"null", "null"}      // rows 6, 7 and 10, as today
-	lawful := owed{"equal", "equal"}           // every twin
+	refusedDebug := owed{"assert", "wrote"} // rows 1-5 and 8: asserted, else written
+	refusedAlways := owed{"null", "null"}   // rows 6, 7 and 10, and a cycle
+	lawful := owed{"equal", "equal"}        // every twin
 	want := map[string]owed{
 		// row 1: an integer off its kind's range (int8 in an int) and off a declared range
 		"r1-scalar-int8-over": refusedDebug, "r1-scalar-int8-edge": lawful,
@@ -89,9 +94,11 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 		// row 4: a length past N
 		"r4-string-over": refusedDebug, "r4-string-edge": lawful,
 		"r4-bytes-over": refusedDebug, "r4-bytes-edge": lawful,
-		// a text list's element past N is a row 4 value: the debug assert
-		// answers first and the release build keeps the graph's refusal
+		// a text list's element past N, its count past [..N] and its bytes
+		// past `| total = N` are row 3 and 4 values: asserted, else written
 		"r4-element-over": refusedDebug, "r4-element-edge": lawful,
+		"r3-text-count-over": refusedDebug, "r3-text-count-edge": lawful,
+		"r4-text-total-over": refusedDebug, "r4-text-total-edge": lawful,
 		"r4-map-key-over": refusedDebug, "r4-map-key-edge": lawful,
 		"r4-arm-over": refusedDebug, "r4-arm-edge": lawful,
 		"r4-pointer-over": refusedDebug, "r4-pointer-edge": lawful,
@@ -116,15 +123,15 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 		"r10-element-over": refusedAlways, "r10-element-edge": lawful,
 		"r10-arm-over": refusedAlways, "r10-arm-edge": lawful,
 		"r10-pointer-over": refusedAlways, "r10-pointer-edge": lawful,
-		// a table through a pointer answers rows 1-5 and 8 by the debug assert
-		// before the graph's every-build refusals do; a required ranged
-		// integer and a text list's element past N are both refused by the
-		// graph too, so release answers null and debug answers the assert
+		// a required ranged integer and a table reached through a pointer
+		// (the contract walk's work list) are rows 1 and 4 like any other:
+		// asserted, else written
 		"r1-required-over": refusedDebug, "r1-required-edge": lawful,
 		"r1-pointer-required-over": refusedDebug, "r1-pointer-required-edge": lawful,
 		"r4-pointer-element-over": refusedDebug, "r4-pointer-element-edge": lawful,
-		// a cycle ends the contract walk: the assert still answers its value
-		"r4-cycle-element-over": refusedDebug,
+		// a cycle ends the contract walk, so the assert still answers the
+		// value it holds; without -ea the cycle is the graph's own refusal
+		"r4-cycle-element-over": {"assert", "null"},
 		"cycle":                 refusedAlways,
 	}
 	for _, build := range []struct {
@@ -152,18 +159,29 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 			if build.name == "release" {
 				expect = w.release
 			}
-			verdict, ok := got[name]
-			switch {
-			case !ok:
-				t.Errorf("%s %s: the driver ran no such case", build.name, name)
-			case expect == "no-throw" && verdict == "assert":
-				t.Errorf("%s %s: %s, want no throw: the check is a debug assert", build.name, name, verdict)
-			case expect != "no-throw" && verdict != expect:
-				t.Errorf("%s %s: %s, want %s", build.name, name, verdict, expect)
+			// the retaining writer owes the save's verdict: refused stays
+			// refused, asserted stays asserted, and written (loaded back
+			// equal or not) is written
+			retained := expect
+			if expect == "equal" || expect == "wrote" {
+				retained = "written"
+			}
+			for _, c := range []struct{ key, want string }{
+				{name, expect},
+				{name + "@saveRetain", retained},
+				{name + "@measureRetain", retained},
+			} {
+				verdict, ok := got[c.key]
+				switch {
+				case !ok:
+					t.Errorf("%s %s: the driver ran no such case", build.name, c.key)
+				case verdict != c.want:
+					t.Errorf("%s %s: %s, want %s", build.name, c.key, verdict, c.want)
+				}
 			}
 		}
-		if len(got) != len(want) {
-			t.Errorf("%s: the driver ran %d cases, the test names %d", build.name, len(got), len(want))
+		if len(got) != 3*len(want) {
+			t.Errorf("%s: the driver printed %d verdicts, the test names %d", build.name, len(got), 3*len(want))
 		}
 	}
 }
@@ -195,6 +213,7 @@ table Doc
     blob   bytes(8)
     tags   [..3]int8
     names  []string(16)
+    notes  [..4]string(8) | total = 12
     keyed  map[string(8)]int8
     arm    Arm
     inner  Leaf
@@ -215,7 +234,10 @@ import java.util.function.Predicate;
 public final class WriteContract {
     // case runs one save and prints its verdict: "assert" (AssertionError),
     // "null" (the save refused), "equal" (written and loaded back with the
-    // same value), "wrote" (written, and the load does not give it back).
+    // same value), "wrote" (written, and the load does not give it back),
+    // "threw <class>" (any other throw). Then the retaining writer's two
+    // entries, saveRetain and measureRetain, on a fresh value of the same
+    // case: "assert", "null" (null or -1), "written", or "threw <class>".
     static void check(String name, Consumer<DocVariable.Value> set, Predicate<DocVariable.Value> same) {
         DocVariable.Value v = new DocVariable.Value();
         set.accept(v);
@@ -231,8 +253,33 @@ public final class WriteContract {
             }
         } catch (AssertionError e) {
             verdict = "assert";
+        } catch (RuntimeException e) {
+            verdict = "threw-" + e.getClass().getSimpleName();
         }
         System.out.println(name + " " + verdict);
+        DocVariable.Value rv = new DocVariable.Value();
+        set.accept(rv);
+        String retained;
+        try {
+            byte[] wire = DocRetain.saveRetain(rv, new TableRetain(1 << 20, 1024), new TableVariable.Report());
+            retained = wire == null ? "null" : "written";
+        } catch (AssertionError e) {
+            retained = "assert";
+        } catch (RuntimeException e) {
+            retained = "threw-" + e.getClass().getSimpleName();
+        }
+        System.out.println(name + "@saveRetain " + retained);
+        DocVariable.Value mv = new DocVariable.Value();
+        set.accept(mv);
+        String measured;
+        try {
+            measured = DocRetain.measureRetain(mv, new TableRetain(1 << 20, 1024)) < 0 ? "null" : "written";
+        } catch (AssertionError e) {
+            measured = "assert";
+        } catch (RuntimeException e) {
+            measured = "threw-" + e.getClass().getSimpleName();
+        }
+        System.out.println(name + "@measureRetain " + measured);
     }
 
     static DocKeyedEntryVariable.Value entry(String key, int value) {
@@ -244,6 +291,12 @@ public final class WriteContract {
 
     static DocNamesTextVariable.Value text(String s) {
         DocNamesTextVariable.Value e = new DocNamesTextVariable.Value();
+        e.value = s;
+        return e;
+    }
+
+    static DocNotesTextVariable.Value note(String s) {
+        DocNotesTextVariable.Value e = new DocNotesTextVariable.Value();
         e.value = s;
         return e;
     }
@@ -290,6 +343,12 @@ public final class WriteContract {
         check("r4-element-over", v -> v.names.add(text(repeat(17))), b -> false);
         check("r4-element-edge", v -> v.names.add(text(repeat(16))),
             b -> b.names.size() == 1 && b.names.get(0).value.equals(repeat(16)));
+        check("r3-text-count-over", v -> { for (int i = 0; i < 5; i++) v.notes.add(note("a")); }, b -> false);
+        check("r3-text-count-edge", v -> { for (int i = 0; i < 4; i++) v.notes.add(note("a")); },
+            b -> b.notes.size() == 4 && b.notes.get(3).value.equals("a"));
+        check("r4-text-total-over", v -> { v.notes.add(note(repeat(8))); v.notes.add(note(repeat(5))); }, b -> false);
+        check("r4-text-total-edge", v -> { v.notes.add(note(repeat(8))); v.notes.add(note(repeat(4))); },
+            b -> b.notes.size() == 2 && b.notes.get(1).value.equals(repeat(4)));
         check("r4-map-key-over", v -> v.keyed.add(entry(repeat(9), 1)), b -> false);
         check("r4-map-key-edge", v -> v.keyed.add(entry(repeat(8), 1)),
             b -> b.keyed.size() == 1 && b.keyed.get(0).key.equals(repeat(8)));
@@ -340,8 +399,8 @@ public final class WriteContract {
         check("r10-pointer-over", v -> { v.next = new DocVariable.Value(); v.next.spread = 10.5f; }, b -> false);
         check("r10-pointer-edge", v -> { v.next = new DocVariable.Value(); v.next.spread = 10f; },
             b -> b.next != null && b.next.spread == 10f);
-        // a table reached through a pointer is held to rows 1-5 and 8 before
-        // the graph walk's own every-build refusals answer for it
+        // a required ranged integer, and a table reached through a pointer,
+        // held to rows 1-5 and 8 by the contract walk before the graph walk
         check("r1-required-over", v -> v.strict = 6, b -> false);
         check("r1-required-edge", v -> v.strict = 5, b -> b.strict == 5);
         check("r1-pointer-required-over", v -> { v.next = new DocVariable.Value(); v.next.strict = 6; }, b -> false);

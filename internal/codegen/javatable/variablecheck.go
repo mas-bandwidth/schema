@@ -110,6 +110,9 @@ func writeVariableFieldCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 				fmt.Fprintf(b, "%sassert %s.size() <= %d : %q;\n", ind, expr, f.ArrayBound, name)
 			}
 		}
+		if isStructArray(f) && f.IsTextList() {
+			writeVariableTextListCheck(b, f, expr, name, ind)
+		}
 		one := variableElement(f)
 		var inner strings.Builder
 		writeVariableValueCheck(&inner, one, "e", name, ind+"    ")
@@ -128,6 +131,34 @@ func writeVariableFieldCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		return
 	}
 	writeVariableValueCheck(b, f, expr, name, ind)
+}
+
+// writeVariableTextListCheck emits a text list's own asserts (docs/SPEC.md
+// §5.1 rows 3 and 4): its count inside its bound where the counted-array
+// assert does not already hold it, and the UTF-8 bytes of its present
+// elements inside `| total = N`. Each element's own length is its element
+// table's checkWrite. It runs only under the assert, so the sum costs a
+// release build nothing.
+func writeVariableTextListCheck(b *strings.Builder, f *ir.Field, expr, name, ind string) {
+	if f.Array != ir.ArrayCounted && f.ArrayBound > 0 {
+		fmt.Fprintf(b, "%sassert %s.size() <= %d : %q;\n", ind, expr, f.ArrayBound, name)
+	}
+	if f.TextTotal <= 0 {
+		return
+	}
+	target := f.Type.Ref.(*ir.Struct)
+	fmt.Fprintf(b, "%s{\n", ind)
+	fmt.Fprintf(b, "%s    long spent = 0;\n", ind)
+	fmt.Fprintf(b, "%s    for (int i = 0, n = %s.size(); i < n; i++) {\n", ind, expr)
+	fmt.Fprintf(b, "%s        %sVariable.Value e = %s.get(i);\n", ind, target.Name, expr)
+	if ir.TextListOptional(f) {
+		fmt.Fprintf(b, "%s        spent += (e == null || !e.valuePresent || e.value == null) ? 0L : TableVariable.utf8Len(e.value);\n", ind)
+	} else {
+		fmt.Fprintf(b, "%s        spent += (e == null || e.value == null) ? 0L : TableVariable.utf8Len(e.value);\n", ind)
+	}
+	fmt.Fprintf(b, "%s    }\n", ind)
+	fmt.Fprintf(b, "%s    assert spent <= %dL : %q;\n", ind, f.TextTotal, name)
+	fmt.Fprintf(b, "%s}\n", ind)
 }
 
 // writeVariableValueCheck emits the asserts for one value of f's kind.
