@@ -1996,8 +1996,17 @@ public final class Bench {
         assert value.payloadLength >= 0;
         assert value.payloadLength <= 16;
         assert value.aimX - value.aimX == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.aimX >= -1.0f;
+        assert value.aimX <= 1.0f;
         assert value.aimY - value.aimY == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.aimY >= -1.0f;
+        assert value.aimY <= 1.0f;
         assert value.aimZ - value.aimZ == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.aimZ >= -1.0f;
+        assert value.aimZ <= 1.0f;
         assert value.recoil - value.recoil == 0.0f; // finite: NaN and both infinities fail this
         assert value.drift - value.drift == 0.0; // finite: NaN and both infinities fail this
         {

@@ -609,6 +609,9 @@ public final class Wire {
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_SAMPLE_MAX_BITS;
         // finite: NaN and both infinities fail this
         assert value.orientation - value.orientation == 0.0f;
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.orientation >= -180.0f;
+        assert value.orientation <= 180.0f;
         if (value.active) {
             assert (value.weapon & 0xffL) >= 0;
             assert (value.weapon & 0xffL) <= 15;
@@ -2276,6 +2279,9 @@ public final class Wire {
         assert value.floatValue - value.floatValue == 0.0f;
         // finite: NaN and both infinities fail this
         assert value.compressedFloatValue - value.compressedFloatValue == 0.0f;
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.compressedFloatValue >= 0.0f;
+        assert value.compressedFloatValue <= 10.0f;
         // finite: NaN and both infinities fail this
         assert value.doubleValue - value.doubleValue == 0.0;
         assert value.uint8Value >= 0;
@@ -2661,7 +2667,13 @@ public final class Wire {
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + COMPRESSED_PROBE_MAX_BITS;
         assert value.boundary - value.boundary == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.boundary >= 0.0f;
+        assert value.boundary <= 10.0f;
         assert value.offset - value.offset == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.offset >= -5.0f;
+        assert value.offset <= 5.0f;
         return true;
     }
 
