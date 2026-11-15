@@ -962,7 +962,7 @@ public final class MixedChatEventVariable {
                     }
                 }
             } else {
-                in.skipValue();
+                in.skipValue(depth + 1);
                 in.rep.unknown++;
             }
             c = in.peek();

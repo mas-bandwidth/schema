@@ -3237,17 +3237,31 @@ public final class TableJson {
                 if (c == '/' && p + 1 < t.length) {
                     if (t[p + 1] == '/') {
                         p += 2;
+                        int start = p;
                         while (p < t.length && t[p] != '\n') {
                             p++;
+                        }
+                        // §16.2: the bytes inside a comment are well-formed UTF-8
+                        // and hold no NUL, the same rule a string site keeps.
+                        if (!TableVariable.textValid(t, start, p - start)) {
+                            bad = true;
+                            return;
                         }
                         continue;
                     }
                     if (t[p + 1] == '*') {
                         p += 2;
+                        int start = p;
                         while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) {
                             p++;
                         }
                         if (p + 1 >= t.length) {
+                            bad = true;
+                            return;
+                        }
+                        // §16.2: the same UTF-8 and no-NUL rule inside a block
+                        // comment as inside a line comment.
+                        if (!TableVariable.textValid(t, start, p - start)) {
                             bad = true;
                             return;
                         }
@@ -5097,7 +5111,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("            } else ")
 	}
 	b.WriteString("{\n")
-	b.WriteString("                in.skipValue(); in.rep.unknown++;\n")
+	b.WriteString("                in.skipValue(depth + 1); in.rep.unknown++;\n")
 	b.WriteString("            }\n")
 	b.WriteString("            c = in.peek();\n")
 	b.WriteString("            if (c == ',') { in.p++; continue; }\n")

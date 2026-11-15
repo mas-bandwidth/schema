@@ -1098,7 +1098,7 @@ public final class MixedHitEventVariable {
                     }
                 }
             } else {
-                in.skipValue();
+                in.skipValue(depth + 1);
                 in.rep.unknown++;
             }
             c = in.peek();
