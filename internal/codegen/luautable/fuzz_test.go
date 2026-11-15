@@ -106,6 +106,7 @@ type luauFuzzAnswer struct {
 	loaded   bool   // Load returned a root
 	counts   luauFuzzCounts
 	refused  bool
+	measure  int64 // the root's measured region, -1 for a fixed root or a refusal
 	saved    []byte
 	saveFail bool // Save refused the loaded value (or nothing was loaded)
 }
@@ -136,6 +137,7 @@ func parseLuauFuzzLine(line string) (luauFuzzAnswer, error) {
 		malformed:    raw[21] != 0,
 	}
 	a.refused = raw[22] != 0
+	a.measure = int64(binary.LittleEndian.Uint64(raw[23:]))
 	n := int64(binary.LittleEndian.Uint64(raw[39:]))
 	if n < 0 {
 		a.saveFail = true
