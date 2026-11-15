@@ -1103,7 +1103,10 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case 4:
 			writeTag = fmt.Sprintf("out.setUint32(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
 		}
-		g.pf("%sif (%s.armTag < 0 || %s.armTag > %d) return false;\n", ind, expr, expr, len(un.Variants))
+		// a tag naming no arm is the programmer's error: a debug assert,
+		// gone in release (docs/SPEC.md §5.1, Dart is an assert leg)
+		g.cookAssert(ind, fmt.Sprintf("%s.armTag >= 0", expr))
+		g.cookAssert(ind, fmt.Sprintf("%s.armTag <= %d", expr, len(un.Variants)))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  %s;\n", ind, writeTag)
 		g.pf("%s}\n", ind)
@@ -1125,7 +1128,8 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
 		ref := tableRef(f)
-		g.pf("%sif (%s.length > %d) return false;\n", ind, expr, bound)
+		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
+		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, bound))
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
@@ -1201,7 +1205,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		} else {
 			g.pf("%sfinal %s = utf8.encode(%s);\n", ind, text, expr)
 		}
-		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
+		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", text, f.Type.Size))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)

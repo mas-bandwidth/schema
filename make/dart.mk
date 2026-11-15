@@ -1855,8 +1855,10 @@ write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-d
 	@sed -i.bak -e 's/assert(value.itemsCount <= 8);/\/\/ SABOTAGED count/' \
 		-e 's/assert(value.nameLength <= 16);/\/\/ SABOTAGED length/' \
 		-e 's/assert(value.nameLength <= value.name.length);/\/\/ SABOTAGED storage/' \
+		-e 's/assert(value.items.length <= 8);/\/\/ SABOTAGED variable count/' \
+		-e 's/assert(nameText.length <= 16);/\/\/ SABOTAGED variable length/' \
 		$(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart
-	@test "$$(grep -c 'SABOTAGED' $(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart)" = 3 || \
+	@test "$$(grep -c 'SABOTAGED' $(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart)" = 5 || \
 		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
 	@cp test/conformance/dart/storage_debug.dart $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart
 	@if $(DART) --enable-asserts $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart > $(STORAGE_DEBUG_DART)-negative/log 2>&1; then \
@@ -1864,8 +1866,10 @@ write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-d
 		cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; \
 	fi
 	@grep -q 'FAIL storage debug count' $(STORAGE_DEBUG_DART)-negative/log && \
-		grep -q 'FAIL storage debug length' $(STORAGE_DEBUG_DART)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on both storage asserts"; \
+		grep -q 'FAIL storage debug length' $(STORAGE_DEBUG_DART)-negative/log && \
+		grep -q 'FAIL storage debug variable count' $(STORAGE_DEBUG_DART)-negative/log && \
+		grep -q 'FAIL storage debug variable length' $(STORAGE_DEBUG_DART)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on every storage assert"; \
 		  cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; }
 	@grep 'FAIL storage debug' $(STORAGE_DEBUG_DART)-negative/log
 	@echo "negative control: removing the Dart storage asserts turns the debug gate RED"
