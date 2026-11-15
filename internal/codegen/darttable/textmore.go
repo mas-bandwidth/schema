@@ -106,6 +106,37 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
+// _jsonSkipNames walks a value the read skips and holds every object key in it
+// to the same 255-byte cap (§16.2): an unknown key's value is still an object
+// whose keys are schema names, however deep it sits.
+void _jsonSkipNames(dynamic val, TableTextReport r) {
+  final entries = _jsonEntries(val);
+  if (entries != null) {
+    for (final entry in entries) {
+      _jsonName(entry.key, r);
+      _jsonSkipNames(entry.value, r);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipNames(item, r);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -502,10 +533,12 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
       r.unknown++;
+      _jsonSkipNames(entry.value, r);
       continue;
     }
     if (!seen.add(slot)) r.refuse('text_damaged');
@@ -666,6 +699,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tif (val is! List) { r.refuse('kind_mismatch'); return def; }\n")
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
+		g.pf("\t\tif (item is String && !_jsonName(item, r)) return def;\n")
 		g.pf("\t\tswitch (item) {\n")
 		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
@@ -706,6 +740,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (entries.isEmpty) return v;\n")
 		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\tif (!_jsonName(entries.first.key, r)) return v;\n")
 		g.pf("\tfinal item = entries.first.value;\n")
 		g.pf("\tswitch (entries.first.key) {\n")
 		for i, arm := range un.Variants {
@@ -721,7 +756,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipNames(item, r);\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")
