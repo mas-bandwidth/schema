@@ -67,6 +67,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
+| `packet-write-cfloat/` | packet Write compressed-float range fixture | `make test-go` | `go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/` |
 | `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
 | `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
 | `proof/` | 3.0.0 proof snapshot (internal gate) | `make proof` | `make proof-write` |

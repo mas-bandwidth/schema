@@ -2381,20 +2381,20 @@ active, a writer never produces bytes its own reader refuses.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
-| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 not yet held |
-| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 not yet held |
-| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 not yet held |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 not yet held |
-| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 not yet held |
-| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 not yet held |
-| Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike |
-| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 not yet held |
-| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 not yet held |
-| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 not yet held |
-| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 not yet held |
-| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 not yet held |
-| MOO | 1–8 every build | 1–8 every build | 1–8 every build |
-| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 not yet held |
+| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 and 10 not yet held |
+| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
+| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 and 10 not yet held |
+| Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |
+| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 and 10 not yet held |
+| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
+| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 and 10 not yet held |
+| MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
+| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 and 10 not yet held |
 | Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps |
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
