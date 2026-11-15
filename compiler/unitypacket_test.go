@@ -33,6 +33,28 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build schema: %v\n%s", err, out)
 	}
+	// The Unity dialect compiles serialize.cs as its own netstandard2.1
+	// assembly (a ProjectReference), which builds obj/bin in place. Copy its
+	// src/ to a writable scratch directory and point the dialect's
+	// SerializeCsRoot at the copy, so the build never writes into the sibling
+	// checkout.
+	serializeSrc := filepath.Join(abs, "..", "serialize.cs", "src")
+	if _, err := os.Stat(filepath.Join(serializeSrc, "Serialize.cs")); err != nil {
+		t.Skip("serialize.cs unavailable")
+	}
+	scratchSerialize := filepath.Join(t.TempDir(), "serialize.cs")
+	if err := os.MkdirAll(filepath.Join(scratchSerialize, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Serialize.cs", "Int128Pair.cs", "Serialize.csproj"} {
+		b, err := os.ReadFile(filepath.Join(serializeSrc, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(scratchSerialize, "src", name), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	genDir := filepath.Join(t.TempDir(), "unity")
 	ludDir := filepath.Join(t.TempDir(), "unity-ludicrous")
 	generate := func(out, src string) {
@@ -64,6 +86,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 			"-c", "Debug", "-o", outDir, "--nologo", "-v", "q",
 			"-p:UnityGeneratedDir="+dir,
 			"-p:UnityLudicrousDir="+ludDir,
+			"-p:SerializeCsRoot="+scratchSerialize,
 			"-p:RestoreLockedMode=false")
 		cmd.Dir = abs
 		cmd.Env = append(os.Environ(),
