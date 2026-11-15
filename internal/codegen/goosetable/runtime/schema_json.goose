@@ -897,7 +897,12 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
             }
             if d == 0 { return json_fail(jr); }
             if closing == '}' {
-                if !json_skip_string(jr) { return false; }
+                // an object key is a schema name wherever the read meets it,
+                // a skipped value included, so it takes the 255-byte cap
+                // (§16.2). The value under it may be a string of any length.
+                var key: u8[256] = [0; 256];
+                let n, ok = json_key(jr, key);
+                if !ok || n > JsonMaxKey { return false; }
                 if !json_expect(jr, ':') { return false; }
             }
             if !json_skip_value(jr, depth + 1) { return false; }

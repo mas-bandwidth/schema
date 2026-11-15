@@ -1977,11 +1977,11 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
         let entry = jr_new_record(c, et);
         let ks = c.vals[entry].first;
         var drop = false;
-        if kd.shape == ShapeStr && (klen > JsonMaxKey || klen > kd.bound) {
+        // a map key is DATA, never a schema name: a bounded string key is
+        // held to its own bound and an unbounded one to no length at all,
+        // so the 255-byte name cap never reaches here (§16.2, §2.13.1).
+        if kd.shape == ShapeStr && klen > kd.bound {
             c.jr.rep.oor += 1;
-            drop = true;
-        } else if kd.shape != ShapeStr && kd.shape != ShapeText && klen > JsonMaxKey {
-            c.jr.rep.mismatch += 1;
             drop = true;
         } else {
             let placed_key = jr_map_key(c, ks, kd, off);
