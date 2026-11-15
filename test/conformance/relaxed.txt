@@ -186,3 +186,20 @@ rust json-hostile fixed-exact-fraction relax/rust-json-fixed-rows
 rust json-hostile fixed-integral-token relax/rust-json-fixed-rows
 rust json-hostile fixed-fraction-too-fine relax/rust-json-fixed-rows
 rust json-hostile int128-fractional relax/rust-json-fixed-rows
+#
+# The go leg (the generated Go API driver): its cook writer still writes the
+# element defaults into dead counted slots (relax/cook-dead-slots-zero-ports),
+# its JSON walk reads a zero escape in a skipped value, and its text writer
+# writes a zero byte (relax/hostile-rows-go).
+go cook-write archive relax/cook-dead-slots-zero-ports
+go cook-write archive-be relax/cook-dead-slots-zero-ports
+go cook-write loadout_full relax/cook-dead-slots-zero-ports
+go cook-write loadout_full-be relax/cook-dead-slots-zero-ports
+go cook-write profile_elide relax/cook-dead-slots-zero-ports
+go cook-write profile_elide-be relax/cook-dead-slots-zero-ports
+go cook-write root_default relax/cook-dead-slots-zero-ports
+go cook-write root_default-be relax/cook-dead-slots-zero-ports
+go cook-write root_full relax/cook-dead-slots-zero-ports
+go cook-write root_full-be relax/cook-dead-slots-zero-ports
+go json-hostile str-zero-escape-unknown-key relax/hostile-rows-go
+go write-refusal-json jref_zero_byte relax/hostile-rows-go
