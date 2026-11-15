@@ -701,8 +701,9 @@ fixed table Root
 
 // Counted-array slack is held by TestFixedCountedArrayLiveExtent below the
 // public native boundary. Compile-time entry emission and runtime execution
-// are distinct: SPEC-TABLES §3.4 leaves slack uninspected, while algorithm
-// §5.9 #33 requires one widening operation per live element.
+// are distinct: a non-zero slot past the count is a dead byte that refuses the
+// whole load (algorithm §5.3 step 11), while §5.9 #33 still requires one
+// widening operation per live element.
 
 // findGenerated answers the one generated file whose text carries `needle`, so
 // a test can name a shape rather than a filename.

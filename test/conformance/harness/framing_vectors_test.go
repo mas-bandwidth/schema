@@ -242,24 +242,48 @@ func depthTables(levels int) []byte {
 	return body
 }
 
-// depthArrays is a root body whose one unknown field holds `levels` arrays
-// nested by value: each array carries one element of kind 14.
+// depthArrays is a root body whose one unknown field holds `levels` array and
+// table bodies nested by value. An array body's element kind is closed (§3),
+// so an array cannot carry another array directly; each array carries one
+// table element (kind 13) and that table carries the next array field, which
+// is what makes the vector a lawful nesting at every level.
 func depthArrays(levels int) []byte {
-	content := b(14, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(14, 1), leb(uint64(len(content))), content)
+	var body []byte
+	if levels%2 == 0 {
+		body = b(0) // an even depth is the innermost table body
+	} else {
+		body = b(6, 0) // an odd depth is the innermost array body
 	}
-	return cat(b(1, 14), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 1; d-- {
+		if d%2 == 1 {
+			body = cat(b(13, 1), leb(uint64(len(body))), body)
+		} else {
+			body = cat(b(1, 14), leb(uint64(len(body))), body, b(0))
+		}
+	}
+	return cat(b(1, 14), leb(uint64(len(body))), body, b(0))
 }
 
-// depthKeyed is a root body whose one unknown field holds `levels` keyed
-// bodies nested by value: each slot's element is the next keyed body.
+// depthKeyed is a root body whose one unknown field holds `levels` keyed and
+// table bodies nested by value. The keyed body's element kind is closed (§3),
+// so a keyed body cannot carry another keyed body directly; each keyed body
+// carries one table element (kind 13) and that table carries the next keyed
+// field, which is what makes the vector a lawful nesting at every level.
 func depthKeyed(levels int) []byte {
-	content := b(16, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(16, 1), b(1), leb(uint64(len(content))), content)
+	var body []byte
+	if levels%2 == 0 {
+		body = b(0) // an even depth is the innermost table body
+	} else {
+		body = b(6, 0) // an odd depth is the innermost keyed body
 	}
-	return cat(b(1, 16), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 1; d-- {
+		if d%2 == 1 {
+			body = cat(b(13, 1, 1), leb(uint64(len(body))), body)
+		} else {
+			body = cat(b(1, 16), leb(uint64(len(body))), body, b(0))
+		}
+	}
+	return cat(b(1, 16), leb(uint64(len(body))), body, b(0))
 }
 
 // depthUnionTables is a root body whose one unknown field is a union whose arm
@@ -276,6 +300,21 @@ func depthUnionTables(pairs int) []byte {
 
 var rootValue1 = cat(b(1, 4), i32(1))
 var nextIs2 = b(3, 17, 2)
+
+// The graphdemo Scene id table the held element-kind vectors share: 1 is a
+// field id Scene does not declare, carried in the id table like a declared
+// field id.
+var sceneElemKindIds = []string{"array_elem"}
+
+// sceneElemKindNodeIds adds the same unknown field at slot 6 beside the
+// ListNode ids the node-table helpers use.
+var sceneElemKindNodeIds = append(append([]string{}, listNodeIds...), "array_elem")
+
+// sceneUnknownArray is a Scene root body holding one unknown kind-14 field
+// over the array body given, then the root's terminator.
+func sceneUnknownArray(body []byte) []byte {
+	return cat(b(1, 14), leb(uint64(len(body))), body, b(0))
+}
 
 var framingVectors = []framingVector{
 	// ---------------------------------------------------------------- A. the file frame
@@ -546,6 +585,37 @@ var framingVectors = []framingVector{
 	{name: "node_type_node_table_id", unit: "graphdemo", root: "Scene", ids: sceneNodeTypeIds, body: sceneNodeTypeBody(4), held: true},
 	{name: "node_type_build_version_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "build-version"}, body: sceneNodeTypeBody(5), held: true},
 	{name: "node_type_vocabulary_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "vocabulary"}, body: sceneNodeTypeBody(5), held: true},
+
+	// ------------------------------------------- C2. the closed array element kinds
+	// THE ELEMENT KIND BYTE IS CLOSED (docs/SPEC-TABLES.md §3): an array body
+	// (kind 14) may carry 1–13, 15, 17, 18–30, and an enum-keyed body (kind
+	// 16) 1–11, 13 and 18–30. Any other element kind refuses the load as
+	// damage under ANY count, a count of 0 included, in a field the reader
+	// cannot name as in one it declares. These vectors ride an unknown root
+	// field of graphdemo Scene, so only the wire-alone walk can see them; each
+	// is held out of the manifest until every leg answers it, and a manifest
+	// row joins them in a later card.
+	{name: "array_elem_kind_32_count_2", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(32, 2, 0, 0))},
+	{name: "array_elem_kind_31_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(31, 1, 0))},
+	// one L-framed keyed body holding element kind 6, count 0
+	{name: "array_elem_kind_16_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(16, 1, 2, 6, 0))},
+	// an unassigned kind, the reserved float16 kind, and zero, each at count 0
+	{name: "array_elem_unassigned_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(37, 0))},
+	{name: "array_elem_reserved_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(34, 0))},
+	{name: "array_elem_zero_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(0, 0))},
+	// READ CONTROLS: element kind 17 is on the array list, at count 0 and at
+	// count 1 where its one node index names a reachable ListNode record.
+	{name: "array_elem_kind_17_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+		body: sceneUnknownArray(b(17, 0))},
+	{name: "array_elem_kind_17_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindNodeIds, held: true,
+		body: cat(b(6, 14), leb(uint64(len(b(17, 1, 2)))), b(17, 1, 2),
+			nodeTable(1, listNodeRecordNext(7, 0)), b(0))},
 
 	// ---------------------------------------------------------------- X. the nesting bound
 	// §4, ONE NESTING BOUND (binary_max_depth): the root body is depth 0 and

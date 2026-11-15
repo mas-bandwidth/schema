@@ -43,8 +43,8 @@ let TableWeaponMax = 15 // the exported extent (SPEC §4.2); an enum has no Coun
 
 // EnumNameTableWeapon: debug/log/tooling name for any TableWeapon wire value; a value
 // the enum does not name (wire-legal up to the declared max) names as "???"
-def EnumNameTableWeapon(value:int) -> string:
-    return switch value:
+def EnumNameTableWeapon(value·:int) -> string:
+    return switch value·:
         case 0: "None"
         case 1: "Fists"
         case 2: "Pistol"
@@ -77,8 +77,8 @@ let TableDamageDowned = 128
 let TableDamageCount = 8 // the declared variant count (SPEC §4.2)
 
 // FlagNameTableDamage: debug/log/tooling name for bit i of TableDamage
-def FlagNameTableDamage(value:int) -> string:
-    return switch value:
+def FlagNameTableDamage(value·:int) -> string:
+    return switch value·:
         case 0: "Bleeding"
         case 1: "Burning"
         case 2: "Stunned"
@@ -96,35 +96,35 @@ class TableHitEvent:
     HitKind:int
     Crit:bool
 def NewTableHitEvent() -> TableHitEvent:
-    let value = TableHitEvent {
+    let value· = TableHitEvent {
         TargetId: 0,
         Damage: 0,
         HitKind: 0,
         Crit: false
     }
-    return value
+    return value·
 
 // type TableChatEvent
 class TableChatEvent:
     Channel:int
     Speaker:int
 def NewTableChatEvent() -> TableChatEvent:
-    let value = TableChatEvent {
+    let value· = TableChatEvent {
         Channel: 0,
         Speaker: 0
     }
-    return value
+    return value·
 
 // type TablePickupEvent
 class TablePickupEvent:
     ItemId:int
     Amount:int
 def NewTablePickupEvent() -> TablePickupEvent:
-    let value = TablePickupEvent {
+    let value· = TablePickupEvent {
         ItemId: 0,
         Amount: 0
     }
-    return value
+    return value·
 
 // TableEventType: union TableEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
 enum TableEventType:
@@ -136,8 +136,8 @@ let TableEventTypeMax = 3 // the exported extent (SPEC §4.2); an enum has no Co
 
 // EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value; a value
 // the enum does not name (wire-legal up to the declared max) names as "???"
-def EnumNameTableEventType(value:int) -> string:
-    return switch value:
+def EnumNameTableEventType(value·:int) -> string:
+    return switch value·:
         case 0: "None"
         case 1: "Hit"
         case 2: "Chat"
@@ -153,154 +153,154 @@ class TableEvent:
     Chat:TableChatEvent
     Pickup:TablePickupEvent
 def NewTableEvent() -> TableEvent:
-    let value = TableEvent {
+    let value· = TableEvent {
         Type: TableEventTypeNone,
         Hit: NewTableHitEvent(),
         Chat: NewTableChatEvent(),
         Pickup: NewTablePickupEvent()
     }
-    return value
+    return value·
 
 // read_body_TableHitEvent decodes the wire into value, filling its pre-allocated
 // storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
 // It does not end the packet. A refusal latches the stream with its reason
 // and answers false.
-def read_body_TableHitEvent(stream:serialize_read_stream, value:TableHitEvent) -> bool:
-    var rv = 0
-    var rok = true
-    var rb = false
-    rv, rok = stream.serialize_bits(rv, 12)
-    if not rok: return false
-    value.TargetId = rv
-    rv, rok = stream.serialize_int(rv, 0, 4095) // the offset from min; past max is refused (SPEC §4.3)
-    if not rok: return false
-    value.Damage = rv
-    rv, rok = stream.serialize_int(rv, 0, 7) // the offset from min; past max is refused (SPEC §4.3)
-    if not rok: return false
-    value.HitKind = rv
-    rb, rok = stream.serialize_bool(rb)
-    if not rok: return false
-    value.Crit = rb
+def read_body_TableHitEvent(stream·:serialize_read_stream, value·:TableHitEvent) -> bool:
+    var rv· = 0
+    var rok· = true
+    var rb· = false
+    rv·, rok· = stream·.serialize_bits(rv·, 12)
+    if not rok·: return false
+    value·.TargetId = rv·
+    rv·, rok· = stream·.serialize_int(rv·, 0, 4095) // the offset from min; past max is refused (SPEC §4.3)
+    if not rok·: return false
+    value·.Damage = rv·
+    rv·, rok· = stream·.serialize_int(rv·, 0, 7) // the offset from min; past max is refused (SPEC §4.3)
+    if not rok·: return false
+    value·.HitKind = rv·
+    rb·, rok· = stream·.serialize_bool(rb·)
+    if not rok·: return false
+    value·.Crit = rb·
     return true
 
 // ReadTableHitEvent reads one packet holding value: its body, then the packet's end
 // (SPEC §5), which refuses a whole byte left over and set unused bits in
 // the final byte. A refusal latches the stream with its reason and answers
 // false.
-def ReadTableHitEvent(stream:serialize_read_stream, value:TableHitEvent) -> bool:
-    if not read_body_TableHitEvent(stream, value): return false
-    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+def ReadTableHitEvent(stream·:serialize_read_stream, value·:TableHitEvent) -> bool:
+    if not read_body_TableHitEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // read_body_TableChatEvent decodes the wire into value, filling its pre-allocated
 // storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
 // It does not end the packet. A refusal latches the stream with its reason
 // and answers false.
-def read_body_TableChatEvent(stream:serialize_read_stream, value:TableChatEvent) -> bool:
-    var rv = 0
-    var rok = true
-    rv, rok = stream.serialize_int(rv, 0, 3) // the offset from min; past max is refused (SPEC §4.3)
-    if not rok: return false
-    value.Channel = rv
-    rv, rok = stream.serialize_bits(rv, 12)
-    if not rok: return false
-    value.Speaker = rv
+def read_body_TableChatEvent(stream·:serialize_read_stream, value·:TableChatEvent) -> bool:
+    var rv· = 0
+    var rok· = true
+    rv·, rok· = stream·.serialize_int(rv·, 0, 3) // the offset from min; past max is refused (SPEC §4.3)
+    if not rok·: return false
+    value·.Channel = rv·
+    rv·, rok· = stream·.serialize_bits(rv·, 12)
+    if not rok·: return false
+    value·.Speaker = rv·
     return true
 
 // ReadTableChatEvent reads one packet holding value: its body, then the packet's end
 // (SPEC §5), which refuses a whole byte left over and set unused bits in
 // the final byte. A refusal latches the stream with its reason and answers
 // false.
-def ReadTableChatEvent(stream:serialize_read_stream, value:TableChatEvent) -> bool:
-    if not read_body_TableChatEvent(stream, value): return false
-    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+def ReadTableChatEvent(stream·:serialize_read_stream, value·:TableChatEvent) -> bool:
+    if not read_body_TableChatEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // read_body_TablePickupEvent decodes the wire into value, filling its pre-allocated
 // storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
 // It does not end the packet. A refusal latches the stream with its reason
 // and answers false.
-def read_body_TablePickupEvent(stream:serialize_read_stream, value:TablePickupEvent) -> bool:
-    var rv = 0
-    var rok = true
-    rv, rok = stream.serialize_bits(rv, 10)
-    if not rok: return false
-    value.ItemId = rv
-    rv, rok = stream.serialize_int(rv, 0, 255) // the offset from min; past max is refused (SPEC §4.3)
-    if not rok: return false
-    value.Amount = rv
+def read_body_TablePickupEvent(stream·:serialize_read_stream, value·:TablePickupEvent) -> bool:
+    var rv· = 0
+    var rok· = true
+    rv·, rok· = stream·.serialize_bits(rv·, 10)
+    if not rok·: return false
+    value·.ItemId = rv·
+    rv·, rok· = stream·.serialize_int(rv·, 0, 255) // the offset from min; past max is refused (SPEC §4.3)
+    if not rok·: return false
+    value·.Amount = rv·
     return true
 
 // ReadTablePickupEvent reads one packet holding value: its body, then the packet's end
 // (SPEC §5), which refuses a whole byte left over and set unused bits in
 // the final byte. A refusal latches the stream with its reason and answers
 // false.
-def ReadTablePickupEvent(stream:serialize_read_stream, value:TablePickupEvent) -> bool:
-    if not read_body_TablePickupEvent(stream, value): return false
-    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+def ReadTablePickupEvent(stream·:serialize_read_stream, value·:TablePickupEvent) -> bool:
+    if not read_body_TablePickupEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // read_body_TableEvent decodes the TableEventType tag and its selected arm (SPEC §4.8); a
 // tag past the arms is refused, and the selected arm is constructed fresh.
 // It does not end the packet.
-def read_body_TableEvent(stream:serialize_read_stream, value:TableEvent) -> bool:
-    var rv = 0
-    var rok = true
-    rv, rok = stream.serialize_int(rv, 0, 3) // refuses a tag above the arms (SPEC §4.8)
-    if not rok: return false
-    value.Type = TableEventType(rv)
-    if value.Type == TableEventTypeHit:
-        value.Hit = NewTableHitEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not read_body_TableHitEvent(stream, value.Hit): return false
-    if value.Type == TableEventTypeChat:
-        value.Chat = NewTableChatEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not read_body_TableChatEvent(stream, value.Chat): return false
-    if value.Type == TableEventTypePickup:
-        value.Pickup = NewTablePickupEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not read_body_TablePickupEvent(stream, value.Pickup): return false
+def read_body_TableEvent(stream·:serialize_read_stream, value·:TableEvent) -> bool:
+    var rv· = 0
+    var rok· = true
+    rv·, rok· = stream·.serialize_int(rv·, 0, 3) // refuses a tag above the arms (SPEC §4.8)
+    if not rok·: return false
+    value·.Type = TableEventType(rv·)
+    if value·.Type == TableEventTypeHit:
+        value·.Hit = NewTableHitEvent() // a fresh payload on every selection (SPEC §4.8)
+        if not read_body_TableHitEvent(stream·, value·.Hit): return false
+    if value·.Type == TableEventTypeChat:
+        value·.Chat = NewTableChatEvent() // a fresh payload on every selection (SPEC §4.8)
+        if not read_body_TableChatEvent(stream·, value·.Chat): return false
+    if value·.Type == TableEventTypePickup:
+        value·.Pickup = NewTablePickupEvent() // a fresh payload on every selection (SPEC §4.8)
+        if not read_body_TablePickupEvent(stream·, value·.Pickup): return false
     return true
 
 // ReadTableEvent reads one packet holding value: its body, then the packet's end
 // (SPEC §5), which refuses a whole byte left over and set unused bits in
 // the final byte. A refusal latches the stream with its reason and answers
 // false.
-def ReadTableEvent(stream:serialize_read_stream, value:TableEvent) -> bool:
-    if not read_body_TableEvent(stream, value): return false
-    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+def ReadTableEvent(stream·:serialize_read_stream, value·:TableEvent) -> bool:
+    if not read_body_TableEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // WriteTableHitEvent writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
-def WriteTableHitEvent(s:serialize_write_stream, v:TableHitEvent) -> bool:
-    s.serialize_bits(v.TargetId, 12) // the declared bit width (SPEC §4.3)
-    assert v.Damage >= 0 and v.Damage <= 4095 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.Damage, 12) // the offset from min (SPEC §4.3)
-    assert v.HitKind >= 0 and v.HitKind <= 7 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.HitKind, 3) // the offset from min (SPEC §4.3)
-    s.serialize_bool(v.Crit) // SPEC §4.3
+def WriteTableHitEvent(s·:serialize_write_stream, v·:TableHitEvent) -> bool:
+    s·.serialize_bits(v·.TargetId, 12) // the declared bit width (SPEC §4.3)
+    assert v·.Damage >= 0 and v·.Damage <= 4095 // the value is in [min, max] (SPEC §4.3)
+    s·.serialize_bits(v·.Damage, 12) // the offset from min (SPEC §4.3)
+    assert v·.HitKind >= 0 and v·.HitKind <= 7 // the value is in [min, max] (SPEC §4.3)
+    s·.serialize_bits(v·.HitKind, 3) // the offset from min (SPEC §4.3)
+    s·.serialize_bool(v·.Crit) // SPEC §4.3
     return true
 
 // WriteTableChatEvent writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
-def WriteTableChatEvent(s:serialize_write_stream, v:TableChatEvent) -> bool:
-    assert v.Channel >= 0 and v.Channel <= 3 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.Channel, 2) // the offset from min (SPEC §4.3)
-    s.serialize_bits(v.Speaker, 12) // the declared bit width (SPEC §4.3)
+def WriteTableChatEvent(s·:serialize_write_stream, v·:TableChatEvent) -> bool:
+    assert v·.Channel >= 0 and v·.Channel <= 3 // the value is in [min, max] (SPEC §4.3)
+    s·.serialize_bits(v·.Channel, 2) // the offset from min (SPEC §4.3)
+    s·.serialize_bits(v·.Speaker, 12) // the declared bit width (SPEC §4.3)
     return true
 
 // WriteTablePickupEvent writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
-def WriteTablePickupEvent(s:serialize_write_stream, v:TablePickupEvent) -> bool:
-    s.serialize_bits(v.ItemId, 10) // the declared bit width (SPEC §4.3)
-    assert v.Amount >= 0 and v.Amount <= 255 // the value is in [min, max] (SPEC §4.3)
-    s.serialize_bits(v.Amount, 8) // the offset from min (SPEC §4.3)
+def WriteTablePickupEvent(s·:serialize_write_stream, v·:TablePickupEvent) -> bool:
+    s·.serialize_bits(v·.ItemId, 10) // the declared bit width (SPEC §4.3)
+    assert v·.Amount >= 0 and v·.Amount <= 255 // the value is in [min, max] (SPEC §4.3)
+    s·.serialize_bits(v·.Amount, 8) // the offset from min (SPEC §4.3)
     return true
 
 // WriteTableEvent writes the tag, then the selected arm only (SPEC §4.8: None = 0,
 // then each declared arm).
-def WriteTableEvent(s:serialize_write_stream, v:TableEvent) -> bool:
-    assert v.Type >= 0 and v.Type <= 3 // the tag is a write-side contract (SPEC §4.8)
-    s.serialize_bits(v.Type, 2) // the union tag (SPEC §4.8)
-    if v.Type == TableEventTypeHit: // the selected arm only (SPEC §4.8)
-        WriteTableHitEvent(s, v.Hit)
-    if v.Type == TableEventTypeChat: // the selected arm only (SPEC §4.8)
-        WriteTableChatEvent(s, v.Chat)
-    if v.Type == TableEventTypePickup: // the selected arm only (SPEC §4.8)
-        WriteTablePickupEvent(s, v.Pickup)
+def WriteTableEvent(s·:serialize_write_stream, v·:TableEvent) -> bool:
+    assert v·.Type >= 0 and v·.Type <= 3 // the tag is a write-side contract (SPEC §4.8)
+    s·.serialize_bits(v·.Type, 2) // the union tag (SPEC §4.8)
+    if v·.Type == TableEventTypeHit: // the selected arm only (SPEC §4.8)
+        WriteTableHitEvent(s·, v·.Hit)
+    if v·.Type == TableEventTypeChat: // the selected arm only (SPEC §4.8)
+        WriteTableChatEvent(s·, v·.Chat)
+    if v·.Type == TableEventTypePickup: // the selected arm only (SPEC §4.8)
+        WriteTablePickupEvent(s·, v·.Pickup)
     return true

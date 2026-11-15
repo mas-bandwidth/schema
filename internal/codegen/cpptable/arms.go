@@ -179,7 +179,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("%sif ( %s.type == %sType::None ) { %s += 1; } // the inner union's None: L = 1 and that one zero byte (§3)\n", ind, value, un.Name, into)
 		g.pf("%selse\n%s{\n", ind, ind)
-		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", sfx+"a")
+		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", onBad, sfx+"a")
 		g.pf("%s}\n", ind)
 	default:
 		g.emitFloatCheck(kind, value, ind, onBad)
@@ -309,6 +309,8 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		// declared defaults
 		g.pf("%sif ( !%s.has( 2 ) ) { break; }\n", ind, rdr)
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
+		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableArrayElementKind( %[2]s ) )\n%[1]s    {\n%[1]s        %[3]s = %[4]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, ek, tag, none)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
 		g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, n, tag, none)
 		if widenableElement(f) {

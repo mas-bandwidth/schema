@@ -306,8 +306,8 @@ func TestLuaFixedEvolutionArrayBounds(t *testing.T) {
 // TestLuaFixedEvolutionText is text (C3, C4, C5, R24): a length past the
 // field's capacity refuses; ill-formed UTF-8 or a zero in the USED bytes and an
 // unpaired surrogate in a wstring's used units refuse; a hostile byte in the
-// slack past the used length is not read and not a refusal. The negative
-// control drops the UTF-8 check.
+// slack past the used length refuses wire_damaged, because every dead byte is
+// zero. The negative control drops the UTF-8 check.
 func TestLuaFixedEvolutionText(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
@@ -323,7 +323,7 @@ func TestLuaFixedEvolutionText(t *testing.T) {
 		{"C3 length 5 of 4", cut(func(b []byte) { b[body] = 5 }), "refused length_over_bound"},
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), "refused text_ill_formed"},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), "refused text_ill_formed"},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 w0 u0"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "refused wire_damaged"},
 	}
 	for _, c := range cases {
 		if got := g.load(t, "T", c.file).head; got != c.want {
@@ -473,8 +473,9 @@ func TestLuaFixedEvolutionOrdinals(t *testing.T) {
 // TestLuaFixedEvolutionNormalization is normalization (C12, C13, R17) under
 // the one read: a bool byte or a present byte other than 0 or 1 refuses
 // wire_damaged (docs/FIXED-FORM-ALGORITHM.md §4.5), never normalized; 0 and 1
-// read, and the payload behind a present byte of 1 lands. The negative
-// control drops the byte check.
+// read, and the payload behind a present byte of 1 lands. An absent optional's
+// payload is dead, so a non-zero byte there refuses too. The negative control
+// drops the byte check.
 func TestLuaFixedEvolutionNormalization(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
@@ -492,6 +493,7 @@ func TestLuaFixedEvolutionNormalization(t *testing.T) {
 	}{
 		{"bool 0x7f", set(0x7f, 1, 42)}, {"bool 0x02", set(2, 1, 42)}, {"bool 0xff", set(0xff, 0, 0)},
 		{"present 0x5a", set(1, 0x5a, 42)}, {"present 0x02", set(0, 2, 42)},
+		{"absent payload 0x2a", set(0, 0, 42)},
 	} {
 		if got := g.load(t, "T", c.file).head; got != "refused wire_damaged" {
 			t.Errorf("%s: %s, want refused wire_damaged", c.name, got)
@@ -500,7 +502,7 @@ func TestLuaFixedEvolutionNormalization(t *testing.T) {
 	if got := g.load(t, "T", set(1, 1, 42)); got.head != "ok 1 w0 u0" || got.dump["r0.flag"] != "true" || got.dump["r0.opt_present"] != "true" || got.dump["r0.opt"] != "42" {
 		t.Errorf("the control: %s %v", got.head, got.dump)
 	}
-	if got := g.load(t, "T", set(0, 0, 42)); got.head != "ok 1 w0 u0" || got.dump["r0.flag"] != "false" || got.dump["r0.opt_present"] != "false" {
+	if got := g.load(t, "T", set(0, 0, 0)); got.head != "ok 1 w0 u0" || got.dump["r0.flag"] != "false" || got.dump["r0.opt_present"] != "false" {
 		t.Errorf("the control, absent: %s %v", got.head, got.dump)
 	}
 	gc := luaEvoGen(t, g.unit, nil)

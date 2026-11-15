@@ -94,18 +94,29 @@ SCHEMA_WRITE_INLINE bool WriteDefaultArm( serialize::WriteStream & stream, const
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadDefaultArm( serialize::ReadStream & stream, DefaultArm & value )
+SCHEMA_READ_INLINE bool ReadDefaultArmBody( serialize::ReadStream & stream, DefaultArm & value )
 {
     read_int( stream, value.entries_count, 0, 2 );
     for ( int32_t i = 0; i < value.entries_count; i++ )
     {
-        schema_read_object( stream, ReadProbeConfig, value.entries[i] );
+        schema_read_object( stream, ReadProbeConfigBody, value.entries[i] );
     }
     {
         int32_t range_value = 0;
         read_int( stream, range_value, 0, 7 );
         value.marker = uint8_t( range_value );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadDefaultArm( serialize::ReadStream & stream, DefaultArm & value )
+{
+    if ( !ReadDefaultArmBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -129,7 +140,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultChoice( serialize::WriteStream & stream, co
     return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
-SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, DefaultChoice & value )
+SCHEMA_READ_INLINE bool ReadDefaultChoiceBody( serialize::ReadStream & stream, DefaultChoice & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 2 ); // DefaultChoiceType::Max — rejects a tag above the count (SPEC §4.8)
@@ -140,12 +151,23 @@ SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, Defau
             return true;
         case DefaultChoiceType::First:
             ::new ( static_cast<void *>( &value.first ) ) DefaultArm{};
-            return ReadDefaultArm( stream, value.first );
+            return ReadDefaultArmBody( stream, value.first );
         case DefaultChoiceType::Second:
             ::new ( static_cast<void *>( &value.second ) ) DefaultArm{};
-            return ReadDefaultArm( stream, value.second );
+            return ReadDefaultArmBody( stream, value.second );
     }
     return false;
+}
+
+SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, DefaultChoice & value )
+{
+    if ( !ReadDefaultChoiceBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteDefaultChoicePacket( serialize::WriteStream & stream, const DefaultChoicePacket & value )
@@ -154,9 +176,20 @@ SCHEMA_WRITE_INLINE bool WriteDefaultChoicePacket( serialize::WriteStream & stre
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadDefaultChoicePacketBody( serialize::ReadStream & stream, DefaultChoicePacket & value )
+{
+    schema_read_object( stream, ReadDefaultChoiceBody, value.choice );
+    return true;
+}
+
 SCHEMA_READ_INLINE bool ReadDefaultChoicePacket( serialize::ReadStream & stream, DefaultChoicePacket & value )
 {
-    schema_read_object( stream, ReadDefaultChoice, value.choice );
+    if ( !ReadDefaultChoicePacketBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -169,11 +202,22 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkArm( serialize::WriteStream & stream, c
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadDefaultBulkArm( serialize::ReadStream & stream, DefaultBulkArm & value )
+SCHEMA_READ_INLINE bool ReadDefaultBulkArmBody( serialize::ReadStream & stream, DefaultBulkArm & value )
 {
-    schema_read_object( stream, ReadDefaultArm, value.payload );
+    schema_read_object( stream, ReadDefaultArmBody, value.payload );
     read_int( stream, value.data_length, 0, 2 );
     read_bytes( stream, value.data, value.data_length );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadDefaultBulkArm( serialize::ReadStream & stream, DefaultBulkArm & value )
+{
+    if ( !ReadDefaultBulkArmBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -197,7 +241,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkChoice( serialize::WriteStream & stream
     return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
-SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, DefaultBulkChoice & value )
+SCHEMA_READ_INLINE bool ReadDefaultBulkChoiceBody( serialize::ReadStream & stream, DefaultBulkChoice & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 2 ); // DefaultBulkChoiceType::Max — rejects a tag above the count (SPEC §4.8)
@@ -208,12 +252,23 @@ SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, D
             return true;
         case DefaultBulkChoiceType::First:
             ::new ( static_cast<void *>( &value.first ) ) DefaultBulkArm{};
-            return ReadDefaultBulkArm( stream, value.first );
+            return ReadDefaultBulkArmBody( stream, value.first );
         case DefaultBulkChoiceType::Second:
             ::new ( static_cast<void *>( &value.second ) ) DefaultBulkArm{};
-            return ReadDefaultBulkArm( stream, value.second );
+            return ReadDefaultBulkArmBody( stream, value.second );
     }
     return false;
+}
+
+SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, DefaultBulkChoice & value )
+{
+    if ( !ReadDefaultBulkChoiceBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
 }
 
 } // namespace example

@@ -346,7 +346,7 @@ func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt
 				m.Printf("%s  %sPresent = b[at + %s] != 0;\n", ind, fExpr, off)
 				m.Printf("%s  if (%sPresent) {\n", ind, fExpr)
 				emitFixedPlanDecodeValue(m, f, inner, cAt+1, fExpr, ind+"    ", dyn, false)
-				m.Printf("%s  }\n", ind)
+				m.Printf("%s  } else if (_rt_fixed.deadNotZero(b, at + %s + 1, at + %s + %d)) return \"wire_damaged\";\n", ind, off, off, child.size)
 				m.Printf("%s}\n", ind)
 			} else if fixedPlanCompat(f, child) {
 				off := fmt.Sprintf("%d", cAt)
@@ -437,6 +437,8 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				capLim := min(oldCap, f.ArrayBound)
 				m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 				m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", ind, capLim)
+				m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + 4 + c * %d, at + %s + %d)) return \"wire_damaged\";\n",
+					ind, off, elem.size, off, node.size)
 				m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
 				m.Printf("%sfor (local %s = 0; %s < c; %s++) {\n", ind, iv, iv, iv)
 				emitFixedPlanDecodeValue(m, f, elem, at+4, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
@@ -454,6 +456,8 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			capLim := min(oldCap, f.Type.Size)
 			m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 			m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, capLim)
+			m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + 4 + n, at + %s + %d)) return \"wire_damaged\";\n",
+				ind, off, off, node.size)
 			switch f.Type.Kind {
 			case ir.TString:
 				m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + 4, n)) return \"text_ill_formed\";\n", ind, off)
@@ -485,10 +489,14 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			// identity one, and never lands None (docs/FIXED-FORM-ALGORITHM.md
 			// §4.6, §5.4; §5.8 row 12)
 			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, maxArms)
+			m.Printf("%sif (%s.Type == 0 && _rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+				ind, expr, off, tagW, off, node.size)
 			for i := range maxArms {
 				v := r.Variants[i]
 				armNode := node.children[i]
 				if v.F == nil || armNode == nil || armNode.kind == ir.TableKindNoPayload {
+					m.Printf("%sif (%s.Type == %d && _rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+						ind, expr, i+1, off, tagW, off, node.size)
 					continue
 				}
 				if !fixedPlanCompat(v.F, armNode) {
@@ -496,6 +504,8 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
 				emitFixedPlanDecodeValue(m, v.F, armNode, at+tagW, expr+"."+ir.GoExportName(v.Name), ind+"  ", dyn, false)
+				m.Printf("%s  if (_rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+					ind, off, tagW+armNode.size, off, node.size)
 				m.Printf("%s}\n", ind)
 			}
 			return

@@ -110,9 +110,9 @@ func TestLobsterUnsignedFixedGoldens(t *testing.T) {
 // ufixedOwnDeclaration is the planted bug: every unsigned call site passes the
 // field's own (I, F), as the emitter did before fixedDeclaration.
 var ufixedOwnDeclaration = []struct{ from, to string }{
-	{"serialize_fixed32(rv, 24, 8, 0, 250)", "serialize_fixed32(rv, 8, 8, 0, 250)"},
-	{"serialize_fixed32(v.Ping, 24, 8, 0, 250)", "serialize_fixed32(v.Ping, 8, 8, 0, 250)"},
-	{"rw, rok = stream.serialize_fixed128(rw, 112, 16, 0, 281474976710655) // the Q format's raw offset, unsigned (SPEC §4.3)", "rv, rok = stream.serialize_fixed64(rv, 48, 16, 0, 281474976710655)"},
+	{"serialize_fixed32(rv·, 24, 8, 0, 250)", "serialize_fixed32(rv·, 8, 8, 0, 250)"},
+	{"serialize_fixed32(v·.Ping, 24, 8, 0, 250)", "serialize_fixed32(v·.Ping, 8, 8, 0, 250)"},
+	{"rw·, rok· = stream·.serialize_fixed128(rw·, 112, 16, 0, 281474976710655) // the Q format's raw offset, unsigned (SPEC §4.3)", "rv·, rok· = stream·.serialize_fixed64(rv·, 48, 16, 0, 281474976710655)"},
 }
 
 func TestLobsterUnsignedFixedGoldensNegativeControl(t *testing.T) {
@@ -131,11 +131,11 @@ func TestLobsterUnsignedFixedGoldensNegativeControl(t *testing.T) {
 	}
 	// the span read lands in rv now; its target reads the int, not rw.lo
 	lud := string(files["Ludicrous.lobster"])
-	re := regexp.MustCompile(`(serialize_fixed64\(rv, 48, 16, 0, 281474976710655\)\n    if not rok: return false\n    value\.Span = )rw\.lo`)
+	re := regexp.MustCompile(`(serialize_fixed64\(rv·, 48, 16, 0, 281474976710655\)\n    if not rok·: return false\n    value·\.Span = )rw·\.lo`)
 	if !re.MatchString(lud) {
 		t.Fatalf("negative-control anchor for the span target did not match")
 	}
-	files["Ludicrous.lobster"] = []byte(re.ReplaceAllString(lud, "${1}rv"))
+	files["Ludicrous.lobster"] = []byte(re.ReplaceAllString(lud, "${1}rv·"))
 	got := runUfixed(t, files)
 	if want := "bench_mixed value_out_of_range\nunsigned_probe value_out_of_range\n"; got != want {
 		t.Fatalf("negative control: the planted (I, F) declarations must refuse both goldens, got:\n%s", got)

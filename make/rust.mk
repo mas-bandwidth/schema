@@ -1314,6 +1314,20 @@ tables-rust-guard-negative-control:
 #   - text: the Q-grid exactness check never fires, so a fraction finer than
 #     F rounds instead of counting kind_mismatch — json-hostile goes red on
 #     fixed-fraction-too-fine, and wire, report and json-read stay green.
+# A NEGATIVE CONTROL'S OWN DRIVER BUILD. Each Rust conformance control builds
+# a private copy of the driver and every generated crate it links, cold, in a
+# target directory of its own (CARGO_TARGET_DIR under the control's build dir).
+# The driver's manifest asks for opt-level 1 because the conformance leg runs
+# it seven times per matrix; a control runs it once over a small corpus, so the
+# optimiser is pure cost there. Unoptimised, without debug info and without
+# incremental state, the build of build/rust-conformance-wref-fixed-control
+# fell from 4m22s to 46s on two hulk cores (7m52s to 1m13s of CPU), and the
+# control still turned write-refusal-fixed red with wire green. At opt-level 1
+# these rows hit the 5-minute job cap on loaded runners (CI full 43664096253,
+# 43664797408, 43665903270). The warm shared target the wide controls build
+# into (test/conformance/rust/target) keeps the manifest's profile.
+RUST_CONTROL_CARGO_ENV := CARGO_PROFILE_DEV_OPT_LEVEL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
+
 RUST_WIDE_CONTROL := build/rust-wide-control
 RUST_WIDE_CONTROL_UNITS := scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema
 
@@ -1408,7 +1422,7 @@ conformance-negative-control-rust-walk: build/conformance-harness
 		-e 's|build/tables-generated-rust/|$(RUST_CONFORMANCE_WALK)/generated/|' \
 		test/conformance/rust/Cargo.toml > $(RUST_CONFORMANCE_WALK)/driver/Cargo.toml
 	cd $(RUST_CONFORMANCE_WALK)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WALK)/target cargo build --quiet
+		$(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WALK)/target cargo build --quiet
 	@printf '#!/bin/sh\nexec "%s/$(RUST_CONFORMANCE_WALK)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
 		> $(RUST_CONFORMANCE_WALK)/driver/driver && chmod +x $(RUST_CONFORMANCE_WALK)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(RUST_CONFORMANCE_WALK)" > $(RUST_CONFORMANCE_WALK)/drivers.txt
@@ -1464,7 +1478,7 @@ conformance-rust-absent-negative-control: build/conformance-harness build/tables
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
 	cd $(RUST_ABSENT_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_ABSENT_CONTROL)/target cargo build --quiet
+		$(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(RUST_ABSENT_CONTROL)/target cargo build --quiet
 	@printf '#!/bin/sh\nexec "%s/$(RUST_ABSENT_CONTROL)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
 		> $(RUST_ABSENT_CONTROL)/driver/driver && chmod +x $(RUST_ABSENT_CONTROL)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(RUST_ABSENT_CONTROL)" > $(RUST_ABSENT_CONTROL)/drivers.txt
@@ -1671,7 +1685,7 @@ define RUST_FRAMING_DRIVER
 		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
 	@[ "$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(1)/driver/Cargo.toml)" = 2 ] || \
 		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
-	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" $(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 endef
 conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
@@ -1867,7 +1881,7 @@ define rust_wref_control
 		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
 		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
 	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+		$(RUST_CONTROL_CARGO_ENV) CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 	@printf '#!/bin/sh\nexec "%s/$(1)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
 		> $(1)/driver/driver && chmod +x $(1)/driver/driver
 	@printf 'rust %s/driver/driver\n' "$(1)" > $(1)/drivers.txt
@@ -1897,5 +1911,49 @@ conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness
 	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-message
-conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,if value.sku_length < 0 || value.sku_length > 32 { return false; },if false { return false; },write-refusal-message,message)
+
+# THE PACKET END CHECK (docs/SPEC.md §5 "Read termination";
+# docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET; docs/rulings.json
+# `packet-canonical-end`): the generated public read is the one-packet read —
+# it decodes the top-level object through the per-type body and then runs the
+# runtime's end check once, so a whole byte left after the object and non-zero
+# unused bits in the final byte are refused. The driver reads the three shared
+# vectors under testdata/wire/packet-end with that public read.
+PACKET_END_RUST := build/packet-end/rust
+build/packet-end/rust/.stamp: bin/schema test/packet-end/End.schema make/rust.mk
+	@mkdir -p $(PACKET_END_RUST)/generated/src
+	./bin/schema generate --lang rust --out $(PACKET_END_RUST)/generated/src test/packet-end/End.schema
+	@printf '[package]\nname = "packetend"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > $(PACKET_END_RUST)/generated/Cargo.toml
+	@touch $@
+
+.PHONY: packet-end-rust packet-end-rust-negative-control
+packet-end-rust: build/packet-end/rust/.stamp
+	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../../testdata/wire/packet-end
+	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../../testdata/wire/packet-end
+
+packet-end-rust-negative-control: packet-end-rust
+	@mkdir -p $(PACKET_END_RUST)-negative
+	go run ./tools/sabotage -name packet-end-rust-end-check \
+		-out $(PACKET_END_RUST)-negative/functions.gotext internal/codegen/rust/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_END_RUST)-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_END_RUST)-negative/overlay.json
+	go build -overlay=$(PACKET_END_RUST)-negative/overlay.json -o $(PACKET_END_RUST)-negative/schema ./cmd/schema
+	$(PACKET_END_RUST)-negative/schema generate --lang rust --out $(PACKET_END_RUST)-negative/generated/src test/packet-end/End.schema
+	@printf '[package]\nname = "packetend"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > $(PACKET_END_RUST)-negative/generated/Cargo.toml
+	@mkdir -p $(PACKET_END_RUST)-negative/checker/src
+	cp test/packet-end/rust/src/main.rs $(PACKET_END_RUST)-negative/checker/src/main.rs
+	@sed -e 's|../../../build/packet-end/rust/generated|$(CURDIR)/$(PACKET_END_RUST)-negative/generated|' \
+		-e 's|../../../../serialize.rs|$(CURDIR)/$(SERIALIZE_RS)|' \
+		test/packet-end/rust/Cargo.toml > $(PACKET_END_RUST)-negative/checker/Cargo.toml
+	cd $(PACKET_END_RUST)-negative/checker && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@if ./$(PACKET_END_RUST)-negative/checker/target/debug/packet-end-test testdata/wire/packet-end > $(PACKET_END_RUST)-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: removing the end check left the packet-end driver green'; \
+		cat $(PACKET_END_RUST)-negative/log; exit 1; fi
+	@grep -Fq 'packet end trailing' $(PACKET_END_RUST)-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Rust failed for another reason'; cat $(PACKET_END_RUST)-negative/log; exit 1; }
+	@grep -m1 'packet end trailing' $(PACKET_END_RUST)-negative/log
+	@echo 'packet end Rust negative control: removing the end check turns a trailing byte red'
+
+test-rust: packet-end-rust packet-end-rust-negative-control

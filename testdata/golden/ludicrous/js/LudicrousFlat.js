@@ -15,6 +15,9 @@
 // refuses an out-of-contract value — in every build, production
 // included. Read<Name>Flat(view, numBits, value) -> bool, the family read
 // verdict; reader obligations ride in every build too.
+// Read<Name>FlatBits(view, numBits, value) -> the bits that read consumed,
+// or false. The framing entry: the same refusals, and not the end-of-packet
+// check, so a later object may follow in the same buffer (SPEC §5, §6.3).
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -136,7 +139,70 @@ export function ReadFixedProbeFlat(view, numBits, value) {
     value.samples[i0] = -524288 + v;
     br += 21;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadFixedProbeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadFixedProbeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadFixedProbeFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (156 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 23592960) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.angle = -11796480 + v;
+  out = (view.getUint32(3, true) >>> 1) | (view.getUint32(7, true) << 31);
+  v = out >>> 0;
+  bg = BigInt(v);
+  if (bg > 3932160000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.position = -1966080000n + bg;
+  out = (view.getUint32(7, true) >>> 1) | (view.getUint32(11, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(11, true) >>> 1) | (view.getUint32(15, true) << 31);
+  v = (out & 0x1f) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 131072000000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.reach = -65536000000n + bg;
+  v = (out >>> 5) & 0xfffff;
+  if (v > 1000000) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.ticks = v;
+  br = 114;
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fffff) >>> 0;
+    if (v > 1048576) { // a smuggled raw offset is refused
+      return false;
+    }
+    value.samples[i0] = -524288 + v;
+    br += 21;
+  }
+  return br;
 }
 
 // ---- type UnsignedProbe: the flat codec ----
@@ -272,7 +338,84 @@ export function ReadUnsignedProbeFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xff) >>> 0;
   value.tail = v;
+  br += 8;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadUnsignedProbeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadUnsignedProbeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadUnsignedProbeFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (196 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1ffffff) >>> 0;
+  if (v > 23592960) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.angle = v;
+  out = (view.getUint32(3, true) >>> 1) | (view.getUint32(7, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(7, true) >>> 1) | (view.getUint32(11, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 18446744073709486080n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.span = bg;
+  out = (view.getUint32(11, true) >>> 1) | (view.getUint32(15, true) << 31);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(15, true) >>> 1) | (view.getUint32(19, true) << 31);
+  v = (out & 0x1f) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 131072000000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.reach = bg;
+  v = (out >>> 5) & 0xfffff;
+  if (v > 1000000) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.ticks = v;
+  br = 146;
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fffff) >>> 0;
+    if (v > 1048576) { // a smuggled raw offset is refused
+      return false;
+    }
+    value.samples[i0] = v;
+    br += 21;
+  }
+  value.locked = 196608;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xff) >>> 0;
+  value.tail = v;
+  br += 8;
+  return br;
 }
 
 // ---- type WideProbe: the flat codec ----
@@ -420,7 +563,94 @@ export function ReadWideProbeFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg |= SC.getBigUint64(0, true) << 64n;
   value.seed = bg;
+  if (((403 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(50) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadWideProbeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadWideProbeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadWideProbeFlatBits(view, numBits, value) {
+  let v = 0, out = 0, nw = 0, nl = 0;
+  let bg = 0n;
+  if (403 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
+  value.entityId = bg;
+  out = view.getUint32(16, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(20, true);
+  v = (out & 0x3) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 10000000000n) { // a smuggled offset is refused
+    return false;
+  }
+  value.energy = -5000000000n + bg;
+  out = (view.getUint32(20, true) >>> 2) | (view.getUint32(24, true) << 30);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(24, true) >>> 2) | (view.getUint32(28, true) << 30);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  out = (view.getUint32(28, true) >>> 2) | (view.getUint32(32, true) << 30);
+  v = out >>> 0;
+  nw = v;
+  out = (view.getUint32(32, true) >>> 2) | (view.getUint32(36, true) << 30);
+  v = (out & 0x3f) >>> 0;
+  nw = v * 4294967296 + nw;
+  if (nw > 137438953472 || (nw === 137438953472 && bg > 0n)) { // a smuggled offset is refused
+    return false;
+  }
+  nw += -68719476736;
+  nl = nw >>> 0;
+  SC.setUint32(0, nl, true);
+  SC.setInt32(4, (nw - nl) / 4294967296, true);
+  value.flux = (SC.getBigInt64(0, true) << 64n) + bg;
+  v = (out >>> 6) & 0x7ff;
+  bg = BigInt(v);
+  if (bg > 2000n) { // a smuggled offset is refused
+    return false;
+  }
+  value.bias = -1000n + bg;
+  out = (view.getUint32(34, true) >>> 3) | (view.getUint32(38, true) << 29);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(38, true) >>> 3) | (view.getUint32(42, true) << 29);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  out = (view.getUint32(42, true) >>> 3) | (view.getUint32(46, true) << 29);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(46, true) >>> 3) | (view.getUint32(50, true) << 29);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
+  value.seed = bg;
+  return 403;
 }
 
 // ---- type LudicrousState: the flat codec ----
@@ -1037,7 +1267,317 @@ export function ReadLudicrousStateFlat(view, numBits, value) {
   } else {
     value.targetId = 0n;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadLudicrousStateFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadLudicrousStateFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadLudicrousStateFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0, br = 0;
+  let bg = 0n;
+  if (561 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  value.mode = v;
+  v = (out >>> 2) & 0x1ffffff;
+  if (v > 23592960) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.probe.angle = -11796480 + v;
+  out = (view.getUint32(3, true) >>> 3) | (view.getUint32(7, true) << 29);
+  v = out >>> 0;
+  bg = BigInt(v);
+  if (bg > 3932160000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.probe.position = -1966080000n + bg;
+  out = (view.getUint32(7, true) >>> 3) | (view.getUint32(11, true) << 29);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(11, true) >>> 3) | (view.getUint32(15, true) << 29);
+  v = (out & 0x1f) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 131072000000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.probe.reach = -65536000000n + bg;
+  v = (out >>> 5) & 0xfffff;
+  if (v > 1000000) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.probe.ticks = v;
+  br = 116;
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fffff) >>> 0;
+    if (v > 1048576) { // a smuggled raw offset is refused
+      return false;
+    }
+    value.probe.samples[i0] = -524288 + v;
+    br += 21;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
+  value.wide.entityId = bg;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 10000000000n) { // a smuggled offset is refused
+    return false;
+  }
+  value.wide.energy = -5000000000n + bg;
+  br += 2;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  nw = v;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3f) >>> 0;
+  nw = v * 4294967296 + nw;
+  if (nw > 137438953472 || (nw === 137438953472 && bg > 0n)) { // a smuggled offset is refused
+    return false;
+  }
+  nw += -68719476736;
+  nl = nw >>> 0;
+  SC.setUint32(0, nl, true);
+  SC.setInt32(4, (nw - nl) / 4294967296, true);
+  value.wide.flux = (SC.getBigInt64(0, true) << 64n) + bg;
+  v = (out >>> 6) & 0x7ff;
+  bg = BigInt(v);
+  if (bg > 2000n) { // a smuggled offset is refused
+    return false;
+  }
+  value.wide.bias = -1000n + bg;
+  br += 17;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg |= SC.getBigUint64(0, true) << 64n;
+  value.wide.seed = bg;
+  br += 32;
+  if (br + 3 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7) >>> 0;
+  if (v > 4) { // the count guards the loop — reject, never clamp
+    return false;
+  }
+  value.keysCount = v;
+  br += 3;
+  if (br + value.keysCount * 128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.keysCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg |= SC.getBigUint64(0, true) << 64n;
+    value.keys[i0] = bg;
+    br += 32;
+  }
+  if (br + 1 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1) >>> 0;
+  value.hasTarget = v !== 0;
+  br += 1;
+  if (value.hasTarget) {
+    if (br + 128 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg |= SC.getBigUint64(0, true) << 64n;
+    value.targetId = bg;
+    br += 32;
+  } else {
+    value.targetId = 0n;
+  }
+  return br;
 }
 
 // ---- type DegenerateProbe: the flat codec ----
@@ -1074,7 +1614,28 @@ export function ReadDegenerateProbeFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0xff) >>> 0;
   value.tail = v;
+  if (((8 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadDegenerateProbeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadDegenerateProbeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadDegenerateProbeFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (8 > numBits) {
+    return false;
+  }
+  value.lockedFixed = -196608;
+  value.lockedInt = 7;
+  value.lockedWide = -12345678901234n;
+  out = view.getUint32(0, true);
+  v = (out & 0xff) >>> 0;
+  value.tail = v;
+  return 8;
 }
 
 // ---- type FixedVec: the flat codec ----
@@ -1155,7 +1716,59 @@ export function ReadFixedVecFlat(view, numBits, value) {
     return false;
   }
   value.z = -6553600000n + bg;
+  if (((102 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(12) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadFixedVecFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadFixedVecFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadFixedVecFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (102 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = (out & 0x3) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 13107200000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.x = -6553600000n + bg;
+  out = (view.getUint32(4, true) >>> 2) | (view.getUint32(8, true) << 30);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(8, true) >>> 2) | (view.getUint32(12, true) << 30);
+  v = (out & 0x3) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 13107200000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.y = -6553600000n + bg;
+  out = (view.getUint32(8, true) >>> 4) | (view.getUint32(12, true) << 28);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = (view.getUint32(12, true) >>> 4) | (view.getUint32(16, true) << 28);
+  v = (out & 0x3) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  if (bg > 13107200000n) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.z = -6553600000n + bg;
+  return 102;
 }
 
 // ---- type FixedQuat: the flat codec ----
@@ -1214,6 +1827,45 @@ export function ReadFixedQuatFlat(view, numBits, value) {
     return false;
   }
   value.w = -1073741824 + v;
+  if (((128 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadFixedQuatFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadFixedQuatFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadFixedQuatFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (128 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  if (v > 2147483648) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.x = -1073741824 + v;
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  if (v > 2147483648) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.y = -1073741824 + v;
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  if (v > 2147483648) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.z = -1073741824 + v;
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  if (v > 2147483648) { // a smuggled raw offset is refused
+    return false;
+  }
+  value.w = -1073741824 + v;
+  return 128;
 }
 

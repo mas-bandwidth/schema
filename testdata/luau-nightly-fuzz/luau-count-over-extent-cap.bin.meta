@@ -1,0 +1,9 @@
+seed=20261018
+iteration=318496
+kind=strict
+unit=tables_maps
+root=CrewsMembersEntry
+reason=count_over_extent_cap
+minimised=yes
+harness=fuzz.luau
+found-at=a028f662e

@@ -1,0 +1,36 @@
+# The JSON wide-integer vectors (docs/SPEC-TABLES.md §16.2, docs/rulings.json
+# json-wide-integers-are-strings and json-integer-token-only). One small unit —
+# `Integers`, holding an int32, an int64, a uint64, a ranged int128, a ranged
+# int64, a wide fixed-point field and a map keyed by uint64 — read by the engine
+# and every port card.
+#
+# The two rules, one corpus:
+#   (1) an integer whose storage is wider than 32 bits — int64, uint64, int128,
+#       and a fixed-point kind of 64 or 128 bits — is written as a JSON STRING
+#       of decimal digits, and reads as a string OR a number, the same digits;
+#   (2) every integer field takes an integer token only — digits with an
+#       optional minus, no fraction, no exponent, not -0 — and a wide integer's
+#       string holds the same rule inside the string. The value never passes
+#       through a double and its range is tested on the exact value.
+#
+# Columns, tab-separated: name, root, json file, verdict, what it holds.
+
+canonical	Integers	canonical.read.json	read	the canonical text: every wide field a string of digits
+strings	Integers	strings.read.json	read	wide fields as strings, read back as themselves
+numbers	Integers	numbers.read.json	read	wide fields as numbers, read to the same values
+small-fraction	Integers	small-fraction.refused.json	refused	a fraction in an int32 field
+small-exponent	Integers	small-exponent.refused.json	refused	an exponent in an int32 field
+small-neg-zero	Integers	small-neg-zero.refused.json	refused	negative zero in an int32 field
+wide-fraction	Integers	wide-fraction.refused.json	refused	a fraction in an int64 field
+wide-exponent	Integers	wide-exponent.refused.json	refused	an exponent in an int64 field
+wide-neg-zero	Integers	wide-neg-zero.refused.json	refused	negative zero in an int64 field
+wide-string-fraction	Integers	wide-string-fraction.refused.json	refused	a fraction inside a wide integer's string
+wide-string-exponent	Integers	wide-string-exponent.refused.json	refused	an exponent inside a wide integer's string
+wide-string-neg-zero	Integers	wide-string-neg-zero.refused.json	refused	negative zero inside a wide integer's string
+ranged-one-past	Integers	ranged-one-past.refused.json	refused	one past the ranged int64's max, above 2^53
+ranged-below-min	Integers	ranged-below-min.refused.json	refused	one below the ranged int64's min
+uwide-one-past	Integers	uwide-one-past.refused.json	refused	one past the uint64's own maximum
+wide128-one-past	Integers	wide128-one-past.refused.json	refused	one past the int128's own maximum
+map-key-fraction	Integers	map-key-fraction.refused.json	refused	a fractional uint64 map key
+map-key-exponent	Integers	map-key-exponent.refused.json	refused	an exponent uint64 map key
+map-key-neg-zero	Integers	map-key-neg-zero.refused.json	refused	a negative-zero uint64 map key
