@@ -32,6 +32,17 @@ const int _kBinaryMaxDepth = 128;
 // body, an array, a keyed or map body, and a union.
 bool _structuralKind(int kind) => kind == 13 || kind == 14 || kind == 16 || kind == 15;
 
+// _arrayElementKindAllowed is §3's closed list for an array body (kind 14):
+// 1–13, 15, 17 and 18–30. Any other element kind is damage under any count
+// (internal/tablewire elementkinds.go).
+bool _arrayElementKindAllowed(int kind) =>
+    (kind >= 1 && kind <= 13) || kind == 15 || kind == 17 || (kind >= 18 && kind <= 30);
+
+// _keyedElementKindAllowed is §3's closed list for an enum-keyed body
+// (kind 16): 1–11, 13 and 18–30 (internal/tablewire elementkinds.go).
+bool _keyedElementKindAllowed(int kind) =>
+    (kind >= 1 && kind <= 11) || kind == 13 || (kind >= 18 && kind <= 30);
+
 final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
 bool _requiredCollectionKind(TableWireReader r, int expected) {
  final peek=TableWireReader.sub(r,r.pos,r.limit);
@@ -1504,6 +1515,9 @@ final class TableWireReader {
         return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
+        // THE ELEMENT KIND IS CLOSED, judged under any count, a count of 0
+        // included (docs/SPEC-TABLES.md §3, §4).
+        if (!_arrayElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -1514,6 +1528,9 @@ final class TableWireReader {
         return off == b.length;
       case 16:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
+        // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under
+        // any count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+        if (!_keyedElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
