@@ -13,12 +13,20 @@ import (
 // positive target controls nothing.
 func TestReleaseStorageGatesAreDefined(t *testing.T) {
 	root := conformanceRoot(t)
+<<<<<<< HEAD
 	// C, C#, Java, Dart and Rust are not here: an assert leg's storage check
 	// is a debug assert (docs/SPEC.md §5.1), held by
 	// write-check-storage-debug-c, write-refusal-storage-debug-cs,
 	// write-refusal-storage-debug-java, write-refusal-storage-debug-dart and
 	// tables-rust-message-storage-assert.
 	for _, lang := range []string{"cpp"} {
+=======
+	// C, C++, C#, Java and Dart are not here: an assert leg's storage check is a
+	// debug assert (docs/SPEC.md §5.1), held by write-check-storage-debug-c,
+	// write-check-storage-debug-cpp, write-refusal-storage-debug-cs,
+	// write-refusal-storage-debug-java and write-refusal-storage-debug-dart.
+	for _, lang := range []string{"rust"} {
+>>>>>>> 1d9869f043032919396b75bda10e18d6ddbb0938
 		t.Run(lang, func(t *testing.T) {
 			body, err := os.ReadFile(filepath.Join(root, "make", lang+".mk"))
 			if err != nil {
