@@ -846,9 +846,16 @@ func elemDescriptor(f *ir.Field) string {
 	e.KeyEnumRef = nil
 	e.Type.Optional = false
 	lo, hi := intRange(&e)
+	// A table element is born by kind_array (a fresh object per slot), so its
+	// descriptor names no default object: one built at import would need its
+	// class registered first, and modules register in name order.
+	elemDefault := zeroValue(&e)
+	if scalarCodec(&e) == "table" {
+		elemDefault = "None"
+	}
 	return fmt.Sprintf("FieldDesc(name=%s, field_id=0, kind=%d, codec=%s, lo=%s, hi=%s, target=%s, bound=%d, default=%s, variants=%s, f32=%s, fmin=%s, fmax=%s, float_range=%s, retired=%s)",
 		strconv.Quote(e.Name), ir.TableWireElemKind(f), strconv.Quote(scalarCodec(&e)), lo, hi,
-		strconv.Quote(targetName(&e)), elemBound(&e), zeroValue(&e), fieldVariants(&e),
+		strconv.Quote(targetName(&e)), elemBound(&e), elemDefault, fieldVariants(&e),
 		pyBool(e.Type.Kind == ir.TFloat32), floatBound(&e, e.FMin), floatBound(&e, e.FMax), pyBool(compressedFloat(&e)),
 		fieldRetired(&e))
 }
