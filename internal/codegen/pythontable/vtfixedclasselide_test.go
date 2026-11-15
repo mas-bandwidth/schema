@@ -414,7 +414,7 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		// a deprecated variant is written
 		{"deprecated_write", "vtel/_schema/kind_enum.py", "if value in fd.retired:", "if False:", "vt_elide_deprecated_write"},
 		// a subclass is accepted
-		{"subclass", "vtel/_schema/kind_table.py", "if type(value) is not _target(fd):", "if not isinstance(value, _target(fd)):", "vt_elide_subclass"},
+		{"subclass", "vtel/_schema/save.py", "if target is None or type(current) is not target:\n                raise InvalidValue(where, f\"not a {field.target}\")", "if target is None or not isinstance(current, target):\n                raise InvalidValue(where, f\"not a {field.target}\")", "vt_elide_subclass"},
 		// equality by value lets -0.0 equal 0.0
 		{"eq_neg_zero", "vtel/Core.py", "_s_float32_bits_eq(self.f, other.f)", "self.f == other.f", "vt_elide_eq_neg_zero"},
 	} {
