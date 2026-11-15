@@ -923,6 +923,15 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("  },\n")
 	}
 	g.pf("};\n")
+	// THE TYPES THIS READER DECLARES, whatever a pointer below a root reaches
+	// (§3.1): a record of one that a slot names at the wrong type is damage,
+	// and only a record of a type outside this set reads null.
+	declared := make([]string, 0, len(g.unit.Tables))
+	for _, st := range g.unit.Tables {
+		declared = append(declared, jsId(ir.TableWireId(st.WireName())))
+	}
+	sort.Strings(declared)
+	g.pf("const TableVariableDeclaredTypes = new Set([%s]);\n", strings.Join(declared, ", "))
 	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n")
 	g.pf("TableVariableFreeze(TableVariableCodecs);\n")
 	g.pf("TableVariableFreeze(TableVariableUnions);\n\n")
@@ -1173,6 +1182,9 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
+		g.pf("}\n\n")
 	}
 	g.emitRootLoadMeasure(st)
 }
@@ -1217,6 +1229,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 		g.pf("}\n\n")
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
+		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
 		g.pf("}\n\n")
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
