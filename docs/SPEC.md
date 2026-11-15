@@ -2938,11 +2938,11 @@ schema build-version [--facts] [dir|files...]  // the cook/block id, and the tex
 schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
                                                // the table wire's evolution gate (SPEC-TABLES.md §18)
 schema fmt        [--verbose] [dir|files...]   // the canonical formatter, and the only command that writes a schema file
-schema pack       --root <Table> --out <file> [--message [--announce <file>]] [--tolerate] [--verbose] <tree-dir> [dir|files...]
-schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+schema pack       --root <Table> --out <file> [--message [--announce <file>]] [--verbose] <tree-dir> [dir|files...]
+schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--verbose] <tree-dir> [dir|files...]
                                                // a text tree to a table-wire file, and back (SPEC-TABLES.md §17)
 schema cook       --root <Table> --in  <file|tree-dir> --out <file>
-                  [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]
+                  [--byte-order little|big] [--attribution <file>] [--verbose] [dir|files...]
 schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
 schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
                                                // the cooked form: produce, validate, and back to the wire (SPEC-TABLES.md §7)
@@ -2961,8 +2961,9 @@ nothing unless `--verbose` asks for the per-file report — the files
 `generate` wrote, the files `fmt` rewrote, `check`'s ok line, the
 header facts a cook was written with. Errors and
 diagnostics always reach stderr, and exit codes do not depend on verbosity.
-`pack` and `unpack` exit nonzero when their read report is not silent, and
-`--tolerate` accepts it.
+`pack`, `unpack` and `cook` exit nonzero when their read refuses the input;
+a report that counts only lawful evolution — an unknown field from a newer
+writer, a widening — prints its line and exits 0.
 
 **`fmt` is the only command that writes a schema file.** Every other command
 loads the unit as it sits on disk and leaves it byte for byte alone, so a
