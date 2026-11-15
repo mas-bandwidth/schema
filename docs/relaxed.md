@@ -91,7 +91,6 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
   - `relax/hostile-rows-moo`: gated again (both hostile rows).
-  - `relax/hostile-rows-rust`: str-zero-escape-unknown-key, in the conformance leg and in the port's hostile-corpus run (carried findings); base64-unpadded is gated again.
   - `relax/hostile-rows-squirrel`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run, `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
