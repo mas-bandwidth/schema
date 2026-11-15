@@ -110,7 +110,7 @@ var timedLine = regexp.MustCompile(`(?m)^([a-z_]+) ([0-9]+(?:\.[0-9]+)?)$`)
 
 func timedValue(t *testing.T, out, key string) float64 {
 	t.Helper()
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		m := timedLine.FindStringSubmatch(line)
 		if len(m) == 3 && m[1] == key {
 			v, err := strconv.ParseFloat(m[2], 64)

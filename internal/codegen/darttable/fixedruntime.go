@@ -1781,8 +1781,8 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
-        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN (docs/FIXED-
-        // FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
+        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
         // every arm byte is dead; a taken arm leaves the bytes past it inside
         // the widest arm's span dead. Each dead entry reads the writer's
         // record and lands nothing.
