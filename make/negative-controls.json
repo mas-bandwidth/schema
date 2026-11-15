@@ -235,7 +235,8 @@
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
-        "packet-end-lua-negative-control"
+        "packet-end-lua-negative-control",
+        "packet-write-cfloat-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1664,7 +1665,8 @@
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
         "packet-end-js-negative-control",
-        "packet-utf8-js-negative-control"
+        "packet-utf8-js-negative-control",
+        "packet-write-cfloat-js-negative-control"
       ],
       "node": "26"
     },
