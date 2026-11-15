@@ -25,7 +25,7 @@ const announceShapeNestingBound = 128
 func nestedArrayEntry(id uint64, levels int) []byte {
 	out := binary.LittleEndian.AppendUint64(nil, id)
 	out = append(out, ir.TableKindArray)
-	for i := 0; i < levels; i++ {
+	for i := range levels {
 		out = append(out, 0, 0) // an unbounded count's min and max
 		elem := uint8(ir.TableKindArray)
 		if i == levels-1 {
