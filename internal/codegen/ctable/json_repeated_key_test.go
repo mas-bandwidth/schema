@@ -51,7 +51,7 @@ func TestCJsonRepeatedKeyEveryObject(t *testing.T) {
 		{"proto-key-repeated", "Small", `{"__proto__":1,"__proto__":2}`, true},
 		{"skipped-object-key-repeated", "Small", `{"zz":{"a":1,"a":2}}`, true},
 		{"skipped-array-object-key-repeated", "Small", `{"zz":[1,{"b":[{"a":1,"a":2}]}]}`, true},
-		{"escaped-spelling-repeated", "Small", `{"zz":1,"zz":2}`, true},
+		{"escaped-spelling-repeated", "Small", `{"zz":1,"\u007a\u007a":2}`, true},
 		{"wide-field-repeated", "Wide", wideText(repeatedField), true},
 		{"control-distinct-unknown-keys", "Small", `{"zz":1,"yy":2,"":3,"__proto__":4}`, false},
 		{"control-same-key-two-objects", "Small", `{"zz":{"a":1},"yy":{"a":2},"xx":[{"a":1},{"a":2}]}`, false},
