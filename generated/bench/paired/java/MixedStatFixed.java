@@ -65,7 +65,7 @@ public final class MixedStatFixed {
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.statId = TableFixed.get32(b, at + 0);
-        if (v.statId > 255L) {
+        if (Integer.compareUnsigned(v.statId, 255) > 0) {
             v.statId = (int) (255L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
