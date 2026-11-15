@@ -15,7 +15,7 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-block-read-negative-control python-block-build-negative-control
 test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
@@ -60,6 +60,16 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 # make/negative-controls.json as a gate test-python runs.
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
+
+# The block form's two controls: a float one bit off turns the dump red, and
+# the pitch, count, offset and base-alignment clauses each turn the refusal
+# battery red; the builder's alignment, count bound and extent rounding each
+# turn its probe red. Both run under the pinned interpreters.
+python-block-read-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonBlockReadNegativeControls ./internal/codegen/pythontable/
+
+python-block-build-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonBlockBuilderNegativeControls ./internal/codegen/pythontable/
 
 generated/bench/tables/python/.stamp: ;
 

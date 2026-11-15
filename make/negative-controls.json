@@ -1046,6 +1046,16 @@
       "python": "pin"
     },
     {
+      "name": "python-block",
+      "when": "pull-request",
+      "why": "the block form's read and build controls (make/python.mk): a float read one bit off turns the dump red, the pitch, count and base-alignment clauses removed each turn the refusal battery red, and the array alignment, count bound and 64-byte extent rounding removed each turn the builder probe red. Each is one Go test over the emitted runtime under the pinned interpreters; this row is the pins' cache restore rather than the run.",
+      "targets": [
+        "python-block-read-negative-control",
+        "python-block-build-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

@@ -43,6 +43,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := refusePacketValues(u); err != nil {
 		return nil, err
 	}
+	blocks := ir.Blocks(u)
 	out := map[string][]byte{}
 	tablesByFile, unionsByFile := tableFiles(u)
 	bases := make([]string, 0, len(tablesByFile)+len(unionsByFile))
@@ -58,7 +59,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	sort.Strings(bases)
 	for _, base := range bases {
-		out[path.Join(u.Package, base+".py")] = []byte(emitModule(u, base, tablesByFile[base], unionsByFile[base]))
+		out[path.Join(u.Package, base+".py")] = []byte(emitModule(u, base, tablesByFile[base], unionsByFile[base], blocks))
 	}
 	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, bases, tablesByFile, unionsByFile))
 	out[path.Join(u.Package, "py.typed")] = []byte{}
@@ -114,9 +115,6 @@ func refusePacketValues(u *ir.Unit) error {
 		}
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if !ref.IsTable {
-				return fmt.Errorf("python: %s.%s names the packet type %s, and the Python target does not carry packet types yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)", owner, f.Name, ref.Name)
-			}
 			return visitStruct(ref.Name)
 		case *ir.Union:
 			return visitUnion(ref)
@@ -145,6 +143,11 @@ func refusePacketValues(u *ir.Unit) error {
 		}
 		seenUnion[un.Name] = true
 		for _, v := range un.Variants {
+			if v.F != nil {
+				if ref, ok := v.F.Type.Ref.(*ir.Struct); ok && !ref.IsTable {
+					return fmt.Errorf("python: %s.%s names the packet type %s, and the Python target does not carry packet types through a table union arm yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)", un.Name, v.F.Name, ref.Name)
+				}
+			}
 			if err := visitField(un.Name, v.F); err != nil {
 				return err
 			}
@@ -248,7 +251,7 @@ func moduleBase(u *ir.Unit) string {
 	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "Tables"
 }
 
-func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union) string {
+func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union, blocks *ir.BlockUnit) string {
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
 	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
 	var b strings.Builder
@@ -258,7 +261,7 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 	b.WriteString("from typing import ClassVar, Self\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
-	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
+	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _skip, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
 	for _, st := range tables {
@@ -272,12 +275,12 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 		emitUnion(&b, un)
 	}
 	for _, st := range tables {
-		emitTable(&b, u, st)
+		emitTable(&b, u, st, blocks)
 	}
 	return b.String()
 }
 
-func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUnit) {
 	name := st.Name
 	fmt.Fprintf(b, "class %s:\n", name)
 	fmt.Fprintf(b, "    \"\"\"The table %s.\"\"\"\n\n", name)
@@ -293,7 +296,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	for _, f := range st.Fields {
 		fmt.Fprintf(b, "    %s: %s\n", f.Name, pythonType(st, f))
 	}
-	b.WriteString("\n    descriptor: ClassVar[TableDesc]\n\n")
+	b.WriteString("\n    descriptor: ClassVar[TableDesc]\n")
+	b.WriteString("    block: ClassVar[BlockTable | None]\n")
+	b.WriteString("    block_row: ClassVar[BlockRecord]\n\n")
 	b.WriteString("    def __init__(self) -> None:\n")
 	if len(st.Fields) == 0 {
 		b.WriteString("        pass\n")
@@ -375,10 +380,93 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("    ),\n")
 	}
 	b.WriteString(")\n")
+	emitBlockDescriptors(b, u, st, blocks)
 	if scalarOnly(st) {
 		emitStraightLine(b, st)
 	}
 	fmt.Fprintf(b, "register(%s)\n\n\n", name)
+}
+
+// emitBlockDescriptors emits a record's row layout and, for a table with a
+// block form, the projection and its out-of-line arrays as constant data
+// (docs/SPEC-TABLES.md §19.2, §19.3). The layout numbers come from ir.Blocks,
+// the compiler's one model, so the runtime derives nothing and two models
+// cannot drift.
+func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUnit) {
+	name := st.Name
+	row := ir.RecordLayout(u, st)
+	fmt.Fprintf(b, "%s.block_row = BlockRecord(\n", name)
+	emitBlockRecordBody(b, u, row, nil, false)
+	b.WriteString(")\n")
+	if blocks == nil {
+		fmt.Fprintf(b, "%s.block = None\n\n", name)
+		return
+	}
+	bl := blocks.Block(st.Name)
+	if bl == nil {
+		fmt.Fprintf(b, "%s.block = None\n\n", name)
+		return
+	}
+	fmt.Fprintf(b, "%s.block = BlockTable(\n", name)
+	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
+	b.WriteString("    projection=BlockRecord(\n")
+	emitBlockRecordBody(b, u, &bl.Projection, bl, true)
+	b.WriteString("    ),\n    arrays=(\n")
+	for _, a := range bl.Arrays {
+		fmt.Fprintf(b, "        BlockArray(name=%s, offset=%d, maximum=%d, stride=%d, elem_align=%d, element=%s),\n",
+			strconv.Quote(a.Field.Name), a.TripleOffset, a.Max, a.Stride, a.ElemAlign(), strconv.Quote(a.ElemName))
+	}
+	fmt.Fprintf(b, "    ),\n    max_bytes=%d,\n)\n\n", bl.MaxBytes)
+}
+
+// emitBlockRecordBody writes a BlockRecord's arguments, leaving the opening
+// line to the caller. projection selects the block form's spelling, in which
+// an out-of-line array is its sixteen-byte triple.
+func emitBlockRecordBody(b *strings.Builder, u *ir.Unit, ml *ir.MemberLayout, bl *ir.BlockLayout, projection bool) {
+	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(ml.Name))
+	fmt.Fprintf(b, "    size=%d,\n", ml.Size)
+	fmt.Fprintf(b, "    align=%d,\n", ml.Align)
+	b.WriteString("    fields=(\n")
+	for _, fl := range ml.Fields {
+		f := fl.Field
+		facts := ir.BlockFieldOf(u, f, fl.Offset, projection)
+		kind := ir.TableScalarKind(f)
+		if f.Type.Kind == ir.TBytes {
+			kind = ir.TableKindU8
+		}
+		outOfLine := projection && ir.BlockOutOfLine(f)
+		target := ""
+		if f.Type.Kind == ir.TNamed {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+				target = ref.Name
+			}
+		}
+		offsetOfOffset, strideOffset, stride := int64(-1), int64(-1), int64(0)
+		if outOfLine && bl != nil {
+			if a := bl.ArrayByName(f.Name); a != nil {
+				offsetOfOffset, strideOffset, stride = a.OffsetOfOffset, a.StrideOffset, a.Stride
+			}
+		}
+		fmt.Fprintf(b, "        BlockField(\n")
+		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
+		fmt.Fprintf(b, "            kind=%d,\n", kind)
+		fmt.Fprintf(b, "            offset=%d,\n", fl.Offset)
+		fmt.Fprintf(b, "            size=%d,\n", fl.Size)
+		fmt.Fprintf(b, "            out_of_line=%s,\n", pyBool(outOfLine))
+		fmt.Fprintf(b, "            counted=%s,\n", pyBool(facts.Counted))
+		fmt.Fprintf(b, "            optional=%s,\n", pyBool(facts.Optional))
+		fmt.Fprintf(b, "            array=%s,\n", pyBool(facts.IsArray))
+		fmt.Fprintf(b, "            bound=%d,\n", facts.ArrayBound)
+		fmt.Fprintf(b, "            elem_size=%d,\n", facts.ElemSize)
+		fmt.Fprintf(b, "            count_offset=%d,\n", facts.CountOffset)
+		fmt.Fprintf(b, "            present_offset=%d,\n", facts.PresentOffset)
+		fmt.Fprintf(b, "            target=%s,\n", strconv.Quote(target))
+		fmt.Fprintf(b, "            offset_of_offset=%d,\n", offsetOfOffset)
+		fmt.Fprintf(b, "            stride_offset=%d,\n", strideOffset)
+		fmt.Fprintf(b, "            stride=%d,\n", stride)
+		b.WriteString("        ),\n")
+	}
+	b.WriteString("    ),\n")
 }
 
 // scalarOnly reports whether every field is a bool or an integer the generated
@@ -599,7 +687,7 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	names := []string{"InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, base := range bases {
 		fmt.Fprintf(&b, "from . import %s\n", base)
 		names = append(names, base)
@@ -631,7 +719,8 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 			fmt.Fprintf(&b, "from .%s import %s\n", base, strings.Join(classes, ", "))
 		}
 	}
-	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n\n", u.ProtocolId)
+	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
+	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))
 	sort.Strings(names)
 	b.WriteString("__all__ = [\n")
 	for _, n := range names {
@@ -660,7 +749,7 @@ func codecOf(f *ir.Field) string {
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+		if _, ok := f.Type.Ref.(*ir.Struct); ok {
 			return "table"
 		}
 	}
@@ -778,10 +867,7 @@ func valueDefault(f *ir.Field) string {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ref.IsTable {
-				return fmt.Sprintf("new_by_name(%q)", ref.Name)
-			}
-			return "0"
+			return fmt.Sprintf("new_by_name(%q)", ref.Name)
 		case *ir.Union:
 			return fmt.Sprintf("new_union_by_name(%q)", ref.Name)
 		}
