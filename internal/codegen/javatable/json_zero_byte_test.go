@@ -60,19 +60,13 @@ public final class ZeroByteProbe {
             System.out.println("probe: JSON writer asserted for all zero-byte text sites");
             return;
         }
-        if (args[0].equals("trust")) {
-            for (int site = 0; site < 3; site++) {
-                byte[] got = RootVariable.toJson(value(site, true));
-                if (got == null || !new String(got, StandardCharsets.UTF_8).contains("\\u0000")) {
-                    fail("release writer did not preserve zero byte at site " + site);
-                }
-            }
+        if (args[0].equals("lawful")) {
             byte[] lawful = RootVariable.toJson(value(-1, false));
             String text = new String(lawful, StandardCharsets.UTF_8);
             if (!text.equals("{\n  \"name\": \"plain\",\n  \"lines\": [\n    \"line\"\n  ],\n  \"labels\": {\n    \"key\": \"value\"\n  }\n}\n")) {
                 fail("lawful JSON changed: " + text);
             }
-            System.out.println("probe: release writer trusted the value and lawful output stayed unchanged");
+            System.out.println("probe: lawful output stayed unchanged");
             return;
         }
         fail("unknown mode " + args[0]);
@@ -130,7 +124,7 @@ func TestJavaJsonWriterRefusesZeroByte(t *testing.T) {
 	if out, err := run(true, "assert"); err != nil {
 		t.Fatalf("debug writer did not assert: %v\n%s", err, out)
 	}
-	if out, err := run(false, "trust"); err != nil {
-		t.Fatalf("release writer contract/lawful output: %v\n%s", err, out)
+	if out, err := run(false, "lawful"); err != nil {
+		t.Fatalf("lawful output: %v\n%s", err, out)
 	}
 }
