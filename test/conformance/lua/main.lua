@@ -348,7 +348,7 @@ local function damageText(v, damage)
   if damage == "none" then return end
   local form, name = damage:match("^(%a+):(.+)$")
   if form == "narrow" then
-    v[name] = "a\xffb"
+    v[name] = "a\255b"
   elseif form == "wide" then
     v[name] = { 0x61, 0xd800, 0x62 }
   else
@@ -468,7 +468,7 @@ end
 
 -- the roomy capacities a `full` row names: a megabyte of records, and the id
 -- count that megabyte can hold (C / 8, §6.6's count bound)
-local ROOMY = 1 << 20
+local ROOMY = 1024 * 1024
 
 local function retainStore(capacity, ids)
   return { list = {}, used = 0, capacity = capacity, idCapacity = ids }
@@ -486,7 +486,7 @@ local function retainRow(f)
   local short, idsField = f[6] == "short", f[7]
   local u = unit(key)
   if not u then return nil, NOT_GENERATED end
-  local ids = ROOMY // 8
+  local ids = math.floor(ROOMY / 8)
   if idsField ~= "full" then ids = math.tointeger(tonumber(idsField)) end
   local wire = mustRead(wirePath)
   local report = newReport()
@@ -670,7 +670,9 @@ end
 -- computed exactly as runtime/uncook.lua and runtime/cookwrite.lua compute it
 local function alignUp(n, a)
   if a <= 1 then return n end
-  return (n + a - 1) & ~(a - 1)
+  local r = n % a
+  if r ~= 0 then n = n + (a - r) end
+  return n
 end
 
 local function scalarWidth(f)
@@ -1015,7 +1017,7 @@ local function wrefSet(u, root, v, path, what, text)
   elseif what == "units" then
     local b = hexBytes(text)
     local units = {}
-    for i = 1, #b, 2 do units[#units + 1] = (b:byte(i) << 8) | b:byte(i + 1) end
+    for i = 1, #b, 2 do units[#units + 1] = b:byte(i) * 256 + b:byte(i + 1) end
     holder[key] = units
   elseif what == "ordinal" then
     local n = math.tointeger(tonumber(text))
