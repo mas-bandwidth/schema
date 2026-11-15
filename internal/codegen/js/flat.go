@@ -1279,12 +1279,17 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 }
 
 // guardBareInt refuses a bare integer its declared width cannot carry, and
-// a Number that is not an integer (SPEC §5.1): JavaScript storage holds any
-// value, so the width is checked before the mask could wrap it.
+// a value of the wrong JavaScript type (SPEC §5.1): JavaScript storage holds
+// any value, so the type and the width are checked before the mask could
+// wrap it. A width of 32 bits or fewer takes a Number that is an integer; a
+// wider one (int64, uint64, uint128) takes a BigInt only, tested first,
+// because a relational test against a BigInt bound is false for a Number,
+// a string, a boolean, null or an object rather than refusing it.
 func (g *fgen) guardBareInt(f *ir.Field, name, ind string) {
 	lo, hi := bareIntBounds(f)
 	if f.Type.Width > 32 {
-		g.guard(fmt.Sprintf("%s < %s || %s > %s", name, bigLit(lo), name, bigLit(hi)), " // a bare integer must fit its width", ind)
+		g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %s || %s > %s", name, name, bigLit(lo), name, bigLit(hi)),
+			" // a bare integer must fit its width", ind)
 		return
 	}
 	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, lo.String(), name, hi.String()),

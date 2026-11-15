@@ -720,12 +720,14 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 }
 
 // emitBareIntCheck refuses a bare integer its declared width cannot carry,
-// and a Number that is not an integer, before the mask could wrap it
+// and a value of the wrong JavaScript type (a BigInt only above 32 bits, a
+// Number that is an integer otherwise), before the mask could wrap it
 // (SPEC §5.1): the flat tier's guardBareInt twin.
 func (g *gen) emitBareIntCheck(f *ir.Field, name, ind string) {
 	lo, hi := bareIntBounds(f)
 	if f.Type.Width > 32 {
-		g.pf("%sif (%s < %s || %s > %s) { // a bare integer must fit its width\n", ind, name, bigLit(lo), name, bigLit(hi))
+		g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) { // a bare integer must fit its width\n",
+			ind, name, name, bigLit(lo), name, bigLit(hi))
 	} else {
 		g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) { // a bare integer must fit its width\n",
 			ind, name, name, lo.String(), name, hi.String())

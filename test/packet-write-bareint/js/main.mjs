@@ -2,11 +2,15 @@
 // §5.1). It writes every case of the shared list (../cases.txt, BareInt.schema)
 // through the runtime tier and the flat tier and requires each refused case
 // refused and each lawful case written and read back exactly. JavaScript
-// storage holds any Number or BigInt, so the writer is the check: a refusal
-// in every build. The driver adds this leg's own cases beside the shared
-// list: a Number that is not an integer, and the same check reached through
-// an array element and a union arm payload (Shapes.schema). The gate runs
-// this file under both NODE_ENV settings.
+// storage holds any value, so the writer is the check: a refusal in every
+// build. A width of 32 bits or fewer takes a Number that is an integer; a
+// wider one (int64, uint64, uint128) takes a BigInt only. The driver adds
+// this leg's own cases beside the shared list: a value of the wrong type
+// for its width (a Number where a BigInt is required, a numeric string, a
+// boolean, null, NaN, a fraction, an object with valueOf), uint128 and the
+// wide boundaries the list leaves out, and the same check reached through an
+// array element and a union arm payload (Shapes.schema). The gate runs this
+// file under both NODE_ENV settings.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { WriteStream, ReadStream } from "../../../../serialize.js/src/index.js";
@@ -49,42 +53,82 @@ function readCases() {
   return cases;
 }
 
-// This leg's own cases: Number storage holds values no integer type can.
+// This leg's own cases: storage holds values no integer type can.
 const ownCases = [
   { name: "int8-fraction", type: "I8", value: 1.5, written: false },
   { name: "uint32-fraction", type: "U32", value: 1.5, written: false },
   { name: "uint16-nan", type: "U16", value: NaN, written: false },
   { name: "int32-infinity", type: "I32", value: Infinity, written: false },
+  { name: "int32-numeric-string", type: "I32", value: "5", written: false },
+  { name: "uint8-boolean", type: "U8", value: true, written: false },
+  { name: "uint16-null", type: "U16", value: null, written: false },
+  { name: "int16-bigint", type: "I16", value: 5n, written: false },
+  { name: "uint32-valueof-object", type: "U32", value: { valueOf() { return 5; } }, written: false },
+  { name: "int64-below-min", type: "I64", value: -(1n << 63n) - 1n, written: false },
+  { name: "uint64-min", type: "U64", value: 0n, written: true },
+  { name: "uint128-min", type: "U128", value: 0n, written: true },
+  { name: "uint128-max", type: "U128", value: (1n << 128n) - 1n, written: true },
+  { name: "uint128-above-max", type: "U128", value: 1n << 128n, written: false },
+  { name: "uint128-negative", type: "U128", value: -1n, written: false },
 ];
+
+// A wide width takes a BigInt only: every other value is refused, in range
+// or not, before the range test could compare it with a BigInt bound.
+const wideAboveMaxNumber = { I64: 2 ** 64, U64: 2 ** 65, U128: 2 ** 129 };
+for (const [type, prefix] of [["I64", "int64"], ["U64", "uint64"], ["U128", "uint128"]]) {
+  ownCases.push(
+    { name: prefix + "-number-in-range", type, value: 5, written: false },
+    { name: prefix + "-number-zero", type, value: 0, written: false },
+    { name: prefix + "-number-out-of-range", type, value: wideAboveMaxNumber[type], written: false },
+    { name: prefix + "-numeric-string", type, value: "5", written: false },
+    { name: prefix + "-empty-string", type, value: "", written: false },
+    { name: prefix + "-true", type, value: true, written: false },
+    { name: prefix + "-false", type, value: false, written: false },
+    { name: prefix + "-null", type, value: null, written: false },
+    { name: prefix + "-undefined", type, value: undefined, written: false },
+    { name: prefix + "-nan", type, value: NaN, written: false },
+    { name: prefix + "-fraction", type, value: 1.5, written: false },
+    { name: prefix + "-valueof-object", type, value: { valueOf() { return 5n; } }, written: false },
+  );
+}
+
+// The shared list's types live in BareInt.schema; U128 lives in Shapes.schema.
+function modulesOf(type) {
+  return type === "U128" ? { rt: shapes, fl: shapesFlat } : { rt: runtime, fl: flat };
+}
 
 function writeRuntime(type, value) {
   const stream = new WriteStream(new Uint8Array(64));
-  const input = new runtime[type]();
+  const { rt } = modulesOf(type);
+  const input = new rt[type]();
   input.value = value;
-  if (!runtime["Write" + type](stream, input)) return null;
+  if (!rt["Write" + type](stream, input)) return null;
   stream.flush();
   return { bytes: stream.data().slice(), bits: stream.bitsProcessed() };
 }
 
 function readRuntime(type, wire) {
   const stream = new ReadStream(wire.bytes);
-  const output = new runtime[type]();
-  if (!runtime["Read" + type](stream, output)) return null;
+  const { rt } = modulesOf(type);
+  const output = new rt[type]();
+  if (!rt["Read" + type](stream, output)) return null;
   return output.value;
 }
 
 function writeFlat(type, value) {
   const view = new DataView(new ArrayBuffer(64));
-  const size = flat["Write" + type + "Flat"](view, { value });
+  const { fl } = modulesOf(type);
+  const size = fl["Write" + type + "Flat"](view, { value });
   if (size < 0) return null;
   return { bytes: new Uint8Array(view.buffer.slice(0, size)), bits: size * 8 };
 }
 
 function readFlat(type, wire) {
-  const buffer = new Uint8Array(wire.bytes.length + flat.FlatReadSlack);
+  const { rt, fl } = modulesOf(type);
+  const buffer = new Uint8Array(wire.bytes.length + fl.FlatReadSlack);
   buffer.set(wire.bytes);
-  const output = new runtime[type]();
-  if (!flat["Read" + type + "Flat"](new DataView(buffer.buffer), wire.bits, output)) return null;
+  const output = new rt[type]();
+  if (!fl["Read" + type + "Flat"](new DataView(buffer.buffer), wire.bits, output)) return null;
   return output.value;
 }
 
@@ -145,6 +189,8 @@ const shapeCases = [
   { name: "array-int16-element-above-max", type: "Elems", make: () => { const e = lawfulElems(); e.values[2] = 32768; return e; } },
   { name: "array-uint32-element-negative", type: "Elems", make: () => { const e = lawfulElems(); e.counts[1] = -1; return e; } },
   { name: "array-int64-element-above-max", type: "Elems", make: () => { const e = lawfulElems(); e.wide[1] = 1n << 63n; return e; } },
+  { name: "array-int64-element-number", type: "Elems", make: () => { const e = lawfulElems(); e.wide[1] = 5; return e; } },
+  { name: "array-int64-element-numeric-string", type: "Elems", make: () => { const e = lawfulElems(); e.wide[1] = "5"; return e; } },
   { name: "arm-int8-payload-above-max", type: "Holder", make: () => { const h = lawfulHolder(); h.choice.arm.value = 300; return h; } },
 ];
 
