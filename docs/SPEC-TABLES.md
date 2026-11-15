@@ -1198,8 +1198,9 @@ each by name:
   only then, so the targets of an absent T get no index and no node record;
 - **measure** — `Measure`, `PackMeasure` and `Lock`'s sizing run that same
   gated numbering, so the targets of an absent T count no bytes, and
-  `Lock`'s pack writes an absent T at its declared defaults, every pointer
-  null, exactly as load leaves it;
+  `Lock`'s pack writes an absent T's payload as zero — the payload of an
+  absent optional is dead, and a dead byte is zero on write
+  (docs/rulings.json `fixed-dead-bytes-are-zero`) — every pointer null;
 - **load** — a field that did not ride leaves T at its declared defaults,
   every pointer null, so a loaded absent value holds no edge, and the
   region measure sizes only the nodes the wire carries;
@@ -14902,15 +14903,16 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |
 
-  A unit whose closure declares no keyed array emits no assert hook and
-  no fatal hook; one that declares no pointer emits no allocator hook in its
-  `Table.h`. The block header emits the allocator hook, because
-  `TableBlockDefaultAllocator()` lands in it (§19.1). Define `schema_fatal`
+  A unit whose closure declares neither a keyed array nor a fixed form emits
+  no assert hook; one that declares no keyed array emits no fatal hook either.
+  One that declares no pointer emits no allocator hook in its `Table.h`. The
+  block header emits the allocator hook, because `TableBlockDefaultAllocator()`
+  lands in it (§19.1). Define `schema_fatal`
   and `schema_allocate` and no generated header includes `<stdlib.h>`.
 
 - **A `TableAllocator` per structure, on top of the default.** It is the
@@ -15961,10 +15963,10 @@ Per kind:
 
 | declaration | JSON | notes |
 |---|---|---|
-| integers, `bits(N)` | number, or a string of digits | a kind of 32 bits and under — `int8` … `int32`, `uint8` … `uint32`, `bits(1..32)` — is a number; a kind WIDER than 32 bits — `int64`, `uint64`, `bits(33..64)` — is written as a JSON string of decimal digits and reads as a string or a number, the same digits. See **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
+| integers, `bits(N)` | number, or a string of digits | a kind of 32 bits and under — `int8` … `int32`, `uint8` … `uint32`, `bits(1..32)` — is a number; a kind WIDER than 32 bits — `int64`, `uint64`, `bits(33..64)` — is written as a JSON string of decimal digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. See **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
 | `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold refuses `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
-| `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS, or a string of digits | a fixed kind whose storage is 32 bits or under is a number; one whose storage is wider than 32 bits — 64- or 128-bit — is written as a string of digits and reads as a string or a number. The spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
-| `int128`, `uint128` | string of digits | a decimal integer, exact past 2^53 in both directions: `"340282366920938463463374607431768211455"` reads back as itself. Reads as a string or a number, the same digits; a fractional value refuses `kind_mismatch` |
+| `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS, or a string of digits | a fixed kind whose storage is 32 bits or under is a number; one whose storage is wider than 32 bits — 64- or 128-bit — is written as a string of digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. The spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. A fixed kind of 32 bits and under is written as the shortest EXACT decimal with at least one fractional digit and read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
+| `int128`, `uint128` | string of digits | a decimal integer, exact past 2^53 in both directions: `"340282366920938463463374607431768211455"` reads back as itself. Reads as that STRING only; a bare number token there refuses `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N bytes refuses `length_over_bound` |
 | `bytes(N)` | string, base64 | CANONICAL base64 on write and on read, the text §16.8 defines: the standard alphabet, padded, pad bits zero, and exactly the spelling the writer writes for those bytes. Longer than N bytes refuses `length_over_bound`. Any other spelling that decodes refuses the read (recommended name `base64_not_canonical`). A string that is valid JSON but not base64 at all (a byte outside the alphabet, misplaced padding, no decoding at all) refuses `kind_mismatch` (recommended name; the verdict is the contract, §16.8). The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
@@ -16060,7 +16062,7 @@ every other token.
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A wide integer — `int64`, `uint64`, `int128`, `uint128`, and a fixed kind
 whose storage is wider than 32 bits — is written as a STRING of decimal
-digits and reads as a string or a number, the same digits. A fixed field's
+digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. A fixed field's
 token is the value in whole units; the reader scales it by 2^F and places the
 result only if it is an integer — `0.1` in Q16.16 is `kind_mismatch`,
 `0.0000152587890625` is raw `1` — and the writer prints the raw value back as

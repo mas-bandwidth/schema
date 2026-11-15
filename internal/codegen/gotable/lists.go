@@ -265,6 +265,6 @@ func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInf
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
  if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
- for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.Refuse(TableRefuseKindMismatch,"");if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
+ for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if !tableJSONShapeMatches(shape,in.valueShape())&&!(f.Pointer&&in.valueShape()=='z'){in.report.Refuse(TableRefuseKindMismatch,"");if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
 }
 `

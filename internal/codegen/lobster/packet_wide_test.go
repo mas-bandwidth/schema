@@ -25,12 +25,12 @@ func runPacketWideGoldens(t *testing.T, sabotage bool) {
 	t.Helper()
 	files := generateUfixed(t)
 	if sabotage {
-		const anchor = "serialize_uint128 { lo: v.EntityId.lo, hi: v.EntityId.hi }"
+		const anchor = "serialize_uint128 { lo: v·.EntityId.lo, hi: v·.EntityId.hi }"
 		src := string(files["Ludicrous.lobster"])
 		if strings.Count(src, anchor) != 1 {
 			t.Fatal("wide writer lane anchor must occur once")
 		}
-		files["Ludicrous.lobster"] = []byte(strings.Replace(src, anchor, "serialize_uint128 { lo: v.EntityId.hi, hi: v.EntityId.lo }", 1))
+		files["Ludicrous.lobster"] = []byte(strings.Replace(src, anchor, "serialize_uint128 { lo: v·.EntityId.hi, hi: v·.EntityId.lo }", 1))
 	}
 	dir := t.TempDir()
 	writeAll(t, dir, files)

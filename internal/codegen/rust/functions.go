@@ -26,6 +26,33 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// emitReadSpine emits a type's public read and the per-type body it calls.
+// The public read is the one-packet read (SPEC §5 "Read termination"): it
+// decodes the top-level object through the body and then runs the runtime's
+// end check once, so a whole byte left after the object and non-zero unused
+// bits in the final byte are refused. Nested types inside generated code call
+// the body, which does not end.
+func (g *gen) emitReadSpine(name, typ string, body func()) {
+	snake := ir.RustSnake(name)
+	g.pf(readSpineInline)
+	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, typ)
+	g.pf("    read_%s_body(stream, value)?;\n", snake)
+	g.emitReadEnd()
+	g.pf("    Ok(())\n}\n\n")
+	g.pf(readSpineInline)
+	g.pf("pub(crate) fn read_%s_body(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, typ)
+	body()
+	g.pf("    Ok(())\n}\n\n")
+}
+
+// emitReadEnd is the public one-packet read's closing end check (SPEC §5
+// "Read termination"): the runtime refuses a whole byte left after the
+// top-level object and non-zero unused bits in the final byte. It runs once,
+// here, after the object, and never inside a nested type's read.
+func (g *gen) emitReadEnd() {
+	g.pf("    stream.serialize_end()?;\n")
+}
+
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8). The
 // tag rides in minimal bits for [0, count]; the read rejects a tag above the
 // count (serialize_int's own refusal) and reconstructs the selected arm with its
@@ -67,31 +94,32 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("    }\n}\n\n")
 	}
 
-	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, d.Name)
-	if d.Max == 0 {
-		g.pf("    let _ = stream; // zero wire bits — only None exists (SPEC §4.8)\n")
-		g.pf("    *value = %s::None;\n    Ok(())\n}\n\n", d.Name)
-		return
-	}
-	g.pf("    let mut tag_value: i32 = 0;\n")
-	g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?; // rejects a tag above the count (SPEC §4.8)\n", d.Max)
-	g.pf("    match tag_value {\n")
-	for i, v := range d.Variants {
-		if v.Void() {
-			g.pf("        %d => *value = %s::%s, // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", i+1, d.Name, ir.GoExportName(v.Name))
-			continue
+	g.emitReadSpine(d.Name, d.Name, func() {
+		if d.Max == 0 {
+			g.pf("    let _ = stream; // zero wire bits — only None exists (SPEC §4.8)\n")
+			g.pf("    *value = %s::None;\n", d.Name)
+			return
 		}
-		g.pf("        %d => {\n", i+1)
-		if v.Ref != nil && g.hasDefaults(v.Ref) {
-			g.pf("            let mut arm = %s::new();\n", v.Type)
-		} else {
-			g.pf("            let mut arm = %s::default();\n", v.Type)
+		g.pf("    let mut tag_value: i32 = 0;\n")
+		g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?; // rejects a tag above the count (SPEC §4.8)\n", d.Max)
+		g.pf("    match tag_value {\n")
+		for i, v := range d.Variants {
+			if v.Void() {
+				g.pf("        %d => *value = %s::%s, // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", i+1, d.Name, ir.GoExportName(v.Name))
+				continue
+			}
+			g.pf("        %d => {\n", i+1)
+			if v.Ref != nil && g.hasDefaults(v.Ref) {
+				g.pf("            let mut arm = %s::new();\n", v.Type)
+			} else {
+				g.pf("            let mut arm = %s::default();\n", v.Type)
+			}
+			g.pf("            read_%s_body(stream, &mut arm)?;\n", ir.RustSnake(v.Type))
+			g.pf("            *value = %s::%s(arm);\n        }\n", d.Name, ir.GoExportName(v.Name))
 		}
-		g.pf("            read_%s(stream, &mut arm)?;\n", ir.RustSnake(v.Type))
-		g.pf("            *value = %s::%s(arm);\n        }\n", d.Name, ir.GoExportName(v.Name))
-	}
-	g.pf("        _ => *value = %s::None,\n", d.Name)
-	g.pf("    }\n    Ok(())\n}\n\n")
+		g.pf("        _ => *value = %s::None,\n", d.Name)
+		g.pf("    }\n")
+	})
 }
 
 // emitStructFunctions emits MAX_BITS/MAX_BYTES and the split write/read pair
@@ -129,14 +157,13 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 	g.pf("    Ok(())\n}\n\n")
 
-	g.pf(readSpineInline)
-	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, st.Name)
-	if len(st.Items) == 0 {
-		g.pf("    let _ = (stream, value);\n")
-	} else {
-		g.emitReadItems(st.Items, "    ")
-	}
-	g.pf("    Ok(())\n}\n\n")
+	g.emitReadSpine(st.Name, st.Name, func() {
+		if len(st.Items) == 0 {
+			g.pf("    let _ = (stream, value);\n")
+		} else {
+			g.emitReadItems(st.Items, "    ")
+		}
+	})
 }
 
 // emitWriteItems walks the item list, gathering maximal runs of
@@ -955,9 +982,9 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:
-			g.pf("%sread_%s(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+			g.pf("%sread_%s_body(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		case *ir.Union:
-			g.pf("%sread_%s(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+			g.pf("%sread_%s_body(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
 }
