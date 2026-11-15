@@ -1086,9 +1086,23 @@ function TableVariableNoteCount(count, report) {
   return true;
 }
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+// (kind 14) opens with 1–13, 15, 17 or 18–30, and an enum-keyed body (kind 16)
+// with 1–11, 13 or 18–30. Every other element kind is damage under ANY count,
+// a count of 0 included, in a declared field and in an unknown one alike, and
+// it is judged before any comparison with the reader's own element kind.
+function TableVariableArrayElementKindAllowed(kind) {
+  return (kind >= 1 && kind <= 13) || kind === 15 || kind === 17 || (kind >= 18 && kind <= 30);
+}
+
+function TableVariableKeyedElementKindAllowed(kind) {
+  return (kind >= 1 && kind <= 11) || kind === 13 || (kind >= 18 && kind <= 30);
+}
+
 function TableVariableNoteArray(inner, table, st, report, depth) {
   if (inner.end - inner.at < 2) { return false; }
   const ek = inner.u8();
+  if (!TableVariableArrayElementKindAllowed(ek)) { return false; }
   const count = inner.leb();
   if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
   for (let i = 0; i < count; i++) {
@@ -1100,6 +1114,7 @@ function TableVariableNoteArray(inner, table, st, report, depth) {
 function TableVariableNoteKeyed(inner, table, st, report, depth) {
   if (inner.end - inner.at < 2) { return false; }
   const ek = inner.u8();
+  if (!TableVariableKeyedElementKindAllowed(ek)) { return false; }
   const count = inner.leb();
   if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
   let seen = null;
@@ -1449,6 +1464,13 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) {
+      report.damaged = true;
+      if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
+      return false;
+    }
+    // THE ELEMENT KIND IS CLOSED, judged under any count before the comparison
+    // with the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+    if (!TableVariableArrayElementKindAllowed(ek)) {
       report.damaged = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
