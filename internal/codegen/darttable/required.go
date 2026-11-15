@@ -6,12 +6,14 @@ import (
 	"strconv"
 )
 
-// Required fields always ride, while their element elision rules stay intact.
-func requiredRide(f *ir.Field, condition string) string {
+// rideOpen opens the block that writes a field when it rides. A required
+// field always rides, so its block is a plain one: an `if (true)` is a
+// constant condition, and its element elision rules stay intact inside.
+func rideOpen(ind string, f *ir.Field, condition string) string {
 	if f.Required {
-		return "true"
+		return ind + "{\n"
 	}
-	return condition
+	return ind + "if (" + condition + ") {\n"
 }
 func hasRequired(st *ir.Struct) bool {
 	for _, f := range st.Fields {

@@ -256,27 +256,11 @@ fn guard_holds(c: SaveCtx&, tab: i64, rec: i64, i: i64) -> bool {
 }
 
 // ---- THE NUMBERING (§3.1; tablewire.Number, visitEdges) ----
-
-// visit numbers one pointer edge's target: a node takes its index the first
-// time it is reached. A blob reached twice is refused (§2.5); a node still
-// open is a data cycle.
-recursive fn visit(c: SaveCtx&, wire: i64) {
-    if wire <= 0 || c.refusal != 0 { return; }
-    if c.open[wire] { refuse(c, SaveRefuseDataCycle); return; }
-    let blob = wire >= 2 && c.nodes[wire - 2].blob != 0;
-    if c.index[wire] != 0 {
-        if blob { refuse(c, SaveRefuseBlobShared); }
-        return;
-    }
-    c.order.push(wire);
-    c.index[wire] = c.order.len + 1;
-    if blob { return; }
-    c.open[wire] = true;
-    let n = wire - 2;
-    let rec = c.nodes[n].val;
-    if rec >= 0 { edges(c, c.nodes[n].tab, rec); }
-    c.open[wire] = false;
-}
+//
+// visit_all numbers every pointer edge's target: a node takes its index the
+// first time it is reached. A blob reached twice is refused (§2.5); a node
+// still open is a data cycle. The descent is an explicit work list, so the
+// walk holds no stack per pointer however long a chain the value carries.
 
 // edge_of is a pointer slot's node index, 0 for null; an index past the node
 // table, or one with any high bit set, is refused as invalid_value.
@@ -295,30 +279,31 @@ fn live_of(c: SaveCtx&, s: i64, d: FieldDesc) -> i64 {
     return c.vals[s].count;
 }
 
-// edges walks one record's by-value closure for pointer edges, in field
-// order: a field the writer does not write is not an edge.
-recursive fn edges(c: SaveCtx&, tab: i64, rec: i64) {
+// edges appends one record's pointer edges, in field order: a field the writer
+// does not write is not an edge. Only by-value nesting recurses here, so its
+// depth is the declaration's, never a pointer chain's.
+recursive fn edges(c: SaveCtx&, tab: i64, rec: i64, out: i64[>..<]&) {
     for d, i in c.unit.tables[tab].fields {
         if c.refusal != 0 { return; }
         let s = slot_of(c, rec, i);
         if s < 0 { continue; }
         if !guard_holds(c, tab, rec, i) { continue; }
         if d.optional && c.vals[s].state == ValAbsent { continue; }
-        edges_value(c, s, d);
+        edges_value(c, s, d, out);
     }
 }
 
-fn edges_value(c: SaveCtx&, s: i64, d: FieldDesc) {
+fn edges_value(c: SaveCtx&, s: i64, d: FieldDesc, out: i64[>..<]&) {
     if d.shape == ShapePtr || d.shape == ShapeSBlob || d.shape == ShapeBBlob {
-        visit(c, edge_of(c, s));
+        out.push(edge_of(c, s));
         return;
     }
     if d.shape == ShapeUnion {
-        edges_arm(c, s, d.ref);
+        edges_arm(c, s, d.ref, out);
         return;
     }
     if d.shape == ShapeTab {
-        if c.vals[s].made { edges(c, c.vals[s].tab, s); }
+        if c.vals[s].made { edges(c, c.vals[s].tab, s, out); }
         return;
     }
     if d.shape == ShapeMap {
@@ -329,7 +314,7 @@ fn edges_value(c: SaveCtx&, s: i64, d: FieldDesc) {
         map_entry_order(c.data, c.vals, c.unit.tables[c.vals[c.vals[s].first].tab].fields[0], c.vals[s].first, c.vals[s].len, c.sorted);
         for k in c.vals[s].len {
             let e = c.sorted[mark + k];
-            if c.vals[e].made { edges(c, c.vals[e].tab, e); }
+            if c.vals[e].made { edges(c, c.vals[e].tab, e, out); }
         }
         c.sorted.resize(mark);
         return;
@@ -341,17 +326,17 @@ fn edges_value(c: SaveCtx&, s: i64, d: FieldDesc) {
         let live = live_of(c, s, d);
         for k in live {
             let es = c.vals[s].first + k;
-            if e.shape == ShapePtr { visit(c, edge_of(c, es)); }
-            else if e.shape == ShapeUnion { edges_arm(c, es, e.ref); }
-            else if c.vals[es].made { edges(c, c.vals[es].tab, es); }
+            if e.shape == ShapePtr { out.push(edge_of(c, es)); }
+            else if e.shape == ShapeUnion { edges_arm(c, es, e.ref, out); }
+            else if c.vals[es].made { edges(c, c.vals[es].tab, es, out); }
         }
     }
 }
 
 // edges_arm: a union's SET arm is an edge (tablewire.visitArmEdges): a body
-// arm is descended, a pointer or blob arm is visited, an array-of-pointers arm
-// is visited per live element, and a nested union is one more arm.
-recursive fn edges_arm(c: SaveCtx&, s: i64, name: const u8[:]) {
+// arm is descended, a pointer or blob arm is appended, an array-of-pointers
+// arm is appended per live element, and a nested union is one more arm.
+recursive fn edges_arm(c: SaveCtx&, s: i64, name: const u8[:], out: i64[>..<]&) {
     let tag = c.vals[s].bits.lo as! i64;
     if c.vals[s].state != ValPresent || tag == 0 { return; }
     let u = save_union_index(c, name);
@@ -360,21 +345,70 @@ recursive fn edges_arm(c: SaveCtx&, s: i64, name: const u8[:]) {
     let p = c.vals[s].first;
     if p < 0 { return; }
     if a.shape == ShapeTab {
-        if c.vals[p].made { edges(c, c.vals[p].tab, p); }
+        if c.vals[p].made { edges(c, c.vals[p].tab, p, out); }
         return;
     }
     if a.shape == ShapePtr || a.shape == ShapeSBlob || a.shape == ShapeBBlob {
-        visit(c, edge_of(c, p));
+        out.push(edge_of(c, p));
         return;
     }
     if a.shape == ShapeArr {
         let e = a.elem;
         guard e else { return; }
         if e.shape != ShapePtr { return; }
-        for k in live_of(c, p, a) { visit(c, edge_of(c, c.vals[p].first + k)); }
+        for k in live_of(c, p, a) { out.push(edge_of(c, c.vals[p].first + k)); }
         return;
     }
-    if a.shape == ShapeUnion { edges_arm(c, p, a.ref); }
+    if a.shape == ShapeUnion { edges_arm(c, p, a.ref, out); }
+}
+
+// visit_all numbers the root's pointer edges in first-visit pre-order. Each
+// work entry is a node to enter, or the close of one still open, so the work
+// list carries the open/closed judgement the recursive descent did.
+fn visit_all(c: SaveCtx&, tab: i64, rec: i64) {
+    var pending: i64[>..<] = [];
+    var stack: i64[>..<] = [];
+    var closing: bool[>..<] = [];
+    edges(c, tab, rec, pending);
+    var at = pending.len;
+    while at > 0 {
+        at -= 1;
+        stack.push(pending[at]);
+        closing.push(false);
+    }
+    while stack.len > 0 {
+        let wire = stack[stack.len - 1];
+        let close = closing[closing.len - 1];
+        stack.resize(stack.len - 1);
+        closing.resize(closing.len - 1);
+        if close {
+            c.open[wire] = false;
+            continue;
+        }
+        if wire <= 0 || c.refusal != 0 { continue; }
+        if c.open[wire] { refuse(c, SaveRefuseDataCycle); continue; }
+        let blob = wire >= 2 && c.nodes[wire - 2].blob != 0;
+        if c.index[wire] != 0 {
+            if blob { refuse(c, SaveRefuseBlobShared); }
+            continue;
+        }
+        c.order.push(wire);
+        c.index[wire] = c.order.len + 1;
+        if blob { continue; }
+        c.open[wire] = true;
+        let n = wire - 2;
+        let node_rec = c.nodes[n].val;
+        pending.resize(0);
+        if node_rec >= 0 { edges(c, c.nodes[n].tab, node_rec, pending); }
+        stack.push(wire);
+        closing.push(true);
+        var next = pending.len;
+        while next > 0 {
+            next -= 1;
+            stack.push(pending[next]);
+            closing.push(false);
+        }
+    }
 }
 
 // node_ref is a pointer slot's payload: the SAVE's index of the node the
@@ -818,7 +852,7 @@ fn save_into(c: SaveCtx&, root_val: i64) -> i64 {
     // THE NUMBERING FIRST: the root is index 1 and open while it descends
     c.open[1] = true;
     c.index[1] = 1;
-    edges(c, t, root_val);
+    visit_all(c, t, root_val);
     c.open[1] = false;
     if c.refusal != 0 { return c.refusal; }
     let start = c.out.len;
