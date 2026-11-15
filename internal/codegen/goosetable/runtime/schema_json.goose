@@ -1618,15 +1618,16 @@ fn json_put_string(out: u8[>..]&, s: const u8[:]) {
 }
 
 // json_put_text writes a string with the seven short escapes and `\u00xx` in
-// lowercase for every other control byte, and answers false for a string that
-// is not text: a byte outside a well-formed sequence refuses the whole write
-// (invalid_value, §16.3, §16.14 W0) and nothing is replaced.
+// lowercase for every other control byte except zero, which is not text. A
+// zero or a byte outside a well-formed sequence refuses the whole write
+// (invalid_value, §16.3, §16.14 W0); nothing is replaced.
 fn json_put_text(out: u8[>..]&, s: const u8[:]) -> bool {
     let hex = "0123456789abcdef";
     out.push('"');
     var i: i64 = 0;
     while i < s.len {
         let c = s[i];
+        if c == 0 { return false; }
         if c == '"' {
             out.append("\\\"");
         } else if c == '\\' {
