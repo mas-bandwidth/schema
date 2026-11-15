@@ -701,11 +701,13 @@ const dartSkipDepthBody = `
   array.refBits = width;
   array.announced = true;
 
-  h.TableVocabulary keyedVocab(int elemKind) {
+  h.TableVocabulary keyedVocab(int elemKind, int maxSlots) {
     final sig16 = Uint8List(12);
-    sig16[9] = (1 << width) - 1;
+    sig16[9] = maxSlots;
     sig16[10] = elemKind;
-    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+    // THE KEYS the rows below carry are six DISTINCT kind-0 entries, so no
+    // key repeats (§3.2, §3.3).
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(100 + i, 0));
     entries[6] = h.TableMessageEntry(1, 13, Uint8List(9));
     entries[7] = h.TableMessageEntry(2, 16, sig16);
     final vocab = h.TableVocabulary(entries: entries);
@@ -715,9 +717,44 @@ const dartSkipDepthBody = `
     return vocab;
   }
 
-  final keyed6 = keyedVocab(6);
-  final keyed32 = keyedVocab(32);
-  final keyed13 = keyedVocab(13);
+  final keyed6 = keyedVocab(6, 6);
+  final keyed32 = keyedVocab(32, 6);
+  final keyed13 = keyedVocab(13, 1);
+
+  // A KEYED ENTRY'S KEYS name declared no-payload entries, none repeated
+  // (docs/SPEC-TABLES.md §3.2, §3.3), so the depth rows carry valid keys:
+  // slots 1..keyCount, the probe vocabulary's kind-0 entries.
+  Uint8List packKeyed(int nlead, int keyCount, int elemBytes) {
+    final bits = <int>[];
+    void put(int value, int n) {
+      for (var b = 0; b < n; b++) {
+        bits.add((value >> b) & 1);
+      }
+    }
+    Uint8List flush() {
+      final out = Uint8List(2 + ((bits.length + 7) >> 3));
+      out[0] = 2;
+      out[1] = 0;
+      for (var i = 0; i < bits.length; i++) {
+        if (bits[i] != 0) out[2 + (i >> 3)] |= 1 << (i & 7);
+      }
+      return out;
+    }
+    for (var i = 0; i < nlead; i++) {
+      put(7, width);
+    }
+    put(8, width);
+    final countBits = keyCount == 0 ? 0 : keyCount.bitLength;
+    if (countBits > 0) put(keyCount, countBits);
+    for (var i = 0; i < keyCount; i++) {
+      put(i + 1, width);
+      put(0, elemBytes * 8);
+    }
+    for (var i = 0; i <= nlead; i++) {
+      put(0, width);
+    }
+    return flush();
+  }
 
   Uint8List pack(int nlead, int lead, int nmid, int mid, int ntail) {
     final n = nlead + nmid + ntail;
@@ -769,7 +806,69 @@ const dartSkipDepthBody = `
   expectOk('skip_depth_array_below_128', array, pack(125, 7, 1, 8, 127));
   expectOk('skip_depth_array_at_128', array, pack(126, 7, 1, 8, 128));
   expectBad('skip_depth_above_128 array', array, pack(127, 7, 1, 8, 129));
-  expectOk('skip_depth_keyed_fixed_at_128', keyed6, pack(128, 7, 2, 8, 153));
-  expectOk('skip_depth_keyed_nopayload_at_128', keyed32, pack(128, 7, 2, 8, 137));
-  expectBad('skip_depth_above_128 keyed', keyed13, pack(127, 7, 2, 8, 137));
+  expectOk('skip_depth_keyed_fixed_at_128', keyed6, packKeyed(128, 6, 1));
+  expectOk('skip_depth_keyed_nopayload_at_128', keyed32, packKeyed(128, 6, 0));
+  expectBad('skip_depth_above_128 keyed', keyed13, packKeyed(127, 1, 0));
+
+  // ONLY A STRUCTURAL KIND ADDS A LEVEL (docs/SPEC-TABLES.md §4): a table
+  // body, an array, a union and a keyed body count; a scalar does not. Slot 6
+  // is a body, slot 7 a raw uint8, slot 8 the entry under test.
+  h.TableVocabulary levelVocab(h.TableMessageEntry probe) {
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(100 + i, 0));
+    entries[5] = h.TableMessageEntry(1, 13, Uint8List(9));
+    entries[6] = h.TableMessageEntry(2, 6, Uint8List(10));
+    entries[7] = probe;
+    final vocab = h.TableVocabulary(entries: entries);
+    vocab.count = 8;
+    vocab.refBits = width;
+    vocab.announced = true;
+    return vocab;
+  }
+
+  // One batch of (value, bit count) pairs after the two-byte header.
+  Uint8List packParts(List<List<int>> parts) {
+    final bits = <int>[];
+    for (final part in parts) {
+      for (var b = 0; b < part[1]; b++) {
+        bits.add((part[0] >> b) & 1);
+      }
+    }
+    final out = Uint8List(2 + ((bits.length + 7) >> 3));
+    out[0] = 2;
+    out[1] = 0;
+    for (var i = 0; i < bits.length; i++) {
+      if (bits[i] != 0) out[2 + (i >> 3)] |= 1 << (i & 7);
+    }
+    return out;
+  }
+
+  // nlead nested bodies, the probe field in the innermost, its payload, then
+  // the end reference of every body and of the root.
+  Uint8List nested(int nlead, List<List<int>> payload) => packParts(<List<int>>[
+        for (var i = 0; i < nlead; i++) <int>[6, width],
+        <int>[8, width],
+        ...payload,
+        for (var i = 0; i <= nlead; i++) <int>[0, width],
+      ]);
+
+  // A [1..1]float32: a walked scalar element.
+  final sigFloats = Uint8List(13);
+  sigFloats[9] = 1;
+  sigFloats[10] = 1;
+  sigFloats[11] = 10;
+  final floats = levelVocab(h.TableMessageEntry(3, 14, sigFloats));
+  expectOk('skip_depth_scalar_array_at_128', floats, nested(128, <List<int>>[<int>[0, 32]]));
+
+  // A [1..1] of unions: a structural element, one level below its array.
+  final sigUnions = Uint8List(12);
+  sigUnions[9] = 1;
+  sigUnions[10] = 1;
+  sigUnions[11] = 15;
+  final unions = levelVocab(h.TableMessageEntry(3, 14, sigUnions));
+  expectOk('skip_depth_structural_element_at_128', unions, nested(127, <List<int>>[<int>[0, width]]));
+  expectBad('skip_depth_above_128 structural element', unions, nested(128, <List<int>>[<int>[0, width]]));
+
+  // A union whose arm is the raw uint8 adds no level.
+  final scalarArm = levelVocab(h.TableMessageEntry(3, 15, Uint8List(9)));
+  expectOk('skip_depth_union_scalar_arm_at_128', scalarArm, nested(128, <List<int>>[<int>[7, width], <int>[0, 8]]));
 `

@@ -423,6 +423,21 @@ func VariantDeprecated(e *ir.Enum, value int64) bool {
 // the width question they answer inline.
 func KindWidth(kind int) int { return ir.TableKindWidth(kind) }
 
+// TableKindWideInteger reports whether a kind is an integer-shaped scalar — an
+// integer or a fixed-point kind, never a float or a timestamp — whose storage
+// is wider than 32 bits: int64, uint64, int128, uint128, and the 64- and
+// 128-bit fixed-point kinds. These are the kinds the JSON form writes as a
+// STRING of decimal digits rather than a JSON number (docs/SPEC-TABLES.md
+// §16.2, docs/rulings.json json-wide-integers-are-strings).
+func TableKindWideInteger(kind int) bool {
+	switch kind {
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindFixed64, ir.TableKindUFixed64,
+		ir.TableKindI128, ir.TableKindU128, ir.TableKindFixed128, ir.TableKindUFixed128:
+		return true
+	}
+	return false
+}
+
 // ImpliedRange is the range a declaration implies without declaring one:
 // `bits(N)` declares its bound by its WIDTH, `[0, 2^N - 1]`, and a value past
 // it clamps and counts exactly as a declared `| max` would (docs/SPEC-TABLES.md
