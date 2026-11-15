@@ -372,7 +372,6 @@ const arraysGoProbe = `package main
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 
 	"github.com/mas-bandwidth/serialize.go/v2"
