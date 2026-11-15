@@ -1585,11 +1585,22 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		newSubstr string
 		wantErr   string
 	}{
+		// The fork guard on ci-fast's plan is what keeps every job that needs
+		// it (lang-lint, go-test-touched, the leg gates) off the fleet for a
+		// fork: with skipped needs modelled, dropping plan's guard admits
+		// plan itself and lang-lint, whose own guard is the second layer.
 		{
-			name:      "drop ci-fast lang-lint same-repo PR guard",
+			name:      "drop ci-fast plan same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "    if: needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
-			newSubstr: "    if: needs.plan.outputs.lints != '[]'\n",
+			oldSubstr: "  plan:\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
+			newSubstr: "  plan:\n",
+			wantErr:   "ci-fast.yml:plan admits fork PR",
+		},
+		{
+			name:      "drop ci-fast plan and lang-lint same-repo PR guards",
+			workflow:  "ci-fast.yml",
+			oldSubstr: "github.event.pull_request.head.repo.full_name == github.repository",
+			newSubstr: "github.repository == github.repository",
 			wantErr:   "ci-fast.yml:lang-lint admits fork PR",
 		},
 		{
