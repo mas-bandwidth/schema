@@ -15,6 +15,7 @@ func init() {
 	names := []Name{
 		{Name: "noteStringOrigin", What: "decoded string identity bookkeeping", Scoped: true},
 		{Name: "stringIdentity", What: "decoded string identity bookkeeping", Scoped: true},
+		{Name: "utf8Ok", What: "the load runtime's UTF-8 well-formedness check, shared with the save runtime (§4)", Scoped: true},
 		{Name: "ReadStrict", What: "the strict read over the load walk, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		{Name: "ReadStrictNames", What: "the strict read's refusal vocabulary, by name (§11, §6.5)", Scoped: true},
 		// The hand-editable text form (docs/SPEC-TABLES.md §16.9): the runtime
@@ -107,7 +108,7 @@ var squirrelModuleKeys = map[string][]string{
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",
 		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "cyclic", "get", "getF32", "getF64", "geti32", "getu", "keyed",
 		"link", "load", "loadWalk", "mapKeyCmp", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
-		"stringIdentity", "textIllFormed", "u32le", "u64le",
+		"stringIdentity", "textIllFormed", "u32le", "u64le", "utf8Ok",
 	},
 }
 

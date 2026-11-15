@@ -135,6 +135,12 @@ func cppRuntimeNames() []Name {
 			"TableRetainWrite64", "kTableRetainDepthMax", "kTableRetainKnown", "kTableRetainKnownIds",
 			"kTableRetainRecordHeader", "kTableRetainSlotBytes", "kTableRetainWalkDepthMax",
 		}},
+		{what: "the text form's key match and repeated-key bitmaps (docs/SPEC-TABLES.md §16.2)", names: []string{
+			"TableJsonKeyEquals", "kTableJsonFieldSeenWords", "kTableJsonSlotSeenWords",
+		}},
+		{what: "a pointer naming a record of the wrong declared type: damage (docs/SPEC-TABLES.md §3.1, §4)", names: []string{
+			"TableNodeWrongTarget",
+		}},
 		{what: "the text field helpers: UTF-8 validity, clamping and the float rung (docs/SPEC-TABLES.md §4)", names: []string{
 			"TableAppendText", "TableUtf8Clamp",
 		}},
