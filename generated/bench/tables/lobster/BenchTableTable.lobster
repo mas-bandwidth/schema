@@ -3050,7 +3050,7 @@ def TableEntityFixedScatter(data·:string, at·:int, v·:TableEntity):
     v·.VelY = read_int32_le(data·, at· + 28)
     v·.VelZ = read_int32_le(data·, at· + 32)
     v·.Health = read_int32_le(data·, at· + 36)
-    v·.Weapon = TableWeapon(read_uint8_le(data·, at· + 40))
+    v·.Weapon = benchtable.TableWeapon(read_uint8_le(data·, at· + 40))
     v·.Damage = read_uint64_le(data·, at· + 41)
     v·.Moving = read_uint8_le(data·, at· + 49) != 0
     v·.Firing = read_uint8_le(data·, at· + 50) != 0
@@ -4737,7 +4737,7 @@ class TableEntityFixedRecordCodec : schema_rt.FixedRecordCodec
         row·.Health = bridge_10·.cell.i
         let bridge_11· = rec·.fields[10]
         if bridge_11·.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
-        row·.Weapon = TableWeapon(bridge_11·.cell.i)
+        row·.Weapon = benchtable.TableWeapon(bridge_11·.cell.i)
         let bridge_12· = rec·.fields[11]
         if bridge_12·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
         row·.Damage = bridge_12·.cell.i
@@ -4990,7 +4990,7 @@ class TableMixedFixedRecordCodec : schema_rt.FixedRecordCodec
             row·.Entities[bridge_12·].Health = bridge_23·.cell.i
             let bridge_24· = bridge_13·.fields[10]
             if bridge_24·.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
-            row·.Entities[bridge_12·].Weapon = TableWeapon(bridge_24·.cell.i)
+            row·.Entities[bridge_12·].Weapon = benchtable.TableWeapon(bridge_24·.cell.i)
             let bridge_25· = bridge_13·.fields[11]
             if bridge_25·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
             row·.Entities[bridge_12·].Damage = bridge_25·.cell.i
