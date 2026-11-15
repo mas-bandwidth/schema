@@ -130,6 +130,10 @@ weight ./working 0 0
 
 # the packages whose single tests outrun a packed row
 split ./internal/codegen/gotable ^TestGoSharedRuntimeCoversTheCorpora$
+# the complement alone ran past the cap (cancelled at 116 s on a fleet runner,
+# 2026-11-15; 322 tests, no single heavy one), so it is cut by family
+split ./internal/codegen/gotable ^TestFixed
+split ./internal/codegen/gotable ^TestGo[^S]
 split ./internal/codegen/rusttable ^TestRetainsAndWidensOnEveryRootRust$
 split ./internal/codegen/elixirtable ^TestMessageFormBatchElixir$
 split ./internal/codegen/cpptable ^TestMessageFormSkipDepthCPP$

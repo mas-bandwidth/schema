@@ -251,14 +251,14 @@ local function entry_matches_field(e, f)
     end
     return e.packing == nil
   elseif f.shape == "wide" then
-    if f.lo ~= nil and f.hi ~= nil then
-      return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi)
-    end
+    if f.lo ~= nil and f.hi ~= nil then return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi) end
     return e.packing == nil
   elseif f.shape == "array" then
     -- A FIXED array announces [bound, bound]; a counted one [min, bound].
     local lo, hi = f.min or 0, f.bound or 0
-    if f.fixed then lo, hi = f.bound or 0, f.bound or 0 end
+    if f.fixed then
+      lo, hi = f.bound or 0, f.bound or 0
+    end
     return (e.max or 0) == hi and (e.min or 0) == lo and (e.elem or 0) == (f.elem_kind or 0)
   elseif f.shape == "flags" then
     return (e.bits or 0) == (f.bits or 0)
@@ -1015,9 +1015,7 @@ load_fields = function(R, T, name, value, ctx)
       local retired = (ctx.retiredVariants or 0) ~= retiredBefore
       -- PRESENCE IS A WIRE FACT (§3.3): a field reference that arrives is a
       -- present optional, whatever its payload holds, so the record says so.
-      if f.optional then
-        value[f.name .. "_present"] = true
-      end
+      if f.optional then value[f.name .. "_present"] = true end
       -- An explicit default is refused where this reader knows it exactly:
       -- the same announced shape at the same build version (§3.3 (a)). An
       -- enum's default is the VARIANT the wire names, since a deprecated
@@ -1035,9 +1033,7 @@ load_fields = function(R, T, name, value, ctx)
           atDefault = not rides(T, f, value[f.name])
         end
       end
-      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then
-        return false
-      end
+      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then return false end
     end
   end
 end

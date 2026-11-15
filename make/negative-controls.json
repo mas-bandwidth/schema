@@ -138,10 +138,11 @@
     {
       "name": "base-packet-3",
       "when": "pull-request",
-      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
+      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), C packet-write-text, packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
       "targets": [
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
+        "packet-write-text-c-negative-control",
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
@@ -238,7 +239,8 @@
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
         "packet-end-lua-negative-control",
-        "packet-write-cfloat-lua-negative-control"
+        "packet-write-cfloat-lua-negative-control",
+        "packet-write-bareint-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1049,6 +1051,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-maps",
+      "when": "pull-request",
+      "why": "the map cell's controls (make/python.mk): a copy of the map runtime loses the writer's ascending sort, then the reader's duplicate check, then its descending check, then the ascending order save.py numbers a map's nodes in, and TestPythonVtMapsNegativeControl must go red under each. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-table-maps-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
@@ -1515,7 +1526,8 @@
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
-        "packet-end-rust-negative-control"
+        "packet-end-rust-negative-control",
+        "packet-write-text-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -1901,7 +1913,8 @@
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-end-dart-negative-control",
-        "packet-write-cfloat-dart-negative-control"
+        "packet-write-cfloat-dart-negative-control",
+        "packet-write-text-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -2453,13 +2466,14 @@
     {
       "name": "goose-packet",
       "when": "pull-request",
-      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction and the end-check control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction, the end-check control and the Write text-content control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
       "targets": [
         "packet-defaults-goose-negative-control",
         "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
         "packet-utf8-goose-negative-control",
-        "packet-write-cfloat-goose-negative-control"
+        "packet-write-cfloat-goose-negative-control",
+        "packet-write-text-goose-negative-control"
       ]
     },
     {
@@ -2775,6 +2789,7 @@
         "packet-finite-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
         "packet-defaults-squirrel-negative-control",
+        "packet-write-bareint-squirrel-negative-control",
         "packet-end-squirrel-negative-control"
       ],
       "squirrel": "3.2"
@@ -3093,11 +3108,11 @@
       ]
     },
     {
-      "name": "write-refusal-storage-release-cpp",
+      "name": "write-check-storage-debug-cpp",
       "when": "pull-request",
-      "why": "the C++ release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the message writer with the release flags (-DNDEBUG), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small compiler run, with no toolchain beyond the host C++ compiler.",
+      "why": "the C++ debug storage gate (docs/SPEC.md §5.1): C++ is an assert leg, so a count or a wstring length past its storage is held by the writer's schema_assert in a debug build and a release build carries no write-side check. The gate generates a small table unit, compiles the message writer without NDEBUG, and requires Measure and Save each to die on the assert for an over-long count and an over-long length; the control runs that gate, then strips the generated storage asserts and requires the same gate to go red. Two small C++ compiler runs, with no toolchain beyond the host C++ compiler.",
       "targets": [
-        "write-refusal-storage-release-cpp-negative-control"
+        "write-check-storage-debug-cpp-negative-control"
       ]
     },
     {
@@ -3234,6 +3249,15 @@
       "why": "the packet core's control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ShipCreate reader offsets the health field by one and TestPythonPacketCoreNegativeControl must go red on the write-back marker. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-packet-core-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
+      "name": "python-packet-floats",
+      "when": "pull-request",
+      "why": "the Python packet float kinds' controls (make/python.mk, packet-finite-python-negative-control): the finite rule is removed from a copy of the generated tree once per direction and test/packet-finite/python/main.py must fail exactly the vectors in its read.expected and write.expected, and the compressed float's range check is cut from a copy of a generated validator and the contract probe must name exactly its vectors, and the fixed point read's raw span check is cut from a copy of the bit layer and the probe must name exactly the headroom reads. One SCHEMA_SLOW go test, about a second of interpreter time on a bench; the row's cost is the pin cache restore.",
+      "targets": [
+        "packet-finite-python-negative-control"
       ],
       "python": "pin"
     }
