@@ -1439,9 +1439,16 @@ fixedClampNegZero is A COMPRESSED FLOAT'S -0 RULE (docs/SPEC-TABLES.md §3.3,
 	docs/rulings.json fixed-compressed-negzero): it is inside the range and only
 	its spelling differs, so it lands as the value 0 itself and nothing is
 	counted. A plain float's -0 is carried bit-exact and never reaches here.
+
+	THE RULE IS A SUM, NOT A COMPARE: -0 + +0 is +0 under round-to-nearest,
+	every other finite value is unchanged by adding +0, and a non-finite value
+	was refused before this pass; a float == would draw -Wfloat-equal. The sum
+	is not folded away because no build of the generated C may drop signed
+	zeros (-ffast-math is forbidden, bench/BENCH-STANDARD.md), and
+	TestFixedCompressedNegZeroRead reads a -0 back as +0 through it.
 */
 func (g *tableGen) fixedClampNegZero(expr, zero, ind string) {
-	g.pf("%sif ( %s == 0 ) { %s = %s; }\n", ind, expr, expr, zero)
+	g.pf("%s%s = %s + %s;\n", ind, expr, expr, zero)
 }
 
 /*

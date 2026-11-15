@@ -9705,11 +9705,11 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
         (*damaged)++;
     }
     (*out_of_range) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
-    if ( value->aim_x == 0 ) { value->aim_x = 0.0f; }
+    value->aim_x = value->aim_x + 0.0f;
     (*out_of_range) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
-    if ( value->aim_y == 0 ) { value->aim_y = 0.0f; }
+    value->aim_y = value->aim_y + 0.0f;
     (*out_of_range) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
-    if ( value->aim_z == 0 ) { value->aim_z = 0.0f; }
+    value->aim_z = value->aim_z + 0.0f;
     (*out_of_range) += (int) ( bench_table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( bench_table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
     (*out_of_range) += ( value->ping > 64000 );
     /* bits(24) width clamp */

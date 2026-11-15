@@ -29,6 +29,7 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
         uint8_t want[1 << 20];
         uint8_t out[1 << 20];
         int64_t need;
+        TableReport zero;
         memcpy( &layout_bytes, data + kTableFixedHeaderBytes, 4 );
         value_at = kTableFixedHeaderBytes + 4 + (int64_t) layout_bytes + 8 + 4;
         if ( value_at + 4 > len )
@@ -38,9 +39,14 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
             { printf( "the vector does not hold a compressed float's -0: %#08x\n", got ); return 1; }
         if ( n != 1 )
             { printf( "the reader refused a compressed -0: n=%lld\n", (long long) n ); return 1; }
-        if ( r.refused != 0 || r.reason != 0 || r.refuse_reason != 0 || r.non_finite_floats != 0 || r.unknown != 0 || r.widened != 0 )
-            { printf( "the read of a compressed -0 reported refused=%d reason=%d rr=%d nf=%d u=%d w=%d\n",
-                     r.refused, r.reason, r.refuse_reason, r.non_finite_floats, r.unknown, r.widened ); return 1; }
+        /* NOTHING IS COUNTED: the whole report stays the zeroed one the probe
+           handed in, as the Go reference holds report == TableReport{}. */
+        memset( &zero, 0, sizeof( zero ) );
+        if ( memcmp( &r, &zero, sizeof( r ) ) != 0 )
+            { printf( "the read of a compressed -0 moved the report: u=%d mr=%d w=%d bs=%d ret=%d rl=%d refused=%d reason=%d rr=%d dr=%d nf=%d lh=%llu\n",
+                     r.unknown, r.missing_required, r.widened, r.blob_shared, r.retained, r.retain_lost,
+                     r.refused, r.reason, r.refuse_reason, r.damage_reason, r.non_finite_floats,
+                     (unsigned long long) r.layout_hash ); return 1; }
         memcpy( &landed, &back[0].value, 4 );
         if ( landed != 0 )
             { printf( "a compressed float's -0 kept its sign: %#08x\n", landed ); return 1; }
