@@ -15,8 +15,10 @@ import (
 // It is shared by every sub-reader of one decode, because an index resolves
 // against ONE numbering however deep the field that carries it sits.
 type decodeState struct {
-	root  *tabletext.Instance
-	nodes []Node // index i names node index i + 2 — the records; a zero Node is one this reader cannot name
+	root     *tabletext.Instance
+	nodes    []Node   // index i names node index i + 2 — the records; a zero Node is one this reader cannot place
+	types    []uint64 // the wire type id of each record, in the same order
+	declared map[uint64]bool
 }
 
 // The three marks of the pointer graph's walk, one per node (wirecheck.go).
@@ -57,15 +59,34 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 		return r.damage("a pointer to the root")
 	case index-2 < uint64(len(st.nodes)):
 		node := st.nodes[index-2]
-		if node.Inst == nil && node.Blob == nil {
-			return true // a record of a type this reader cannot name reads null
-		}
+		recType := st.types[index-2]
+		// A record whose type id this reader DECLARES, or one of the two
+		// reserved blob ids, is a type the reader can name: if it is not the
+		// slot's target the wire is damage. Only a record of a type this
+		// reader does NOT declare is evolution, and reads null.
+		named := st.declared[recType] || recType == ir.BytesWireTypeId || recType == ir.StringWireTypeId
 		if blob {
-			if node.Blob == nil || node.Kind != f.Type.Kind {
+			if recType != ir.BlobWireTypeId(f) {
+				if named {
+					return wrong()
+				}
+				return true // a record of a type this reader cannot name reads null
+			}
+			if node.Blob == nil {
 				return wrong()
 			}
 			cell.Blob = node.Blob
 			return true
+		}
+		targetID := ir.TableWireId(target)
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+			targetID = ir.TableWireId(ref.WireName())
+		}
+		if recType != targetID {
+			if named {
+				return wrong()
+			}
+			return true // a record of a type this reader cannot name reads null
 		}
 		if node.Inst == nil || node.Inst.Def.Name != target {
 			return wrong()
@@ -122,11 +143,22 @@ func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids 
 		blobKind[ir.StringWireTypeId] = ir.TString
 	}
 
+	// THE TYPES THIS READER DECLARES, whatever a pointer below the root
+	// reaches: a record of one is a type the reader can NAME, so a slot that
+	// names it at the wrong type is damage (§3.1, §6.5).
+	declared := make(map[uint64]bool, len(m.Unit.Tables))
+	for _, def := range m.Unit.Tables {
+		declared[ir.TableWireId(def.WireName())] = true
+	}
+	st.declared = declared
+
 	// PASS ONE: fill the numbering from the FRAMING, so that an index resolves
 	// whichever way it points. A blob's record IS its bytes, so its node is
 	// complete here.
 	st.nodes = make([]Node, len(records))
+	st.types = make([]uint64, len(records))
 	for i, rec := range records {
+		st.types[i] = rec.TypeId
 		if kind, ok := blobKind[rec.TypeId]; ok {
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: kind}
 			continue
