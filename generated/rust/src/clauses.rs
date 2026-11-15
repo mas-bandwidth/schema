@@ -40,6 +40,13 @@ pub fn write_w13(stream: &mut WriteStream<'_>, value: &W13) -> Result {
 
 #[inline]
 pub fn read_w13(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
+    read_w13_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_w13_body(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 12)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
         {
@@ -84,6 +91,13 @@ pub fn write_w17(stream: &mut WriteStream<'_>, value: &W17) -> Result {
 
 #[inline]
 pub fn read_w17(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
+    read_w17_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_w17_body(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 9)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
         {
@@ -128,6 +142,13 @@ pub fn write_w26(stream: &mut WriteStream<'_>, value: &W26) -> Result {
 
 #[inline]
 pub fn read_w26(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
+    read_w26_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_w26_body(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 6)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
         {
@@ -172,6 +193,13 @@ pub fn write_w1(stream: &mut WriteStream<'_>, value: &W1) -> Result {
 
 #[inline]
 pub fn read_w1(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
+    read_w1_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_w1_body(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 20)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
         {
@@ -216,6 +244,13 @@ pub fn write_w52(stream: &mut WriteStream<'_>, value: &W52) -> Result {
 
 #[inline]
 pub fn read_w52(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
+    read_w52_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_w52_body(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
         {
@@ -260,6 +295,13 @@ pub fn write_w50(stream: &mut WriteStream<'_>, value: &W50) -> Result {
 
 #[inline]
 pub fn read_w50(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
+    read_w50_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_w50_body(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
         {
@@ -298,6 +340,13 @@ pub fn write_f13(stream: &mut WriteStream<'_>, value: &F13) -> Result {
 
 #[inline]
 pub fn read_f13(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
+    read_f13_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_f13_body(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
     for i in 0..7 {
         {
             let mut range_value: i32 = 0;
@@ -335,6 +384,13 @@ pub fn write_tri3(stream: &mut WriteStream<'_>, value: &Tri3) -> Result {
 
 #[inline]
 pub fn read_tri3(stream: &mut ReadStream<'_>, value: &mut Tri3) -> Result {
+    read_tri3_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_tri3_body(stream: &mut ReadStream<'_>, value: &mut Tri3) -> Result {
     let mut c: u32 = 0;
     // word 0, 3 bits: a[0..1], b[0..2]
     stream.serialize_bits(&mut c, 3)?;
@@ -375,9 +431,16 @@ pub fn write_arr_tri3(stream: &mut WriteStream<'_>, value: &ArrTri3) -> Result {
 
 #[inline]
 pub fn read_arr_tri3(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result {
+    read_arr_tri3_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arr_tri3_body(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 10)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
-        read_tri3(stream, &mut value.items[i])?;
+        read_tri3_body(stream, &mut value.items[i])?;
     }
     Ok(())
 }
@@ -409,6 +472,13 @@ pub fn write_eleven(stream: &mut WriteStream<'_>, value: &Eleven) -> Result {
 
 #[inline]
 pub fn read_eleven(stream: &mut ReadStream<'_>, value: &mut Eleven) -> Result {
+    read_eleven_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_eleven_body(stream: &mut ReadStream<'_>, value: &mut Eleven) -> Result {
     let mut c: u32 = 0;
     // word 0, 11 bits: a[0..3], b[0..8]
     stream.serialize_bits(&mut c, 11)?;
@@ -443,8 +513,15 @@ pub fn write_arr_eleven(stream: &mut WriteStream<'_>, value: &ArrEleven) -> Resu
 
 #[inline]
 pub fn read_arr_eleven(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Result {
+    read_arr_eleven_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arr_eleven_body(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Result {
     for i in 0..9 {
-        read_eleven(stream, &mut value.items[i])?;
+        read_eleven_body(stream, &mut value.items[i])?;
     }
     Ok(())
 }
@@ -468,6 +545,13 @@ pub fn write_empty_a(stream: &mut WriteStream<'_>, value: &EmptyA) -> Result {
 
 #[inline]
 pub fn read_empty_a(stream: &mut ReadStream<'_>, value: &mut EmptyA) -> Result {
+    read_empty_a_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_empty_a_body(stream: &mut ReadStream<'_>, value: &mut EmptyA) -> Result {
     let _ = (stream, value);
     Ok(())
 }
@@ -491,6 +575,13 @@ pub fn write_empty_b(stream: &mut WriteStream<'_>, value: &EmptyB) -> Result {
 
 #[inline]
 pub fn read_empty_b(stream: &mut ReadStream<'_>, value: &mut EmptyB) -> Result {
+    read_empty_b_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_empty_b_body(stream: &mut ReadStream<'_>, value: &mut EmptyB) -> Result {
     let _ = (stream, value);
     Ok(())
 }
@@ -564,18 +655,26 @@ pub fn write_empty_union(stream: &mut WriteStream<'_>, value: &EmptyUnion) -> Re
     }
 }
 
+#[inline]
 pub fn read_empty_union(stream: &mut ReadStream<'_>, value: &mut EmptyUnion) -> Result {
+    read_empty_union_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_empty_union_body(stream: &mut ReadStream<'_>, value: &mut EmptyUnion) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
     match tag_value {
         1 => {
             let mut arm = EmptyA::default();
-            read_empty_a(stream, &mut arm)?;
+            read_empty_a_body(stream, &mut arm)?;
             *value = EmptyUnion::A(arm);
         }
         2 => {
             let mut arm = EmptyB::default();
-            read_empty_b(stream, &mut arm)?;
+            read_empty_b_body(stream, &mut arm)?;
             *value = EmptyUnion::B(arm);
         }
         _ => *value = EmptyUnion::None,
@@ -616,8 +715,15 @@ pub fn write_holds_empty_union(stream: &mut WriteStream<'_>, value: &HoldsEmptyU
 
 #[inline]
 pub fn read_holds_empty_union(stream: &mut ReadStream<'_>, value: &mut HoldsEmptyUnion) -> Result {
+    read_holds_empty_union_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_holds_empty_union_body(stream: &mut ReadStream<'_>, value: &mut HoldsEmptyUnion) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
-    read_empty_union(stream, &mut value.u)?;
+    read_empty_union_body(stream, &mut value.u)?;
     stream.serialize_bits(&mut value.tail, 7)?;
     Ok(())
 }
@@ -669,6 +775,13 @@ pub fn write_strs(stream: &mut WriteStream<'_>, value: &Strs) -> Result {
 
 #[inline]
 pub fn read_strs(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
+    read_strs_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_strs_body(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
     stream.serialize_int(&mut value.s_length, 0, 8)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
@@ -727,10 +840,17 @@ pub fn write_arr_nested(stream: &mut WriteStream<'_>, value: &ArrNested) -> Resu
 
 #[inline]
 pub fn read_arr_nested(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Result {
+    read_arr_nested_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_arr_nested_body(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
     stream.serialize_int(&mut value.items_count, 0, 4)?; // the count guards the loop (§6.3)
     for i in 0..value.items_count as usize {
-        read_eleven(stream, &mut value.items[i])?;
+        read_eleven_body(stream, &mut value.items[i])?;
     }
     stream.serialize_bits(&mut value.tail, 3)?;
     Ok(())
@@ -761,6 +881,13 @@ pub fn write_sole(stream: &mut WriteStream<'_>, value: &Sole) -> Result {
 
 #[inline]
 pub fn read_sole(stream: &mut ReadStream<'_>, value: &mut Sole) -> Result {
+    read_sole_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_sole_body(stream: &mut ReadStream<'_>, value: &mut Sole) -> Result {
     stream.serialize_bits(&mut value.only, 13)?;
     Ok(())
 }

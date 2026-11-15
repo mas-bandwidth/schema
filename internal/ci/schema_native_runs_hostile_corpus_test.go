@@ -11,8 +11,8 @@ import (
 // without a compiler in the Go unit tier: each port's make target and its
 // planted-verdict control exist, the case binary is driven through
 // tools/hostilecorpusexec, every FIX-CARD names a case the manifest carries
-// with that case's own input, and the workflow has a fleet-only push/pull
-// request gate and a scheduled control, both registered in
+// with that case's own input, and the workflow is fleet-only, runs nightly
+// and on dispatch only (the owner, 2026-11-15), with its control registered in
 // make/negative-controls.json.
 func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 	t.Parallel()
@@ -92,9 +92,8 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 		}
 		text := string(workflow)
 		for _, want := range []string{
-			"push:", "pull_request:", "schedule:", "workflow_dispatch:",
+			"schedule:", "workflow_dispatch:",
 			"runs-on: [self-hosted, linux, x64, schema]",
-			"branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
 			"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 			"make " + target + " ",
 			"make " + target + "-negative-control ",
@@ -102,6 +101,35 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s.yml does not carry %q", target, want)
 			}
+		}
+		// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that
+		// is not light moved to nightly test now." "no exceptions."): no push and
+		// no pull request starts this workflow; those run only ci-fast.yml.
+		for _, p := range nightlyOnlyTriggerProblems(text) {
+			t.Errorf("%s.yml: %s", target, p)
+		}
+		for _, ev := range []ciEvent{
+			{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+			{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+			{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
+		} {
+			if ok, err := jobSelectsSelfHosted(text, "corpus", ev); err != nil || ok {
+				t.Errorf("%s.yml:corpus ran on %+v: ok=%v err=%v; the workflow is nightly and dispatch only", target, ev, ok, err)
+			}
+		}
+		for _, ev := range []ciEvent{
+			{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+			{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+		} {
+			for _, job := range []string{"corpus", "negative-control"} {
+				if ok, err := jobSelectsSelfHosted(text, job, ev); err != nil || !ok {
+					t.Errorf("%s.yml:%s did not run on %+v: ok=%v err=%v", target, job, ev, ok, err)
+				}
+			}
+		}
+		// Mutation control: a restored push trigger is refused.
+		if len(nightlyOnlyTriggerProblems(strings.Replace(text, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
+			t.Errorf("%s.yml: nightly-only control did not refuse a restored push trigger", target)
 		}
 		fork := ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}
 		for _, job := range []string{"corpus", "negative-control"} {

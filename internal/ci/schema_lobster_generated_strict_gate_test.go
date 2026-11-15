@@ -15,7 +15,8 @@ import (
 // all of them), its corpus is examples/, examples128/ and the
 // conformance manifest, its control plants a warning in a real generated module
 // and requires red on that line alone, the control is registered with the
-// negative-control plan at the leg's pinned toolchain, and a workflow runs both.
+// negative-control plan at the leg's pinned toolchain, and a workflow runs both
+// nightly and on dispatch only (the owner, 2026-11-15).
 // Pure text over tracked files: the make target is what runs the compiler.
 func TestSchemaLobsterGeneratedStrictGateWiring(t *testing.T) {
 	t.Parallel()
@@ -92,11 +93,36 @@ func TestSchemaLobsterGeneratedStrictGateWiring(t *testing.T) {
 		"make dist-lobster",
 		"make tables-lobster-clean",
 		"make schema-lobster-generated-strict-gate-negative-control",
-		"pull_request:",
 		"schedule:",
+		"workflow_dispatch:",
 	} {
 		if !strings.Contains(string(wf), want) {
 			t.Errorf("schema-lobster-generated-strict-gate.yml does not carry %q", want)
+		}
+	}
+	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
+	// not light moved to nightly test now." "no exceptions."): no push and no
+	// pull request starts this workflow.
+	for _, p := range nightlyOnlyTriggerProblems(string(wf)) {
+		t.Errorf("schema-lobster-generated-strict-gate.yml: %s", p)
+	}
+	if len(nightlyOnlyTriggerProblems(strings.Replace(string(wf), "\non:\n", "\non:\n  pull_request:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored pull_request trigger was not refused")
+	}
+	for _, ev := range []ciEvent{
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobRunsInWorkflow(string(wf), "strict", ev); err != nil || !ok {
+			t.Errorf("the Lobster strict job did not run on %+v: ok=%v err=%v", ev, ok, err)
+		}
+	}
+	for _, ev := range []ciEvent{
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+	} {
+		if ok, _ := jobRunsInWorkflow(string(wf), "strict", ev); ok {
+			t.Errorf("the Lobster strict job ran on %+v; the workflow is nightly and dispatch only", ev)
 		}
 	}
 }

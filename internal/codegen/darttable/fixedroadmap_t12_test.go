@@ -163,11 +163,11 @@ fixed table Root
 		}
 	})
 
-	// dart/W4 "read slack unspecified" — §3.1: "Slack is UNSPECIFIED on read
-	// and not a refusal: a reader validates the USED UNITS only, and non-zero
-	// slack is not `malformed`, not a refusal, and moves no counter." Poison
-	// the unused tail of a text(8) field past its used length; the read still
-	// succeeds cleanly.
+	// dart/W4 "read slack is refused" — §3.1, §4.5 and §5.3 step 11: every
+	// dead byte in a fixed record is zero on write and a non-zero one refuses
+	// the whole load (docs/rulings.json fixed-dead-bytes-are-zero). Poison the
+	// unused tail of a text(8) field past its used length; the read refuses
+	// `wire_damaged` and lands nothing.
 	t.Run("dart/W4", func(t *testing.T) {
 		t.Parallel()
 		t12Capability(t, `package probe
@@ -193,13 +193,13 @@ fixed table Root
   final back = [t.Root()];
   t.initRoot(back[0]);
   final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
-  check(n == 1, 'the dirty-slack file must read: n=$n ${rep.refused}');
-  check(rep.refused == 0,
-      'non-zero slack is not a refusal and moves no counter: '
-      '${rep.refused}');
-  check(back[0].a == 7 && back[0].tLength == 2 && back[0].t[0] == 0x41 &&
-      back[0].t[1] == 0x42,
-      'the used units landed: a=${back[0].a} len=${back[0].tLength}');
+  check(n == -1, 'the dirty-slack file must be refused: n=$n ${rep.refused}');
+  check(rep.refused == t.TableFixedRefusal.damaged,
+      'a non-zero dead byte refuses wire_damaged: ${rep.refused}');
+  check(rep.unknown == 0 && rep.widened == 0,
+      'a refusal moves no counter: ${rep.unknown} ${rep.widened}');
+  check(back[0].a == 0 && back[0].tLength == 0,
+      'a refused read lands nothing: a=${back[0].a} len=${back[0].tLength}');
 `, 1)
 	})
 

@@ -390,6 +390,17 @@
         "ruled 2026-11-10: a JSON integer field takes an integer token only: no fraction, no exponent, no negative zero"
       ],
       "source": "the owner's standing rule that strict wins, applied by the coordinator"
+    },
+    {
+      "id": "json-wide-integers-refuse-number-token",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON integer field whose kind is wider than 32 bits takes the STRING form only; a bare number token there refuses kind_mismatch"
+      ],
+      "source": "the owner's standing rule that strict wins, applied by the coordinator",
+      "supersedes": [
+        "the 2026-10-22 read half of the wide-integer ruling: a wide integer reads \"as a string or a number, the same digits\" (SPEC-TABLES §16.2)"
+      ]
     }
   ]
 }

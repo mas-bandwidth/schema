@@ -29,6 +29,14 @@ public final class MixedHitEventFixed {
 
         /** bool */
         public boolean crit;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            targetId = 0;
+            damage = 0;
+            hitKind = 0;
+            crit = false;
+        }
     }
 
     /**
@@ -54,7 +62,9 @@ public final class MixedHitEventFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert (v.targetId & 0xfffffffffffff000L) == 0;
+        assert v.damage >= 0L && v.damage <= 4095L;
+        assert v.hitKind >= 0L && v.hitKind <= 7L;
         return true;
     }
 
@@ -63,15 +73,16 @@ public final class MixedHitEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.targetId = TableFixed.get32(b, at + 0);
         if (Integer.compareUnsigned(v.targetId, 4095) > 0) {
             v.targetId = (int) (4095L);
