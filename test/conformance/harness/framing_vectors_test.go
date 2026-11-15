@@ -242,24 +242,48 @@ func depthTables(levels int) []byte {
 	return body
 }
 
-// depthArrays is a root body whose one unknown field holds `levels` arrays
-// nested by value: each array carries one element of kind 14.
+// depthArrays is a root body whose one unknown field holds `levels` array and
+// table bodies nested by value. An array body's element kind is closed (§3),
+// so an array cannot carry another array directly; each array carries one
+// table element (kind 13) and that table carries the next array field, which
+// is what makes the vector a lawful nesting at every level.
 func depthArrays(levels int) []byte {
-	content := b(14, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(14, 1), leb(uint64(len(content))), content)
+	var body []byte
+	if levels%2 == 0 {
+		body = b(0) // an even depth is the innermost table body
+	} else {
+		body = b(6, 0) // an odd depth is the innermost array body
 	}
-	return cat(b(1, 14), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 1; d-- {
+		if d%2 == 1 {
+			body = cat(b(13, 1), leb(uint64(len(body))), body)
+		} else {
+			body = cat(b(1, 14), leb(uint64(len(body))), body, b(0))
+		}
+	}
+	return cat(b(1, 14), leb(uint64(len(body))), body, b(0))
 }
 
-// depthKeyed is a root body whose one unknown field holds `levels` keyed
-// bodies nested by value: each slot's element is the next keyed body.
+// depthKeyed is a root body whose one unknown field holds `levels` keyed and
+// table bodies nested by value. The keyed body's element kind is closed (§3),
+// so a keyed body cannot carry another keyed body directly; each keyed body
+// carries one table element (kind 13) and that table carries the next keyed
+// field, which is what makes the vector a lawful nesting at every level.
 func depthKeyed(levels int) []byte {
-	content := b(16, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(16, 1), b(1), leb(uint64(len(content))), content)
+	var body []byte
+	if levels%2 == 0 {
+		body = b(0) // an even depth is the innermost table body
+	} else {
+		body = b(6, 0) // an odd depth is the innermost keyed body
 	}
-	return cat(b(1, 16), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 1; d-- {
+		if d%2 == 1 {
+			body = cat(b(13, 1, 1), leb(uint64(len(body))), body)
+		} else {
+			body = cat(b(1, 16), leb(uint64(len(body))), body, b(0))
+		}
+	}
+	return cat(b(1, 16), leb(uint64(len(body))), body, b(0))
 }
 
 // depthUnionTables is a root body whose one unknown field is a union whose arm

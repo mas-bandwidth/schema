@@ -234,7 +234,7 @@ _M.ReadSpanChunk <- function(stream, value) {
 // WriteSpanChunk writes value in declared order; false on a refused value.
 _M.WriteSpanChunk <- function(stream, value) {
   for (local _i = 0; _i < 4; _i++) {
-    if (typeof value.Values[_i] != "integer") return false;
+    if (typeof value.Values[_i] != "integer" || value.Values[_i] < 0 || value.Values[_i] > 65535) return false;
     _h.value = value.Values[_i];
     if (!stream.serializeBits(_h, 16)) return false;
   }
@@ -279,7 +279,7 @@ _M.WriteSpanTail <- function(stream, value) {
     _h.value = value.Values[_i];
     if (!stream.serializeDouble(_h)) return false;
   }
-  if (typeof value.Tail != "integer") return false;
+  if (typeof value.Tail != "integer" || value.Tail < 0 || value.Tail > 4294967295) return false;
   _h.value = value.Tail;
   if (!stream.serializeBits(_h, 32)) return false;
   return true;

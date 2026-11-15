@@ -1,0 +1,17 @@
+// FNZ.schema — the compressed float's negative zero (docs/SPEC-TABLES.md §3.3)
+//
+// The shared vector build/fixedform-corpus/negative_zero.bin is the reference
+// writer's file with `value` set to -0's bits (the sign bit alone). The rule
+// reads it as +0, uncounted, and writes +0. A plain float's -0 is carried
+// bit-exact and is not this vector's subject.
+//
+// A compressed float is a float32 with min, max and resolution (SPEC §4.3), so
+// this root carries the compression at its one storage width.
+package tblfnz
+
+fixed table NegZero
+{
+    lead  uint32 = 1
+    value float32 | min = -1, max = 1, resolution = 0.01
+    trail uint32 = 2
+}
