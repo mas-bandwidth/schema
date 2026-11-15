@@ -3958,8 +3958,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
-  defp json_field(%{t: :int, frac: frac}, v, _depth), do: fixed_text(v, frac)
-  defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
+
+  defp json_field(%{t: :int, frac: frac} = f, v, _depth) do
+    text = fixed_text(v, frac)
+    if json_wide_int?(f), do: ["\"", text, "\""], else: text
+  end
+
+  defp json_field(%{t: :int} = f, v, _depth) do
+    text = Integer.to_string(v)
+    if json_wide_int?(f), do: ["\"", text, "\""], else: text
+  end
+
   defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
@@ -3990,7 +3999,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
 
   defp json_list_elem(%{elem_kind: kind}, e, _depth)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+       when kind in [5, 9, 18, 19], do: ["\"", Integer.to_string(e), "\""]
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth)
+       when kind in [2, 3, 4, 6, 7, 8], do: Integer.to_string(e)
+
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth)
+       when kind in [23, 24, 28, 29], do: ["\"", fixed_text(e, frac), "\""]
 
   defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
     do: fixed_text(e, frac)
@@ -4255,6 +4270,33 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     fixed_digits(rem(ten, scale), scale, [<<div(ten, scale) + ?0>> | acc])
   end
 
+  # A kind's storage is wider than 32 bits — int64, uint64, int128, uint128,
+  # and the 64- and 128-bit fixed kinds — so its JSON form is a STRING of
+  # decimal digits (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11).
+  defp json_wide_int?(%{width: width}) when is_integer(width) and width > 4, do: true
+  defp json_wide_int?(_f), do: false
+
+  # json_integer_text reads a wide integer's string content: digits with an
+  # optional minus, no fraction, no exponent and not -0. The value is exact —
+  # never through a double — and any other spelling is :error (§16.2 Numbers).
+  defp json_integer_text(text) do
+    case json_number(text) do
+      {:ok, value, ""} when is_integer(value) -> {:ok, value}
+      _ -> :error
+    end
+  end
+
+  # json_fixed_text reads a wide fixed kind's string content as the same exact
+  # decimal token a JSON number carries (docs/SPEC-TABLES.md §16.2): a token
+  # finer than 2^-F is :error, never rounded.
+  defp json_fixed_text(text, frac) do
+    case json_number(text) do
+      {:ok, value, ""} when is_integer(value) -> fixed_raw(value, frac)
+      {:ok, {:decimal, _} = token, ""} -> fixed_raw(token, frac)
+      _ -> :error
+    end
+  end
+
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
   # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
@@ -4408,13 +4450,37 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
-  # Wide integers accept integral decimal/exponent tokens without a double.
-  defp json_read_field(%{t: :int, width: 16} = f, {:decimal, _} = raw, report)
-       when not is_map_key(f, :frac) do
-    case fixed_raw(raw, 0) do
-      {:ok, value} -> clamp_json_int(value, f, report)
-      :error -> {:skip, throw(:wire_damaged)}
+  # A wide integer reads its STRING form with the same rule as its number form
+  # (docs/SPEC-TABLES.md §16.2): the digits and an optional minus, no fraction,
+  # no exponent, not -0. A narrow integer is a number only, so a string there
+  # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
+  # string, and one of 32 bits or under stays a number.
+  defp json_read_field(%{t: :int} = f, raw, report)
+       when is_binary(raw) and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) do
+    cond do
+      not json_wide_int?(f) ->
+        json_skip_value(raw)
+        {:skip, throw(:wire_damaged)}
+
+      Map.has_key?(f, :frac) ->
+        case json_fixed_text(raw, f.frac) do
+          {:ok, value} -> clamp_json_int(value, f, report)
+          :error -> {:skip, throw(:wire_damaged)}
+        end
+
+      true ->
+        case json_integer_text(raw) do
+          {:ok, value} -> clamp_json_int(value, f, report)
+          :error -> {:skip, throw(:wire_damaged)}
+        end
     end
+  end
+
+  # an integer field takes an INTEGER token only: a fraction, an exponent or
+  # -0 is the wrong shape and refuses (docs/SPEC-TABLES.md §16.2, Numbers).
+  defp json_read_field(%{t: :int} = f, {:decimal, _}, _report)
+       when not is_map_key(f, :frac) do
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :float, width: 4} = f, {:decimal, _} = raw, report) do
@@ -4815,18 +4881,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       true ->
         case json_number(key) do
-          {:ok, raw, ""} ->
-            case fixed_raw(raw, 0) do
-              {:ok, value} ->
-                {lo, hi} = int_domain_bounds(field)
+          {:ok, value, ""} when is_integer(value) ->
+            {lo, hi} = int_domain_bounds(field)
 
-                if value >= lo and value <= hi,
-                  do: {:ok, Integer.to_string(value)},
-                  else: throw(:wire_damaged)
+            if value >= lo and value <= hi,
+              do: {:ok, Integer.to_string(value)},
+              else: throw(:wire_damaged)
 
-              :error ->
-                throw(:wire_damaged)
-            end
+          {:ok, _, ""} ->
+            # a fraction, an exponent, -0 or a magnitude past 128 bits: not
+            # the integer spelling a key takes (docs/SPEC-TABLES.md §2.8, §16.2)
+            throw(:wire_damaged)
 
           _ ->
             :malformed
@@ -4982,7 +5047,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
-  # an integer element reads -0 as the 0 it is (json_number keeps the token)
   defp json_read_list_elem(%{text_list: true, text_optional: true}, nil, report),
     do: {%{"value" => nil}, report}
 
@@ -5002,17 +5066,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {%{"value" => value}, throw(:wire_damaged)}
   end
 
-  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
+  # an integer element takes an INTEGER token only: a fraction, an exponent or
+  # -0 is the wrong shape and refuses (docs/SPEC-TABLES.md §16.2, Numbers).
+  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, _}, _report)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
-       do: {0, report}
-
-  defp json_read_list_elem(%{elem_kind: kind} = f, {:decimal, _} = e, report)
-       when kind in [18, 19] do
-    case fixed_raw(e, 0) do
-      {:ok, value} -> json_clamp_elem(value, f, report)
-      :error -> {:skip, throw(:wire_damaged)}
-    end
-  end
+       do: {:skip, throw(:wire_damaged)}
 
   defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
@@ -5023,6 +5081,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
+
+  # a wide integer element reads its STRING form with the integer-token rule;
+  # a wide fixed element reads its exact decimal string (docs/SPEC-TABLES.md §16.2)
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when is_binary(e) and kind in [5, 9, 18, 19] and not is_map_key(f, :elem_flags) do
+    case json_integer_text(e) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, throw(:wire_damaged)}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac} = f, e, report)
+       when is_binary(e) and kind in [23, 24, 28, 29] do
+    case json_fixed_text(e, frac) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, throw(:wire_damaged)}
+    end
+  end
 
   defp json_read_list_elem(%{elem_kind: 13} = f, raw, report),
     do: json_read_field(%{t: :table, elem: f.elem}, raw, report)
