@@ -278,7 +278,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("    if !schema_rt::fixed_evolve_layout_ok(data, layout_length, known) {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutMalformed, false);\n    }\n")
 	e.p("    if !supported {\n        return schema_rt::fixed_evolve_refuse(report, refuse, false);\n    }\n")
 	e.p("    let rest = data.len - schema_rt::FixedHeaderBytes - 4 - layout_length;\n")
-	e.p("    if record_bytes <= 8 || rest %% record_bytes != 0 {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseTruncated, true);\n    }\n")
+	e.p("    if rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseTruncated, true);\n    }\n")
 	e.p("    let count = rest / record_bytes;\n")
 	e.p("    if count > values.len {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseBatchTooLarge, false);\n    }\n")
 	e.p("    let first = schema_rt::FixedHeaderBytes + 4 + layout_length;\n")
