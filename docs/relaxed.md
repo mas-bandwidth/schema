@@ -96,7 +96,7 @@ listed case that passes fails the leg until its line is removed.
     check in `scanText`: the generated tests textzero (a skipped zero reads)
     and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the dart and js text-boundary controls do not count their legs' relaxed json-hostile cases (relax/hostile-rows-dart, -js).
   - `relax/hostile-rows-goose`: both hostile rows.
-  - `relax/hostile-rows-java`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-lobster`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-lua`: both hostile rows, jref_zero_byte.
