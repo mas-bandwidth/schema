@@ -88,9 +88,9 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 		// row 4: a length past N
 		"r4-string-over": refusedDebug, "r4-string-edge": lawful,
 		"r4-bytes-over": refusedDebug, "r4-bytes-edge": lawful,
-		// a text list's element past N is refused in every build today, by the
-		// graph the save builds first; it keeps that answer
-		"r4-element-over": refusedAlways, "r4-element-edge": lawful,
+		// a text list's element past N is a row 4 value: the debug assert
+		// answers first and the release build keeps the graph's refusal
+		"r4-element-over": refusedDebug, "r4-element-edge": lawful,
 		"r4-map-key-over": refusedDebug, "r4-map-key-edge": lawful,
 		"r4-arm-over": refusedDebug, "r4-arm-edge": lawful,
 		"r4-pointer-over": refusedDebug, "r4-pointer-edge": lawful,

@@ -193,12 +193,15 @@ public final class Main {
             throw new AssertionError("expected malformed UTF-8 refusal");
         }
 
-        // 7. Writer preflight refusal on element past M and count past N
+        // 7. Writer preflight on element past M and count past N: the debug
+        // contract asserts, and the graph still refuses the same value
         ListsVariable.Value badElem = new ListsVariable.Value();
         ListsRulesTextVariable.Value eTooLong = new ListsRulesTextVariable.Value();
         eTooLong.value = "123456789";
         badElem.rules.add(eTooLong);
-        if (ListsVariable.save(badElem) != null || ListsVariable.toJson(badElem) != null) {
+        boolean elemAsserted = false;
+        try { ListsVariable.save(badElem); } catch (AssertionError e) { elemAsserted = true; }
+        if (!elemAsserted || ListsVariable.toJson(badElem) != null) {
             throw new AssertionError("writer accepted element past M");
         }
         ListsVariable.Value badCount = new ListsVariable.Value();
@@ -207,7 +210,9 @@ public final class Main {
             item.value = "a";
             badCount.rules.add(item);
         }
-        if (ListsVariable.save(badCount) != null || ListsVariable.toJson(badCount) != null) {
+        boolean countAsserted = false;
+        try { ListsVariable.save(badCount); } catch (AssertionError e) { countAsserted = true; }
+        if (!countAsserted || ListsVariable.toJson(badCount) != null) {
             throw new AssertionError("writer accepted count past N");
         }
         System.out.println("TEXT_LIST_OK");

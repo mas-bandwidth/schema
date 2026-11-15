@@ -614,12 +614,13 @@ public final class MixedHitEventVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
         }
         graph.setOpen(v, false);
-        assert checkWrite(v) && checkNodes(graph);
+        assert checkNodes(graph);
         w.put8(1);
         writeFields(w, graph, v);
         int nodes = graph.nodeCount();

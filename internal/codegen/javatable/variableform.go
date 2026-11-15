@@ -4406,13 +4406,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    public static byte[] save(Value v, TableVariable.Saver saver) {\n")
 	fmt.Fprintf(&b, "        TableVariable.Writer w = saver.begin();\n")
 	fmt.Fprintf(&b, "        TableVariable.NodeGraph graph = saver.graph;\n")
+	// THE WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1), and it answers
+	// before the graph walk: under -ea a row 1-5 or 8 value asserts, whether or
+	// not buildGraph would also refuse it in every build. checkNodes runs once
+	// the graph is built and reaches every table through its pointers.
+	fmt.Fprintf(&b, "        assert checkWrite(v);\n")
 	fmt.Fprintf(&b, "        graph.setOpen(v, true);\n")
 	fmt.Fprintf(&b, "        if (!buildGraph(graph, v)) { return null; }\n")
 	fmt.Fprintf(&b, "        graph.setOpen(v, false);\n")
-	// THE WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1), checked once the
-	// graph is built: a refusal the graph makes in every build answers first and
-	// keeps its answer, and checkNodes reaches every table through its pointers.
-	fmt.Fprintf(&b, "        assert checkWrite(v) && checkNodes(graph);\n")
+	fmt.Fprintf(&b, "        assert checkNodes(graph);\n")
 	fmt.Fprintf(&b, "        w.put8(1);\n")
 	fmt.Fprintf(&b, "        writeFields(w, graph, v);\n")
 	fmt.Fprintf(&b, "        int nodes = graph.nodeCount();\n")
