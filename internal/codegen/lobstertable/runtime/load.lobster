@@ -115,6 +115,10 @@ class Value:
     // second naming and refuses the graph by name, never writing a copy
     // per slot. nil for a blob the caller set.
     blob_node:Node? = nil
+    // at is a writer's number for this blob cell while one save walks the
+    // graph (schema_save.lobster), 0 outside it: the index from cell to node
+    // number, so no lookup scans the nodes collected so far
+    at:int = 0
 
 // A Slot is one field's storage (Go's tabletext.Field): the value, the
 // counted extent and the presence companion beside it.
@@ -146,6 +150,11 @@ class Record:
     held:bool = false
     // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
     walk:int = 0
+    // at is a writer's number for this record while one save or one JSON
+    // write walks the graph, 0 outside it: the index from node to number,
+    // so no lookup scans the nodes collected so far. Each writer clears
+    // every mark it set before it returns.
+    at:int = 0
 
 // Fixed roots share their generated native codec with the generic Record
 // surface. The adapter projects storage only; it owns no wire decoder.
@@ -178,6 +187,9 @@ class Node:
     kind:int
     rec:Record?
     blob:string?
+    // at is a writer's mark on a loaded blob node while one save or one JSON
+    // write walks the graph, 0 outside it (Record.at)
+    at:int = 0
 
 // THE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §2.5, §2.8), as the bit
 // patterns the id table carries.
