@@ -14692,7 +14692,9 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_body_pack_(struct graphdemo_tabl
         if(!schema_graphdemo_layer_body_pack_(n,at+24+cook_i1*16,&value->banks[cook_i1],order)) { return 0; }
     } }
     graphdemo_table_cook_put(at+56+20,value->spare_present ? 1 : 0,1,order);
-    if(!schema_graphdemo_meta_body_pack_(n,at+56,&value->spare,order)) { return 0; }
+    if(value->spare_present) {
+        if(!schema_graphdemo_meta_body_pack_(n,at+56,&value->spare,order)) { return 0; }
+    }
     if(!graphdemo_table_cook_ref(n,at+80,&value->head,order)) { return 0; }
     return 1;
 }

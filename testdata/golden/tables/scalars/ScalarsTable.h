@@ -10556,7 +10556,10 @@ inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrd
     table_cook_put( at + 240, (uint64_t) (uint32_t) value.seeds_count, 4, order );
     if ( !PoseCookBody( at + 248, value.pose, order ) ) { return false; }
     table_cook_put( at + 296, (uint64_t) ( value.spawn_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( !PoseCookBody( at + 272, value.spawn, order ) ) { return false; }
+    if ( value.spawn_present )
+    {
+        if ( !PoseCookBody( at + 272, value.spawn, order ) ) { return false; }
+    }
     return true;
 }
 

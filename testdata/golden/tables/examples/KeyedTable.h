@@ -19375,7 +19375,10 @@ inline bool TurretConfigCookBody( uint8_t * at, const TurretConfig & value, Tabl
     if ( !TableFloatFinite( value.cooldown ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.cooldown, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
     table_cook_put( at + 16, (uint64_t) ( value.gunner_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( !GunnerConfigCookBody( at + 8, value.gunner, order ) ) { return false; }
+    if ( value.gunner_present )
+    {
+        if ( !GunnerConfigCookBody( at + 8, value.gunner, order ) ) { return false; }
+    }
     return true;
 }
 

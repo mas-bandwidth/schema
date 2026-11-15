@@ -18743,7 +18743,10 @@ inline bool ShipEntryCookBody( uint8_t * at, const ShipEntry & value, TableByteO
     }
     table_cook_put( at + 64, (uint64_t) (uint32_t) value.hardpoints_count, 4, order );
     table_cook_put( at + 104, (uint64_t) ( value.gunner_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( !GunnerSettingsCookBody( at + 68, value.gunner, order ) ) { return false; }
+    if ( value.gunner_present )
+    {
+        if ( !GunnerSettingsCookBody( at + 68, value.gunner, order ) ) { return false; }
+    }
     return true;
 }
 

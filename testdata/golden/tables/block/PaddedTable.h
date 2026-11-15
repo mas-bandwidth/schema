@@ -11015,7 +11015,10 @@ inline bool PaddedRowCookBody( uint8_t * at, const PaddedRow & value, TableByteO
         table_cook_put( at + 52 + i * 1, (uint64_t) value.teams.slots[i], 1, order );
     }
     table_cook_put( at + 60, (uint64_t) ( value.counter_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    table_cook_put( at + 56, (uint64_t) value.counter, 4, order );
+    if ( value.counter_present )
+    {
+        table_cook_put( at + 56, (uint64_t) value.counter, 4, order );
+    }
     return true;
 }
 
