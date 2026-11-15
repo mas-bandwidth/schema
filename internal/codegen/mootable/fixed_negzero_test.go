@@ -9,61 +9,48 @@ package mootable_test
 
 import (
 	"bytes"
-	"fmt"
+	"encoding/binary"
+	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// negZeroSchema puts a compressed float at a scalar and a fixed array element,
-// beside a plain float whose -0 the rule does not touch.
-const negZeroSchema = `package probe
+// fixedHeaderBytes is the fixed form's file header (docs/SPEC-TABLES.md §3.4);
+// the layout's length follows it.
+const fixedHeaderBytes = 16
 
-fixed table NegZero
-{
-    lead  uint32 = 1
-    aim   float32 = 0.0 | min = -1.0, max = 1.0, resolution = 0.01
-    vals  [2]float32 | min = -1.0, max = 1.0, resolution = 0.01
-    plain float32 = 0.0
-    trail uint32 = 2
-}
-`
-
+// The shared vectors (fixedvector.NegativeZero): the reference writer's file
+// holding the sign bit alone in test/tables/FNZ.schema's compressed `value`.
+// The leg's load lands one record whose value is 0 with the sign bit clear,
+// refuses nothing and moves no counter, and its save writes the same file
+// with that field's bytes cleared.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
-	u := unitFromSource(t, negZeroSchema)
-	g := fixedUnit(t, u, nil)
-	const setup = `local v = T.NewNegZero()
-v.Lead = 1
-v.Aim = %s
-v.Vals[1] = %s
-v.Vals[2] = %s
-v.Plain = %s
-v.Trail = 2
-values = { v }
-`
-	save := func(aim, first, second, plain string) []byte {
-		return evoSave(t, g, "ProbeTable", "NegZero", fmt.Sprintf(setup, aim, first, second, plain))
-	}
-	canonical := save("0x00000000", "0x00000000", "0x00000000", "0x80000000")
-	file := save("0x80000000", "0x80000000", "0x80000000", "0x80000000")
-	if bytes.Equal(file, canonical) {
-		t.Fatal("the writer stored a compressed float's -0 as +0; the vector needs the -0 image")
-	}
-	got := evoLoad(t, g, "ProbeTable", "NegZero", file, -1)
-	if got.head != "ok 1 u0 k0 c0 w0 d0 -" {
-		t.Fatalf("the vector does not read: %s", got.head)
-	}
-	for _, field := range []string{"r0.aim", "r0.vals[0]", "r0.vals[1]"} {
-		if got.dump[field] != "0x00000000" {
-			t.Errorf("%s landed %s, want +0 (0x00000000)", field, got.dump[field])
-		}
-	}
-	if got.dump["r0.plain"] != "0x80000000" {
-		t.Errorf("the plain float's -0 landed %s, want its own bits (0x80000000)", got.dump["r0.plain"])
-	}
-	if !bytes.Equal(got.saved, canonical) {
-		t.Errorf("the read-then-save image is not the canonical +0 image:\n got %x\nwant %x", got.saved, canonical)
+	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
+	corpus := fixedCorpus(t)
+	g := fixedUnit(t, readTestSchema(t, "FNZ"), nil)
+	for _, vec := range fixedvector.NegativeZero {
+		t.Run(vec.Name, func(t *testing.T) {
+			file := corpusFile(t, corpus, vec.File)
+			layoutBytes := int(binary.LittleEndian.Uint32(file[fixedHeaderBytes:]))
+			valueAt := fixedHeaderBytes + 4 + layoutBytes + 8 + 4
+			if got := binary.LittleEndian.Uint32(file[valueAt:]); got != 0x80000000 {
+				t.Fatalf("%s does not hold a compressed float's -0 at byte %d: %#08x", filepath.Join(corpus, vec.File), valueAt, got)
+			}
+			got := evoLoad(t, g, "FNZTable", vec.Root, file, -1)
+			if got.head != "ok 1 u0 k0 c0 w0 d0 -" {
+				t.Fatalf("the vector does not land one record with every counter at zero: %s", got.head)
+			}
+			if got.dump["r0.value"] != "0x00000000" {
+				t.Errorf("r0.value landed %s, want +0 (0x00000000, the sign bit clear)", got.dump["r0.value"])
+			}
+			want := clone(file)
+			clear(want[valueAt : valueAt+4])
+			if !bytes.Equal(got.saved, want) {
+				t.Errorf("the read-then-save image is not the canonical +0 image:\n got %x\nwant %x", got.saved, want)
+			}
+		})
 	}
 }
