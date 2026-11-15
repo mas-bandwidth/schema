@@ -396,8 +396,16 @@ end
 
 local readShape: any
 
-readShape = function(b: buffer, at: number, e: number, kind: number): (any, number?)
+-- THE ONE NESTING BOUND (docs/SPEC-TABLES.md §4): the announcement is a form-1
+-- file, its shape nests no deeper than 128 levels, and a shape past it is
+-- damage rather than a deeper walk.
+local SHAPE_MAX_DEPTH = 128
+
+readShape = function(b: buffer, at: number, e: number, kind: number, level: number): (any, number?)
 	local s: any = { packing = 0, bits = 0, base = nil, min = 0, max = 0, elem = 0, inner = nil }
+	if level > SHAPE_MAX_DEPTH then
+		return s, nil
+	end
 	if integerKind(kind) or fixedKind(kind) or kind == 10 then
 		if at >= e then
 			return s, nil
@@ -488,7 +496,7 @@ readShape = function(b: buffer, at: number, e: number, kind: number): (any, numb
 		if not knownKind(s.elem) then
 			return s, nil
 		end
-		local inner, next = readShape(b, at, e, s.elem)
+		local inner, next = readShape(b, at, e, s.elem, level + 1)
 		if next == nil then
 			return s, nil
 		end
@@ -695,7 +703,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 				return false
 			end
 		end
-		local shape, next = readShape(wb, p + 9, we, kind)
+		local shape, next = readShape(wb, p + 9, we, kind, 0)
 		if next == nil then
 			report.damaged = true
 			return false
