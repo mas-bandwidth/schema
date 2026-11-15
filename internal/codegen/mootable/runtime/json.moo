@@ -746,12 +746,12 @@ end
 
 
 ----------------------------------------------------------------------------
--- INTEGERS (docs/SPEC-TABLES.md §16.2 Numbers): JSON has one number type, so
--- an integer field takes any token whose VALUE is integral. A token is a sign
--- and a magnitude (a big integer); the field's reading goes through the
--- nearest double where the spelling has a fraction or an exponent, exactly as
--- internal/tabletext's interpretInteger does, and a map key reads the digits
--- exactly (interpretIntegerExact).
+-- INTEGERS (docs/SPEC-TABLES.md §16.2 Numbers): an integer field takes an
+-- INTEGER TOKEN only — digits with an optional minus, no fraction, no
+-- exponent, not -0 — so a token is its sign and its digits (a big integer),
+-- never a double. A kind wider than 32 bits is written as a string of digits
+-- and reads as a string or a number; a map key reads the same digits exactly
+-- (interpretIntegerExact).
 ----------------------------------------------------------------------------
 
 local MAX64: Big = { 16777215, 16777215, 65535 } -- 2^64 - 1
@@ -794,6 +794,36 @@ local function cmpSigned(an: boolean, am: Big, bn: boolean, bm: Big): number
 	end
 	local c = bnCmp(am, bm)
 	return if an then -c else c
+end
+
+-- integerToken(text): the digits-and-optional-minus spelling of an integer —
+-- an optional `-`, then digits with no leading zero, and not `-0` — the one
+-- spelling an integer field takes (tabletext's integerToken)
+local function integerToken(text: string): boolean
+	local i = 1
+	local negative = false
+	if string.byte(text, i) == 45 then
+		negative = true
+		i += 1
+	end
+	if i > #text then
+		return false
+	end
+	local c = string.byte(text, i) :: number
+	if c == 48 then
+		return not negative and i == #text
+	end
+	if c < 49 or c > 57 then
+		return false
+	end
+	while i <= #text do
+		local d = string.byte(text, i) :: number
+		if d < 48 or d > 57 then
+			return false
+		end
+		i += 1
+	end
+	return true
 end
 
 -- interpretInteger(token, integral): whether the value is finite, fractional
@@ -2034,8 +2064,17 @@ local function elementShape(e: any): string
 		return "s"
 	elseif s == "bool" then
 		return "b"
+	elseif s == "int" and e.kw > 4 then
+		-- A WIDE INTEGER READS AS A STRING OR A NUMBER (§16.2)
+		return "N"
 	end
 	return "n"
+end
+
+-- shapeMatches: 'N' is a wide integer, which takes a string or a number; every
+-- other shape is exact (tabletext's shapeMatches)
+local function shapeMatches(want: string, got: string): boolean
+	return want == got or (want == "N" and (got == "s" or got == "n"))
 end
 
 -- shape: the JSON shape a field's declaration takes (tabletext's Shape)
@@ -2317,7 +2356,13 @@ local function storeInteger(fd: any, holder: any, key: any, negative: boolean, m
 end
 
 local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: string, integral: boolean): boolean
-	local finite, fractional, saturated, negative, mag = interpretInteger(token, integral)
+	-- AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2):
+	-- a fraction, an exponent or -0 is the wrong shape, never coerced
+	if not integral or not integerToken(token) then
+		r.report.kindChanged += 1
+		return true
+	end
+	local finite, fractional, saturated, negative, mag = interpretInteger(token, true)
 	if not finite or fractional then
 		r.report.kindChanged += 1
 		return true
@@ -2355,6 +2400,12 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 end
 
 local function placeWide(r: Reader, fd: any, holder: any, key: any, token: string): boolean
+	-- a PURE 128-bit integer holds the integer-token rule inside its string too;
+	-- a fixed-point kind keeps its exact decimal (docs/SPEC-TABLES.md §16.2)
+	if fd.fbits == nil and fd.kw == 16 and not integerToken(token) then
+		r.report.kindChanged += 1
+		return true
+	end
 	local exact, negative, mag, saturated = parseWide(token, fd.signed, fd.fbits or 0)
 	if not exact then
 		r.report.kindChanged += 1
@@ -2457,7 +2508,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 				return false
 			end
 			u.Type = arm.tag
-		elseif s ~= shape(arm) then
+		elseif not shapeMatches(shape(arm), s) then
 			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -2627,6 +2678,18 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 		holder[key] = false
 		return true
 	end
+	if s == "int" and fd.kw > 4 and valueShape(r) == "s" then
+		-- A WIDE INTEGER READS AS A STRING OR A NUMBER (§16.2): the string holds
+		-- the same digits the number does
+		local text, _, ok = scanString(r, -1)
+		if not ok then
+			return false
+		end
+		if fd.fbits == nil and fd.kw == 8 then
+			return placeInteger(r, fd, holder, key, text, true)
+		end
+		return placeWide(r, fd, holder, key, text)
+	end
 	local token, integral, ok = scanNumber(r)
 	if not ok then
 		r.bad = true
@@ -2728,7 +2791,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 			end
 			arr[placed + 1] = if list then false else nil
 			placed += 1
-		elseif s ~= want then
+		elseif not shapeMatches(want, s) then
 			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -2968,7 +3031,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			if not skipValue(r, depth + 1) then
 				return false
 			end
-		elseif valueShape(r) ~= want then
+		elseif not shapeMatches(want, valueShape(r)) then
 			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -3053,6 +3116,10 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				end
 				if not numberOk then
 					placed = "damaged"
+				elseif not integerToken(name) then
+					-- a fraction, an exponent or -0 is the wrong shape for an
+					-- integer key (docs/SPEC-TABLES.md §16.2)
+					placed = "mismatch"
 				else
 					local fractional, saturated, negative, mag = interpretIntegerExact(name)
 					if fractional or saturated then
@@ -3266,7 +3333,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 				end
 				resetField(d, fd, rec)
 			else
-				if s ~= shape(fd) then
+				if not shapeMatches(shape(fd), s) then
 					r.report.kindChanged += 1
 					if not skipValue(r, depth + 1) then
 						return false
@@ -3665,7 +3732,13 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 		writeString(w :: any, formatTimestamp(v))
 		return true
 	end
-	emit(w, writeInteger(fd, v))
+	local text = writeInteger(fd, v)
+	if fd.kw > 4 then
+		-- A KIND WIDER THAN 32 BITS IS A STRING OF DIGITS (§16.2, W10/W11)
+		writeString(w :: any, text)
+	else
+		emit(w, text)
+	end
 	return true
 end
 
