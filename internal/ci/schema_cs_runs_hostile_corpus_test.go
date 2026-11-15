@@ -11,7 +11,7 @@ import (
 // needing a .NET SDK in the Go unit tier: the make target exists and is a
 // prerequisite of the port's normal unit target, its runner reads the committed
 // manifest and every FIX-CARD names a case the manifest carries, and the
-// workflow has both a push/pull-request fast gate and a nightly control.
+// workflow runs nightly and on dispatch only (the owner, 2026-11-15).
 func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -111,16 +111,20 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 	}
 	workflowText := string(workflow)
 	for _, want := range []string{
-		"push:",
 		"schedule:",
 		"workflow_dispatch:",
 		"runs-on: [self-hosted, linux, x64, schema]",
-		"branches: [ main, dev, fixed-table-form ]",
 		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 	} {
 		if !strings.Contains(workflowText, want) {
 			t.Errorf("the workflow does not carry %q", want)
 		}
+	}
+	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
+	// not light moved to nightly test now." "no exceptions."): the on: block
+	// carries no push and no pull_request trigger.
+	for _, p := range nightlyOnlyTriggerProblems(workflowText) {
+		t.Errorf("schema-cs-runs-hostile-corpus.yml: %s", p)
 	}
 	if strings.Contains(workflowText, "runs-on: ubuntu-latest") {
 		t.Error("the workflow runs on a GitHub-hosted runner; every CI job is on the fleet")
@@ -129,7 +133,7 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 		t.Error("the workflow does not run the planted-verdict control")
 	}
 
-	// Self-hosted admission and dev/main trigger assertions for corpus and negative-control.
+	// Self-hosted admission for corpus and negative-control.
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"},
 		{Name: "pull_request", Branch: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema", Labels: []string{"full-ci"}},
@@ -142,38 +146,68 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 		}
 	}
 	for _, ev := range []ciEvent{
-		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
 	} {
 		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || !ok {
 			t.Errorf("C# corpus job did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
 		}
-		wantNeg := ev.Name == "schedule" || ev.Name == "workflow_dispatch"
-		if ok, err := jobSelectsSelfHosted(workflowText, "negative-control", ev); err != nil || ok != wantNeg {
-			t.Errorf("C# negative-control under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNeg)
+		if ok, err := jobSelectsSelfHosted(workflowText, "negative-control", ev); err != nil || !ok {
+			t.Errorf("C# negative-control did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
 		}
 	}
-	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15: "Let us be efficient
-	// first, then scale up if we need only"): no pull request and no
-	// card-branch push starts this workflow; it runs after the merge.
+	// No pull request and no push, to main, dev or a card branch, starts this
+	// workflow: a push or pull request runs only the fast lane, ci-fast.yml.
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-cs", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "sprint/schema-cs", Repo: "mas-bandwidth/schema"},
 	} {
 		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || ok {
-			t.Errorf("C# corpus job ran on (%+v): ok=%v err=%v; the PR gate is ci-fast.yml", ev, ok, err)
+			t.Errorf("C# corpus job ran on (%+v): ok=%v err=%v; the workflow is nightly and dispatch only", ev, ok, err)
 		}
 	}
-	// Mutation checks: a restored pull_request trigger is seen; dropping dev skips a dev push.
+	// Mutation checks: a restored pull_request or push trigger is seen, both by
+	// the job evaluator and by the nightly-only check.
 	withPR := strings.Replace(workflowText, "\non:\n", "\non:\n  pull_request:\n", 1)
 	if ok, err := jobSelectsSelfHosted(withPR, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || !ok {
 		t.Errorf("trigger mutation control: a restored pull_request trigger was not seen: ok=%v err=%v", ok, err)
 	}
-	noDev := strings.ReplaceAll(workflowText, "branches: [ main, dev, fixed-table-form ]", "branches: [ main ]")
-	if ok, err := jobSelectsSelfHosted(noDev, "corpus", ciEvent{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"}); err != nil || ok {
-		t.Errorf("trigger mutation control still ran a dev push after removing dev: ok=%v err=%v", ok, err)
+	if len(nightlyOnlyTriggerProblems(withPR)) == 0 {
+		t.Error("nightly-only control: a restored pull_request trigger was not refused")
 	}
+	withPush := strings.Replace(workflowText, "\non:\n", "\non:\n  push:\n    branches: [ main, dev ]\n", 1)
+	if ok, err := jobSelectsSelfHosted(withPush, "corpus", ciEvent{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"}); err != nil || !ok {
+		t.Errorf("trigger mutation control: a restored push trigger was not seen: ok=%v err=%v", ok, err)
+	}
+	if len(nightlyOnlyTriggerProblems(withPush)) == 0 {
+		t.Error("nightly-only control: a restored push trigger was not refused")
+	}
+	noSchedule := strings.Replace(workflowText, "\n  schedule:\n", "\n  # schedule removed\n", 1)
+	if len(nightlyOnlyTriggerProblems(noSchedule)) == 0 {
+		t.Error("nightly-only control: a workflow without schedule: was not refused")
+	}
+}
+
+// nightlyOnlyTriggerProblems names every way a heavy workflow's top-level on:
+// block breaks the nightly-and-dispatch-only rule (the owner, 2026-11-15: "I want
+// everything that is not light moved to nightly test now." "no exceptions."):
+// it must carry schedule and workflow_dispatch, and must not carry push,
+// pull_request or pull_request_target.
+func nightlyOnlyTriggerProblems(wf string) []string {
+	triggers := workflowTriggerBranches(wf)
+	var problems []string
+	for _, need := range []string{"schedule", "workflow_dispatch"} {
+		if _, ok := triggers[need]; !ok {
+			problems = append(problems, "the on: block has no "+need+": trigger")
+		}
+	}
+	for _, banned := range []string{"push", "pull_request", "pull_request_target"} {
+		if _, ok := triggers[banned]; ok {
+			problems = append(problems, "the on: block carries a "+banned+": trigger; heavy suites run nightly and on dispatch only")
+		}
+	}
+	return problems
 }
