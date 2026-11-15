@@ -4285,7 +4285,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
         }
     }
-    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG.
+    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG. A NESTED tag is judged
+    // only while every tag outside it selects the arm it sits in: under any
+    // other outer arm its bytes are that arm's live payload, or the outer
+    // tag's own dead span, which the outer tag's check holds to zero.
     for ( int32_t i = 0; i < count; ++i )
     {
         const TableFixedEntry & e = plan[i];
@@ -4294,6 +4297,11 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( j > 0 )
+                {
+                    const TableFixedGuardLink & outer = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + ( j - 1 ) * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, outer.guard, outer.argw ) != outer.arg ) { break; }
+                }
                 if ( TableFixedTagSeen( plan, i, l.guard, guard_pool ) ) { continue; }
                 if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) ) { continue; }
                 if ( !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
@@ -4305,7 +4313,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else
         {
-            if ( e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
+            // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
+            const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
+                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+            if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
                  !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
                  !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
